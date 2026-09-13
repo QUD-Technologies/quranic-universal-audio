@@ -255,14 +255,22 @@ function _chimeArmed(): boolean {
  */
 const CHIME_GAP_MS = CHIME_TOTAL_MS + 130;
 
-/** Pending resume from an in-flight chime gap. At most one — a second boundary
+/** Fallback timer for an in-flight chime gap. At most one — a second boundary
  *  landing mid-gap supersedes the first rather than stacking. */
 let _chimeGapTimer: ReturnType<typeof setTimeout> | null = null;
+/** True while a chime gap is holding playback, whichever clock ends it. Read by
+ *  `stopSegAnimation` to tell our own transient pause from a real one. */
+let _chimeGapActive = false;
+/** Invalidates the resume of a superseded gap: each gap captures the token it
+ *  was started with and refuses to run if it no longer matches. */
+let _chimeGapToken = 0;
 
 /** Abandon an in-flight chime gap WITHOUT running its resume. Called whenever
  *  something else takes over the transport (user pause, a new play, teardown)
  *  so a stale gap can't restart audio the user just stopped. */
 export function cancelChimeGap(): void {
+    _chimeGapToken++;
+    _chimeGapActive = false;
     if (_chimeGapTimer === null) return;
     clearTimeout(_chimeGapTimer);
     _chimeGapTimer = null;
@@ -291,11 +299,26 @@ function _chimeSegmentEnd(resume: () => void): void {
     // pauseAndFlush drains the OS sink too, so the gap is genuinely silent rather than
     // trailing ~50-200ms of pre-decoded samples over the beep.
     segPort.pauseAndFlush();
-    playSegmentEndChime();
-    _chimeGapTimer = setTimeout(() => {
-        _chimeGapTimer = null;
+    _chimeGapActive = true;
+    const token = _chimeGapToken;
+    const done = (): void => {
+        if (token !== _chimeGapToken) return;   // superseded
+        _chimeGapToken++;
+        _chimeGapActive = false;
+        if (_chimeGapTimer !== null) {
+            clearTimeout(_chimeGapTimer);
+            _chimeGapTimer = null;
+        }
         resume();
-    }, CHIME_GAP_MS);
+    };
+    // Prefer the chime's own Web Audio clock to end the gap: a hidden tab
+    // clamps `setTimeout` to >=1s, which would stretch every boundary into a
+    // second of dead air precisely when the user is listening rather than
+    // watching. The timer stays armed as a fallback (no Web Audio, or a
+    // throttled chime that never scheduled) at a duration that can't fire
+    // before the audio clock would have.
+    const scheduled = playSegmentEndChime(done);
+    _chimeGapTimer = setTimeout(done, scheduled ? CHIME_GAP_MS * 3 : CHIME_GAP_MS);
 }
 
 function _onRangeTick(timeMs: number): void {
@@ -685,11 +708,32 @@ function _coldStartEditPreview(mode: 'trim' | 'split'): void {
  *
  * The crossing branch in `onSegTimeUpdate` fires for BOTH: dragging the seek
  * bar sweeps the playhead through many segments and would otherwise machine-gun
- * the chime. A natural advance lands within a hair of the segment we just left
- * (contiguous rows share a boundary, so `timeMs ~= prev.time_end`); a scrub
- * lands anywhere. Paused means a scrub by definition.
+ * the chime. A natural advance is never more than ONE `timeupdate` tick past
+ * the segment we just left (contiguous rows share a boundary); a scrub lands
+ * arbitrarily far away. Paused means a scrub by definition.
+ *
+ * The budget is therefore measured in ticks, not in a fixed number of
+ * milliseconds. A visible tab fires `timeupdate` about every 265ms, but a
+ * HIDDEN one is throttled to roughly 1/s — against a fixed 400ms window every
+ * boundary in a backgrounded tab reads as a seek and the chime goes silent,
+ * which is the one situation where the user is listening instead of watching.
+ * So the window tracks the observed tick interval (scaled by playback rate,
+ * since media time advances faster than wall clock above 1x).
  */
-const NATURAL_ADVANCE_TOLERANCE_MS = 400;
+const NATURAL_ADVANCE_FLOOR_MS = 400;
+/** Slack on top of one observed tick, absorbing jitter in the tick cadence. */
+const NATURAL_ADVANCE_TICK_SLACK = 1.5;
+
+/** Wall-clock stamp of the previous `onSegTimeUpdate`, for the tick-interval
+ *  estimate above. Null until the second tick of a playback run. */
+let _lastTimeUpdateAt: number | null = null;
+
+function _naturalAdvanceBudgetMs(): number {
+    if (_lastTimeUpdateAt === null) return NATURAL_ADVANCE_FLOOR_MS;
+    const sinceLastTick = performance.now() - _lastTimeUpdateAt;
+    const rate = segPort.element?.playbackRate || 1;
+    return Math.max(NATURAL_ADVANCE_FLOOR_MS, sinceLastTick * rate * NATURAL_ADVANCE_TICK_SLACK);
+}
 
 function _isNaturalAdvance(
     active: { chapter: number; index: number } | null,
@@ -701,7 +745,7 @@ function _isNaturalAdvance(
     const prevSeg = getSegByChapterIndex(active.chapter, prevIdx);
     if (!prevSeg) return false;
     const delta = timeMs - prevSeg.time_end;
-    return delta >= 0 && delta <= NATURAL_ADVANCE_TOLERANCE_MS;
+    return delta >= 0 && delta <= _naturalAdvanceBudgetMs();
 }
 
 export function onSegTimeUpdate(fileMs?: number): void {
@@ -766,13 +810,16 @@ export function onSegTimeUpdate(fileMs?: number): void {
     }
     segCurrentIdx.set(nextCurrentIdx);
 
+    const naturalAdvance = _isNaturalAdvance(active, prevIdx, timeMs);
+    _lastTimeUpdateAt = performance.now();
+
     if (nextCurrentIdx !== prevIdx && nextCurrentIdx >= 0 && nextCurrentChapter != null) {
         // Crossed into a new segment via chapter-continuous playback. Update
         // the active pair so the playhead and class:playing follow.
         // Chapter-continuous playback runs the segments together with no gap of
         // its own, so the chime has to make one: pause, beep, resume where we
         // left off. Skipped for seeks (see `_isNaturalAdvance`).
-        if (_chimeArmed() && _isNaturalAdvance(active, prevIdx, timeMs)) {
+        if (_chimeArmed() && naturalAdvance) {
             const resumeAt = segPort.currentTimeMs();
             _chimeSegmentEnd(() => segPort.seekAndPlay(resumeAt));
         }
@@ -820,7 +867,7 @@ export function stopSegAnimation(): void {
     // Surfacing that as a paused state flickers the play glyph at every
     // segment boundary. `cancelChimeGap` runs on any real stop, so a gap that
     // is still pending here is genuinely ours.
-    if (_chimeGapTimer !== null) return;
+    if (_chimeGapActive) return;
     playButtonLabel.set('Play');
     if (get(activeAudioSource) === 'main') activeAudioSource.set(null);
     isMainAudioPlaying.set(false);
