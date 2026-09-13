@@ -15,7 +15,6 @@
     import { i18n } from '../../../../lib/i18n/locale.svelte';
     import { markReady } from '../../../../lib/api/claims-client';
     import * as m from '../../../../lib/paraglide/messages';
-    import type { SegValAnyItem, SegValLowConfidenceItem, SegValidateResponse } from '../../../../lib/types/generated/schemas';
     import type { MarkReadyChecklist } from '../../../../lib/types/generated/schemas';
     import {
         BLOCKING_COUNT_KEYS,
@@ -28,7 +27,7 @@
     import { segAllData } from '../../stores/chapter';
     import { segConfig } from '../../stores/config';
     import { segValidation, valUiOpenCategory } from '../../stores/validation';
-    import { filterStaleIssues } from '../../utils/validation/stale';
+    import { blockingCountFor } from '../../utils/validation/blocking-count';
 
     interface Props {
         open: boolean;
@@ -59,46 +58,6 @@
         }
     });
 
-    /** Count items the same way the validation accordion's badge does, so
-     *  the form's blocking-counts panel never disagrees with what the
-     *  reviewer sees up in the accordion:
-     *
-     *  - Apply ``filterStaleIssues`` against the live segment uid set so
-     *    items whose segments were edited away after the last validate
-     *    pass don't inflate the count.
-     *  - For ``low_confidence``, additionally count only items whose
-     *    confidence falls below the FE default threshold
-     *    (``segConfig.lcDefaultThreshold``) — this matches
-     *    ``defaultLowConfCount`` in ValidationPanel.
-     *  - For ``low_confidence_v2`` / ``boundary_adj`` / ``cross_verse`` /
-     *    ``basmala_amin`` the count is the stale-filtered length (matches
-     *    those categories' badge value in ValidationPanel).
-     *
-     *  Reading ``category_counts.low_confidence`` directly was wrong: the
-     *  server returns every classified item without applying the FE
-     *  threshold, so it could legitimately report thousands when the
-     *  accordion shows zero. Source-of-truth for the gate must be the
-     *  same projection the user just inspected. */
-    function countFor(
-        key: BlockingCountKey,
-        v: SegValidateResponse | null,
-        liveUids: Set<string>,
-        lcDefault: number,
-    ): number {
-        if (!v) return 0;
-        const slot = (v as unknown as Record<string, SegValAnyItem[] | undefined>)[key];
-        if (!slot || slot.length === 0) return 0;
-        const live = filterStaleIssues(slot, liveUids);
-        if (key === 'low_confidence') {
-            let n = 0;
-            for (const item of live as SegValLowConfidenceItem[]) {
-                if (item.confidence * 100 < lcDefault) n++;
-            }
-            return n;
-        }
-        return live.length;
-    }
-
     const liveUids = $derived.by(() => {
         const segs = $segAllData?.segments ?? [];
         const set = new Set<string>();
@@ -113,7 +72,7 @@
         const lcDefault = $segConfig.lcDefaultThreshold;
         const uids = liveUids;
         return BLOCKING_COUNT_KEYS
-            .map((k) => ({ key: k, count: countFor(k, v, uids, lcDefault) }))
+            .map((k) => ({ key: k, count: blockingCountFor(k, v, uids, lcDefault) }))
             .filter((row) => row.count > 0);
     });
 
