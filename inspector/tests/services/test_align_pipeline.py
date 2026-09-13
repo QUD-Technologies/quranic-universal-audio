@@ -404,8 +404,11 @@ def test_job_command_uses_stock_image_with_system_and_pip_deps():
     cmd = base.job_command("python /aux/code/qua_jobs/acquire_audio.py", "numpy")
     assert cmd[:2] == ["bash", "-lc"]
     assert "apt-get install -y -qq --no-install-recommends ffmpeg" in cmd[2]
-    # brotli is a BASE dep: qua_shared.verse_layout imports it at module scope.
-    assert "pip install -q --root-user-action=ignore huggingface_hub brotli numpy" in cmd[2]
+    # brotli + pydantic are BASE deps: qua_shared.verse_layout imports brotli at
+    # module scope and every qua_shared.schemas model is pydantic.
+    assert (
+        "pip install -q --root-user-action=ignore huggingface_hub brotli pydantic numpy" in cmd[2]
+    )
     assert cmd[2].endswith("&& python /aux/code/qua_jobs/acquire_audio.py")
     assert "hf.co/spaces" not in base.JOB_IMAGE
 
