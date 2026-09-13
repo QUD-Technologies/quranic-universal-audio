@@ -44,6 +44,8 @@ export const editPreviewPlaying = writable<boolean>(false);
 let _previewJustSeeked = false;
 let _playRangeRAF: RafHandle | null = null;
 let _previewStopHandler: ((ev: Event) => void) | null = null;
+/** Teardown for the `timeupdate` boundary backstop — see `_setupPreviewLoop`. */
+let _previewBoundaryUnsub: (() => void) | null = null;
 
 export function getPreviewLooping(): PreviewLoopMode { return get(previewLooping); }
 export function setPreviewLooping(v: PreviewLoopMode): void { previewLooping.set(v); }
@@ -53,6 +55,8 @@ export function setPreviewJustSeeked(v: boolean): void { _previewJustSeeked = v;
 export function getPlayRangeRAF(): RafHandle | null { return _playRangeRAF; }
 export function clearPlayRangeRAF(): void {
     if (_playRangeRAF) { cancelAnimationFrame(_playRangeRAF); _playRangeRAF = null; }
+    _previewBoundaryUnsub?.();
+    _previewBoundaryUnsub = null;
 }
 
 /** No-op kept for back-compat with `exitEditMode`. The port owns canplay
@@ -97,6 +101,8 @@ function _setupPreviewLoop(startMs: number, endMs: number, coldSeek: boolean): v
         _previewStopHandler = null;
     }
     if (_playRangeRAF) { cancelAnimationFrame(_playRangeRAF); _playRangeRAF = null; }
+    _previewBoundaryUnsub?.();
+    _previewBoundaryUnsub = null;
     const canvas = get(editCanvas);
 
     let wfStart: number, wfEnd: number;
@@ -114,6 +120,8 @@ function _setupPreviewLoop(startMs: number, endMs: number, coldSeek: boolean): v
 
     const cleanup = (): void => {
         if (_playRangeRAF) { cancelAnimationFrame(_playRangeRAF); _playRangeRAF = null; }
+        _previewBoundaryUnsub?.();
+        _previewBoundaryUnsub = null;
         if (canvas?._splitData) drawSplitWaveform(canvas);
         else if (canvas?._trimWindow) drawTrimWaveform(canvas);
     };
@@ -125,18 +133,16 @@ function _setupPreviewLoop(startMs: number, endMs: number, coldSeek: boolean): v
         if (ctx) _playRangeSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
     }
 
-    function animatePlayhead(): void {
-        if (!canvas) return;
-        // Keep the rAF chain alive across transient paused states (post-seek
-        // before play() resolves, between loop-seek-back and resume, etc).
-        // Bailing on paused here used to kill the chain on the first frame
-        // after `doPlay` → the playhead never drew, loop-back never ran,
-        // drag-updates-loop-live stopped working. Explicit cleanup uses
-        // `clearPlayRangeRAF` to cancel the rAF.
-        if (segPort.paused) {
-            _playRangeRAF = requestAnimationFrame(animatePlayhead);
-            return;
-        }
+    /**
+     * The boundary half of the loop, callable outside rAF.
+     *
+     * `'idle'`     — paused, or nothing to do this tick; keep the chain alive.
+     * `'seeked'`   — looped back to `loopStart`; skip drawing this tick.
+     * `'stopped'`  — hit `effectiveEnd` under a non-loop preview; loop is over.
+     * `'continue'` — mid-range at `curMs`; the caller may draw the playhead.
+     */
+    function checkBoundary(): { state: 'idle' | 'seeked' | 'stopped' } | { state: 'continue'; curMs: number } {
+        if (segPort.paused) return { state: 'idle' };
         // File-absolute throughout — the port owns offset translation.
         const curMs = segPort.currentTimeMs();
         const loopMode = get(previewLooping);
@@ -188,8 +194,7 @@ function _setupPreviewLoop(startMs: number, endMs: number, coldSeek: boolean): v
                 segPort.pauseAndFlush();
                 segPort.seekAndPlay(loopStart);
                 _previewJustSeeked = true;
-                _playRangeRAF = requestAnimationFrame(animatePlayhead);
-                return;
+                return { state: 'seeked' };
             }
             // Stop branch (non-loop preview reaching its endMs): same
             // sink-flush rationale — replace bare `pause()` with
@@ -197,8 +202,42 @@ function _setupPreviewLoop(startMs: number, endMs: number, coldSeek: boolean): v
             // queued in the OS sink don't audibly leak after the boundary.
             segPort.pauseAndFlush();
             cleanup();
+            return { state: 'stopped' };
+        }
+        return { state: 'continue', curMs };
+    }
+
+    /**
+     * Boundary backstop on the element's `timeupdate`.
+     *
+     * The rAF chain below is the only thing enforcing `effectiveEnd`, and
+     * browsers stop servicing rAF entirely for a hidden tab / backgrounded
+     * window while the media element keeps decoding — so without this the
+     * preview loop never wraps and never stops, it just plays on through the
+     * chapter. `timeupdate` is a media event and keeps firing (~4 Hz) while
+     * hidden, bounding the overshoot to about one event interval. Mirrors the
+     * same backstop in `lib/playback/audio-range.ts`.
+     */
+    function boundaryBackstop(): void {
+        if (_playRangeRAF === null) return;   // loop not running — not ours to enforce
+        checkBoundary();                       // `cleanup()` cancels the rAF on 'stopped'
+    }
+
+    function animatePlayhead(): void {
+        if (!canvas) return;
+        // Keep the rAF chain alive across transient paused states (post-seek
+        // before play() resolves, between loop-seek-back and resume, etc).
+        // Bailing on paused here used to kill the chain on the first frame
+        // after `doPlay` → the playhead never drew, loop-back never ran,
+        // drag-updates-loop-live stopped working. Explicit cleanup uses
+        // `clearPlayRangeRAF` to cancel the rAF.
+        const res = checkBoundary();
+        if (res.state === 'stopped') return;
+        if (res.state !== 'continue') {
+            _playRangeRAF = requestAnimationFrame(animatePlayhead);
             return;
         }
+        const curMs = res.curMs;
         if (canvas._splitData) drawSplitWaveform(canvas);
         else if (canvas._trimWindow) drawTrimWaveform(canvas);
         else if (_playRangeSnapshot) {
@@ -228,6 +267,11 @@ function _setupPreviewLoop(startMs: number, endMs: number, coldSeek: boolean): v
         }
         _playRangeRAF = requestAnimationFrame(animatePlayhead);
     }
+
+    // Subscribe the backstop before either start path schedules the rAF; it
+    // no-ops until `_playRangeRAF` is set, and both `cleanup()` and
+    // `clearPlayRangeRAF()` tear it down.
+    _previewBoundaryUnsub = segPort.onTimeUpdate(boundaryBackstop);
 
     if (!coldSeek) {
         // Warm attach — audio is already playing within (or near) the loop

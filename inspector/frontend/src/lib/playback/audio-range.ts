@@ -2,7 +2,11 @@
  * AudioRange — unified [startMs, endMs] window playback primitive.
  *
  * Owns ONE rAF loop and ONE boundary check per frame against a caller-supplied
- * range on a caller-supplied audio surface. Pluggable boundary policy
+ * range on a caller-supplied audio surface. A `timeupdate` backstop runs the
+ * same check whenever rAF is starved — a hidden browser tab / backgrounded
+ * window freezes rAF entirely while the audio element keeps playing, so
+ * without it the range boundary never fires and playback runs on past `endMs`
+ * (the reported "switching tab keeps playing the card" bug). Pluggable boundary policy
  * (stop / loop / advance) handles the three behaviors the inspector needs:
  * single-segment play, trim/split loop preview, and autoplay advance.
  *
@@ -105,6 +109,8 @@ export class AudioRange {
     /** Legacy-mode canplay handler. Port-mode delegates to
      *  `port.loadCovering(...).ready`. */
     private canplayHandler: (() => void) | null = null;
+    /** Teardown for the `timeupdate` boundary backstop (see `_frameFromTimeUpdate`). */
+    private timeUpdateUnsub: (() => void) | null = null;
     private disposed = false;
 
     constructor(opts: AudioRangeOptions) {
@@ -121,6 +127,7 @@ export class AudioRange {
         this.onBoundary = opts.onBoundary;
         this.playbackRate = opts.playbackRate;
         this.loop = createAnimationLoop(() => this._frame());
+        this._attachTimeUpdateBackstop();
     }
 
     // -----------------------------------------------------------------------
@@ -193,6 +200,8 @@ export class AudioRange {
 
     dispose(): void {
         this.disposed = true;
+        this.timeUpdateUnsub?.();
+        this.timeUpdateUnsub = null;
         this.stop();
         // Lift any in-flight gain ramp before another path (edit-preview,
         // direct seek) plays this element. Without this, a dispose that
@@ -203,6 +212,44 @@ export class AudioRange {
     // -----------------------------------------------------------------------
     // Internal: frame tick
     // -----------------------------------------------------------------------
+
+    /**
+     * Boundary backstop on the element's `timeupdate` event.
+     *
+     * `_frame` is otherwise only reachable from the rAF loop, and browsers
+     * stop servicing rAF outright for a hidden tab / backgrounded window while
+     * the media element keeps decoding. That starves the ONLY boundary check,
+     * so a bounded play (accordion card, or main-list play with autoplay off)
+     * sails past `endMs` and keeps playing the rest of the chapter until the
+     * user comes back — ignoring both the `stop` and the `advance` policy.
+     *
+     * `timeupdate` is a media event, so it keeps firing while hidden (~4 Hz,
+     * vs. rAF's 0 Hz), bounding the overshoot to roughly one event interval.
+     * Port mode subscribes through the port so the handler follows an
+     * `adoptElement` rotation; legacy mode binds the element directly.
+     */
+    private _attachTimeUpdateBackstop(): void {
+        const onTimeUpdate = (): void => this._frameFromTimeUpdate();
+        if (this.port) {
+            this.timeUpdateUnsub = this.port.onTimeUpdate(onTimeUpdate);
+            return;
+        }
+        const el = this.audioEl;
+        el.addEventListener('timeupdate', onTimeUpdate);
+        this.timeUpdateUnsub = () => el.removeEventListener('timeupdate', onTimeUpdate);
+    }
+
+    /** Run one boundary check outside rAF. No-op unless the rAF loop is
+     *  supposed to be enforcing right now, so a stopped / disposed range never
+     *  reacts to another play path's `timeupdate`s. */
+    private _frameFromTimeUpdate(): void {
+        if (this.disposed || !this.loop.running()) return;
+        // A `stop`-policy boundary self-stops the loop by returning false from
+        // the rAF tick. Reached from here that return value has nowhere to go,
+        // so cancel the pending frame ourselves — otherwise the chain keeps
+        // spinning once the tab is visible again.
+        if (this._frame() === false) this.loop.stop();
+    }
 
     private _frame(): boolean | void {
         if (this.disposed) return false;

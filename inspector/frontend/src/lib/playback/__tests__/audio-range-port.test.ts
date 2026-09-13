@@ -150,6 +150,67 @@ describe.each(VARIANTS)('AudioRange port mode — $name', ({ offset, reusesSubra
     });
 
     // -----------------------------------------------------------------------
+    // 2b. timeupdate backstop (hidden tab / backgrounded window)
+    // -----------------------------------------------------------------------
+
+    describe('timeupdate backstop', () => {
+        // A hidden tab gets ZERO rAF callbacks while the media element keeps
+        // decoding, so every case below deliberately never flushes a frame.
+        it('enforces a stop boundary with rAF starved', () => {
+            const onBoundary = vi.fn();
+            const r = buildRange({ policy: { kind: 'stop' }, onBoundary });
+            r.start();
+            setClipTimeMs(1500);
+            audio._fireEvent('timeupdate');
+            expect(onBoundary).toHaveBeenCalledTimes(1);
+            expect(onBoundary.mock.calls[0]?.[0]).toMatchObject({ reason: 'stop' });
+            expect(audio.pause).toHaveBeenCalled();
+            expect(r.isRunning()).toBe(false);
+        });
+
+        it('enforces a loop boundary with rAF starved', () => {
+            const onBoundary = vi.fn();
+            const r = buildRange({ policy: { kind: 'loop' }, onBoundary });
+            r.start();
+            setClipTimeMs(1500);
+            audio._fireEvent('timeupdate');
+            expect(onBoundary).toHaveBeenCalledTimes(1);
+            expect(onBoundary.mock.calls[0]?.[0]).toMatchObject({ reason: 'loop' });
+            expect(audio.currentTime).toBeCloseTo(0, 5);
+            expect(r.isRunning()).toBe(true);
+        });
+
+        it('stays quiet below the boundary', () => {
+            const onBoundary = vi.fn();
+            const r = buildRange({ onBoundary });
+            r.start();
+            setClipTimeMs(500);
+            audio._fireEvent('timeupdate');
+            expect(onBoundary).not.toHaveBeenCalled();
+        });
+
+        it('does not fire the boundary twice when rAF resumes', () => {
+            const onBoundary = vi.fn();
+            const r = buildRange({ policy: { kind: 'stop' }, onBoundary });
+            r.start();
+            setClipTimeMs(1500);
+            audio._fireEvent('timeupdate');
+            raf.flushFrames(2);
+            expect(onBoundary).toHaveBeenCalledTimes(1);
+        });
+
+        it('ignores timeupdates once disposed', () => {
+            const onBoundary = vi.fn();
+            const r = buildRange({ onBoundary });
+            r.start();
+            r.dispose();
+            setClipTimeMs(1500);
+            audio._fireEvent('timeupdate');
+            expect(onBoundary).not.toHaveBeenCalled();
+        });
+    });
+
+    // -----------------------------------------------------------------------
     // 3. Loop policy
     // -----------------------------------------------------------------------
 
