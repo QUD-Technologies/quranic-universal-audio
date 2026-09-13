@@ -65,20 +65,6 @@ Audio, timestamps and metadata ship in two open formats — pick by your use cas
 | **Versioning** | Version-pinned snapshots, reproducible | Rolling — always the latest |
 | **Fetch what you need** | Full release or specific reciters | Full dataset or specific reciters, Hugging Face supported live viewer, filtering and querying |
 
-Both formats support both gapless surah and ayah-by-ayah playback. Both ship a single take per full ayah (the first occurrence), so in rare cases where a reciter repeats an ayah fully or partially at the ayah start/end, follow-along highlighting may pause until they move past the repetition (within-ayah repetitions are still preserved). A unified API — which also exposes the full, unfiltered duplicates — is on the [roadmap](#roadmap).
-
-## Technical Overview
-
-<p align="center">
-  <img src="docs/qua_pipeline.svg" alt="Pipeline diagram">
-</p>
-
-| Component | Description |
-|-----------|-------------|
-| [`Quranic Universal Aligner`](https://huggingface.co/spaces/hetchyy/quranic-universal-aligner) | Demo running on Hugging Face GPU demonstrating our alignment toolkit, also available via [API](docs/client_api.md) |
-| [`inspector/`](inspector/) | Entry website for browsing reciters, viewing timestamps interactively and editing alignment results |
-| [quranic-phonemizer](https://github.com/Hetchy/Quranic-Phonemizer) | External package — Qur'an-specific G2P; the foundation that allows phoneme-level alignment |
-
 ## Contributing
 
 Visit the [website](https://hetchyy-quranic-universal-audio.hf.space/) and read the overview info and editing guide to get started in contributing recitations and fixing alignment errors.
