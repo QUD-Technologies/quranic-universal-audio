@@ -10,8 +10,8 @@ Two orderings exist and are distinct:
 
 Accordion order (registry `accordion_order`). `card_type` = FE card subcomponent dispatch.
 
-| order | kind | severity | scope | detection | where | card_type | key module |
-|---|---|---|---|---|---|---|---|
+| order | kind | severity | scope | detection | where | card_type | key module | visibility |
+|---|---|---|---|---|---|---|---|---|
 | 1 | `failed` | error | per_segment | empty `matched_ref` | server+client | generic | `classifier.py` / `detail.py` |
 | 2 | `missing_verses` | error | per_verse | verse in `word_counts` not covered by any seg key | server | missingVerses | `_structural.py::_check_structural_errors` |
 | 3 | `missing_words` | error | per_verse | word-index gap in verse coverage map | server | missingWords | `_missing.py::_build_missing_words` |
@@ -22,7 +22,7 @@ Accordion order (registry `accordion_order`). `card_type` = FE card subcomponent
 | 8 | `boundary_adj` | warning | per_segment | persisted `is_boundary_adj` (fall-through `compute_is_boundary_adj`) | server | generic | `classifier.py::_check_boundary_adj` |
 | 9 | `repetitions` | warning | per_segment | `seg.wrap_word_ranges` truthy (`has_repeated_words` alone does NOT classify) | server | generic | `classifier.py` |
 | 10 | `cross_verse` | warning | per_segment | `s_ayah != e_ayah` | server | generic | `classifier.py` |
-| 11 | `qalqala` | info | per_segment | persisted `qalqala_letter` non-null (fall-through `compute_qalqala_letter`) | server | generic | `classifier.py` + `segments/qalqala.py` |
+| 11 | `qalqala` | info | per_segment | persisted `qalqala_letter` non-null (fall-through `compute_qalqala_letter`) | server | generic | `classifier.py` + `segments/qalqala.py` | **owner-only** |
 | 12 | `muqattaat` | info | per_segment | `s_word==1 and (surah,s_ayah) ∈ MUQATTAAT_VERSES` | server | generic | `classifier.py` |
 | 13 | `basmala_amin` | info | per_segment | per-chapter scan: first seg overlapping `1:1`, last overlapping `1:7`, + missed-Basmala augmentation gated on `len(deleted_basmala_chapters) >= MISSED_BASMALA_FLAG_MIN_DELETED` | server | generic | `detail.py::_build_detail_lists` |
 | 14 | `hidden_pause` | info | per_segment | `segment_uid ∈ hidden_pause_v1.json::by_uid` (offline re-segmentation heard a pause inside the segment; `load_hidden_pause`) | server | generic | `classifier.py` + `_build_detail_lists` |
@@ -30,6 +30,8 @@ Accordion order (registry `accordion_order`). `card_type` = FE card subcomponent
 | 16 | `unmarked_wasl` | info | per_segment | `segment_uid ∈ unmarked_wasl_v1.json::by_uid` (every re-segmentation arm read through the verse-to-verse join to the next segment and the delivery never marked `is_wasl`; `load_unmarked_wasl`) | server | generic | `classifier.py` + `_build_detail_lists` |
 
 `hidden_pause` / `false_split` / `unmarked_wasl` are **review-only**: their arrays + `*_meta` blocks are emitted only to viewers holding `segments.view_boundary_review` (maintainer default; owner superuser) — the route caches the full payload per reciter and `strip_boundary_review` redacts per request (counts zeroed, keys absent → the FE hides the accordions). None is in `BLOCKING_COUNT_KEYS` or `REQUIRED_GUIDE_KEYS`. Each item carries the sidecar payload under `boundary` (hidden_pause: `cursors` / `refs` / `score` / `cuts[]` with per-axis `evidence`; false_split and unmarked_wasl share one shape: `next_uid` / `axes` / `gap_ms` / `score` / `word` / `final_class` / `is_wasl` / `evidence`); `score` = agreeing axes × 1000 + min(gap_ms, 999) and all three accordions default-sort by it descending. Auto Split on a `hidden_pause` row reads the cut from `/api/seg/auto-split` — `services/segments/auto_split.py` merges `hidden_pause_v1` entries that carry `refs` (kind `hidden_pause`; an `auto_split_v1` entry for the same uid wins); entries with `refs: null` fall back to plain Split. A `false_split` row resolves with the row's Merge ↓ (auto-suppress on edit, like every per-segment category). An `unmarked_wasl` row opens with the next segment in context (`ACCORDION_CONTEXT` `next_only`) and the WASL/WAQF picker between the two; the fix is `set_is_wasl` on the left segment (or Merge ↓ if it is one utterance) — never a split, so the row is not an Auto Split candidate and `auto_split.py` does not read the sidecar.
+
+`owner_only` (registry field, default `False`) makes a category **invisible to everyone but an owner** — for a non-owner it may as well not exist. `ValidationPanel.svelte` drops the row from `buildBaseDescriptors` (gated on the `isOwner` store), so there is no accordion, no count badge and no filter entry; `REQUIRED_GUIDE_KEYS` is derived as `ALL_GUIDE_KEYS` minus owner-only categories so the guide never gates a first edit or shows in the guides checklist (the guide stays registered and readable from the owner's accordion `?`, and `GUIDE_VIEW_KEYS` in `inspector/constants.py` still accepts the view POST); and the category must never appear in `BLOCKING_COUNT_KEYS` — `mark-ready-copy.test.ts` asserts that. Currently: `qalqala`. This is a display gate, not authz: the validate response still carries the array (unlike the `view_boundary_review` redaction above, which is capability-gated server-side).
 
 Detection runs server-side in the validate pass. The client classifies snapshots/issue records for display only (`utils/validation/classified-issues.ts`), it does not own primary detection. Parent-repo `validators/validate_segments.py` (pipeline, gitignored) references the same `kind` set — accordion + post-pipeline validator must stay aligned.
 
@@ -40,7 +42,7 @@ Suppression: `is_suppressed_for(seg, cat)` = `is_ignored_for` (reads `seg.ignore
 | File | Role |
 |---|---|
 | `__init__.py` | Orchestrator `validate_reciter_segments(reciter, include_boundary_review=True)` + `strip_boundary_review`. `ThreadPoolExecutor(7)` fan-out of the 7 independent bucket reads (`load_detailed` / `_load_resolved_idx_cached` / `load_probe_v2` / `load_hidden_pause` / `load_false_split` / `load_unmarked_wasl` / `load_seg_verses`). `canonical=None` throughout (phonemizer out of runtime). Builds `category_counts` + per-category arrays + `split_group_index`. Re-exports registry symbols + classifier API. |
-| `registry.py` | `_REGISTRY` dict of frozen `IssueDefinition` rows. Derived tuples: `ALL/PER_SEGMENT/PER_VERSE/PER_CHAPTER/CAN_IGNORE/AUTO_SUPPRESS/PERSISTS_IGNORE_CATEGORIES`. `filter_persistent_ignores`, `registry_as_dict`. |
+| `registry.py` | `_REGISTRY` dict of frozen `IssueDefinition` rows. Derived tuples: `ALL/PER_SEGMENT/PER_VERSE/PER_CHAPTER/CAN_IGNORE/AUTO_SUPPRESS/PERSISTS_IGNORE/OWNER_ONLY_CATEGORIES`. `filter_persistent_ignores`, `registry_as_dict`. |
 | `classifier.py` | Per-segment classification — single source of truth. `classify_flags`/`classify_segment`/`classify_segment_full`/`classify_entry`. `is_ignored_for`/`is_resolved_by_edit`/`is_suppressed_for`. `compute_is_boundary_adj` (raw rule, no suppression) + `_check_boundary_adj` (persisted-field short-circuit + suppression). qalqala persisted-field short-circuit (local import of `compute_qalqala_letter`). |
 | `snapshot_classifier.py` | `classify_snapshot(snap)` — routes a loose SegSnapshot dict (history op-log shape) through `classify_segment`; no logic reimplemented. Used by save-flow history enrichment. |
 | `detail.py` | `_build_detail_lists` — single entry walk producing every per-category detail array + `verse_segments` coverage map + `sequence_gaps` + `basmala_amin` (per-chapter scan, missed-Basmala augmentation). `_compute_surah_offsets` / `_word_ord` (prefix-sum, O(1) ordinals). Each item carries `classified_issues`. Also identity helpers `resolve_segment_by_uid` / `resolve_segment_for_issue` / `filter_stale_issues`. |
@@ -74,7 +76,7 @@ There is no separate `trigger-validation` route; `/validate` is the single class
 | `split-group.ts` | Group split-resolved issues into chains (consumes `split_group_index`). |
 | `stale.ts` | Stale-state predicates — when classification needs re-run. |
 
-`domain/registry.ts` — TS twin of `registry.py` (camelCase fields). Exports same derived category tuples + `filterPersistentIgnores` + `ERROR_CAT_LABELS`.
+`domain/registry.ts` — TS twin of `registry.py` (camelCase fields). Exports same derived category tuples + `filterPersistentIgnores` + `isCategoryHidden` + `ERROR_CAT_LABELS`.
 
 Store: `stores/validation.ts` — `segValidation` writable (`SegValidateResponse | null`), `splitGroupIndex` derived, `accordionViewActive` derived from `valUiOpenCategory`, `setValidation`/`clearValidation`.
 
@@ -91,7 +93,7 @@ Components: `components/validation/{ValidationPanel,ErrorCard,GenericIssueCard,M
 5. Add accordion position in `ValidationPanel.svelte` and a card subcomponent if `card_type` is new.
 6. Update parent `validators/validate_segments.py` if it should also fire post-pipeline.
 
-`IssueDefinition` flags govern persistence/suppression: `can_ignore` (Ignore button), `auto_suppress` (edit writes cat into `ignored_categories` for per-segment scope), `persists_ignore` (survives save serialization — `filter_persistent_ignores` strips the rest before write).
+`IssueDefinition` flags govern persistence/suppression: `can_ignore` (Ignore button), `auto_suppress` (edit writes cat into `ignored_categories` for per-segment scope), `persists_ignore` (survives save serialization — `filter_persistent_ignores` strips the rest before write), `owner_only` (hidden from non-owners entirely — see Categories above).
 
 ## Persisted classifier fields
 

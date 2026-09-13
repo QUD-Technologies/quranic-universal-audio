@@ -15,6 +15,10 @@ Each row pins:
                            ``False`` means the category is filtered out of
                            ``ignored_categories`` before persisting to
                            ``detailed.json``.
+- ``owner_only``         — the category is invisible to everyone but an owner:
+                           it is dropped from the validation accordion, from the
+                           mark-ready blocking gate, and from the required
+                           editing-guide set. Defaults to ``False``.
 - ``scope``              — granularity of the issue: ``"per_segment"``,
                            ``"per_verse"``, or ``"per_chapter"``.
 - ``display_title``      — user-facing accordion header for the category.
@@ -51,6 +55,7 @@ class IssueDefinition:
     scope: Scope
     display_title: str
     description: str
+    owner_only: bool = False
 
     # Permit ``row["field"]`` access alongside ``row.field`` so registry rows
     # interoperate with monkeypatched plain-dict rows used in the extensibility
@@ -191,6 +196,7 @@ _REGISTRY: dict[str, IssueDefinition] = {
         scope="per_segment",
         display_title="Qalqala",
         description="",
+        owner_only=True,
     ),
     "muqattaat": IssueDefinition(
         kind="muqattaat",
@@ -299,6 +305,7 @@ AUTO_SUPPRESS_CATEGORIES: tuple[str, ...] = tuple(
 PERSISTS_IGNORE_CATEGORIES: tuple[str, ...] = tuple(
     k for k, v in _REGISTRY.items() if v.persists_ignore
 )
+OWNER_ONLY_CATEGORIES: tuple[str, ...] = tuple(k for k, v in _REGISTRY.items() if v.owner_only)
 
 
 def filter_persistent_ignores(categories: list[str] | None) -> list[str]:
@@ -337,6 +344,7 @@ __all__ = [
     "CAN_IGNORE_CATEGORIES",
     "AUTO_SUPPRESS_CATEGORIES",
     "PERSISTS_IGNORE_CATEGORIES",
+    "OWNER_ONLY_CATEGORIES",
     "filter_persistent_ignores",
     "registry_as_dict",
 ]

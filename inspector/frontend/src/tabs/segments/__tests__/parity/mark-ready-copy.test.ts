@@ -22,6 +22,7 @@ import {
     isAllChecked,
     markReadyCopy,
 } from '../../copy/mark-ready';
+import { OWNER_ONLY_CATEGORIES } from '../../domain/registry';
 
 describe('mark-ready copy module', () => {
     it('exports exactly six checklist keys', () => {
@@ -42,6 +43,14 @@ describe('mark-ready copy module', () => {
         const expected = Object.keys(sample).sort();
         const actual = [...CHECKLIST_ORDER].sort();
         expect(actual).toEqual(expected);
+    });
+
+    it('no owner-only validation category gates submission', () => {
+        // An owner-only category is invisible to the reviewer, so it must never
+        // appear in the blocking-count panel they cannot act on.
+        for (const cat of OWNER_ONLY_CATEGORIES) {
+            expect(BLOCKING_COUNT_KEYS as readonly string[]).not.toContain(cat);
+        }
     });
 
     it('every checklist key has non-empty label text loaded from markdown', () => {

@@ -86,7 +86,10 @@ against the `GUIDE_VIEW_KEYS` allowlist in `inspector/constants.py`, and
 (empty for anon). → [`database.md`](database.md).
 
 **Registry helpers** (`guides/registry.ts`): `guideViewKey(category)` (alias
-collapse), `REQUIRED_GUIDE_KEYS` (the gate set — distinct guides, no alias),
+collapse), `ALL_GUIDE_KEYS` (every storable key — mirrors `GUIDE_VIEW_KEYS`),
+`REQUIRED_GUIDE_KEYS` (the gate set — `ALL_GUIDE_KEYS` minus aliases minus the
+guides of **owner-only** validation categories, i.e. rows with
+`IssueRegistry[cat].ownerOnly`; currently that drops `qalqala`),
 `isGuideRead(guidesRead, category)`, `allGuidesRead(guidesRead)`. The FE-only
 `CurrentUser.guides_read` is updated optimistically by `markGuideReadLocally`
 after a successful POST.
@@ -125,9 +128,13 @@ hides the save group while gated — desirable. Onboarding is UX only — there 
 no save-time enforcement; real authz stays in `require_edit_lock`.
 
 **Adding a guide that re-onboards** existing reviewers: add its key to
-`REQUIRED_GUIDE_KEYS` **and** to `GUIDE_VIEW_KEYS` in `inspector/constants.py`
+`ALL_GUIDE_KEYS` **and** to `GUIDE_VIEW_KEYS` in `inspector/constants.py`
 (the only FE↔BE drift point). A guide registered but left out of
-`REQUIRED_GUIDE_KEYS` badges-only and never blocks. No migration/backfill — a
+`ALL_GUIDE_KEYS` badges-only and never blocks. An **owner-only** category's
+guide stays in both lists (an owner can still open it from the accordion `?`
+and have the read recorded) but is filtered out of `REQUIRED_GUIDE_KEYS`, so it
+never gates a first edit nor appears in the `GuidesGateModal` checklist — see
+[`validation.md`](validation.md#categories). No migration/backfill — a
 key absent from a user's `guide_views` simply reads as unread.
 
 ## Tests

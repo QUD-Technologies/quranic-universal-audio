@@ -29,6 +29,13 @@ export interface IssueDefinition {
     displayTitle: string;
     description: string;
     /**
+     * Owner-only category: invisible to everyone but an owner. Dropped from the
+     * validation accordion, from the mark-ready blocking gate, and from the
+     * required editing-guide set — for non-owners the category may as well not
+     * exist. Mirrors the Python registry's `owner_only`. Defaults to false.
+     */
+    ownerOnly?: boolean;
+    /**
      * Sort options the accordion offers (first = active default). FE-only
      * presentation concern — deliberately absent from the Python registry and
      * its parity snapshot. Omit to offer no sorting (Missing Verses). See
@@ -178,6 +185,7 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         scope: 'per_segment',
         displayTitle: 'Qalqala',
         description: '',
+        ownerOnly: true,
         sorts: [{ kind: 'quran_order', default: true }],
     },
     muqattaat: {
@@ -262,6 +270,13 @@ export const AUTO_SUPPRESS_CATEGORIES: readonly string[] = _entries
     .filter(([, v]) => v.autoSuppress).map(([k]) => k);
 export const PERSISTS_IGNORE_CATEGORIES: readonly string[] = _entries
     .filter(([, v]) => v.persistsIgnore).map(([k]) => k);
+export const OWNER_ONLY_CATEGORIES: readonly string[] = _entries
+    .filter(([, v]) => v.ownerOnly).map(([k]) => k);
+
+/** True iff `category` is owner-only and so must be hidden from this viewer. */
+export function isCategoryHidden(category: string, isOwner: boolean): boolean {
+    return !isOwner && (IssueRegistry[category]?.ownerOnly ?? false);
+}
 
 /**
  * Drop categories whose registry entry has ``persistsIgnore=false``.
