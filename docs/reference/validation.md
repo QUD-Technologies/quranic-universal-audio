@@ -21,7 +21,7 @@ Accordion order (registry `accordion_order`). `card_type` = FE card subcomponent
 | 7 | `audio_bleeding` | warning | per_segment | by-ayah only: `not seg_belongs_to_entry(matched_ref, entry_ref)` | server | generic | `classifier.py` |
 | 8 | `boundary_adj` | warning | per_segment | persisted `is_boundary_adj` (fall-through `compute_is_boundary_adj`) | server | generic | `classifier.py::_check_boundary_adj` | **owner-only** |
 | 9 | `repetitions` | warning | per_segment | `seg.wrap_word_ranges` truthy (`has_repeated_words` alone does NOT classify) | server | generic | `classifier.py` |
-| 10 | `cross_verse` | warning | per_segment | `s_ayah != e_ayah` | server | generic | `classifier.py` |
+| 10 | `cross_verse` | warning | per_segment | `s_ayah != e_ayah`; plus `resolved: true` items for split roots recovered from edit history (`cross_verse_resolved.py`, excluded from counts) | server | generic | `classifier.py` |
 | 11 | `qalqala` | info | per_segment | persisted `qalqala_letter` non-null (fall-through `compute_qalqala_letter`) | server | generic | `classifier.py` + `segments/qalqala.py` | **owner-only** |
 | 12 | `muqattaat` | info | per_segment | `s_word==1 and (surah,s_ayah) ∈ MUQATTAAT_VERSES` | server | generic | `classifier.py` |
 | 13 | `basmala_amin` | info | per_segment | per-chapter scan: first seg overlapping `1:1`, last overlapping `1:7`, + missed-Basmala augmentation gated on `len(deleted_basmala_chapters) >= MISSED_BASMALA_FLAG_MIN_DELETED` | server | generic | `detail.py::_build_detail_lists` |

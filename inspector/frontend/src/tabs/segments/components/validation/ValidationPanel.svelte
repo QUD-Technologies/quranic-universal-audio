@@ -45,12 +45,15 @@
     import { VALIDATION_TITLE } from '../../i18n/validation-labels';
     import { accordionPin, clearAccordionPin, pinAccordion } from '../../stores/accordion-pin';
     import { autoSplitMap, ensureAutoSplitMap } from '../../stores/auto-split';
-    import { segAllData, selectedReciter } from '../../stores/chapter';
+    import { toggleBoundaryState, valBoundaryFilter } from '../../stores/boundary-filter';
+    import { getChapterSegments, segAllData, selectedReciter } from '../../stores/chapter';
     import { segConfig } from '../../stores/config';
-    import { editingSegUid } from '../../stores/edit';
+    import { dirtyTick, getChapterOpsSnapshot } from '../../stores/dirty';
+    import { editingSegUid, pendingWaslConfirm } from '../../stores/edit';
+    import { stagedWaslPicks } from '../../stores/staged-split';
     import { openGuideModal } from '../../stores/guides';
     import { autoScrollEnabled, playingSegmentIndex } from '../../stores/playback';
-    import { segValidation, valUiLcThreshold, valUiMeasuredCardHeight,valUiOpenCategory, valUiScrollTop } from '../../stores/validation';
+    import { segValidation, splitGroupIndex, valUiLcThreshold, valUiMeasuredCardHeight,valUiOpenCategory, valUiScrollTop } from '../../stores/validation';
     import { resolveSort, selectSort, toggleDir, valSortPrefs, type SortPrefs } from '../../stores/validation-sort';
     import {
         VAL_VIRTUALIZE_THRESHOLD,
@@ -58,6 +61,14 @@
     } from '../../utils/constants';
     import { wrapCbrSrcIfBySurah } from '../../utils/playback/source';
     import { warmSeg } from '../../utils/playback/warmup';
+    import {
+        BOUNDARY_STATES,
+        type BoundaryCtx,
+        type BoundaryState,
+        boundaryStates,
+        countBoundaryStates,
+        filterByBoundaryStates,
+    } from '../../utils/validation/boundary-state';
     import { resolveCardLeadSeg } from '../../utils/validation/card-lead-seg';
     import { filterStaleIssues } from '../../utils/validation/stale';
     import { _fetchPeaks } from '../../utils/waveform/utils';
@@ -294,6 +305,8 @@
         qalqalaLetters: string[];
         /** Sort options this accordion offers (undefined = no sort pills). */
         sorts?: readonly SortOption[];
+        /** Unset · Wasl · Waqf boundary totals (cross-verse only). */
+        boundaryCounts?: Record<BoundaryState, number>;
     }
 
     /** Base-layer descriptor — everything except the per-filter projection.
@@ -311,6 +324,7 @@
         isQalqala: boolean;
         qalqalaLetters: string[];
         sorts?: readonly SortOption[];
+        boundaryFilter?: boolean;
     }
 
     // ---- Chapter filter ----
@@ -443,6 +457,7 @@
                 isQalqala,
                 qalqalaLetters,
                 sorts: defn.sorts,
+                boundaryFilter: defn.boundaryFilter,
             };
         });
         return _baseMemoResult;
@@ -457,6 +472,8 @@
         _qalqalaEndOfVerse: boolean,
         _sortPrefs: SortPrefs,
         _autoSplitMap: Record<string, { refs: string[] }> | null,
+        _boundarySel: ReadonlySet<BoundaryState>,
+        _boundaryCtx: BoundaryCtx,
     ): CategoryDescriptor[] {
         const out: CategoryDescriptor[] = [];
         const sortCtx = { autoSplitMap: _autoSplitMap };
@@ -464,7 +481,14 @@
             if (b.items.length === 0) continue;
             let visibleItems: SegValAnyItem[] = b.items;
             let summaryCount = b.items.length;
-            if (b.isLowConf) {
+            let boundaryCounts: Record<BoundaryState, number> | undefined;
+            if (b.boundaryFilter) {
+                // Cross-verse: chips count boundaries; the badge counts items
+                // still holding an unlabelled boundary (the work left).
+                boundaryCounts = countBoundaryStates(b.items, _boundaryCtx);
+                visibleItems = filterByBoundaryStates(b.items, _boundarySel, _boundaryCtx);
+                summaryCount = b.items.filter((it) => boundaryStates(it, _boundaryCtx).includes('unset')).length;
+            } else if (b.isLowConf) {
                 const lowConf = b.items as SegValLowConfidenceItem[];
                 visibleItems = lowConf.filter((i) => (i.confidence * 100) < _lcThreshold);
                 summaryCount = b.defaultLowConfCount;
@@ -500,19 +524,35 @@
                 isQalqala: b.isQalqala,
                 qalqalaLetters: b.qalqalaLetters,
                 sorts: b.sorts,
+                boundaryCounts,
             });
         }
         return out;
     }
 
+    // Live inputs for the cross-verse boundary states: store segs + op log
+    // (committed / in-progress splits and their is_wasl), pending post-split
+    // picks, the sidecar map (staged splits) and the staged session picks.
+    $: boundaryCtx = ((): BoundaryCtx => {
+        void $segAllData; void $dirtyTick;
+        return {
+            chapterSegs: getChapterSegments,
+            opLog: getChapterOpsSnapshot,
+            splitGroupIndex: $splitGroupIndex,
+            pendingWasl: $pendingWaslConfirm,
+            autoSplitMap: $autoSplitMap,
+            stagedPicks: $stagedWaslPicks,
+        };
+    })();
+
     $: _baseDescriptors = buildBaseDescriptors($segValidation, $segAllData, chapter, $localeStore, $isOwner);
-    $: categories = projectVisible(_baseDescriptors, lcThreshold, activeQalqalaLetter, qalqalaEndOfVerse, $valSortPrefs, $autoSplitMap);
+    $: categories = projectVisible(_baseDescriptors, lcThreshold, activeQalqalaLetter, qalqalaEndOfVerse, $valSortPrefs, $autoSplitMap, $valBoundaryFilter, boundaryCtx);
     // Filter signature: the subset of inputs that change the displayed list —
     // narrowing (chapter / LC threshold / qalqala letter / end-of-verse) plus
     // the active sort (so a sort change re-pins the open accordion's snapshot
     // against the freshly ordered list). Lifted to top-level so the re-pin
     // reactive can also react to sig flips while the same accordion stays open.
-    $: _filterSig = `${chapter}|${lcThreshold}|${activeQalqalaLetter ?? ''}|${qalqalaEndOfVerse}|${JSON.stringify($valSortPrefs)}`;
+    $: _filterSig = `${chapter}|${lcThreshold}|${activeQalqalaLetter ?? ''}|${qalqalaEndOfVerse}|${JSON.stringify($valSortPrefs)}|${[...$valBoundaryFilter].join(',')}`;
     $: {
         // If the filter sig hasn't changed for a category, preserve its
         // context-shown map so structural edits (split/merge) that republish
@@ -600,6 +640,12 @@
     $: flaggedGuideAriaLabel = tr($localeStore, m.segments_validation_flagged_guide_aria_label());
     $: flaggedGuideTitle = tr($localeStore, m.segments_validation_flagged_guide_title());
     $: sortLabel = tr($localeStore, m.segments_validation_sort_label());
+    $: boundaryFilterLabel = tr($localeStore, m.segments_validation_boundary_filter_label());
+    $: boundaryLabels = ((): Record<BoundaryState, string> => (void $localeStore, {
+        unset: tr($localeStore, m.segments_validation_boundary_unset()),
+        wasl: tr($localeStore, m.segments_validation_boundary_wasl()),
+        waqf: tr($localeStore, m.segments_validation_boundary_waqf()),
+    }))();
     $: showConfidenceLabel = tr($localeStore, m.segments_validation_show_confidence_label());
     $: filterByLetterLabel = tr($localeStore, m.segments_validation_filter_by_letter_label());
     $: qalqalaEovButtonLabel = tr($localeStore, m.segments_validation_qalqala_eov_button());
@@ -1065,6 +1111,24 @@
                                     : m.segments_validation_sort_pill_title({ label: SORT_META[opt.kind].label() })}
                                 on:click={() => (isActive ? toggleDir(cat.type) : selectSort(cat.type, opt.kind))}
                             >{SORT_META[opt.kind].label()}{#if isActive && active}<span class="val-sort-arrow">{active.dir === 'asc' ? '▲' : '▼'}</span>{/if}</button>
+                        {/each}
+                    </div>
+                {/if}
+
+                <!-- Boundary chips (Cross-verse only): Unset · Wasl · Waqf, each
+                     with its boundary count; multi-select filter. -->
+                {#if cat.boundaryCounts}
+                    <div class="lc-slider-row val-boundary-row">
+                        <span class="lc-slider-label">{boundaryFilterLabel}</span>
+                        {#each BOUNDARY_STATES as st (st)}
+                            {@const on = $valBoundaryFilter.has(st)}
+                            <button
+                                class="val-btn val-cross val-boundary-chip val-boundary-{st}"
+                                class:active={on}
+                                aria-pressed={on}
+                                title={m.segments_validation_boundary_chip_title({ label: boundaryLabels[st] })}
+                                on:click={() => toggleBoundaryState(st)}
+                            >{boundaryLabels[st]}<span class="val-boundary-count">{cat.boundaryCounts[st]}</span></button>
                         {/each}
                     </div>
                 {/if}

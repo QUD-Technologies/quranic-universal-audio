@@ -78,6 +78,11 @@ function isChapterHalfDirty(chOps: EditOp[]): boolean {
     if (splitOps.length === 0) return false;
 
     for (const splitOp of splitOps) {
+        // A staged cross-verse commit carries `wasls[]` on its command: refs
+        // came from the sidecar and every boundary was labelled before the
+        // op existed, so there is no ref-confirm chain to wait for.
+        const cmd = (splitOp as { command?: { wasls?: unknown } }).command;
+        if (cmd && Array.isArray(cmd.wasls)) continue;
         const afterSegs = splitOp.targets_after as Record<string, any>[] | undefined;
         if (!afterSegs || afterSegs.length < 2) continue;
         

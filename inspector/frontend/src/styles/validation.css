@@ -232,6 +232,20 @@
     font-size: 0.85em;
 }
 
+.val-boundary-row { gap: 6px; }
+.val-btn.val-boundary-chip.active {
+    background: var(--accent-tint-strong);
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+.val-boundary-count {
+    margin-inline-start: 6px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+}
+.val-btn.val-boundary-chip.active .val-boundary-count {
+    color: var(--text-primary);
+}
 .qalqala-filter-row { gap: 6px; }
 .val-btn.qalqala-letter-btn { font-size: 1.1em; min-width: 2.2em; }
 .val-btn.qalqala-letter-btn.active {
@@ -304,6 +318,13 @@
 }
 
 /* Context cards (dimmed, non-editable) */
+/* Staged piece of a pre-applied cross-verse split — not in the store yet.
+   Dashed outline says "suggested"; it turns solid once the split commits. */
+.seg-row-staged {
+    outline: 1px dashed var(--border-default);
+    outline-offset: -1px;
+}
+
 .seg-row-context {
     opacity: 0.55;
 }

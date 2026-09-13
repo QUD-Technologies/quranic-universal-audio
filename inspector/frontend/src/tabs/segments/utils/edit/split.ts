@@ -54,8 +54,9 @@ import { reconcilePlayingAfterMutation } from '../playback/playback';
 import { getRowEntryForMount } from '../playback/row-registry';
 import { _ensureSplitBaseCache, drawSplitWaveform } from '../waveform/split-draw';
 import { _fetchPeaksForClick } from '../waveform/utils';
-import { _playRange, attachPreviewLoop, exitEditMode, finalizeEdit } from './common';
+import { _playRange, attachPreviewLoop, exitEditMode } from './common';
 import { beginRefEdit, pickProgrammaticMountId } from './reference';
+import { commitSplit, finalizeSplit } from './split-commit';
 import {
     animateSplitZoomTo,
     applySplitWheelZoom,
@@ -468,107 +469,23 @@ export function confirmSplit(
     if (!c || !sd) return;
     const cursors = sd.currentSplits;
     if (!cursors.length) return;
-    // Reject any cursor that crept outside the seg span. Should be impossible
-    // given the drag clamp, but guard anyway.
-    for (let i = 0; i < cursors.length; i++) {
-        const ci = cursors[i]!;
-        if (ci <= seg.time_start || ci >= seg.time_end) return;
-        if (i > 0 && ci <= cursors[i - 1]!) return;
-    }
 
     const chStr = get(selectedChapter);
     const chapter = seg.chapter || parseInt(chStr);
-    const currentChapter = parseInt(chStr);
-    const curData = get(segData);
-    const useSegData = chapter === currentChapter && curData?.segments;
     const initiatingEntry = mountId
         ? getRowEntryForMount(chapter, seg.index, mountId)
         : null;
 
-    const prePlayingUid = seg.segment_uid ?? null;
-
-    const splitOp = getPendingOp();
-    const ctxCat = splitOp?.op_context_category ?? null;
-    const uid = seg.segment_uid;
-    if (!uid) return;
-
-    // Resolve per-section refs + text. Auto-split provides refs[] directly
-    // (cross-verse N=2 or repetition N≥2); otherwise fall back to today's
-    // cross-verse N=2 suggestion (single cursor case). Refs and texts have
-    // the same length as the produced segment list (= cursors.length + 1).
-    const dk = get(quranRefs)?.dk_words;
-    const vwc = getVerseWordCounts();
-    let refs: (string | undefined)[] = new Array(cursors.length + 1).fill(undefined);
-    let texts: (string | undefined)[] = new Array(cursors.length + 1).fill(undefined);
-    if (sd.refs && sd.refs.length === cursors.length + 1) {
-        refs = sd.refs.slice();
-        texts = refs.map((r) => r ? dkTextForRef(r, dk, vwc) : undefined);
-    } else if (cursors.length === 1) {
-        const suggested = _suggestSplitRefs(seg.matched_ref);
-        if (suggested) {
-            refs[0] = suggested.first;
-            refs[1] = suggested.second;
-            texts[0] = dkTextForRef(suggested.first, dk, vwc);
-            texts[1] = dkTextForRef(suggested.second, dk, vwc);
-        }
-    }
-
-    const newUids = cursors.map(() => crypto.randomUUID());
-    const result = applyCommand(
-        {
-            byId: { [uid]: seg },
-            idsByChapter: { [chapter]: [uid] },
-            selectedChapter: chapter,
-        },
-        {
-            type: 'split',
-            segmentUid: uid,
-            splitMs: cursors.slice(),
-            newUids,
-            refs,
-            texts,
-            sourceCategory: ctxCat ?? undefined,
-            contextCategory: ctxCat ?? undefined,
-        },
-    );
-
-    // Reducer produces N+1 segments. The first reuses `uid` (first half);
-    // subsequent halves use `newUids[i-1]`. Pull them all out in order.
-    const pieces: Segment[] = [];
-    pieces.push(result.nextState.byId[uid] as Segment);
-    for (const u of newUids) {
-        pieces.push(result.nextState.byId[u] as Segment);
-    }
-    if (pieces.some((p) => !p)) return;
-
-    if (useSegData && curData) {
-        const segIdx = curData.segments.findIndex(s => s.index === seg.index);
-        curData.segments.splice(segIdx, 1, ...pieces);
-        curData.segments.forEach((s, i) => { s.index = i; });
-        syncChapterSegsToAll();
-        curData.segments = getChapterSegments(chapter);
-    } else {
-        const allData = get(segAllData);
-        if (allData) {
-            const globalIdx = allData.segments.findIndex(s => s.segment_uid === seg.segment_uid);
-            if (globalIdx !== -1) {
-                allData.segments.splice(globalIdx, 1, ...pieces);
-            }
-            let reIdx = 0;
-            allData.segments.forEach(s => { if (s.chapter === chapter) s.index = reIdx++; });
-            invalidateChapterIndexFor(chapter);
-        }
-    }
-
-    reconcilePlayingAfterMutation(chapter, prePlayingUid);
-    clearFlashForChapter(chapter);
-
-    markDirty(chapter, undefined, true);
+    // Auto-split provides refs[] directly (cross-verse N=2 or repetition
+    // N≥2); commitSplit falls back to the binary cross-verse suggestion
+    // for the single-cursor case.
+    const refs = sd.refs && sd.refs.length === cursors.length + 1 ? sd.refs.slice() : null;
+    const commit = commitSplit(seg, cursors, { refs });
+    if (!commit) return;
+    const { pieces, contextCategory: chainCat } = commit;
 
     exitEditMode();
-    finalizeEdit(result.operation, chapter, pieces, { patch: result.patch });
-
-    const chainCat = ctxCat;
+    finalizeSplit(commit);
 
     if (initiatingEntry?.instanceRole !== 'accordion') {
         targetSegmentIndex.set({ chapter, index: pieces[0]!.index });

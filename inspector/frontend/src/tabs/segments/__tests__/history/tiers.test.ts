@@ -44,8 +44,11 @@ describe('entryAffectsTimestamps', () => {
         expect(entryAffectsTimestamps(opItem('confirm_reference', '2026-04-01T00:00:00Z'))).toBe(false);
     });
     it('excludes exactly the annotation/comment ops', () => {
-        for (const ann of ['confirm_reference', 'ignore_issue', 'flag_segment', 'set_is_wasl']) {
+        for (const ann of ['confirm_reference', 'ignore_issue', 'flag_segment']) {
             expect(TS_AFFECTING_OP_TYPES.has(ann)).toBe(false);
         }
+    });
+    it('treats a waṣl relabel as timestamp-affecting', () => {
+        expect(TS_AFFECTING_OP_TYPES.has('set_is_wasl')).toBe(true);
     });
 });

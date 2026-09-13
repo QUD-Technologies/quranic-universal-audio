@@ -21,7 +21,7 @@
      * tracking releases destroyed nodes; see segments/waveform/index.ts).
      */
 
-    import { onDestroy,onMount } from 'svelte';
+    import { onDestroy,onMount, tick } from 'svelte';
     import { get } from 'svelte/store';
 
     import { editGate } from '../../../../lib/actions/editGate';
@@ -184,6 +184,26 @@ import type { Segment } from '../../../../lib/types/view-models';
     export let onCardIgnore: (() => void) | null = null;
     export let onCardAutofill: (() => void) | null = null;
     export let onCardToggleContext: (() => void) | null = null;
+    /**
+     * Staged piece of a pre-applied cross-verse split that is not in the
+     * store yet (see `utils/validation/staged-split.ts`). The row looks and
+     * acts like any other, drawing its own waveform from the piece's time
+     * range (`data-hist-*`); the differences are that it does not register
+     * in the playback row registry (its index is still the parent's) and
+     * every edit action first calls `onStagedActivate` — the card commits
+     * the split — then runs against the now-real piece (same uid, same
+     * mounted row).
+     */
+    export let staged: boolean = false;
+    export let onStagedActivate: (() => void) | null = null;
+
+    /** Materialise the staged split before an edit action, and let the
+     *  props settle so `seg` is the store-backed piece. */
+    async function activate(): Promise<void> {
+        if (!staged || !onStagedActivate) return;
+        onStagedActivate();
+        await tick();
+    }
 
     // Apply history-mode highlight descriptors to the underlying canvas element
     // so the IntersectionObserver draw pipeline (segments/waveform/index.ts +
@@ -426,7 +446,7 @@ import type { Segment } from '../../../../lib/types/view-models';
         // playing (chapter, index) so both instances render a synchronized
         // playhead. Keyed by (chapter, index) so same-index rows in different
         // chapters don't collide (validation panel with chapter=null).
-        if (!readOnly && rowEl) {
+        if (!readOnly && !staged && rowEl) {
             registerRow(rowChapter, seg.index, rowEl, canvasEl, _mountId, instanceRole);
             _prevRegChapter = rowChapter;
             _prevRegIdx = seg.index;
@@ -483,6 +503,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     $: if (
         rowEl
         && !readOnly
+        && !staged
         && (rowChapter !== _prevRegChapter || seg.index !== _prevRegIdx)
     ) {
         if (_prevRegChapter !== null && _prevRegIdx !== null) {
@@ -587,9 +608,10 @@ import type { Segment } from '../../../../lib/types/view-models';
             // autoscrolling when the same chapter is open, and keeps the
             // policy gate from advancing into the main display's chapter
             // when global autoplay is on.
-            playFromSegment(idx, chapter, undefined, {
+            playFromSegment(idx, chapter, staged ? seg.time_start : undefined, {
                 isAccordionPlay: instanceRole !== 'main',
                 accordionSiblings,
+                ...(staged ? { endMsOverride: seg.time_end } : {}),
             });
         }
     }
@@ -628,7 +650,7 @@ import type { Segment } from '../../../../lib/types/view-models';
 
     function onAdjustClick(e: MouseEvent): void {
         e.stopPropagation();
-        doAdjust();
+        void activate().then(doAdjust);
     }
 
     function doAdjust(): void {
@@ -649,7 +671,7 @@ import type { Segment } from '../../../../lib/types/view-models';
 
     function onSplitClick(e: MouseEvent): void {
         e.stopPropagation();
-        void doSplit();
+        void activate().then(doSplit);
     }
 
     async function doSplit(): Promise<void> {
@@ -699,17 +721,17 @@ import type { Segment } from '../../../../lib/types/view-models';
 
     function onMergePrevClick(e: MouseEvent): void {
         e.stopPropagation();
-        mergeAdjacent(seg, 'prev', validationCategory, _mountId);
+        void activate().then(() => mergeAdjacent(seg, 'prev', validationCategory, _mountId));
     }
 
     function onMergeNextClick(e: MouseEvent): void {
         e.stopPropagation();
-        mergeAdjacent(seg, 'next', validationCategory, _mountId);
+        void activate().then(() => mergeAdjacent(seg, 'next', validationCategory, _mountId));
     }
 
     function onDeleteClick(e: MouseEvent): void {
         e.stopPropagation();
-        doDelete();
+        void activate().then(doDelete);
     }
 
     function doDelete(): void {
@@ -718,7 +740,7 @@ import type { Segment } from '../../../../lib/types/view-models';
 
     function onEditRefClick(e: MouseEvent): void {
         e.stopPropagation();
-        doEditRef();
+        void activate().then(doEditRef);
     }
 
     function doEditRef(): void {
@@ -734,7 +756,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     // hidden while an accordion is open).
     // ---------------------------------------------------------------------
     $: accordionOpen = $valUiOpenCategory !== null;
-    $: isPrimaryForShortcuts = !readOnly && !isContext && !!rowEl
+    $: isPrimaryForShortcuts = !readOnly && !isContext && !staged && !!rowEl
         && (isPlaying
             || (instanceRole === 'main' && !accordionOpen && $segCurrentIdx === seg.index));
     let _pubKey = '';
@@ -767,7 +789,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     function onRefTextClick(e: MouseEvent): void {
         if (readOnly) return;
         e.stopPropagation();
-        beginRefEdit(seg, validationCategory, _mountId);
+        void activate().then(() => beginRefEdit(seg, validationCategory, _mountId));
     }
 
     // ---------------------------------------------------------------------
@@ -793,8 +815,10 @@ import type { Segment } from '../../../../lib/types/view-models';
     function openFlagEditor(e: MouseEvent): void {
         e.stopPropagation();
         if (!canEditFlag) return;
-        flagDraft = seg.flag?.comment ?? '';
-        flagEditing = true;
+        void activate().then(() => {
+            flagDraft = seg.flag?.comment ?? '';
+            flagEditing = true;
+        });
     }
     function cancelFlagEditor(): void {
         flagEditing = false;
@@ -899,15 +923,16 @@ import type { Segment } from '../../../../lib/types/view-models';
     class:dirty
     class:playing={highlighted}
     class:seg-row-context={isContext}
+    class:seg-row-staged={staged}
     class:seg-neighbour={isNeighbour}
     class:seg-edit-target={isEditingThisRow}
     class:mode-history={mode === 'history'}
     data-seg-index={seg.index}
     data-seg-chapter={seg.chapter ?? undefined}
     data-seg-uid={seg.segment_uid || undefined}
-    data-hist-time-start={readOnly ? String(seg.time_start) : undefined}
-    data-hist-time-end={readOnly ? String(seg.time_end) : undefined}
-    data-hist-audio-url={readOnly && seg.audio_url ? seg.audio_url : undefined}
+    data-hist-time-start={readOnly || staged ? String(seg.time_start) : undefined}
+    data-hist-time-end={readOnly || staged ? String(seg.time_end) : undefined}
+    data-hist-audio-url={(readOnly || staged) && seg.audio_url ? seg.audio_url : undefined}
     data-hist-op-id={opId ?? undefined}
     bind:this={rowEl}
     on:click={onRowClick}
