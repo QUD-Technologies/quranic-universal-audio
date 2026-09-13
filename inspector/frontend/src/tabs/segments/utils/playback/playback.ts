@@ -347,9 +347,49 @@ function _onRangeBoundary(ev: { reason: string }): void {
                     playFromSegment(next.index, next.chapter, undefined, { isAccordionPlay: true });
                 });
             }
+            return;
+        }
+        // Main-list autoplay, bounded only because the chime is armed (see
+        // `ensureBoundedRange`). The chapter audio would have run straight on,
+        // so "advancing" is just resuming where we stopped — then re-point the
+        // range at the segment we are now inside so the next boundary fires.
+        if (get(autoPlayEnabled) && _chimeArmed() && active) {
+            const resumeAt = segPort.currentTimeMs();
+            _chimeSegmentEnd(() => {
+                const nextSeg = _segAtOrAfter(resumeAt);
+                if (!nextSeg) {
+                    // Nothing left on this chapter — stay stopped rather than
+                    // bleeding into the file's trailing audio.
+                    setPlayingSegment(null);
+                    segCurrentIdx.set(-1);
+                    _segRange?.dispose();
+                    _segRange = null;
+                    return;
+                }
+                setPlayingSegment({ chapter: nextSeg.chapter ?? active.chapter, index: nextSeg.index });
+                segCurrentIdx.set(nextSeg.index);
+                _segRange?.setRange({ startMs: nextSeg.time_start, endMs: nextSeg.time_end });
+                segPort.seekAndPlay(Math.max(resumeAt, nextSeg.time_start));
+            });
         }
         return;
     }
+}
+
+/** The displayed segment covering `timeMs` on the active chapter's audio, or
+ *  the nearest one starting after it (a deleted-segment gap leaves the
+ *  playhead covered by nothing). Null when the chapter has nothing left ahead. */
+function _segAtOrAfter(timeMs: number): Segment | null {
+    const displayed = get(displayedSegments);
+    if (!displayed) return null;
+    const activeUrl = _curChapterUrl();
+    let ahead: Segment | null = null;
+    for (const seg of displayed) {
+        if (!audioSrcMatches(seg.audio_url, activeUrl)) continue;
+        if (timeMs >= seg.time_start && timeMs < seg.time_end) return seg;
+        if (seg.time_start >= timeMs && (!ahead || seg.time_start < ahead.time_start)) ahead = seg;
+    }
+    return ahead;
 }
 
 /**
@@ -384,7 +424,13 @@ export function ensureBoundedRange(): void {
         return;
     }
 
-    const needBounded = active.origin === 'accordion' || !get(autoPlayEnabled);
+    // The chime needs a real per-segment boundary. Chapter-continuous playback
+    // has none — it infers segment changes from `timeupdate`, which a hidden
+    // tab throttles to ~1/s, long enough to sail past several short segments
+    // between ticks. So an armed chime opts main-list autoplay into the same
+    // bounded range the accordion uses; `_onRangeBoundary` then chimes and
+    // resumes. Chime off, this is exactly the old chapter-continuous path.
+    const needBounded = active.origin === 'accordion' || !get(autoPlayEnabled) || _chimeArmed();
 
     if (needBounded && !_segRange) {
         // Wrap the currently-playing segment in a stop-policy range so
@@ -418,6 +464,9 @@ export function ensureBoundedRange(): void {
 
 // Mid-play autoplay toggles route through the same reconcile.
 autoPlayEnabled.subscribe(() => ensureBoundedRange());
+// Arming/disarming the chime flips main-list autoplay between bounded and
+// chapter-continuous, so it reconciles through the same path.
+segmentEndChimeEnabled.subscribe(() => ensureBoundedRange());
 
 // ---------------------------------------------------------------------------
 // Public play API
@@ -494,9 +543,15 @@ export function playFromSegment(
 
     const seekMs = seekToMs ?? seg.time_start;
 
-    // Tear down any prior segment-bounded range. Three playback regimes:
+    // Tear down any prior segment-bounded range. Playback regimes:
     //   - chapter mode + autoplay ON  → no AudioRange. Seek + play, chapter
-    //                                    audio plays through naturally.
+    //                                    audio plays through naturally...
+    //   - ...UNLESS the segment-end chime is armed, which needs a real
+    //                                    boundary to fire on. Then bounded,
+    //                                    and `_onRangeBoundary` chimes and
+    //                                    resumes. MUST match the condition in
+    //                                    `ensureBoundedRange`, which is what
+    //                                    reconciles a mid-play toggle.
     //   - chapter mode + autoplay OFF → AudioRange with `stop` policy.
     //                                    Pauses at seg.time_end.
     //   - accordion play              → AudioRange with `stop` policy.
@@ -504,7 +559,7 @@ export function playFromSegment(
     _segRange?.dispose();
     _segRange = null;
 
-    const bounded = isAccordionPlay || !get(autoPlayEnabled);
+    const bounded = isAccordionPlay || !get(autoPlayEnabled) || _chimeArmed();
 
     if (bounded) {
         _segRange = new AudioRange({
@@ -702,52 +757,6 @@ function _coldStartEditPreview(mode: 'trim' | 'split'): void {
 // Audio event handlers
 // ---------------------------------------------------------------------------
 
-/**
- * True when a chapter-continuous segment change is playback flowing off the
- * end of the previous segment, rather than a seek.
- *
- * The crossing branch in `onSegTimeUpdate` fires for BOTH: dragging the seek
- * bar sweeps the playhead through many segments and would otherwise machine-gun
- * the chime. A natural advance is never more than ONE `timeupdate` tick past
- * the segment we just left (contiguous rows share a boundary); a scrub lands
- * arbitrarily far away. Paused means a scrub by definition.
- *
- * The budget is therefore measured in ticks, not in a fixed number of
- * milliseconds. A visible tab fires `timeupdate` about every 265ms, but a
- * HIDDEN one is throttled to roughly 1/s — against a fixed 400ms window every
- * boundary in a backgrounded tab reads as a seek and the chime goes silent,
- * which is the one situation where the user is listening instead of watching.
- * So the window tracks the observed tick interval (scaled by playback rate,
- * since media time advances faster than wall clock above 1x).
- */
-const NATURAL_ADVANCE_FLOOR_MS = 400;
-/** Slack on top of one observed tick, absorbing jitter in the tick cadence. */
-const NATURAL_ADVANCE_TICK_SLACK = 1.5;
-
-/** Wall-clock stamp of the previous `onSegTimeUpdate`, for the tick-interval
- *  estimate above. Null until the second tick of a playback run. */
-let _lastTimeUpdateAt: number | null = null;
-
-function _naturalAdvanceBudgetMs(): number {
-    if (_lastTimeUpdateAt === null) return NATURAL_ADVANCE_FLOOR_MS;
-    const sinceLastTick = performance.now() - _lastTimeUpdateAt;
-    const rate = segPort.element?.playbackRate || 1;
-    return Math.max(NATURAL_ADVANCE_FLOOR_MS, sinceLastTick * rate * NATURAL_ADVANCE_TICK_SLACK);
-}
-
-function _isNaturalAdvance(
-    active: { chapter: number; index: number } | null,
-    prevIdx: number,
-    timeMs: number,
-): boolean {
-    if (segPort.paused) return false;
-    if (!active || prevIdx < 0) return false;
-    const prevSeg = getSegByChapterIndex(active.chapter, prevIdx);
-    if (!prevSeg) return false;
-    const delta = timeMs - prevSeg.time_end;
-    return delta >= 0 && delta <= _naturalAdvanceBudgetMs();
-}
-
 export function onSegTimeUpdate(fileMs?: number): void {
     // Edit-preview's rAF owns boundary enforcement on the edit canvas.
     if (get(editMode)) return;
@@ -810,19 +819,12 @@ export function onSegTimeUpdate(fileMs?: number): void {
     }
     segCurrentIdx.set(nextCurrentIdx);
 
-    const naturalAdvance = _isNaturalAdvance(active, prevIdx, timeMs);
-    _lastTimeUpdateAt = performance.now();
-
     if (nextCurrentIdx !== prevIdx && nextCurrentIdx >= 0 && nextCurrentChapter != null) {
         // Crossed into a new segment via chapter-continuous playback. Update
         // the active pair so the playhead and class:playing follow.
-        // Chapter-continuous playback runs the segments together with no gap of
-        // its own, so the chime has to make one: pause, beep, resume where we
-        // left off. Skipped for seeks (see `_isNaturalAdvance`).
-        if (_chimeArmed() && naturalAdvance) {
-            const resumeAt = segPort.currentTimeMs();
-            _chimeSegmentEnd(() => segPort.seekAndPlay(resumeAt));
-        }
+        // No chime here: with the chime armed this crossing is owned by the
+        // bounded range in `_onRangeBoundary`, which fires at the exact
+        // segment end rather than whenever `timeupdate` next happens to run.
         setPlayingSegment({ chapter: nextCurrentChapter, index: nextCurrentIdx });
         if (displayed) {
             const curSeg = displayed.find(s => s.index === nextCurrentIdx);
