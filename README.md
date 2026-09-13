@@ -99,11 +99,7 @@ To contribute code to the repo directly, fork the repo and see [inspector/README
 
 - [ ] **100+ recitations** — reach 100+ fully aligned and verified recitations.
 - [x] **Letter-level precision** — word and letter timestamps are both high quality; close the few minor systematic and timing differences in letter timestamps that depend on context, tajweed, and reciter.
-
-**Generalisation**
-
-- [ ] **Orthography** — letter-level timestamps are currently tuned for Uthmani script (DigitalKhatt). Generalise to other scripts where symbols and letter conventions differ, e.g. IndoPak.
-- [ ] **Riwayah** — extend beyond Hafs. Each riwayah has its own unique sounds, tajweed, symbols, and ayah orderings, with fewer and less reliable digital assets than Hafs.
+- [x] **Riwayah** — extend beyond Hafs. Each riwayah has its own unique sounds, tajweed, symbols, and ayah orderings, with fewer and less reliable digital assets than Hafs.
 
 ## Acknowledgements
 
