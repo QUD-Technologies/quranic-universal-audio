@@ -86,19 +86,27 @@ function buildWordRows(
     return words;
 }
 
+/** Shortest gap that counts as a pause the reciter actually took, in seconds. */
+const RECORDED_PAUSE_MIN_S = 0.001;
+
+/** True when the gap has real duration — a timestamped pause, not a join. */
+export const isRecordedPause = (startS: number, endS: number): boolean =>
+    endS - startS > RECORDED_PAUSE_MIN_S;
+
 /**
  * Lift a trailing waqf mark off the word and hand it to the gap, the way the
- * native profile's cell view emits a separate `stop_sign` column per boundary.
- *
- * A verse-end gap is the one exception: its tile renders the verse marker, so
- * the mark stays inside the word and the word cell lights with it — same as
- * the teleprompter, which never splits at a verse end either.
+ * native profile's cell view emits a separate `stop_sign` column per boundary
+ * — but only where the reciter actually paused on it. A mark the reciter read
+ * through stays in the word, and so does one at a verse end, whose tile
+ * renders the verse marker instead; the word cell lights with it, same as the
+ * teleprompter, which never splits at a verse end either.
  */
 function liftStopSign(
     text: string,
     verseEnd: number | null,
+    paused: boolean,
 ): { text: string; stopSign: string | null } {
-    if (verseEnd != null) return { text, stopSign: null };
+    if (verseEnd != null || !paused) return { text, stopSign: null };
     const { clean, mark } = splitWaqf(text);
     return { text: clean, stopSign: mark };
 }
@@ -131,7 +139,12 @@ function buildReadingViews(
             const state = reading.states[index];
             const verseEnd = reading.verseEnds[index] ?? null;
             // A word with no gap keeps its mark: there is no bridge to move it to.
-            const lifted = gap && state ? liftStopSign(row.text, verseEnd) : null;
+            const lifted = gap && state
+                ? liftStopSign(
+                    row.text, verseEnd,
+                    isRecordedPause(gap.start_ms / 1000, gap.end_ms / 1000),
+                )
+                : null;
             words.push({
                 id: index,
                 displayIndex: displayIndex++,

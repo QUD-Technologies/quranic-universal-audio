@@ -21,6 +21,7 @@
     import { onDestroy, tick } from 'svelte';
 
     import { dashPort } from '../../../lib/playback/dash-port';
+    import { isRecordedPause } from '../../../lib/recitation-data/word-shards';
     import { verseMarkerPrefix } from '../../../lib/riwayat';
     import type { WordProfileBoundary, WordProfileWord } from '../../../lib/types/ts-client';
     import { toArabicNumeral, ZWSP } from '../../../lib/utils/arabic-text';
@@ -76,22 +77,19 @@
 
     /** A gap only reads as a pause when it actually has duration. */
     const recorded = (boundary: WordProfileBoundary): boolean =>
-        boundary.end - boundary.start > 0.001;
+        isRecordedPause(boundary.start, boundary.end);
     const gapText = (boundary: WordProfileBoundary): string =>
         boundary.verseEnd == null ? '' : marker + toArabicNumeral(boundary.verseEnd);
     /**
-     * The lifted waqf mark, shown once the reciter actually paused on it — the
-     * native row hides its `stop_sign` column the same way until a pause is
-     * recorded. Rendered through the cells package's `.pause-waqf` so the
-     * per-mark calibration centres the ink in the tile exactly as it does
+     * The waqf mark the assembler lifted onto this gap (only where a pause was
+     * recorded on it). Rendered through the cells package's `.pause-waqf` so
+     * the per-mark calibration centres the ink in the tile exactly as it does
      * for Hafs. The QPC faces draw a bare combining mark with no ink at all
      * (DigitalKhatt tolerates it), so the glyph rides a word joiner — the
      * same anchor the teleprompter's decorators use.
      */
     const stopMark = (boundary: WordProfileBoundary): string | null =>
-        boundary.verseEnd == null && boundary.stopSign && recorded(boundary)
-            ? boundary.stopSign
-            : null;
+        boundary.verseEnd == null ? boundary.stopSign : null;
 
     function offsetSeconds(): number {
         const group = get(focusWaslGroup);
@@ -398,16 +396,13 @@
     .timed-reading {
         display: contents;
     }
+    /* The gap inside a run matches the row's own 16px word gap, so a pause tile
+       sits the same distance from the word before it as from the word after —
+       the cells stylesheet then pins it to the top edge, level with the word. */
     .word-run {
         display: inline-flex;
         align-items: flex-end;
-        gap: 6px;
-    }
-    /* The cells stylesheet pins the pause control to the tile's top edge, where
-       the native row's word text sits. Here the tile stretches to the word cell,
-       so centre the control on the word text instead. */
-    .boundary-tile {
-        justify-content: center;
+        gap: 16px;
     }
     .word-cell {
         display: flex;
