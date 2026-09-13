@@ -65,6 +65,35 @@ describe('word-profile assembly', () => {
         expect(gaps.map((gap) => gap?.state)).toEqual(['join', 'join', 'join', 'stop']);
     });
 
+    it('lifts a mid-verse waqf mark off the word onto its gap', () => {
+        // U+06DA on word 2, which does not end the verse: the row gets the clean
+        // word and the gap carries the mark as its own bridge cell.
+        const marked = { ...WORD_SHARD.readings[0]! };
+        const words = marked.words.map((row) => [...row]) as typeof marked.words;
+        words[1] = [words[1]![0], String(words[1]![1]) + 'ۚ', words[1]![2], words[1]![3]];
+        const shard = decodeTimestampShard({
+            ...WORD_SHARD, readings: [{ ...marked, words }],
+        }) as TsWordShardResponse;
+        const data = assembleOccasion(
+            'r', shardOccasions(shard)[0]!, {}, {}, BY_SURAH, 'chapter.mp3',
+        );
+        const view = data.wordReadings[0]!.words;
+        expect(view[1]!.text).toBe(WORD_TEXTS[1]);
+        expect(view[1]!.boundary?.stopSign).toBe('ۚ');
+        // The teleprompter's `display_text` keeps the mark: it splits it itself.
+        expect(data.words[1]!.display_text).toBe(WORD_TEXTS[1] + 'ۚ');
+    });
+
+    it('keeps the waqf mark inside the word at a verse end', () => {
+        // Word 4 ends on U+06D6 AND closes the verse; the verse marker owns the
+        // gap, so the mark stays in the word cell and highlights with it.
+        const data = assemble();
+        const view = data.wordReadings[0]!.words;
+        expect(view[3]!.text).toBe(WORD_TEXTS[3]);
+        expect(view[3]!.boundary?.verseEnd).toBe(1);
+        expect(view[3]!.boundary?.stopSign).toBeNull();
+    });
+
     it('keeps only the words this occasion selected', () => {
         const shard = decodeTimestampShard({
             ...WORD_SHARD,

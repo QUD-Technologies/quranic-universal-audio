@@ -91,6 +91,34 @@ describe('WordTimedRow', () => {
         expect(active[0]!.getAttribute('data-qc-word-id')).toBe('1');
     });
 
+    it('renders a lifted waqf mark as its own bridge cell on a recorded pause', async () => {
+        const reading = WORD_SHARD.readings[0]!;
+        const words = reading.words.map((row) => [...row]) as typeof reading.words;
+        words[0] = [words[0]![0], String(words[0]![1]) + 'ۚ', words[0]![2], words[0]![3]];
+        const shard = decodeTimestampShard({
+            ...WORD_SHARD, readings: [{ ...reading, words }],
+        }) as TsWordShardResponse;
+        const data = assembleOccasion(
+            'r', shardOccasions(shard)[0]!, {}, {}, { audio_category: 'by_surah' }, '',
+        );
+        loadedVerse.set({ data, tsSegOffset: 0, tsSegEnd: 3 });
+        deliveryRiwayah.set(shard._meta.riwayah);
+        const { container } = render(WordTimedRow);
+        await waitFor(() =>
+            expect(container.querySelectorAll('[data-qc-word-id]')).toHaveLength(4));
+        // Gap 1 (700-800 ms) is a recorded pause: the mark moves out of the word.
+        expect(container.querySelector('[data-qc-word-id="0"] .word-text')?.textContent)
+            .toBe(WORD_TEXTS[0]);
+        const bridge = container.querySelector('[data-qc-boundary-id="1"] .pause-bridge');
+        expect(bridge?.classList).toContain('stop-mark');
+        expect(bridge?.textContent).toContain('ۚ');
+        // Word 4's mark closes the verse: it stays in the word cell.
+        expect(container.querySelector('[data-qc-word-id="3"] .word-text')?.textContent)
+            .toBe(WORD_TEXTS[3]);
+        expect(container.querySelector('[data-qc-boundary-id="4"] .pause-bridge')?.classList)
+            .not.toContain('stop-mark');
+    });
+
     it('activates the pause gap when the playhead sits inside it', async () => {
         seedVerse();
         vi.spyOn(dashPort, 'currentTimeMs').mockReturnValue(750);

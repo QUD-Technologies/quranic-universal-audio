@@ -23,7 +23,7 @@
     import { dashPort } from '../../../lib/playback/dash-port';
     import { verseMarkerPrefix } from '../../../lib/riwayat';
     import type { WordProfileBoundary, WordProfileWord } from '../../../lib/types/ts-client';
-    import { toArabicNumeral } from '../../../lib/utils/arabic-text';
+    import { toArabicNumeral, ZWSP } from '../../../lib/utils/arabic-text';
     import {
         deliveryRiwayah,
         showTranslations,
@@ -74,8 +74,18 @@
     /** A gap only reads as a pause when it actually has duration. */
     const recorded = (boundary: WordProfileBoundary): boolean =>
         boundary.end - boundary.start > 0.001;
-    const gapText = (boundary: WordProfileBoundary): string =>
-        boundary.verseEnd == null ? '' : marker + toArabicNumeral(boundary.verseEnd);
+    /**
+     * What the gap tile shows: the verse marker at a verse end, else the lifted
+     * waqf mark once the reciter actually paused on it (the native row hides
+     * its `stop_sign` column the same way until a pause is recorded), else
+     * nothing. The mark is a combining glyph, so it rides a word joiner to
+     * shape into its own run.
+     */
+    const gapText = (boundary: WordProfileBoundary): string => {
+        if (boundary.verseEnd != null) return marker + toArabicNumeral(boundary.verseEnd);
+        if (boundary.stopSign && recorded(boundary)) return ZWSP + boundary.stopSign;
+        return '';
+    };
 
     function offsetSeconds(): number {
         const group = get(focusWaslGroup);
@@ -358,12 +368,14 @@
                             class:qc-verse-end={word.boundary.verseEnd != null}
                             class:qc-sakt={word.boundary.state === 'sakt'}
                             class:qc-recorded-pause={recorded(word.boundary)}
-                            class:qc-boundary-empty={word.boundary.verseEnd == null}
+                            class:qc-boundary-empty={gapText(word.boundary) === ''}
                             data-qc-boundary-id={word.boundary.id}
                         >
                             <span
                                 class="pause-bridge"
                                 class:verse-mark={word.boundary.verseEnd != null}
+                                class:stop-mark={word.boundary.verseEnd == null
+                                    && word.boundary.stopSign != null}
                             >{gapText(word.boundary)}</span>
                         </span>
                     {/if}
@@ -405,7 +417,8 @@
        own face at word size. The packaged QPC faces draw the end-of-ayah
        ornament around the bare digit themselves, so a UI font here renders a
        naked numeral instead of the marker. */
-    .pause-bridge.verse-mark {
+    .pause-bridge.verse-mark,
+    .pause-bridge.stop-mark {
         font-family: var(--qc-connected);
         font-size: var(--analysis-word-font-size, 30px);
         line-height: 1.7;

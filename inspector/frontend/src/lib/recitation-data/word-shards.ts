@@ -20,6 +20,7 @@ import type {
     WordProfileReading,
     WordProfileWord,
 } from '../types/ts-client';
+import { splitWaqf } from '../utils/waqf';
 import type { AnyShardReading, ChapterOccasion } from './occasions';
 
 export interface WordAssembleOptions {
@@ -86,6 +87,23 @@ function buildWordRows(
 }
 
 /**
+ * Lift a trailing waqf mark off the word and hand it to the gap, the way the
+ * native profile's cell view emits a separate `stop_sign` column per boundary.
+ *
+ * A verse-end gap is the one exception: its tile renders the verse marker, so
+ * the mark stays inside the word and the word cell lights with it — same as
+ * the teleprompter, which never splits at a verse end either.
+ */
+function liftStopSign(
+    text: string,
+    verseEnd: number | null,
+): { text: string; stopSign: string | null } {
+    if (verseEnd != null) return { text, stopSign: null };
+    const { clean, mark } = splitWaqf(text);
+    return { text: clean, stopSign: mark };
+}
+
+/**
  * The render view: words paired with the gap that follows each, carrying the
  * reading id so a report target resolves the same way it does for native cells.
  *
@@ -111,11 +129,14 @@ function buildReadingViews(
             if (!ids?.has(index)) return;
             const gap = gaps.get(index + 1);
             const state = reading.states[index];
+            const verseEnd = reading.verseEnds[index] ?? null;
+            // A word with no gap keeps its mark: there is no bridge to move it to.
+            const lifted = gap && state ? liftStopSign(row.text, verseEnd) : null;
             words.push({
                 id: index,
                 displayIndex: displayIndex++,
                 location: row.ref,
-                text: row.text,
+                text: lifted?.text ?? row.text,
                 start: row.start_ms / 1000 - offset,
                 end: row.end_ms / 1000 - offset,
                 boundary: gap && state
@@ -124,7 +145,8 @@ function buildReadingViews(
                         start: gap.start_ms / 1000 - offset,
                         end: gap.end_ms / 1000 - offset,
                         state,
-                        verseEnd: reading.verseEnds[index] ?? null,
+                        verseEnd,
+                        stopSign: lifted?.stopSign ?? null,
                     }
                     : null,
             });

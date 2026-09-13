@@ -246,6 +246,10 @@ A word-profile delivery:
 
 - renders through `WordTimedRow.svelte` (word cells + pause gaps), not the
   phonemizer cell renderer — `parse()` throws on a degenerate wire (**D8**);
+  `word-shards.ts` lifts a trailing waqf mark off the word onto its gap
+  (`WordProfileBoundary.stopSign`, shown once a pause is recorded) to mirror
+  the native `stop_sign` column — except at a verse end, where the mark stays
+  in the word and the verse marker owns the gap;
 - disables Letters, Phonemes, karaoke wipe and Tajweed with an explanatory title;
 - locks the teleprompter to word-by-word animation with no shaped glyphs;
 - shows a header badge naming the timings as Hafs-proxy word timings;

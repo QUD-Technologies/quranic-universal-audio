@@ -59,6 +59,13 @@ export interface WordProfileBoundary {
     state: WordPauseState;
     /** Ayah number that ends at this gap, else null. */
     verseEnd: number | null;
+    /**
+     * Waqf glyph lifted off the preceding word so the gap can render it as its
+     * own bridge cell, mirroring the native profile's `stop_sign` column. Null
+     * when the word carries none — or when this gap is a verse end, where the
+     * mark stays inside the word (the verse marker owns the gap).
+     */
+    stopSign: string | null;
 }
 
 /** One word-profile word as `WordTimedRow` renders it. */
