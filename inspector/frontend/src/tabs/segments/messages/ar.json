@@ -179,6 +179,8 @@
   "segments_footer_speed_aria_label": "سرعة التشغيل {speed}×",
   "segments_footer_autoplay_title": "التشغيل التلقائي — عند التفعيل يستمر التشغيل خلال السورة بأكملها (أو ينتقل من بطاقة إلى أخرى داخل قائمة مفتوحة)؛ عند التعطيل يتوقف عند نهاية كل مقطع",
   "segments_footer_autoscroll_title": "مرِّر القائمة تلقائيا لتتبع المقطع قيد التشغيل",
+  "segments_footer_end_chime_title": "صفّارة نهاية المقطع — صوت قصير عند الانتقال من مقطع إلى الذي يليه أثناء التشغيل التلقائي، ليكون الحد مسموعا",
+  "segments_footer_end_chime_disabled_title": "صفّارة نهاية المقطع — فعّل التشغيل التلقائي أولاً؛ فمع تعطيله يتوقف التشغيل عند نهاية كل مقطع ولا يوجد مقطع تالٍ للإعلان عنه",
   "segments_footer_loading_audio_aria_label": "جارٍ تحميل الصوت",
   "segments_footer_pause_aria_label": "إيقاف مؤقت",
   "segments_footer_play_aria_label": "تشغيل",

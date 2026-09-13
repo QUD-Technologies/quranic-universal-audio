@@ -17,6 +17,7 @@ export const LS_KEYS = {
     SEG_SPEED:       'insp_seg_speed',
     SEG_AUTOPLAY:    'insp_seg_autoplay',
     SEG_AUTOSCROLL:  'insp_seg_autoscroll',
+    SEG_END_CHIME:   'insp_seg_end_chime',
     SEG_AUTOSAVE:    'insp_seg_autosave',
     SEG_SHORTCUTS:   'insp_seg_shortcuts',
     SEG_VAL_SORTS:   'insp_seg_val_sorts',

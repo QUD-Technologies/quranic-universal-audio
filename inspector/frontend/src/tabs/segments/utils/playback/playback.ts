@@ -58,10 +58,12 @@ import {
     playButtonLabel,
     playingSegmentIndex,
     segAudioBuffering,
+    segmentEndChimeEnabled,
     segPort,
     setPlayingSegment,
 } from '../../stores/playback';
 import { accordionStep } from '../accordion-nav';
+import { CHIME_TOTAL_MS, playSegmentEndChime } from './chime';
 import { drawSegPlayhead, drawWaveformFromPeaksForSeg } from '../waveform/draw-seg';
 import { _fetchPeaksForClick } from '../waveform/utils';
 import {
@@ -180,9 +182,17 @@ function _maybeSkipDeletedGap(timeMs: number): boolean {
     // `segCurrentIdx` on the segment we just left lets that bridge snap the
     // active pair backwards until `onSegTimeUpdate`'s slower tick catches up —
     // the highlight stalls/repeats on the previous segment across the gap.
+    // Move the active pair immediately (the highlight should track the jump
+    // even while the chime's gap holds the audio), then let the chime decide
+    // whether the seek happens now or after its gap.
     setPlayingSegment({ chapter: next.chapter ?? active.chapter, index: next.index });
     segCurrentIdx.set(next.index);
-    segPort.seek(next.time_start);
+    const target = next.time_start;
+    const wasPlaying = !segPort.paused;
+    _chimeSegmentEnd(() => {
+        if (wasPlaying && segPort.paused) segPort.seekAndPlay(target);
+        else segPort.seek(target);
+    });
     return true;
 }
 
@@ -199,6 +209,7 @@ export function resetHighlightRefs(): void {
  *  Called explicitly on edit-mode entry, per-reciter clear, and chapter
  *  swap. */
 export function disposeSegPlayback(): void {
+    cancelChimeGap();
     _drawLoop.stop();
     segAudioBuffering.set(false);
     _segRange?.dispose();
@@ -224,6 +235,69 @@ function _curChapterUrl(): string {
 // Segment-bounded AudioRange wiring
 // ---------------------------------------------------------------------------
 
+/**
+ * Sound the segment-end chime, if the user asked for one.
+ *
+ * Gated on `autoPlayEnabled` as well as the toggle: the chime announces "that
+ * segment ended, here comes the next", which only exists under autoplay. The
+ * footer disables the toggle when autoplay is off, but a persisted `true` from
+ * an earlier session would otherwise survive into a non-autoplay play.
+ */
+function _chimeArmed(): boolean {
+    return get(segmentEndChimeEnabled) && get(autoPlayEnabled);
+}
+
+/**
+ * How long playback is held silent around the chime. The chime itself is
+ * `CHIME_TOTAL_MS`; the remainder is air on either side so the beep reads as a
+ * deliberate marker in a gap rather than something clipped onto the front of
+ * the next segment.
+ */
+const CHIME_GAP_MS = CHIME_TOTAL_MS + 130;
+
+/** Pending resume from an in-flight chime gap. At most one — a second boundary
+ *  landing mid-gap supersedes the first rather than stacking. */
+let _chimeGapTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Abandon an in-flight chime gap WITHOUT running its resume. Called whenever
+ *  something else takes over the transport (user pause, a new play, teardown)
+ *  so a stale gap can't restart audio the user just stopped. */
+export function cancelChimeGap(): void {
+    if (_chimeGapTimer === null) return;
+    clearTimeout(_chimeGapTimer);
+    _chimeGapTimer = null;
+}
+
+/**
+ * Sound the segment-end chime in a short silent gap, then hand control back.
+ *
+ * `resume` is what actually moves playback to the next segment. With the chime
+ * off it runs immediately (a microtask, matching the previous behaviour — never
+ * synchronously, so callers can still be inside a boundary callback). With the
+ * chime on, the port is paused first so the beep lands in silence instead of
+ * over the next segment's opening, and `resume` runs once the gap elapses.
+ *
+ * Gated on `autoPlayEnabled` as well as the toggle: the chime announces "that
+ * segment ended, here comes the next", which only exists under autoplay. The
+ * footer disables the toggle when autoplay is off, but a persisted `true` from
+ * an earlier session would otherwise survive into a non-autoplay play.
+ */
+function _chimeSegmentEnd(resume: () => void): void {
+    cancelChimeGap();
+    if (!_chimeArmed()) {
+        queueMicrotask(resume);
+        return;
+    }
+    // pauseAndFlush drains the OS sink too, so the gap is genuinely silent rather than
+    // trailing ~50-200ms of pre-decoded samples over the beep.
+    segPort.pauseAndFlush();
+    playSegmentEndChime();
+    _chimeGapTimer = setTimeout(() => {
+        _chimeGapTimer = null;
+        resume();
+    }, CHIME_GAP_MS);
+}
+
 function _onRangeTick(timeMs: number): void {
     drawActivePlayhead(timeMs);
     updateSegHighlight();
@@ -233,15 +307,18 @@ function _onRangeBoundary(ev: { reason: string }): void {
     if (ev.reason === 'stop') {
         // Segment ended in bounded mode. With autoplay ON inside an accordion,
         // advance to the next card in the accordion sequence (the one narrow
-        // case where accordion playback does NOT stop). Deferred to a
-        // microtask so we don't dispose this range from inside its own
-        // boundary callback. Otherwise the port stays paused at seg.time_end
-        // and the DOM 'pause' event resets the play-button glyph.
+        // case where accordion playback does NOT stop). Deferred off this tick
+        // so we don't dispose this range from inside its own boundary callback.
+        // Otherwise the port stays paused at seg.time_end and the DOM 'pause'
+        // event resets the play-button glyph.
         const active = get(playingSegmentIndex);
         if (get(autoPlayEnabled) && active?.origin === 'accordion') {
             const next = accordionStep(1);
             if (next && !(next.chapter === active.chapter && next.index === active.index)) {
-                queueMicrotask(() => {
+                // The chime (when on) inserts its own silent gap here, so the
+                // beep sits between the two cards instead of over the next
+                // card's opening. Chime off = a microtask, as before.
+                _chimeSegmentEnd(() => {
                     const cur = get(playingSegmentIndex);
                     if (cur?.origin !== 'accordion') return; // superseded
                     playFromSegment(next.index, next.chapter, undefined, { isAccordionPlay: true });
@@ -338,6 +415,10 @@ export function playFromSegment(
         accordionSiblings?: Segment[] | null,
     },
 ): void {
+    // Any new play supersedes a chime gap still waiting to resume the old one.
+    // The accordion advance's own resume reaches here with the timer already
+    // cleared, so this only ever drops a genuinely stale gap.
+    cancelChimeGap();
     const _playClickAt = performance.now();
     const _trace = (typeof localStorage !== 'undefined'
         && localStorage.getItem('insp_warmup_log') === 'true');
@@ -493,6 +574,9 @@ export function playFromSegment(
  */
 export function onSegPlayClick(): void {
     if (!segPort.element) return;
+    // A click during the chime's gap is the user taking over — drop the
+    // pending resume so it can't restart audio a moment after they paused.
+    cancelChimeGap();
 
     const mode = get(editMode);
     if (mode === 'trim' || mode === 'split') {
@@ -595,6 +679,31 @@ function _coldStartEditPreview(mode: 'trim' | 'split'): void {
 // Audio event handlers
 // ---------------------------------------------------------------------------
 
+/**
+ * True when a chapter-continuous segment change is playback flowing off the
+ * end of the previous segment, rather than a seek.
+ *
+ * The crossing branch in `onSegTimeUpdate` fires for BOTH: dragging the seek
+ * bar sweeps the playhead through many segments and would otherwise machine-gun
+ * the chime. A natural advance lands within a hair of the segment we just left
+ * (contiguous rows share a boundary, so `timeMs ~= prev.time_end`); a scrub
+ * lands anywhere. Paused means a scrub by definition.
+ */
+const NATURAL_ADVANCE_TOLERANCE_MS = 400;
+
+function _isNaturalAdvance(
+    active: { chapter: number; index: number } | null,
+    prevIdx: number,
+    timeMs: number,
+): boolean {
+    if (segPort.paused) return false;
+    if (!active || prevIdx < 0) return false;
+    const prevSeg = getSegByChapterIndex(active.chapter, prevIdx);
+    if (!prevSeg) return false;
+    const delta = timeMs - prevSeg.time_end;
+    return delta >= 0 && delta <= NATURAL_ADVANCE_TOLERANCE_MS;
+}
+
 export function onSegTimeUpdate(fileMs?: number): void {
     // Edit-preview's rAF owns boundary enforcement on the edit canvas.
     if (get(editMode)) return;
@@ -660,6 +769,13 @@ export function onSegTimeUpdate(fileMs?: number): void {
     if (nextCurrentIdx !== prevIdx && nextCurrentIdx >= 0 && nextCurrentChapter != null) {
         // Crossed into a new segment via chapter-continuous playback. Update
         // the active pair so the playhead and class:playing follow.
+        // Chapter-continuous playback runs the segments together with no gap of
+        // its own, so the chime has to make one: pause, beep, resume where we
+        // left off. Skipped for seeks (see `_isNaturalAdvance`).
+        if (_chimeArmed() && _isNaturalAdvance(active, prevIdx, timeMs)) {
+            const resumeAt = segPort.currentTimeMs();
+            _chimeSegmentEnd(() => segPort.seekAndPlay(resumeAt));
+        }
         setPlayingSegment({ chapter: nextCurrentChapter, index: nextCurrentIdx });
         if (displayed) {
             const curSeg = displayed.find(s => s.index === nextCurrentIdx);
@@ -699,6 +815,12 @@ export function stopSegAnimation(): void {
     // label flickered to 'Play' on every loop iteration during Adjust /
     // Split preview.
     if (get(editMode)) return;
+    // Same rationale for the segment-end chime's gap: the port is paused only
+    // to open a silence for the beep and resumes ~200ms later on its own.
+    // Surfacing that as a paused state flickers the play glyph at every
+    // segment boundary. `cancelChimeGap` runs on any real stop, so a gap that
+    // is still pending here is genuinely ours.
+    if (_chimeGapTimer !== null) return;
     playButtonLabel.set('Play');
     if (get(activeAudioSource) === 'main') activeAudioSource.set(null);
     isMainAudioPlaying.set(false);
@@ -710,6 +832,7 @@ export function stopSegAnimation(): void {
 export function onSegAudioEnded(): void {
     // Chapter audio file ended (user let it play through). Clear the active
     // pair, tear down any segment-bounded range, and stop the rAF.
+    cancelChimeGap();
     setPlayingSegment(null);
     segAudioBuffering.set(false);
     _segRange?.dispose();

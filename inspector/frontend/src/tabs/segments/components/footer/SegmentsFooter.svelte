@@ -57,6 +57,7 @@
     import { historyLoadState, historyVisible } from '../../stores/history';
     import {
         autoPlayEnabled,
+        segmentEndChimeEnabled,
         autoScrollEnabled,
         isMainAudioPlaying,
         playbackSpeed,
@@ -354,6 +355,18 @@
         localStorage.setItem(LS_KEYS.SEG_AUTOSCROLL, String(next));
     }
 
+    // The chime only has meaning under autoplay (autoplay OFF stops at the
+    // segment end, so nothing follows to announce), so the button is disabled
+    // rather than hidden — a hidden control would read as a missing feature.
+    // The stored preference is left untouched while disabled so flipping
+    // autoplay back on restores the user's choice.
+    function handleEndChimeToggle(): void {
+        if (!get(autoPlayEnabled)) return;
+        const next = !get(segmentEndChimeEnabled);
+        segmentEndChimeEnabled.set(next);
+        localStorage.setItem(LS_KEYS.SEG_END_CHIME, String(next));
+    }
+
     function cyclePlaybackSpeed(): void {
         const cur = get(playbackSpeed);
         const curIdx = SEGMENTS_SPEEDS.findIndex((s) => Math.abs(s - cur) < 0.01);
@@ -506,6 +519,9 @@
     $: speedAriaLabel = tr($localeStore, m.segments_footer_speed_aria_label({ speed: $playbackSpeed }));
     $: speedLabel = tr($localeStore, localizeDigits(`${$playbackSpeed}×`));
     $: autoplayTitle = tr($localeStore, m.segments_footer_autoplay_title());
+    $: endChimeTitle = tr($localeStore, $autoPlayEnabled
+        ? m.segments_footer_end_chime_title()
+        : m.segments_footer_end_chime_disabled_title());
     $: autoscrollTitle = tr($localeStore, m.segments_footer_autoscroll_title());
     $: playPauseAriaLabel = tr($localeStore, $segAudioBuffering
         ? m.segments_footer_loading_audio_aria_label()
@@ -665,6 +681,15 @@
                             title={autoscrollTitle}
                             on:click={handleAutoScrollToggle}
                         ><Icon name="autoscroll" size={16} /></button>
+                        <button
+                            type="button"
+                            class="pref-cell"
+                            class:on={$autoPlayEnabled && $segmentEndChimeEnabled}
+                            disabled={!$autoPlayEnabled}
+                            aria-pressed={$autoPlayEnabled && $segmentEndChimeEnabled}
+                            title={endChimeTitle}
+                            on:click={handleEndChimeToggle}
+                        ><Icon name="whistle" size={16} /></button>
                     </div>
 
                     <button
@@ -1108,9 +1133,12 @@
         cursor: pointer;
         transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast);
     }
-    .pref-cell:hover { color: var(--text-primary); background: var(--panel-2); border-color: var(--border-quiet); }
+    .pref-cell:hover:not(:disabled) { color: var(--text-primary); background: var(--panel-2); border-color: var(--border-quiet); }
     .pref-cell.on { color: var(--accent); border-color: var(--accent-border-soft); background: var(--accent-tint-soft); }
     .pref-cell.on:hover { background: var(--accent-tint); border-color: var(--accent); }
+    /* Chime toggle while autoplay is off — visibly inert, but still hoverable
+       so its title can explain WHY it is unavailable. */
+    .pref-cell:disabled { opacity: 0.4; cursor: not-allowed; }
 
     .loc-cell {
         display: inline-flex;

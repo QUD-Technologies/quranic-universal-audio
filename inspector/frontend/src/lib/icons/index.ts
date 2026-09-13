@@ -24,6 +24,7 @@ import pause from './pause.svg?raw';
 import play from './play.svg?raw';
 import replay from './replay.svg?raw';
 import spin from './spin.svg?raw';
+import whistle from './whistle.svg?raw';
 
 export const ICONS = {
     'arrow-left': arrowLeft,
@@ -39,6 +40,7 @@ export const ICONS = {
     play,
     replay,
     spin,
+    whistle,
 } as const;
 
 export type IconName = keyof typeof ICONS;
