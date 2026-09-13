@@ -41,6 +41,12 @@ assemble  in-process: adapt → promote_build.build_artifacts (peaks from the ac
 auto_detect  sees detailed.json → reciter.alignment_completed → awaiting_review
 ```
 
+Lane choice: the Align CTA carries a **GPU / CPU** toggle (`AlignStartRequest.device`,
+persisted in the run's `params_json` and echoed as `AlignRunStatus.device`). `GPU` is
+the default and still falls back to CPU on `gpu_quota_exhausted`; `CPU` starts on the
+Space's CPU worker pool and never touches the ZeroGPU quota. The live lane (after a
+fallback) rides in `detail["device"]`, which the progress card renders.
+
 Parameters (`params.py`): model `Large` (the same `hetchyy/r7` checkpoint as the
 Katana extraction), `pad_left_ms=100`, `pad_right_ms=100`, `min_silence_floor_ms=50`,
 matcher/thresholds = whatever the Space runs, `include_merge_groups=true`,

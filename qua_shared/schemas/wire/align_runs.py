@@ -15,6 +15,10 @@ from pydantic import BaseModel, ConfigDict, Field
 AlignStage = Literal["acquire", "align", "sidecars", "assemble", "done"]
 AlignRunState = Literal["pending", "running", "failed", "succeeded", "canceled"]
 AlignModelName = Literal["Base", "Large"]
+#: Lane the aligner Space runs the batch on. ``GPU`` leases ZeroGPU per request
+#: and falls back to ``CPU`` when the quota is exhausted; ``CPU`` starts on the
+#: Space's CPU worker pool and never touches the quota.
+AlignDevice = Literal["GPU", "CPU"]
 
 
 class AlignStartRequest(BaseModel):
@@ -23,6 +27,7 @@ class AlignStartRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model_name: AlignModelName = "Large"
+    device: AlignDevice = "GPU"
 
 
 class AlignRunStatus(BaseModel):
@@ -37,6 +42,9 @@ class AlignRunStatus(BaseModel):
     attempt: int = 1
     requested_by: str | None = None
     model_name: str | None = None
+    #: Lane the run was STARTED on. The live lane (after a GPU→CPU fallback)
+    #: rides in ``detail["device"]``.
+    device: str | None = None
 
     chapters_total: int = 0
     chapters_done: int = 0

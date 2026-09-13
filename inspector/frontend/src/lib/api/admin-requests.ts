@@ -67,11 +67,18 @@ export async function discardRequest(id: string, reason: string): Promise<void> 
 // the row's ``align`` overlay (and this status call) carry the live progress.
 
 export type AlignModelName = 'Base' | 'Large';
+/** Lane the aligner Space runs the batch on. GPU falls back to CPU on quota exhaustion. */
+export type AlignDevice = 'GPU' | 'CPU';
 
 /** Start the native align pipeline for a catalogued slug. */
-export async function startAlign(slug: string, modelName: AlignModelName = 'Large'): Promise<AlignRunStatus> {
+export async function startAlign(
+    slug: string,
+    modelName: AlignModelName = 'Large',
+    device: AlignDevice = 'GPU',
+): Promise<AlignRunStatus> {
     const json = await _post(`/api/admin/reciter/${encodeURIComponent(slug)}/align`, {
         model_name: modelName,
+        device,
     });
     return json as unknown as AlignRunStatus;
 }

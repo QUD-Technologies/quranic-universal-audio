@@ -42,8 +42,8 @@
         if (run.stage === 'align') {
             const ch = d.chapter ? `chapter ${String(d.chapter)}` : '';
             const st = d.aligner_stage ? String(d.aligner_stage).replace(/_/g, ' ') : '';
-            const dev = d.device ? `· ${String(d.device)}` : '';
-            return [ch, st, dev].filter(Boolean).join(' ') || 'starting…';
+            // The lane rides in the head meta, not here.
+            return [ch, st].filter(Boolean).join(' ') || 'starting…';
         }
         if (run.stage === 'sidecars') {
             const st = d.sidecar_stage ? String(d.sidecar_stage).replace(/_/g, ' ') : 'submitting';
@@ -63,7 +63,7 @@
             {:else}Aligning
             {/if}
             <span class="align-meta">
-                · {run.model_name ?? 'Large'} · attempt {run.attempt}
+                · {run.model_name ?? 'Large'} · {String(run.detail?.device ?? run.device ?? 'GPU')} · attempt {run.attempt}
                 {#if run.started_at}· started {relativeTime(run.started_at)}{/if}
             </span>
         </span>

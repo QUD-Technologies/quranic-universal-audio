@@ -14,6 +14,8 @@ from dataclasses import asdict, dataclass
 DEFAULT_ALIGNER_URL = "https://hetchyy-quranic-universal-aligner-dev.hf.space"
 
 MODEL_LARGE = "Large"
+DEVICE_GPU = "GPU"
+DEVICE_CPU = "CPU"
 PAD_LEFT_MS = 100
 PAD_RIGHT_MS = 100
 MIN_SILENCE_FLOOR_MS = 50
@@ -33,6 +35,9 @@ class AlignParams:
     min_silence_floor_ms: int = MIN_SILENCE_FLOOR_MS
     #: SDK riwayah slug (``hafs``/``warsh``/…) the aligner matches against.
     riwayah: str = "hafs"
+    #: Lane the batch STARTS on — ``GPU`` (ZeroGPU, falls back to CPU when the
+    #: quota runs out) or ``CPU`` (the Space's CPU worker pool, no quota).
+    device: str = DEVICE_GPU
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), sort_keys=True)
@@ -42,11 +47,14 @@ class AlignParams:
         data = json.loads(raw) if raw else {}
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
-    def batch_body(self, *, device: str = "GPU") -> dict:
-        """The ``POST /api/v1/batches`` body for an alignment-only batch."""
+    def batch_body(self, *, device: str | None = None) -> dict:
+        """The ``POST /api/v1/batches`` body for an alignment-only batch.
+
+        ``device`` overrides the run's starting lane — the align stage passes the
+        live one so a GPU→CPU fallback recreates the batch on CPU."""
         return {
             "model_name": self.model_name,
-            "device": device,
+            "device": device or self.device,
             "riwayah": self.riwayah,
             "pad_left_ms": self.pad_left_ms,
             "pad_right_ms": self.pad_right_ms,

@@ -15,6 +15,7 @@
         retryAlign,
         returnRequest,
         startAlign,
+        type AlignDevice,
     } from '../../../../lib/api/admin-requests';
     import { rejectRequestHard, rejectRequestSoft } from '../../../../lib/api/requests';
     import { can } from '../../../../lib/stores/capabilities';
@@ -56,6 +57,10 @@
     // Native align pipeline (slug rows): one in-flight call at a time.
     const canAlign = can('intake.align');
     let alignBusyId = $state<string | null>(null);
+    //: Lane the next started run is sent to. GPU leases ZeroGPU per chapter and
+    //: falls back to CPU when the quota runs out; CPU skips the quota entirely.
+    const ALIGN_DEVICES: AlignDevice[] = ['GPU', 'CPU'];
+    let alignDevice = $state<AlignDevice>('GPU');
 
     // Intake-only: reachability probe.
     let probeBusyId = $state<string | null>(null);
@@ -136,7 +141,7 @@
         alignBusyId = row.id;
         actionError = null;
         try {
-            if (action === 'start') await startAlign(row.slug);
+            if (action === 'start') await startAlign(row.slug, 'Large', alignDevice);
             else if (action === 'retry') await retryAlign(row.slug);
             else await cancelAlign(row.slug);
             applyResult(await fetchRequests(status));
@@ -432,11 +437,32 @@
                                                         Acquire the audio, align every chapter on the aligner Space,
                                                         compute the sidecars and publish for review.
                                                     </span>
-                                                    <button
-                                                        class="btn primary"
-                                                        disabled={alignBusyId === row.id}
-                                                        onclick={() => align(row, 'start')}
-                                                    >{alignBusyId === row.id ? 'Starting…' : 'Align'}</button>
+                                                    <div class="align-go">
+                                                        <div
+                                                            class="lane"
+                                                            role="group"
+                                                            aria-label="Alignment lane"
+                                                        >
+                                                            {#each ALIGN_DEVICES as dev (dev)}
+                                                                <button
+                                                                    type="button"
+                                                                    class="lane-opt"
+                                                                    class:on={alignDevice === dev}
+                                                                    aria-pressed={alignDevice === dev}
+                                                                    disabled={alignBusyId === row.id}
+                                                                    title={dev === 'GPU'
+                                                                        ? 'ZeroGPU lease per chapter; falls back to CPU when the quota runs out'
+                                                                        : 'The aligner Space CPU worker pool — slower, no GPU quota'}
+                                                                    onclick={() => (alignDevice = dev)}
+                                                                >{dev}</button>
+                                                            {/each}
+                                                        </div>
+                                                        <button
+                                                            class="btn primary"
+                                                            disabled={alignBusyId === row.id}
+                                                            onclick={() => align(row, 'start')}
+                                                        >{alignBusyId === row.id ? 'Starting…' : 'Align'}</button>
+                                                    </div>
                                                 </div>
                                             {/if}
                                             {#if actionError && alignBusyId === null}
@@ -673,6 +699,16 @@
     .align-block { display: flex; flex-direction: column; gap: var(--s-2); padding-top: var(--s-3); border-top: 1px solid var(--border-quiet); }
     .align-cta { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
     .align-hint { font-size: var(--fs-meta); color: var(--text-muted); line-height: var(--lh-normal); }
+    .align-go { display: flex; align-items: center; gap: var(--s-2); flex-shrink: 0; }
+    .lane { display: inline-flex; border: 1px solid var(--border-quiet); border-radius: var(--r-2); overflow: hidden; }
+    .lane-opt {
+        padding: 4px var(--s-2); background: transparent; border: 0; cursor: pointer;
+        font-size: var(--fs-meta); font-family: inherit; color: var(--text-muted);
+    }
+    .lane-opt + .lane-opt { border-left: 1px solid var(--border-quiet); }
+    .lane-opt:hover:not(:disabled) { color: var(--text-secondary); }
+    .lane-opt.on { background: var(--canvas-inset); color: var(--accent); }
+    .lane-opt:disabled { opacity: 0.5; cursor: default; }
     .btn.primary { color: var(--accent); border-color: var(--accent); }
     .btn.primary:hover { background: var(--accent-soft, transparent); }
     .notice { margin: 0; padding: var(--s-3); background: var(--state-requested-bg); color: var(--state-requested-fg); border-radius: var(--r-2); font-size: var(--fs-meta); line-height: var(--lh-normal); }

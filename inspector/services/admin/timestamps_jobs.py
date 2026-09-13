@@ -32,6 +32,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import os
 from datetime import UTC
 
 from qua_shared.schemas import StaleReason, TsJobRecord, TsJobSettings
@@ -59,6 +60,34 @@ _TERMINAL = (
 # auto-release path treats either as success (the job's own self-POST always
 # sends the literal "succeeded").
 _TERMINAL_SUCCESS = ("succeeded", "completed")
+
+#: How long a ``running`` record may sit before it is treated as dead.
+#: The Space owns the record and stamps it terminal when a run ends, so a run
+#: whose Space restarted (or was rebuilt) mid-flight leaves ``running`` behind
+#: forever — and the single-flight guard then refuses every relaunch with "a
+#: timestamps job is already running". A full 114-chapter run lands in ~1-2 h,
+#: so anything past this ceiling is a corpse, not a run. Env-overridable.
+_STALE_RUN_HOURS_DEFAULT = 6.0
+
+
+def _stale_run_hours() -> float:
+    raw = (os.environ.get("INSPECTOR_TS_STALE_RUN_HOURS") or "").strip()
+    try:
+        return float(raw) if raw else _STALE_RUN_HOURS_DEFAULT
+    except ValueError:
+        return _STALE_RUN_HOURS_DEFAULT
+
+
+def _is_stale_running(rec: dict | None) -> bool:
+    """True when ``rec`` claims ``running`` but started long enough ago that the
+    Space cannot still be on it. Unparseable ``started_at`` is never stale."""
+    if not rec or rec.get("status") != "running":
+        return False
+    started = _parse_iso(rec.get("started_at"))
+    if started is None:
+        return False
+    age_h = (datetime.datetime.now(UTC) - started).total_seconds() / 3600.0
+    return age_h > _stale_run_hours()
 
 
 def _job_record_path(slug: str, job_id: str) -> str:
@@ -109,9 +138,24 @@ def _newest_ts_record(slug: str) -> dict | None:
 def running_job_for(slug: str) -> str | None:
     """Run id of an in-flight timestamps run for ``slug`` (single-flight guard),
     else None. The Space serves one full-reciter run at a time and rejects a
-    second POST, so this only needs the newest record's status."""
+    second POST, so this only needs the newest record's status.
+
+    A ``running`` record older than the staleness ceiling is reported as NOT
+    running: the Space never stamped it terminal (restart / rebuild mid-run),
+    and without this the slug can never be relaunched from the UI."""
     rec = _newest_ts_record(slug)
-    return rec.get("job_id") if rec and rec.get("status") == "running" else None
+    if not rec or rec.get("status") != "running":
+        return None
+    if _is_stale_running(rec):
+        log.warning(
+            "ts run %s for %s is stale (started %s, ceiling %.1fh) — treating as dead",
+            rec.get("job_id"),
+            slug,
+            rec.get("started_at"),
+            _stale_run_hours(),
+        )
+        return None
+    return rec.get("job_id")
 
 
 def latest_terminal_failed_slugs() -> set[str]:
@@ -170,7 +214,7 @@ def in_flight_runs() -> list[dict]:
     for row in state_service.all_rows():
         slug = getattr(row, "slug", "")
         rec = _newest_ts_record(slug)
-        if rec and rec.get("status") == "running":
+        if rec and rec.get("status") == "running" and not _is_stale_running(rec):
             out.append(
                 {
                     "kind": "timestamps",

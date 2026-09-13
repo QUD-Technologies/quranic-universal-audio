@@ -78,6 +78,7 @@ The image bakes the **dev** bucket as default (`INSPECTOR_BUCKET_REPO=hetchyy/qu
 | `INSPECTOR_ALIGN_CONCURRENCY` | every pending chapter (what the batch advertises) | Narrows the align stage's fan-out for debugging; there is no cap by default. |
 | `ACQUIRE_WORKERS` (job env) | one per vCPU, max 8 | Chapters the acquire job fetches + encodes at once. |
 | `INSPECTOR_PUBLIC_BASE_URL` | empty | Public https root the daemon threads into job completion webhooks (no `request.url_root` in a thread). Required for automated GH cuts — the cut job is webhook-only. Set as a Space variable per environment. |
+| `INSPECTOR_TS_STALE_RUN_HOURS` | `6` | How long a `running` timestamps run-log record may sit before the single-flight guard treats it as dead (a Space restart mid-run never stamps it terminal). |
 | `INSPECTOR_TS_SPACE_URL` | `https://hetchyy-qua-batch-timing-prod.hf.space` | Persistent production timing Space used for timestamp generation. Override only for an isolated environment. |
 
 ### Auth / identity / secrets

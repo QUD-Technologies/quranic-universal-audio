@@ -40,7 +40,13 @@ class AlignRunError(Exception):
 # ---------------------------------------------------------------------------
 
 
-def start(slug: str, actor: Actor, *, model_name: str = _params.MODEL_LARGE) -> AlignRunStatus:
+def start(
+    slug: str,
+    actor: Actor,
+    *,
+    model_name: str = _params.MODEL_LARGE,
+    device: str = _params.DEVICE_GPU,
+) -> AlignRunStatus:
     missing = _params.missing_config()
     if missing:
         raise AlignRunError(f"align pipeline not configured: {', '.join(missing)} unset", 503)
@@ -63,7 +69,7 @@ def start(slug: str, actor: Actor, *, model_name: str = _params.MODEL_LARGE) -> 
     except UnsupportedRiwayah as exc:
         raise AlignRunError(f"{slug}: {exc}", 400) from exc
 
-    params = AlignParams(model_name=model_name, riwayah=riwayah)
+    params = AlignParams(model_name=model_name, riwayah=riwayah, device=device)
     run_id = uuid7()
     with durable_transaction():
         repo_align_runs.insert(
@@ -75,11 +81,12 @@ def start(slug: str, actor: Actor, *, model_name: str = _params.MODEL_LARGE) -> 
         )
     cache.invalidate_admin_requests_cache()
     log.info(
-        "align: %s started run %s for %s (%d chapters)",
+        "align: %s started run %s for %s (%d chapters, %s lane)",
         actor.hf_user_id,
         run_id,
         slug,
         len(chapters),
+        device,
     )
     from . import runner
 
@@ -166,6 +173,7 @@ def to_status(run: dict) -> AlignRunStatus:
         attempt=int(run.get("attempt") or 1),
         requested_by=run.get("requested_by"),
         model_name=params.model_name,
+        device=params.device,
         chapters_total=int(run.get("chapters_total") or 0),
         chapters_done=chapters_done,
         chapter_failures=list(detail.pop("chapter_failures", []) or []),

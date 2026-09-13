@@ -75,7 +75,7 @@ def start_align(slug: str):
     except ValidationError as exc:
         return jsonify({"error": "invalid body", "detail": exc.errors()}), 400
     try:
-        status = align_runs.start(slug, actor, model_name=body.model_name)
+        status = align_runs.start(slug, actor, model_name=body.model_name, device=body.device)
     except align_runs.AlignRunError as exc:
         return jsonify({"error": str(exc)}), exc.status
     return _status_payload(status), 202

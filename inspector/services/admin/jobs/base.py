@@ -66,9 +66,15 @@ JOB_IMAGE = os.environ.get("INSPECTOR_JOB_IMAGE", "python:3.11-slim")
 _APT = "apt-get update -qq >/dev/null && apt-get install -y -qq --no-install-recommends ffmpeg >/dev/null"
 
 
+#: Installed for EVERY kind, not per-kind: ``huggingface_hub`` is the bucket client
+#: and ``brotli`` is imported at module scope by ``qua_shared.verse_layout`` (the
+#: ``.br`` timestamps shards), which both release entrypoints pull in transitively.
+_BASE_DEPS = "huggingface_hub brotli"
+
+
 def job_command(entrypoint: str, deps: str = "") -> list[str]:
     """The ``bash -lc`` command for a job: system deps, pip deps, then the entrypoint."""
-    pip = f"pip install -q --root-user-action=ignore huggingface_hub {deps}".rstrip()
+    pip = f"pip install -q --root-user-action=ignore {_BASE_DEPS} {deps}".rstrip()
     return ["bash", "-lc", f"{_APT} && {pip} && {entrypoint}"]
 
 

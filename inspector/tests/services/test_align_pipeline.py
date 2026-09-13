@@ -348,8 +348,8 @@ def test_assemble_publishes_reciter_and_auto_detect_fires(align_env):
     assert "qalqala_letter" in segs[0] or "is_boundary_adj" in segs[0]  # stamped
 
     history = [
-        json.loads(l)
-        for l in backend.read_bytes(f"reciters/{SLUG}/edit_history.jsonl").decode().splitlines()
+        json.loads(line)
+        for line in backend.read_bytes(f"reciters/{SLUG}/edit_history.jsonl").decode().splitlines()
     ]
     kinds = sorted(op["op_type"] for b in history for op in b["operations"])
     assert kinds == ["delete_segment", "waqf_sakt"]
@@ -404,7 +404,8 @@ def test_job_command_uses_stock_image_with_system_and_pip_deps():
     cmd = base.job_command("python /aux/code/qua_jobs/acquire_audio.py", "numpy")
     assert cmd[:2] == ["bash", "-lc"]
     assert "apt-get install -y -qq --no-install-recommends ffmpeg" in cmd[2]
-    assert "pip install -q --root-user-action=ignore huggingface_hub numpy" in cmd[2]
+    # brotli is a BASE dep: qua_shared.verse_layout imports it at module scope.
+    assert "pip install -q --root-user-action=ignore huggingface_hub brotli numpy" in cmd[2]
     assert cmd[2].endswith("&& python /aux/code/qua_jobs/acquire_audio.py")
     assert "hf.co/spaces" not in base.JOB_IMAGE
 
@@ -436,7 +437,9 @@ def test_sidecars_stage_skips_a_null_low_confidence(align_env, monkeypatch):
     assert staging.read_json(staging.sidecar_path(SLUG, run.run_id, "auto_split_v1.json")) == {
         "by_uid": {}
     }
-    assert staging.read_json(staging.sidecar_path(SLUG, run.run_id, "low_confidence_v2.json")) is None
+    assert (
+        staging.read_json(staging.sidecar_path(SLUG, run.run_id, "low_confidence_v2.json")) is None
+    )
 
 
 def test_assemble_accepts_a_missing_low_confidence_off_hafs(align_env):

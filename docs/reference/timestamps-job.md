@@ -62,6 +62,22 @@ after its complete replacement bytes pass validation. A chapter failure leaves
 the prior object intact. Affected-chapter regeneration does not rewrite other
 chapters.
 
+## Single-flight and stale runs
+
+Launching is gated on the reciter's newest `reciters/<slug>/jobs/ts/<run_id>.json`
+record: a `running` one refuses the next launch with 409 "a timestamps job is
+already running". The **Space** owns that record — it stamps `succeeded` /
+`failed` when the run ends — so a Space restart or rebuild mid-run leaves
+`running` behind with nothing left to finish it, and the slug can never be
+relaunched.
+
+`timestamps_jobs.running_job_for` therefore applies a staleness ceiling: a
+`running` record whose `started_at` is older than `INSPECTOR_TS_STALE_RUN_HOURS`
+(default **6 h**; a full 114-chapter run lands in ~1-2 h) reads as dead, and both
+the launch guard and the in-flight jobs registry ignore it. The record itself is
+left alone — **Cancel** in the run drawer is still what rewrites it to
+`canceled` and keeps the history honest.
+
 ## Failure policy
 
 The following block a connected reading or reciter:

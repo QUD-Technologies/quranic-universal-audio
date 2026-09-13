@@ -55,7 +55,7 @@ class _Batch:
     def __init__(self, client: AlignerClient, params: AlignParams):
         self.client = client
         self.params = params
-        self.device = "GPU"
+        self.device = params.device
         self.batch_id: str | None = None
         self._lock = threading.Lock()
 
@@ -163,9 +163,7 @@ def run(slug: str, run_id: str, params: AlignParams, chapters: list[int]) -> Non
             progress.check_cancel(run_id)
 
 
-def _stage_chapter(
-    batch: _Batch, tracker: _Tracker, slug: str, run_id: str, chapter: int
-) -> None:
+def _stage_chapter(batch: _Batch, tracker: _Tracker, slug: str, run_id: str, chapter: int) -> None:
     progress.check_cancel(run_id)
     tracker.enter(chapter)
     result = _align_chapter(batch, tracker, slug, run_id, chapter)
@@ -180,9 +178,7 @@ def _stage_chapter(
     )
 
 
-def _align_chapter(
-    batch: _Batch, tracker: _Tracker, slug: str, run_id: str, chapter: int
-) -> dict:
+def _align_chapter(batch: _Batch, tracker: _Tracker, slug: str, run_id: str, chapter: int) -> dict:
     last: Exception | None = None
     for attempt in range(1, CHAPTER_ATTEMPTS + 1):
         tracker.stage(chapter, "queued")

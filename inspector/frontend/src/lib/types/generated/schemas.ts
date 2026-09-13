@@ -385,6 +385,7 @@ export interface AlignRunStatus {
   attempt?: number;
   requested_by?: string | null;
   model_name?: string | null;
+  device?: string | null;
   chapters_total?: number;
   chapters_done?: number;
   chapter_failures?: string[];
@@ -655,6 +656,7 @@ export interface VisitorDayStat {
  */
 export interface AlignStartRequest {
   model_name?: "Base" | "Large";
+  device?: "GPU" | "CPU";
 }
 /**
  * Public read shape — the fields the notifications rail renders.

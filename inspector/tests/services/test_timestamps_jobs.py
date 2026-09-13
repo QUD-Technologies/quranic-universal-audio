@@ -87,7 +87,10 @@ def test_launch_posts_space_and_links_run(monkeypatch):
 
     assert out == {"job_id": "run-xyz", "url": None}
     assert posted == {
-        "slug": "r", "chapters": [108], "beams": [50, 5], "riwayah": "hafs",
+        "slug": "r",
+        "chapters": [108],
+        "beams": [50, 5],
+        "riwayah": "hafs",
     }
     assert linked == [("r", "run-xyz")]
 
@@ -398,3 +401,44 @@ def test_failure_leaves_reciter_under_review():
     row = state_service.get_row("rec_a")
     assert row is not None
     assert row.state.value == "under_review"  # no publish
+
+
+def _running_record(started_at: str) -> dict:
+    return {
+        "job_id": "j9",
+        "slug": "r",
+        "type": "ts",
+        "status": "running",
+        "started_at": started_at,
+    }
+
+
+def _stub_newest(monkeypatch, rec: dict | None) -> None:
+    monkeypatch.setattr(timestamps_jobs, "_newest_ts_record", lambda slug: rec)
+
+
+def test_running_job_for_reports_a_fresh_run(monkeypatch):
+    import datetime
+
+    fresh = datetime.datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    _stub_newest(monkeypatch, _running_record(fresh))
+    assert timestamps_jobs.running_job_for("r") == "j9"
+
+
+def test_running_job_for_ignores_a_stale_run(monkeypatch):
+    """A ``running`` record the Space never stamped terminal must not wedge the
+    single-flight guard forever — past the ceiling it reads as dead."""
+    import datetime
+
+    old = (datetime.datetime.now(UTC) - datetime.timedelta(hours=48)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    _stub_newest(monkeypatch, _running_record(old))
+    assert timestamps_jobs.running_job_for("r") is None
+
+
+def test_stale_ceiling_is_env_overridable(monkeypatch):
+    import datetime
+
+    old = (datetime.datetime.now(UTC) - datetime.timedelta(hours=8)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    _stub_newest(monkeypatch, _running_record(old))
+    monkeypatch.setenv("INSPECTOR_TS_STALE_RUN_HOURS", "24")
+    assert timestamps_jobs.running_job_for("r") == "j9"
