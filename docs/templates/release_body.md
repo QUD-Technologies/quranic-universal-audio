@@ -13,6 +13,8 @@
 | `surah_info.json` | Surah names, ayah counts, and word counts. |
 | `digital_khatt_v2_script.json` | Exact DigitalKhatt V2 Hafs word text used by the timestamp projection. |
 | `DigitalKhattV2.otf` | Matching DigitalKhatt V2 font (SIL Open Font License 1.1 in the font metadata). |
+| `<riwayah>_words.json.gz` | Exact word text of a non-Hafs riwayah in this release (Warsh, Qalun, Shubah), keyed by its own `surah:ayah:word` coordinates; `manifest.json` `editions` names it. |
+| `<riwayah>.ttf` | Matching KFGQPC font for that riwayah's script. |
 | `LICENSE` | CC-BY-4.0 license text. |
 
 The release-level `manifest.json` and `catalog.json` index the whole release; each zip also carries its own `catalog.json` describing just that recitation.
@@ -54,7 +56,7 @@ The `ayah` layout needs the verse tier file; run it from the unzipped reciter zi
 
 The files are split and gzipped for storage, speed, and network efficiency. Download only the level you need.
 
-Not every recitation ships all three. `manifest.json` lists each recitation's `tiers`, and the CHANGELOG table shows them per reciter. A recitation that is **not in Hafs** ships `verse` and `word` only: its audio was aligned against Hafs as a proxy and the result projected onto that riwayah's own words, which places word boundaries but produces no letter, phoneme or tajweed timings. Those recitations carry their own script — `_meta.script` names the edition (e.g. `warsh-v21+sdk-words-v1`) instead of `digital_khatt_v2`, and the manifest's `editions` block gives that edition's word digest, script digest, font family and projection digest.
+Not every recitation ships all three. `manifest.json` lists each recitation's `tiers`.
 
 Use `shard.py` when your app prefers per-surah files locally:
 
@@ -107,7 +109,7 @@ type LetterTimestamps = {
 };
 ```
 
-The three tiers describe the same ordered occurrences at increasing detail. `WordOccurrence` shares the verse occurrence prefix through `canonical`; `LetterOccurrence` is exactly `WordOccurrence + [text, tokens]`. Every number is milliseconds from the start of the source audio. V3 initially contains one `canonical: true` row per verse; later releases may append repeated or partial rows with `canonical: false` without changing this schema.
+The three tiers describe the same ordered occurrences at increasing detail. `WordOccurrence` shares the verse occurrence prefix through `canonical`; `LetterOccurrence` is exactly `WordOccurrence + [text, tokens]`. Every number is milliseconds from the start of the source audio.
 
 **Verse tier** — audible occurrence spans plus the gap until the next occurrence in the same chapter timeline:
 
@@ -160,8 +162,6 @@ The three tiers describe the same ordered occurrences at increasing detail. `Wor
 ```
 
 The text itself is the vocabulary: there is no separate letter-vocabulary file. A token is a producer-attributed animation unit, not one Unicode character. Its paint ranges can cover a base with combining marks or only an independently sounded mark. Presentation-only signs remain in `text` without a timed paint owner.
-
-Every token has resolved timing, including cohighlighted units. In ordinary mode, paint every active token. In silent-omit mode, reveal tokens on schedule but apply the active colour only when `owns_sound` is `true`. No policy graph or phoneme inventory is required for these two modes.
 
 Ranges use Unicode scalar indexes, not UTF-16 code units. In JavaScript, index `Array.from(text)` rather than indexing the string directly.
 

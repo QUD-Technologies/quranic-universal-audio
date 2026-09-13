@@ -133,7 +133,6 @@ def test_audio_pairing_and_timestamp_layers_are_explained():
     assert "storage, speed, and network efficiency" in md
     assert "Use `shard.py` when your app prefers per-surah files locally" in md
     assert '["1:1", 70, 2790, true, 41]' in md
-    assert "later releases may append repeated or partial rows" in md
     # The worked example spans multiple words and timed paint units.
     assert "ٱللَّهِ" in md
     assert "word_occurrence" in md and "owns_sound" in md and "paint" in md
@@ -174,7 +173,7 @@ def test_no_missing_callout_when_all_complete():
     )
     assert "About missing verses" not in md
     # Column header still present; every cell is an em dash.
-    assert "| Coverage | Timings | Missing |" in md
+    assert "| Coverage | Missing |" in md
 
 
 def test_schema_sections_are_collapsed():
@@ -193,27 +192,16 @@ def test_schema_sections_are_collapsed():
     assert "type ReleaseManifest" in md
 
 
-def test_a_hafs_only_release_says_nothing_about_proxy_timings():
-    md = render_changelog(
-        version="v1.0.0",
-        previous_version=None,
-        release_date="d",
-        members=[_member("R")],
-    )
-    assert "aligning the audio against Hafs as a proxy" not in md
-    assert "letter · word · verse" in md
-
-
-def test_a_proxy_timed_recitation_is_called_out_and_shows_its_tiers():
-    """A consumer must not have to download the zip to discover there are no
-    letter timings, nor guess why."""
+def test_member_table_has_no_timings_column_or_proxy_note():
+    """Tier depth is a manifest fact (`tiers`), not release-body prose."""
     member = {**_member("R"), "tiers": ["verse", "word"]}
     md = render_changelog(
         version="v1.0.0",
         previous_version=None,
         release_date="d",
-        members=[member],
+        members=[member, _member("S")],
     )
-    assert "aligning the audio against Hafs as a proxy" in md
-    assert "word · verse" in md
-    assert "letter · word · verse" not in md
+    assert "| Timings |" not in md
+    assert "word · verse" not in md
+    assert "aligning the audio against Hafs as a proxy" not in md
+    assert "[!NOTE]" not in md

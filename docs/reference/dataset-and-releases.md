@@ -512,7 +512,8 @@ still detects any timing change.
 
 - `manifest.json` — each recitation carries `tiers` and `riwayah`; the new
   top-level `editions` block carries `edition_id`, `words_sha256`,
-  `script_asset_sha256`, `font_family`, `projection_sha256` per non-Hafs edition.
+  `script_asset_sha256`, `font_family`, `projection_sha256`, `words_asset`, `font_asset`
+  per non-Hafs edition.
   A tier file's `script_sha256` is the edition's **`words_sha256`** — the digest of
   the index its text came from; `script_asset_sha256` digests the QPC script asset
   and is a different value.
@@ -520,7 +521,12 @@ still detects any timing change.
 - Verse gating and boundary validation run against the delivery edition's own
   counting profile (`word_counts_for` / `surah_info_for`) — Warsh and Qalun
   renumber 50 of the 114 surahs, so the Hafs map would gate the wrong verses.
-- The CHANGELOG gains a **Timings** column and a note explaining proxy timings.
+- Each non-Hafs edition ships its script + font as release assets, `<riwayah>_words.json.gz`
+  (gzipped `[{ref, text}]`, canonical-JSON digest = `words_sha256`) and `<riwayah>.ttf`, read
+  byte-for-byte from the `qua_domain` wheel (`cut_release._edition_assets`). Both are digested
+  into `static_refs` (an edition bump is a release bump) and named by `editions[<riwayah>]`'s
+  `words_asset` / `font_asset`. The CHANGELOG table carries no tier column; `tiers` lives in
+  the manifest.
 - `RELEASE_FORMAT_MAJOR` -> v4.0.0 is cut only when the first non-Hafs reciter is
   actually publishable, not with the schema work.
 

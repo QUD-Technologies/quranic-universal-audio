@@ -87,6 +87,12 @@ class ReleaseEdition(BaseModel):
     font_family: str = Field(..., min_length=1)
     #: Digest of the Hafs->edition word projection the timings were placed with.
     projection_sha256: str | None = None
+    #: Release asset names of the edition's word script (``<riwayah>_words.json.gz``,
+    #: digest ``words_sha256`` over its canonical JSON) and font - the non-Hafs
+    #: counterpart of the Digital Khatt pair in ``static_refs``, which also
+    #: carries these two files' digests.
+    words_asset: str | None = None
+    font_asset: str | None = None
 
 
 class ReleaseManifest(BaseModel):

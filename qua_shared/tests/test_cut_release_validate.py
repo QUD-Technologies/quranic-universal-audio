@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import gzip
 import json
+from pathlib import Path
 
 import pytest
 
@@ -428,3 +429,29 @@ def test_shards_disagreeing_with_the_row_abort_the_cut():
 def test_an_unsupported_row_riwayah_aborts_the_cut():
     with pytest.raises(ValueError, match="unsupported riwayah"):
         cut_release._assert_riwayat_agree("slug", "hafs", "duri_an_abi_amr")
+
+
+def test_edition_assets_ship_script_and_font_per_non_hafs_riwayah():
+    """A Warsh release uploads Warsh's own word script + font beside the Digital
+    Khatt pair; Hafs contributes nothing; the manifest names both files."""
+    qua_domain = pytest.importorskip("qua_domain")
+
+    assert cut_release._edition_assets({"hafs"}) == {}
+
+    assets = cut_release._edition_assets({"hafs", "warsh"})
+    assert set(assets) == {"warsh_words.json.gz", "warsh.ttf"}
+    words = json.loads(gzip.decompress(assets["warsh_words.json.gz"]))
+    assert words[0] == {"ref": "1:1:1", "text": words[0]["text"]}
+    assert len(words) == qua_domain.get_edition("warsh").word_count
+    assert assets["warsh.ttf"] == qua_domain.read_font_asset("warsh")
+
+    editions = cut_release._release_editions({"warsh"})
+    assert editions["warsh"]["words_asset"] == "warsh_words.json.gz"
+    assert editions["warsh"]["font_asset"] == "warsh.ttf"
+
+    refs = cut_release._hash_static_refs(Path("/nonexistent"), assets)
+    assert refs["warsh.ttf"]["sha256"] == qua_domain.get_edition("warsh").font.sha256
+    assert cut_release._static_content_type("warsh.ttf") == "font/ttf"
+    assert cut_release._static_content_type("warsh_words.json.gz") == "application/gzip"
+    assert cut_release._static_content_type("DigitalKhattV2.otf") == "font/otf"
+    assert cut_release._static_content_type("surah_info.json") == "application/json"

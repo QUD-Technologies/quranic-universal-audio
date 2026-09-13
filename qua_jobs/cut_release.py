@@ -33,6 +33,7 @@ from __future__ import annotations
 import datetime
 import gzip
 import hashlib
+import importlib.resources
 import io
 import json
 import logging
@@ -802,19 +803,31 @@ def _load_digital_khatt_assets(code_root: Path) -> tuple[bytes, bytes]:
     return script, font
 
 
-def _hash_static_refs(refs_dir: Path, digital_khatt_assets: dict[str, bytes]) -> dict[str, dict]:
+_STATIC_CONTENT_TYPES = {
+    ".otf": "font/otf",
+    ".ttf": "font/ttf",
+    ".gz": "application/gzip",
+}
+
+
+def _static_content_type(name: str) -> str:
+    return _STATIC_CONTENT_TYPES.get(Path(name).suffix, "application/json")
+
+
+def _hash_static_refs(refs_dir: Path, static_assets: dict[str, bytes]) -> dict[str, dict]:
     """SHA-256 + byte size for every public static reference.
 
-    Hafs-shaped by definition: these are the Digital Khatt script + font and
-    ``surah_info.json``. Non-Hafs provenance is its own manifest block
-    (:func:`_release_editions`) because it is not a file digest.
+    ``surah_info.json`` plus the script + font pairs: Digital Khatt for Hafs and
+    the edition assets (:func:`_edition_assets`) for every other riwayah in the
+    release. Non-Hafs *provenance* (index ids, projection digest) is its own
+    manifest block (:func:`_release_editions`) because it is not a file digest.
     """
     out: dict[str, dict] = {}
     plain = refs_dir / "surah_info.json"
     if plain.exists():
         body = plain.read_bytes()
         out["surah_info.json"] = {"sha256": _sha256_hex(body), "bytes": len(body)}
-    for name, body in digital_khatt_assets.items():
+    for name, body in static_assets.items():
         out[name] = {"sha256": _sha256_hex(body), "bytes": len(body)}
     return out
 
@@ -862,12 +875,44 @@ def _qua_domain():
     return qua_domain
 
 
+def _non_hafs(editions: set[str]) -> list[str]:
+    return sorted(r for r in editions if r != DEFAULT_SDK_RIWAYAH)
+
+
+def _edition_words_asset(riwayah: str) -> str:
+    return f"{riwayah}_words.json.gz"
+
+
+def _edition_assets(editions: set[str]) -> dict[str, bytes]:
+    """The script + font pair for every non-Hafs edition in this release.
+
+    The counterpart of the Digital Khatt pair Hafs ships: ``<riwayah>_words.json.gz``
+    is the edition's exact word text keyed by its own coordinates (the gzipped
+    ``[{ref, text}]`` list whose canonical-JSON digest is ``words_sha256``) and
+    ``<riwayah>.ttf`` the font it is typeset for. Both come byte-for-byte from
+    the pinned ``qua_domain`` wheel, so a consumer can render the word tier
+    without installing anything.
+    """
+    out: dict[str, bytes] = {}
+    for riwayah in _non_hafs(editions):
+        domain = _qua_domain()
+        edition = domain.get_edition(riwayah)
+        words = (
+            importlib.resources.files("qua_domain.generated.editions")
+            .joinpath(f"{riwayah}.words.json.gz")
+            .read_bytes()
+        )
+        if not words:
+            raise RuntimeError(f"{riwayah}: packaged word script is empty")
+        out[_edition_words_asset(riwayah)] = words
+        out[edition.font.filename] = domain.read_font_asset(riwayah)
+    return out
+
+
 def _release_editions(editions: set[str]) -> dict[str, dict]:
     """Provenance for every non-Hafs edition this release contains."""
     out: dict[str, dict] = {}
-    for riwayah in sorted(editions):
-        if riwayah == DEFAULT_SDK_RIWAYAH:
-            continue
+    for riwayah in _non_hafs(editions):
         domain = _qua_domain()
         edition = domain.get_edition(riwayah)
         projection = domain.load_edition_projection(riwayah, reference_riwayah=DEFAULT_SDK_RIWAYAH)
@@ -877,6 +922,8 @@ def _release_editions(editions: set[str]) -> dict[str, dict]:
             "script_asset_sha256": edition.script_sha256,
             "font_family": edition.font_family,
             "projection_sha256": projection.projection_sha256,
+            "words_asset": _edition_words_asset(riwayah),
+            "font_asset": edition.font.filename,
         }
     return out
 
@@ -1180,7 +1227,10 @@ def main() -> int:
     prior_static = {}
     # Pull prior static_refs from prior dataset manifest. Simpler approach:
     # compare hashes against the live HEAD on GH releases. Best-effort.
-    static_refs = _hash_static_refs(refs_dir, digital_khatt_assets)
+    # Non-Hafs editions ship their own script + font beside the Digital Khatt
+    # pair; hashing them into static_refs makes an edition bump a release bump.
+    edition_assets = _edition_assets(release_editions)
+    static_refs = _hash_static_refs(refs_dir, {**digital_khatt_assets, **edition_assets})
     static_refs_changed_keys: list[str] = []
     if prior_version:
         try:
@@ -1250,7 +1300,7 @@ def main() -> int:
     shard_py = (_code_root() / "qua_jobs" / "shard.py").read_bytes()
     check_updates_py = (_code_root() / "qua_jobs" / "check_updates.py").read_bytes()
     download_audio_py = (_code_root() / "qua_jobs" / "download_audio.py").read_bytes()
-    static_files: dict[str, bytes] = dict(digital_khatt_assets)
+    static_files: dict[str, bytes] = {**digital_khatt_assets, **edition_assets}
     si_path = refs_dir / "surah_info.json"
     if si_path.exists():
         static_files["surah_info.json"] = si_path.read_bytes()
@@ -1273,8 +1323,7 @@ def main() -> int:
     uploads.append(("check_updates.py", check_updates_py, "text/x-python"))
     uploads.append(("download_audio.py", download_audio_py, "text/x-python"))
     for name, body in static_files.items():
-        content_type = "font/otf" if name.endswith(".otf") else "application/json"
-        uploads.append((name, body, content_type))
+        uploads.append((name, body, _static_content_type(name)))
     for m in members:
         uploads.append((f"{m['slug']}.zip", m["_zip_bytes"], "application/zip"))
 

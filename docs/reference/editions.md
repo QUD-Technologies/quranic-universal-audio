@@ -321,11 +321,14 @@ letter timings" from "this verse happened to have none".
   `content_hash` is taken over the **deepest emitted tier** (the shallower tiers
   are exact prefixes, so it still detects any timing change).
 - `manifest.json.editions` — per non-Hafs edition: `edition_id`,
-  `words_sha256`, `script_asset_sha256`, `font_family`, `projection_sha256`. A tier
+  `words_sha256`, `script_asset_sha256`, `font_family`, `projection_sha256`,
+  `words_asset`, `font_asset`. A tier
   file's `script_sha256` carries `words_sha256`, not `script_asset_sha256`.
 - Tier `_meta.script` names the edition index id (e.g. `warsh-v21+sdk-words-v1`)
   instead of `digital_khatt_v2`, with the matching digest.
-- The CHANGELOG gains a **Timings** column and a note explaining proxy timings.
+- Release assets: `<riwayah>_words.json.gz` + `<riwayah>.ttf` per non-Hafs edition
+  (`cut_release._edition_assets`), digested into `static_refs`, named by
+  `editions[<riwayah>].words_asset` / `.font_asset`. No tier column in the CHANGELOG.
 - The HF dataset stays config-per-mushaf under the riwayah folder (the viewer
   caps a config at 30 splits). The folder — the HF **config name** — is the
   INSPECTOR slug (`hafs_an_asim/<slug>-*`), which is where every split published

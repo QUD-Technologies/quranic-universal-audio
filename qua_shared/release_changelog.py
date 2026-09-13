@@ -64,41 +64,18 @@ def _missing_cell(m: dict) -> str:
     return _escape_cell("; ".join(parts)) if parts else "—"
 
 
-def _tiers_cell(m: dict) -> str:
-    """Which timestamp tiers this recitation ships, deepest first.
-
-    Worth a column: a consumer choosing a recitation for a letter-level task
-    needs to see up front which ones can serve it, rather than discovering the
-    missing tier after downloading the zip.
-    """
-    tiers = m.get("tiers") or ["verse", "word", "letter"]
-    return _escape_cell(" · ".join(reversed(tiers)))
-
-
 def _member_table(members: list[dict]) -> list[str]:
     rows = [
-        "| Reciter | Riwayah | Style | Channel | Coverage | Timings | Missing |",
-        "|---|---|---|---|---|---|---|",
+        "| Reciter | Riwayah | Style | Channel | Coverage | Missing |",
+        "|---|---|---|---|---|---|",
     ]
     for m in members:
         rows.append(
             f"| {_reciter_cell(m)} | {_escape_cell(m.get('riwayah'))} "
             f"| {_escape_cell(m.get('style'))} | {_escape_cell(m.get('channel'))} "
-            f"| {_coverage_cell(m)} | {_tiers_cell(m)} | {_missing_cell(m)} |"
+            f"| {_coverage_cell(m)} | {_missing_cell(m)} |"
         )
     return rows
-
-
-PROXY_TIMING_NOTE = (
-    "Recitations without a **letter** tier are not in Hafs. Their words were "
-    "timed by aligning the audio against Hafs as a proxy and projecting the "
-    "result onto the riwayah's own words, so word boundaries are reliable but "
-    "there are no letter, phoneme or tajweed timings."
-)
-
-
-def _has_proxy_timings(members: list[dict]) -> bool:
-    return any("letter" not in (m.get("tiers") or ["letter"]) for m in members)
 
 
 def _has_missing(members: list[dict]) -> bool:
@@ -158,8 +135,6 @@ def _recitation_changes(
         _summary_sentence(previous_version, len(added), len(refreshed), n_carried),
         "",
     ]
-    if _has_proxy_timings(added + refreshed + carried):
-        out.extend(["> [!NOTE]", f"> {PROXY_TIMING_NOTE}", ""])
     # Removed the missing callout extension here
     if added:
         out.extend(
