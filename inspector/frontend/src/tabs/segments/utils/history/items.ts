@@ -10,11 +10,12 @@ import { deriveOpIssueDelta, usesStoredClassifiedIssues } from '../validation/cl
 
 /** Op types whose edits change the generated timestamps artifact. Lockstep
  *  mirror of ``qua_shared/segment_edit_ops.py::TS_AFFECTING_OP_TYPES`` (= the
- *  FE ``STRUCTURAL_COMMANDS`` ∪ the two reference-mapping ops); keep in step.
+ *  FE ``STRUCTURAL_COMMANDS`` ∪ the two reference-mapping ops ∪ the waṣl
+ *  flag, which decides how the shard builder chains readings); keep in step.
  *  Used to flag the current-tier edits that aren't yet in the timestamps. */
 export const TS_AFFECTING_OP_TYPES: ReadonlySet<string> = new Set([
     'trim_segment', 'split_segment', 'merge_segments', 'delete_segment',
-    'edit_reference', 'auto_fix_missing_word',
+    'edit_reference', 'auto_fix_missing_word', 'set_is_wasl',
 ]);
 
 /** Marker re-exported for parity tests that assert the post-Phase-2 helper

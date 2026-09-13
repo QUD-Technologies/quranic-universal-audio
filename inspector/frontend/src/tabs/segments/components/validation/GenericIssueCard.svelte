@@ -8,11 +8,13 @@
     import type { SegValAnyItem } from '../../../../lib/types/generated/schemas';
     import type { Segment } from '../../../../lib/types/view-models';
     import { IssueRegistry } from '../../domain/registry';
+    import { autoSplitMap, ensureAutoSplitMap } from '../../stores/auto-split';
     import {
         getAdjacentSegments,
         getChapterSegments,
         segAllData,
         selectedChapter,
+        selectedReciter,
     } from '../../stores/chapter';
     import { segConfig } from '../../stores/config';
     import {
@@ -20,11 +22,26 @@
         getChapterOpsSnapshot,
         isSegmentDirty,
     } from '../../stores/dirty';
+    import { markWaslPending } from '../../stores/edit';
+    import {
+        allPicked,
+        clearStagedPicks,
+        setStagedPick,
+        stagedChildUidsFor,
+        stagedWaslPicks,
+    } from '../../stores/staged-split';
     import { splitGroupIndex } from '../../stores/validation';
     import { ignoreIssueOnSegment } from '../../utils/edit/ignore';
+    import { commitSplit, finalizeSplit } from '../../utils/edit/split-commit';
+    import { isVerseBoundary } from '../../utils/validation/boundary-state';
     import { isIgnoredFor } from '../../utils/validation/classified-issues';
     import { resolveIssueSeg } from '../../utils/validation/resolve-issue';
     import { getSplitGroupMembers } from '../../utils/validation/split-group';
+    import {
+        buildStagedChildren,
+        isStagedSegment,
+        resolveStagedSplit,
+    } from '../../utils/validation/staged-split';
     import SegmentRow from '../list/SegmentRow.svelte';
     import BoundaryEvidence from './BoundaryEvidence.svelte';
     import WaslBoundary from './WaslBoundary.svelte';
@@ -93,7 +110,7 @@
     $: isDirtySegment = (
         void $dirtyTick,
         resolvedSeg != null
-            ? isSegmentDirty(segChapterForBtn, resolvedSeg.index)
+            ? realMembers.some((mem) => isSegmentDirty(mem.chapter ?? segChapterForBtn, mem.index))
             : false
     );
 
@@ -152,9 +169,97 @@
         }
     }
     $: groupMembers = _splitGroupMemoResult;
-    $: mainMembers = groupMembers.length > 0
-        ? groupMembers
-        : (resolvedSeg ? [resolvedSeg] : []);
+
+    // ---- Staged pre-split (cross-verse with a sidecar auto-split entry) ----
+    //
+    // No split has touched the seg yet, but the offline aligner already knows
+    // the cut: render the pieces up front with a WASL/WAQF picker on every
+    // boundary. Nothing is dispatched until all boundaries are labelled — the
+    // last pick commits ONE `split` op carrying `wasls[]`, after which the
+    // real pieces take over via `groupMembers` and the pickers switch to the
+    // default (pending-split amend) path on their own.
+    $: if (resolvedSeg && isCrossVerseSeg(resolvedSeg) && $selectedReciter) {
+        void ensureAutoSplitMap($selectedReciter);
+    }
+    // `getSplitGroupMembers` always returns at least the root itself, so
+    // "no split has touched the seg" is a group of ≤1.
+    $: staged = groupMembers.length <= 1
+        ? resolveStagedSplit(resolvedSeg, $autoSplitMap)
+        : null;
+    $: stagedUid = staged && resolvedSeg?.segment_uid ? resolvedSeg.segment_uid : null;
+    $: stagedPicks = stagedUid ? ($stagedWaslPicks[stagedUid] ?? []) : [];
+    $: stagedChildren = staged && resolvedSeg && stagedUid
+        ? buildStagedChildren(
+            resolvedSeg,
+            staged,
+            stagedChildUidsFor(stagedUid, staged.cursors.length),
+            stagedPicks,
+        )
+        : [];
+
+    $: mainMembers = stagedChildren.length > 0
+        ? stagedChildren
+        : groupMembers.length > 0
+            ? groupMembers
+            : (resolvedSeg ? [resolvedSeg] : []);
+    // Real (store-backed) members — what Ignore and dirty checks act on.
+    $: realMembers = mainMembers.filter((mem) => !isStagedSegment(mem));
+
+    function isCrossVerseSeg(seg: Segment): boolean {
+        const parts = seg.matched_ref.split('-');
+        if (parts.length !== 2) return false;
+        return parts[0]!.split(':')[1] !== parts[1]!.split(':')[1];
+    }
+
+    /** Picker between `mainMembers[i]` and `[i+1]`: always in the cross-verse
+     *  accordion and while staged; in other categories only on a join that
+     *  actually crosses a verse boundary (a cross-verse split seen from
+     *  low_confidence, repetitions, …). */
+    // Reactive (not a template-called function) so it re-derives when the
+    // sidecar map lands after first render and `mainMembers` flips to staged.
+    $: boundaryAt = mainMembers.map((a, i) => {
+        const b = mainMembers[i + 1];
+        if (!b) return false;
+        if (staged || category === 'cross_verse') return true;
+        return groupMembers.length > 1 && isVerseBoundary(a, b);
+    });
+
+    /** Dispatch the staged split. Unanswered boundaries commit as WAQF but
+     *  stay flagged pending, so their pickers keep asking and amend the
+     *  same op in place (the post-split path). */
+    function materializeStaged(): void {
+        if (!staged || !stagedUid || !resolvedSeg) return;
+        const n = staged.cursors.length;
+        const picks = get(stagedWaslPicks)[stagedUid] ?? [];
+        const wasls = Array.from({ length: n }, (_, i) => picks[i] === true);
+        const uids = stagedChildUidsFor(stagedUid, n);
+        try {
+            const commit = commitSplit(resolvedSeg, staged.cursors, {
+                refs: staged.refs,
+                wasls,
+                newUids: uids,
+                contextCategory: category,
+            });
+            if (!commit) return;
+            finalizeSplit(commit);
+            for (let i = 0; i < n; i++) {
+                if (picks[i] !== undefined) continue;
+                const left = commit.pieces[i]?.segment_uid;
+                if (left) markWaslPending(left);
+            }
+        } catch (err) {
+            console.warn('Staged split: commit failed:', err);
+        } finally {
+            clearStagedPicks(stagedUid);
+        }
+    }
+
+    function onStagedPick(i: number, value: boolean): void {
+        if (!staged || !stagedUid) return;
+        const n = staged.cursors.length;
+        setStagedPick(stagedUid, i, value, n);
+        if (allPicked(get(stagedWaslPicks)[stagedUid], n)) materializeStaged();
+    }
     $: firstMember = mainMembers[0] ?? null;
     $: lastMember = mainMembers.length > 0 ? mainMembers[mainMembers.length - 1] ?? null : null;
 
@@ -191,9 +296,11 @@
         _didAutoOpen = true;
     }
 
-    // Track ignored state reactively.
+    // Track ignored state reactively — the whole group counts as ignored only
+    // when every real member is.
     $: if (resolvedSeg) {
-        isAlreadyIgnored = isIgnoredFor(resolvedSeg, category);
+        isAlreadyIgnored = (void segStoreTick, realMembers.length > 0
+            && realMembers.every((mem) => isIgnoredFor(mem, category)));
     }
 
     // ---- Public interface (forwarded from ErrorCard dispatcher) ----
@@ -207,12 +314,18 @@
     }
 
     // ---- Ignore handler ----
+    // Ignore applies to every real member of the group (a split cross-verse
+    // seg seen from another category is N pieces, ignored together). While
+    // still staged only the parent is real; its ignore is inherited by the
+    // pieces at commit (the reducer clones the parent).
     function handleIgnore(): void {
-        if (!resolvedSeg) return;
+        if (!resolvedSeg || realMembers.length === 0) return;
         try {
-            if (ignoreIssueOnSegment(resolvedSeg, category)) {
-                isAlreadyIgnored = true;
+            let any = false;
+            for (const mem of realMembers) {
+                if (ignoreIssueOnSegment(mem, category)) any = true;
             }
+            if (any) isAlreadyIgnored = true;
         } catch (err) {
             console.warn('Ignore: dispatch failed:', err);
         }
@@ -246,19 +359,29 @@
             />
         {/if}
         {#each mainMembers as mem, i (mem.segment_uid ?? `${mem.chapter}:${mem.index}`)}
+            {@const memStaged = isStagedSegment(mem)}
             <SegmentRow
                 seg={mem}
                 showGotoBtn={true}
                 showPlayBtn={true}
                 showChapter={true}
+                staged={memStaged}
+                onStagedActivate={memStaged ? materializeStaged : null}
                 validationCategory={category}
                 accordionSiblings={siblings}
                 onCardIgnore={canIgnore ? handleIgnore : null}
                 onCardToggleContext={toggleContext}
             />
-            {#if category === 'cross_verse' && i < mainMembers.length - 1}
+            {#if boundaryAt[i]}
                 {@const next = mainMembers[i + 1]}
-                {#if next}
+                {#if next && memStaged}
+                    <WaslBoundary
+                        leftSeg={mem}
+                        rightSeg={next}
+                        stagedValue={stagedPicks[i]}
+                        onPick={(v) => onStagedPick(i, v)}
+                    />
+                {:else if next}
                     <WaslBoundary leftSeg={mem} rightSeg={next} />
                 {/if}
             {/if}

@@ -65,10 +65,17 @@ def test_annotation_only_edits_after_generation_are_not_stale(monkeypatch):
             _batch("2026-03-02T09:00:00Z", "confirm_reference"),
             _batch("2026-03-02T10:00:00Z", "ignore_issue"),
             _batch("2026-03-02T11:00:00Z", "flag_segment"),
-            _batch("2026-03-02T12:00:00Z", "set_is_wasl"),
         ],
     )
     assert ts_staleness.ts_stale_info("slug", produced_at=_GEN_AT) is None
+
+
+def test_wasl_relabel_after_generation_is_stale(monkeypatch):
+    """``is_wasl`` drives how the shard builder chains readings, so flipping
+    it after a generation makes the timestamps stale."""
+    _patch_history(monkeypatch, [_batch("2026-03-02T12:00:00Z", "set_is_wasl")])
+    info = ts_staleness.ts_stale_info("slug", produced_at=_GEN_AT)
+    assert info is not None and info["edits_since"] == 1
 
 
 def test_edit_before_generation_is_not_stale(monkeypatch):

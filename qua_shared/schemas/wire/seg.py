@@ -592,7 +592,14 @@ class SegValBoundaryAdjItem(BaseModel):
 
 
 class SegValCrossVerseItem(BaseModel):
-    """``cross_verse`` — a segment spanning a verse boundary."""
+    """``cross_verse`` — a segment spanning a verse boundary.
+
+    ``resolved`` marks an item that no longer spans a boundary because it was
+    split from the cross-verse card (edit history carries the split); the
+    accordion keeps it so the WASL/WAQF picks stay reviewable. Resolved items
+    are excluded from ``category_counts`` and never block mark-ready.
+    ``segment_uid`` is the split ROOT uid (the live first piece).
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -601,6 +608,7 @@ class SegValCrossVerseItem(BaseModel):
     segment_uid: str | None = None
     ref: Ref
     classified_issues: list[str] = Field(default_factory=list)
+    resolved: bool = False
 
 
 class SegValAudioBleedingItem(BaseModel):

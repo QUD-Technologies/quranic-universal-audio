@@ -49,6 +49,7 @@ from services.validation.classifier import (
     is_resolved_by_edit,
     is_suppressed_for,
 )
+from services.validation.cross_verse_resolved import resolved_cross_verse_items
 from services.validation.detail import _build_detail_lists
 from services.validation.registry import (
     ALL_CATEGORIES,
@@ -204,6 +205,15 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
     missing_words = _build_missing_words(
         detail["verse_segments"], word_counts, detail["sequence_gaps"], riwayah
     )
+    # Resolved cross-verse items: split roots from edit history whose pieces
+    # carry the WASL/WAQF picks. Shipped in the same list (``resolved: True``)
+    # but excluded from the count so they never gate mark-ready.
+    unresolved_cross_verse = len(detail["cross_verse"])
+    detail["cross_verse"] = detail["cross_verse"] + resolved_cross_verse_items(
+        reciter,
+        entries,
+        {it["segment_uid"] for it in detail["cross_verse"] if it.get("segment_uid")},
+    )
     errors, missing_verses, stats = _check_structural_errors(reciter, entries, riwayah)
 
     # Aggregate counts in registry-declared accordion order. Additive on top
@@ -222,7 +232,7 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
         "repetitions": len(detail["repetitions"]),
         "audio_bleeding": len(detail["audio_bleeding"]),
         "boundary_adj": len(detail["boundary_adj"]),
-        "cross_verse": len(detail["cross_verse"]),
+        "cross_verse": unresolved_cross_verse,
         "qalqala": len(detail["qalqala"]),
         "muqattaat": len(detail["muqattaat"]),
         "basmala_amin": len(detail["basmala_amin"]),

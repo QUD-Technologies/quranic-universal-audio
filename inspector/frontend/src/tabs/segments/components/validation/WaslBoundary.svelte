@@ -58,6 +58,15 @@
 
     export let leftSeg: Segment;
     export let rightSeg: Segment;
+    /**
+     * Staged mode — the boundary belongs to a split that has NOT been
+     * dispatched yet (pre-applied cross-verse auto-split). The picker then
+     * owns no store/op work: it renders `stagedValue` (undefined = pending)
+     * and hands every click to `onPick`; the card commits the split once all
+     * of its boundaries are answered.
+     */
+    export let onPick: ((value: boolean) => void) | null = null;
+    export let stagedValue: boolean | undefined = undefined;
 
     let waslBtnEl: HTMLButtonElement | undefined;
     let waqfBtnEl: HTMLButtonElement | undefined;
@@ -73,8 +82,11 @@
         && rightSeg.chapter != null
         && leftSeg.chapter === rightSeg.chapter;
 
-    $: isWasl = leftSeg.is_wasl === true;
-    $: isPending = leftUid !== '' && $pendingWaslConfirm.has(leftUid);
+    $: isStaged = onPick !== null;
+    $: isWasl = isStaged ? stagedValue === true : leftSeg.is_wasl === true;
+    $: isPending = isStaged
+        ? stagedValue === undefined
+        : leftUid !== '' && $pendingWaslConfirm.has(leftUid);
 
     // Reactive auto-focus when the chain pauses on this boundary.
     // Defer to next tick so the smooth-scroll lands before the focus ring
@@ -120,6 +132,11 @@
     }
 
     function commit(value: boolean): void {
+        if (onPick) {
+            highlighted = null;
+            onPick(value);
+            return;
+        }
         if (!leftUid || leftSeg.chapter == null) return;
         const chapter = leftSeg.chapter;
 

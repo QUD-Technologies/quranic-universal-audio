@@ -184,7 +184,7 @@ _REGISTRY: dict[str, IssueDefinition] = {
         persists_ignore=False,
         scope="per_segment",
         display_title="Cross-verse",
-        description="Split cross verses at the verse boundary. If the reciter recited continuously across the boundary, annotate the new inter-segment boundary as wasl. Auto split is for speeding things up.",
+        description="Label each verse boundary WASL or WAQF — the split is pre-applied from the aligner and saves on the last label. Adjust a piece if the suggested cut is off.",
     ),
     "qalqala": IssueDefinition(
         kind="qalqala",

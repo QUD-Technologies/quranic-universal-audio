@@ -3,10 +3,11 @@
 Single source of truth for "does this edit make the generated timestamps
 stale?". An edit affects timestamps when it moves a segment boundary
 (trim/split/merge/delete) OR changes which ayah a segment maps to
-(edit_reference/auto_fix_missing_word) — both alter the per-verse timestamps
-doc a regeneration would produce. Pure annotations/comments
-(confirm_reference, ignore_issue, flag_segment, set_is_wasl) never touch the
-artifact and are intentionally excluded.
+(edit_reference/auto_fix_missing_word) OR changes the waṣl flag
+(set_is_wasl) — the shard builder joins adjacent occurrences into one reading
+while the preceding one carries ``wasl``, so flipping the flag changes the
+phonemized chain. Pure annotations/comments (confirm_reference, ignore_issue,
+flag_segment) never touch the artifact and are intentionally excluded.
 
 The op_type vocabulary is fixed by ``OP_TYPE_BY_COMMAND`` in the FE
 ``tabs/segments/domain/apply-command.ts`` (auto-split has no distinct op_type
@@ -22,7 +23,7 @@ from __future__ import annotations
 
 #: op_type / kind values whose presence in a saved batch means the generated
 #: timestamps no longer reflect the segments. = structural boundary edits ∪
-#: reference-mapping edits.
+#: reference-mapping edits ∪ the waṣl flag.
 TS_AFFECTING_OP_TYPES: frozenset[str] = frozenset(
     {
         "trim_segment",
@@ -31,6 +32,7 @@ TS_AFFECTING_OP_TYPES: frozenset[str] = frozenset(
         "delete_segment",
         "edit_reference",
         "auto_fix_missing_word",
+        "set_is_wasl",
     }
 )
 

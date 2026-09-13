@@ -490,6 +490,10 @@ export function playFromSegment(
          *  chapters; the per-reciter VBR map decides clip-vs-chapter URL
          *  per sibling. */
         accordionSiblings?: Segment[] | null,
+        /** Stop boundary for the bounded range when the row's audible span is
+         *  narrower than the store segment's — a staged piece of a
+         *  pre-applied split plays only its own slice of the parent. */
+        endMsOverride?: number,
     },
 ): void {
     // Any new play supersedes a chime gap still waiting to resume the old one.
@@ -564,12 +568,13 @@ export function playFromSegment(
     _segRange?.dispose();
     _segRange = null;
 
-    const bounded = isAccordionPlay || !get(autoPlayEnabled) || _chimeArmed();
+    const endMs = opts?.endMsOverride ?? seg.time_end;
+    const bounded = isAccordionPlay || !get(autoPlayEnabled) || _chimeArmed() || opts?.endMsOverride != null;
 
     if (bounded) {
         _segRange = new AudioRange({
             port: segPort,
-            range: { startMs: seekMs, endMs: seg.time_end },
+            range: { startMs: seekMs, endMs },
             policy: { kind: 'stop' },
             onTick: _onRangeTick,
             onBoundary: _onRangeBoundary,

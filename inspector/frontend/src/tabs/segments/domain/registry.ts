@@ -42,6 +42,12 @@ export interface IssueDefinition {
      * `./sorting.ts`.
      */
     sorts?: readonly SortOption[];
+    /**
+     * Offer the Unset · Wasl · Waqf boundary chips + filter in the accordion
+     * header (cross-verse only). FE-only presentation concern, absent from
+     * the Python registry. See `utils/validation/boundary-state.ts`.
+     */
+    boundaryFilter?: boolean;
 }
 
 export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.freeze({
@@ -172,8 +178,9 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         persistsIgnore: false,
         scope: 'per_segment',
         displayTitle: 'Cross-verse',
-        description: 'Split cross verses at the verse boundary. If the reciter recited continuously across the boundary, annotate the new inter-segment boundary as wasl.',
+        description: 'Label each verse boundary WASL or WAQF — the split is pre-applied from the aligner and saves on the last label. Adjust a piece if the suggested cut is off.',
         sorts: [{ kind: 'quran_order', default: true }, { kind: 'verse_count' }],
+        boundaryFilter: true,
     },
     qalqala: {
         kind: 'qalqala',
