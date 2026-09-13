@@ -24,6 +24,7 @@
     import { verseMarkerPrefix } from '../../../lib/riwayat';
     import type { WordProfileBoundary, WordProfileWord } from '../../../lib/types/ts-client';
     import { toArabicNumeral, ZWSP } from '../../../lib/utils/arabic-text';
+    import { qpcWaqfRenderStyle } from '../../../lib/utils/qpc-waqf-render';
     import {
         deliveryRiwayah,
         showTranslations,
@@ -66,6 +67,8 @@
     const focusRef = $derived($focusWaslGroup?.focusRef ?? $loadedVerse?.data.verse_ref ?? '');
     const readings = $derived(displayData?.wordReadings ?? []);
     const marker = $derived(verseMarkerPrefix($deliveryRiwayah));
+    /** The packaged QPC faces decorate their own digits — and set marks higher. */
+    const qpcFace = $derived(marker === '');
 
     const verseOf = (location: string): string => location.split(':').slice(0, 2).join(':');
     /** Words from a neighbouring verse pulled in by a waṣl chain read as context. */
@@ -74,18 +77,21 @@
     /** A gap only reads as a pause when it actually has duration. */
     const recorded = (boundary: WordProfileBoundary): boolean =>
         boundary.end - boundary.start > 0.001;
+    const gapText = (boundary: WordProfileBoundary): string =>
+        boundary.verseEnd == null ? '' : marker + toArabicNumeral(boundary.verseEnd);
     /**
-     * What the gap tile shows: the verse marker at a verse end, else the lifted
-     * waqf mark once the reciter actually paused on it (the native row hides
-     * its `stop_sign` column the same way until a pause is recorded), else
-     * nothing. The mark is a combining glyph, so it rides a word joiner to
-     * shape into its own run.
+     * The lifted waqf mark, shown once the reciter actually paused on it — the
+     * native row hides its `stop_sign` column the same way until a pause is
+     * recorded. Rendered through the cells package's `.pause-waqf` so the
+     * per-mark calibration centres the ink in the tile exactly as it does
+     * for Hafs. The QPC faces draw a bare combining mark with no ink at all
+     * (DigitalKhatt tolerates it), so the glyph rides a word joiner — the
+     * same anchor the teleprompter's decorators use.
      */
-    const gapText = (boundary: WordProfileBoundary): string => {
-        if (boundary.verseEnd != null) return marker + toArabicNumeral(boundary.verseEnd);
-        if (boundary.stopSign && recorded(boundary)) return ZWSP + boundary.stopSign;
-        return '';
-    };
+    const stopMark = (boundary: WordProfileBoundary): string | null =>
+        boundary.verseEnd == null && boundary.stopSign && recorded(boundary)
+            ? boundary.stopSign
+            : null;
 
     function offsetSeconds(): number {
         const group = get(focusWaslGroup);
@@ -368,15 +374,18 @@
                             class:qc-verse-end={word.boundary.verseEnd != null}
                             class:qc-sakt={word.boundary.state === 'sakt'}
                             class:qc-recorded-pause={recorded(word.boundary)}
-                            class:qc-boundary-empty={gapText(word.boundary) === ''}
+                            class:qc-boundary-empty={gapText(word.boundary) === ''
+                                && stopMark(word.boundary) == null}
                             data-qc-boundary-id={word.boundary.id}
                         >
                             <span
                                 class="pause-bridge"
                                 class:verse-mark={word.boundary.verseEnd != null}
-                                class:stop-mark={word.boundary.verseEnd == null
-                                    && word.boundary.stopSign != null}
-                            >{gapText(word.boundary)}</span>
+                                class:stop-mark={stopMark(word.boundary) != null}
+                            >{#if stopMark(word.boundary)}<span
+                                    class="pause-waqf"
+                                    style={qpcWaqfRenderStyle(stopMark(word.boundary) ?? '', qpcFace)}
+                                >{ZWSP + (stopMark(word.boundary) ?? '')}</span>{:else}{gapText(word.boundary)}{/if}</span>
                         </span>
                     {/if}
                 </span>
@@ -394,6 +403,12 @@
         align-items: flex-end;
         gap: 6px;
     }
+    /* The cells stylesheet pins the pause control to the tile's top edge, where
+       the native row's word text sits. Here the tile stretches to the word cell,
+       so centre the control on the word text instead. */
+    .boundary-tile {
+        justify-content: center;
+    }
     .word-cell {
         display: flex;
         flex-direction: column;
@@ -403,6 +418,7 @@
         border-radius: 4px;
         background: var(--qc-cell-rest);
         color: var(--qc-word-ink);
+        cursor: pointer;
         transition: background var(--qc-dur) var(--qc-ease), color var(--qc-dur) var(--qc-ease);
     }
     .word-cell:hover {
@@ -417,8 +433,7 @@
        own face at word size. The packaged QPC faces draw the end-of-ayah
        ornament around the bare digit themselves, so a UI font here renders a
        naked numeral instead of the marker. */
-    .pause-bridge.verse-mark,
-    .pause-bridge.stop-mark {
+    .pause-bridge.verse-mark {
         font-family: var(--qc-connected);
         font-size: var(--analysis-word-font-size, 30px);
         line-height: 1.7;
