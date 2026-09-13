@@ -82,10 +82,14 @@ def _layouts(verses: dict) -> dict:
     return build_verse_layouts(reshape_canonical(projected, digital_khatt), **_ZERO_PADS)
 
 
+def _canonical_occurrences(layouts: dict) -> list[dict]:
+    return [{"ref": ref, "canonical": True, "layout": layout} for ref, layout in layouts.items()]
+
+
 def _tiers(verses: dict, *, with_letters: bool = True) -> dict:
     return cut_release._build_tier_files(
         "example_reciter",
-        _layouts(verses),
+        _canonical_occurrences(_layouts(verses)),
         delivery_meta={"audio_category": "by_surah"},
         script_id="digital_khatt_v2",
         script_sha256="0" * 64,
@@ -153,7 +157,7 @@ def test_a_word_profile_tier_names_the_editions_script():
     verses = {"1:1": {"words": [[1, 0, 100]]}}
     files = cut_release._build_tier_files(
         "example_reciter",
-        _layouts(verses),
+        _canonical_occurrences(_layouts(verses)),
         delivery_meta={"audio_category": "by_surah"},
         script_id="qaloon-v21+sdk-words-v1",
         script_sha256="a" * 64,
@@ -188,8 +192,8 @@ def test_letter_tier_keeps_digital_khatt_text_and_scalar_paint_ranges():
     files = _tiers(verses)
     doc = json.loads(gzip.decompress(files["letter_timestamps.json.gz"]).decode("utf-8"))
     row = doc["rows"][0]
-    assert row[5] == "كٓهيعٓصٓ"
-    tokens = row[6]
+    assert row[6] == "كٓهيعٓصٓ"
+    tokens = row[7]
     assert tokens[0] == [0, 0, 100, True, [[0, 2]]]
     assert tokens[-1] == [0, 400, 500, True, [[6, 8]]]
 
@@ -197,8 +201,8 @@ def test_letter_tier_keeps_digital_khatt_text_and_scalar_paint_ranges():
 def test_letter_tier_preserves_combining_marks_without_a_vocab():
     verses = {"1:1": {"words": [[1, 0, 100, [["بَ", 0, 100]]]]}}
     doc = json.loads(gzip.decompress(_tiers(verses)["letter_timestamps.json.gz"]))
-    assert doc["rows"][0][5] == "بَ"
-    assert doc["rows"][0][6] == [[0, 0, 100, True, [[0, 2]]]]
+    assert doc["rows"][0][6] == "بَ"
+    assert doc["rows"][0][7] == [[0, 0, 100, True, [[0, 2]]]]
 
 
 def test_release_verse_bound_is_audible_span_not_hf_clip_window():
@@ -223,7 +227,7 @@ def test_release_verse_bound_is_audible_span_not_hf_clip_window():
     )
     files = cut_release._build_tier_files(
         "example_reciter",
-        layouts,
+        _canonical_occurrences(layouts),
         delivery_meta={"audio_category": "by_surah"},
         script_id="digital_khatt_v2",
         script_sha256="0" * 64,
@@ -232,7 +236,7 @@ def test_release_verse_bound_is_audible_span_not_hf_clip_window():
     assert verse_doc["rows"][0] == ["1:1", 100, 1000, True, 4000]
     # The word tier keeps the true source-relative word times.
     word_doc = json.loads(gzip.decompress(files["word_timestamps.json.gz"]).decode("utf-8"))
-    assert word_doc["rows"][0][4] == [[1, 100, 1000]]
+    assert word_doc["rows"][0][5] == [[1, 100, 1000]]
 
 
 def test_release_tiers_share_occurrence_prefix_and_compute_silence_after():
@@ -246,12 +250,60 @@ def test_release_tiers_share_occurrence_prefix_and_compute_silence_after():
     word = json.loads(gzip.decompress(files["word_timestamps.json.gz"]))
     letter = json.loads(gzip.decompress(files["letter_timestamps.json.gz"]))
 
-    assert word["rows"][0] == letter["rows"][0][:5]
+    assert verse["rows"][0] == word["rows"][0][:5] == letter["rows"][0][:5]
+    assert word["rows"][0] == letter["rows"][0][:6]
     assert verse["rows"] == [
         ["1:1", 100, 1000, True, 500],
         ["1:2", 1500, 2000, True, 0],
         ["2:1", 0, 500, True, 0],
     ]
+    assert verse["_meta"]["units"] == "ms"
+    assert verse["_meta"]["riwayah"] == "hafs"
+    assert verse["_meta"]["schema_version"] == 3
+
+
+def test_release_tiers_emit_every_occurrence_in_timeline_order():
+    """A repeat of 1:1 recited after 1:2 is its own unflagged row at its place
+    in the timeline; silence_after follows the timeline, not the mushaf; the
+    verse count is distinct refs while the occurrence count is rows."""
+    verses = {
+        "1:1": {"words": [[1, 100, 1000]], "verse_start_ms": 100, "verse_end_ms": 1000},
+        "1:2": {"words": [[1, 1500, 2000]], "verse_start_ms": 1500, "verse_end_ms": 2000},
+    }
+    repeat = {"1:1": {"words": [[1, 2500, 3000]], "verse_start_ms": 2500, "verse_end_ms": 3000}}
+    occurrences = _canonical_occurrences(_layouts(verses)) + [
+        {"ref": "1:1", "canonical": False, "layout": _layouts(repeat)["1:1"]}
+    ]
+    files = cut_release._build_tier_files(
+        "example_reciter",
+        occurrences,
+        delivery_meta={"audio_category": "by_surah"},
+        script_id="digital_khatt_v2",
+        script_sha256="0" * 64,
+    )
+    verse = json.loads(gzip.decompress(files["verse_timestamps.json.gz"]))
+    word = json.loads(gzip.decompress(files["word_timestamps.json.gz"]))
+    assert verse["rows"] == [
+        ["1:1", 100, 1000, True, 500],
+        ["1:2", 1500, 2000, True, 500],
+        ["1:1", 2500, 3000, False, 0],
+    ]
+    assert word["rows"][2] == ["1:1", 2500, 3000, False, 0, [[1, 2500, 3000]]]
+    assert verse["_meta"]["verse_count"] == 2
+    assert verse["_meta"]["occurrence_count"] == 3
+
+
+def test_release_tiers_refuse_a_verse_without_exactly_one_canonical_row():
+    verses = {"1:1": {"words": [[1, 100, 1000]]}}
+    doubled = _canonical_occurrences(_layouts(verses)) * 2
+    with pytest.raises(ValueError, match="exactly one canonical"):
+        cut_release._build_tier_files(
+            "example_reciter",
+            doubled,
+            delivery_meta={"audio_category": "by_surah"},
+            script_id="digital_khatt_v2",
+            script_sha256="0" * 64,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -281,26 +333,26 @@ def test_digital_khatt_assets_validate_and_hash(tmp_path):
     assert "surah_info.json" in out
 
 
-def test_schema_two_cut_starts_release_format_v3():
+def test_schema_three_cut_starts_release_format_v4():
     unchanged = [{"change_kind": "unchanged"}]
-    assert cut_release._compute_version("v2.4.0", unchanged, False, None) == "v3.0.0"
+    assert cut_release._compute_version("v3.4.0", unchanged, False, None) == "v4.0.0"
 
 
-def test_release_format_v3_keeps_normal_bumps_and_rejects_old_override():
+def test_release_format_v4_keeps_normal_bumps_and_rejects_old_override():
     assert (
-        cut_release._compute_version("v3.0.0", [{"change_kind": "added"}], False, None) == "v3.1.0"
+        cut_release._compute_version("v4.0.0", [{"change_kind": "added"}], False, None) == "v4.1.0"
     )
     assert (
-        cut_release._compute_version("v3.1.0", [{"change_kind": "refresh"}], False, None)
-        == "v3.1.1"
+        cut_release._compute_version("v4.1.0", [{"change_kind": "refresh"}], False, None)
+        == "v4.1.1"
     )
-    with pytest.raises(RuntimeError, match="requires release v3"):
-        cut_release._compute_version("v2.4.0", [], False, "v2.5.0")
+    with pytest.raises(RuntimeError, match="requires release v4"):
+        cut_release._compute_version("v3.4.0", [], False, "v3.5.0")
 
 
-def test_unchanged_v3_release_still_refuses_a_noop_cut():
+def test_unchanged_v4_release_still_refuses_a_noop_cut():
     with pytest.raises(RuntimeError, match="nothing changed"):
-        cut_release._compute_version("v3.0.0", [{"change_kind": "unchanged"}], False, None)
+        cut_release._compute_version("v4.0.0", [{"change_kind": "unchanged"}], False, None)
 
 
 def test_audio_urls_come_from_sidecar_chapters():

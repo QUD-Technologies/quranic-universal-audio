@@ -30,6 +30,7 @@ from collections.abc import Iterable
 #   "duration_arithmetic"                   — duration_ms != verse_end - verse_start
 #   "intra_segment_gap"                     — adjacent words within a segment have a gap
 #   "coverage_gap"                          — widx 1..N not all present in this verse
+#   "canonical_uniqueness"                  — a verse ref with != 1 canonical occurrence row
 class Violation(dict):
     """Plain dict subclass — JSON-serializable, schema-stable."""
 
@@ -165,6 +166,24 @@ def check_coverage(ref: str, verse: dict, expected_words: int | None) -> list[Vi
     return []
 
 
+def check_canonical_uniqueness(occurrences: Iterable[tuple[str, bool]]) -> list[Violation]:
+    """Exactly one canonical occurrence per verse ref across a release timeline.
+
+    ``occurrences`` is ``(ref, canonical)`` per emitted row. Zero canonical rows
+    means the verse's clean take was gated out while a repeat survived; two
+    means the projection double-flagged. Either would let ``rows.filter(canonical)``
+    return a broken one-take-per-verse dataset, so both are hard failures.
+    """
+    counts: dict[str, int] = {}
+    for ref, canonical in occurrences:
+        counts[ref] = counts.get(ref, 0) + int(bool(canonical))
+    return [
+        _violation(ref, "canonical_uniqueness", canonical_rows=count)
+        for ref, count in sorted(counts.items())
+        if count != 1
+    ]
+
+
 def validate_verse(ref: str, verse: dict, *, expected_words: int | None = None) -> list[Violation]:
     """Run every check on one verse. Returns the combined violation list."""
     out: list[Violation] = []
@@ -200,8 +219,10 @@ def validate_dataset(
         "dropped_verses": [],  # caller fills if coverage_gap → drop
       }
     """
-    expected_by_ref = expected_words if expected_words is not None else (
-        _expected_words_index(surah_info) if surah_info else {}
+    expected_by_ref = (
+        expected_words
+        if expected_words is not None
+        else (_expected_words_index(surah_info) if surah_info else {})
     )
     violations: list[Violation] = []
     for ref, verse in verses.items():
@@ -245,6 +266,7 @@ HARD_FAIL_KINDS = (
     "word_bleed_last",
     "duration_arithmetic",
     "intra_segment_gap",
+    "canonical_uniqueness",
 )
 
 

@@ -9,7 +9,11 @@ import pytest
 from pydantic import ValidationError
 
 from qua_shared.timestamps_codec import decode_document
-from qua_shared.timestamps_native import project_native_shard, select_complete_verses
+from qua_shared.timestamps_native import (
+    project_native_shard,
+    project_shard_occurrences,
+    select_complete_verses,
+)
 from qua_shared.timestamps_shards import (
     brotli_shard,
     build_timestamp_shards,
@@ -85,6 +89,48 @@ def test_native_projection_keeps_loopback_and_earliest_complete_occasion():
     assert [word["index"] for word in projected["1:1"]["words"]] == [1, 2, 2, 3]
     assert projected["1:1"]["verse_start_ms"] == 0
     assert projected["1:1"]["verse_end_ms"] == 900
+
+
+def test_occurrence_projection_emits_every_take_and_flags_the_canonical_one():
+    """Same shard as the canonical test: r1 (a lookback take of 1:1) is the
+    canonical row, r3's re-recitation of 1:1 after 1:2 is its own unflagged
+    row, and the timeline is audio-ordered with 1:2 in between."""
+    shard = _shard(
+        [
+            _reading("r1", [("1:1", (0, 400), [1, 2]), ("1:1", (400, 900), [2, 3])]),
+            _reading("r2", [("1:2", (900, 1100), [1])]),
+            _reading("r3", [("1:1", (1100, 1600), [1, 2, 3])]),
+        ]
+    )
+    rows = project_shard_occurrences(shard)
+    assert [(row["ref"], row["canonical"]) for row in rows] == [
+        ("1:1", True),
+        ("1:2", True),
+        ("1:1", False),
+    ]
+    assert [row["verse_start_ms"] for row in rows] == [0, 900, 1100]
+    assert [word["index"] for word in rows[2]["words"]] == [1, 2, 3]
+    canonical = project_native_shard(shard)
+    assert {row["ref"]: row for row in rows if row["canonical"]} == {
+        ref: {"ref": ref, "canonical": True, **body} for ref, body in canonical.items()
+    }
+
+
+def test_occurrence_projection_splits_a_leading_false_start_into_its_own_row():
+    """A restart at word 1 inside one occasion: the canonical take is the run
+    from the restart; the abandoned prefix becomes an unflagged row."""
+    shard = _shard(
+        [
+            _reading("r1", [("1:1", (0, 200), [1]), ("1:1", (200, 800), [1, 2, 3])]),
+        ]
+    )
+    rows = project_shard_occurrences(shard)
+    assert [(row["ref"], row["canonical"], row["verse_start_ms"]) for row in rows] == [
+        ("1:1", False, 0),
+        ("1:1", True, 200),
+    ]
+    assert [word["index"] for word in rows[0]["words"]] == [1]
+    assert [word["index"] for word in rows[1]["words"]] == [1, 2, 3]
 
 
 @pytest.mark.parametrize("following_ref", ["1:1", "1:2"])

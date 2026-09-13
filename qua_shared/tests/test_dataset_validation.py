@@ -5,7 +5,11 @@ pass is still caught.
 
 from __future__ import annotations
 
-from qua_shared.dataset_validation import check_intra_segment_gapless
+from qua_shared.dataset_validation import (
+    check_canonical_uniqueness,
+    check_intra_segment_gapless,
+    fatal_violations,
+)
 
 
 def test_lookback_repeated_word_index_is_not_a_gap():
@@ -33,3 +37,12 @@ def test_real_intra_segment_gap_is_still_caught():
     assert len(out) == 1
     assert out[0]["violation"] == "intra_segment_gap"
     assert out[0]["gap_ms"] == 50
+
+
+def test_canonical_uniqueness_flags_zero_and_double_canonical_refs():
+    violations = check_canonical_uniqueness(
+        [("1:1", True), ("1:1", False), ("1:2", False), ("1:3", True), ("1:3", True)]
+    )
+    assert [(v["ref"], v["canonical_rows"]) for v in violations] == [("1:2", 0), ("1:3", 2)]
+    assert all(v["violation"] == "canonical_uniqueness" for v in violations)
+    assert fatal_violations(violations) == violations

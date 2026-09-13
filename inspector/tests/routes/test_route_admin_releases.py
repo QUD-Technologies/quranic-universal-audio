@@ -391,7 +391,7 @@ def test_release_preview_uses_display_names(signed_in_client, monkeypatch):
     assert resp.status_code == 200, resp.get_data(as_text=True)
     body = resp.get_json()
 
-    assert body["computed_version"] == "v3.0.0"
+    assert body["computed_version"] == "v4.0.0"
     assert body["previous_version"] is None
     assert body["change_counts"]["added"] == 1
     assert len(body["added"]) == 1
