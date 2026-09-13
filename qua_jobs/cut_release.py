@@ -79,8 +79,10 @@ from qua_shared.schemas.wire.release import (  # noqa: E402
     SCHEMA_VERSION,
 )
 from qua_shared.verse_layout import (  # noqa: E402
+    PadParams,
     build_verse_layouts,
     load_canonical_verses,
+    load_shard_occurrences,
     pad_params_from_env,
     reshape_canonical,
 )
@@ -195,10 +197,21 @@ def _prior_release_members(conn: sqlite3.Connection) -> tuple[str | None, dict[s
 
 # ---------------------------------------------------------------------------
 # Tier-file projection — top-down (letter → word → verse).
-# Every tier is an ordered occurrence timeline. V3 initially emits one
-# canonical occurrence per verse; later repeated/partial takes append rows
+# Every tier is an ordered occurrence timeline: every contiguous recited span
+# is a row, in audio order, exactly one per verse flagged canonical; rows
 # without changing the wire shape. Shared row prefixes are byte-equal.
 # ---------------------------------------------------------------------------
+
+
+def _load_occurrences(slug: str) -> list[dict]:
+    """Every recited occurrence of every verse, in audio order."""
+    return load_shard_occurrences(_bucket_root() / "reciters" / slug / "timestamps")
+
+
+def _occurrence_key(ref: str, layout: dict) -> tuple[int, int, int, int]:
+    """Timeline order: chapter, then start, then end, then mushaf ayah."""
+    chapter, ayah = _verse_sort_key(ref)
+    return chapter, int(layout["verse_start"]), int(layout["verse_end"]), ayah
 
 
 def _load_canonical_verses(slug: str) -> dict[str, dict]:
@@ -208,7 +221,7 @@ def _load_canonical_verses(slug: str) -> dict[str, dict]:
 
 def _build_tier_files(
     slug: str,
-    layouts: dict[str, dict],
+    occurrences: list[dict],
     *,
     delivery_meta: dict,
     script_id: str,
@@ -217,6 +230,11 @@ def _build_tier_files(
     with_letters: bool = True,
 ) -> dict[str, bytes]:
     """Build the tier files (letter → word → verse, top-down projection).
+
+    ``occurrences`` is ``[{"ref", "canonical", "layout"}, ...]`` — one entry per
+    recited span, each ``layout`` a ``build_verse_layouts`` row. Rows are
+    emitted in timeline order (chapter, then start); exactly one per ref must
+    be canonical (``check_canonical_uniqueness`` runs before this).
 
     Returns ``{"verse_timestamps.json.gz": bytes,
                "word_timestamps.json.gz":  bytes,
@@ -227,23 +245,34 @@ def _build_tier_files(
     verse happened to have none".
 
     All times are source-relative milliseconds. Occurrence ``start``/``end``
-    are the audible verse bounds; the verse tier additionally carries the gap
-    until the next occurrence as ``silence_after``. HF clip padding remains an
-    adapter concern and does not change this release timeline. The words/letters
-    are the same psil-filtered, byte-exact alignment the dataset publishes.
+    are the audible bounds; ``silence_after`` is the gap until the next row in
+    the same chapter timeline (0 for the chapter's last row). Every tier row is
+    the exact prefix of the next tier's. HF clip padding remains an adapter
+    concern and does not change this release timeline. The words/letters are
+    the same psil-filtered, byte-exact alignment the dataset publishes.
     Positional arrays keep the public files compact; ``_meta`` describes layout.
     """
-    sorted_keys = sorted(layouts.keys(), key=_verse_sort_key)
+    ordered = sorted(
+        (o for o in occurrences if o["layout"].get("words")),
+        key=lambda o: _occurrence_key(o["ref"], o["layout"]),
+    )
 
-    letter_body: dict = {}
-    word_body: dict = {}
-    for key in sorted_keys:
-        layout = layouts[key]
-        if not layout.get("words"):
-            continue
+    verse_rows: list[list] = []
+    word_rows: list[list] = []
+    letter_rows: list[list] = []
+    for index, occurrence in enumerate(ordered):
+        ref, layout = occurrence["ref"], occurrence["layout"]
         # Release occurrence bound = last-audible timeline span. The HF adapter
         # separately uses the padded clip window from this same layout.
-        verse_pos = [int(layout["verse_start"]), int(layout["verse_end"])]
+        start, end = int(layout["verse_start"]), int(layout["verse_end"])
+        # Chapter boundaries are separate audio timelines unless/until source
+        # duration is known, so a chapter's last row carries 0.
+        silence_after = 0
+        if index + 1 < len(ordered):
+            nxt = ordered[index + 1]
+            if _verse_sort_key(nxt["ref"])[0] == _verse_sort_key(ref)[0]:
+                silence_after = max(0, int(nxt["layout"]["verse_start"]) - end)
+        verse_row = [ref, start, end, bool(occurrence["canonical"]), silence_after]
 
         word_array = [[int(w[0]), int(w[1]), int(w[2])] for w in layout["words"]]
         token_array = [
@@ -256,50 +285,27 @@ def _build_tier_files(
             ]
             for token in layout["tokens"]
         ]
-
-        # The word row is the letter row's exact prefix. ``canonical`` is true
-        # because the current projection deliberately selects one complete take;
-        # all-occurrence projection can append false rows later.
-        word_row = [key, verse_pos[0], verse_pos[1], True, word_array]
-        word_body[key] = word_row
-        letter_body[key] = [*word_row, layout["text"], token_array]
-
-    # Verse-only silence after the occurrence. Chapter boundaries are separate
-    # audio timelines unless/until source duration is known, so their tail is 0.
-    emitted_keys = [key for key in sorted_keys if key in letter_body]
-    verse_rows: list[list] = []
-    for index, key in enumerate(emitted_keys):
-        _ref, start, end, canonical, _words, _text, _tokens = letter_body[key]
-        silence_after = 0
-        if index + 1 < len(emitted_keys):
-            next_key = emitted_keys[index + 1]
-            if next_key.split(":", 1)[0] == key.split(":", 1)[0]:
-                next_start = int(letter_body[next_key][1])
-                silence_after = max(0, next_start - int(end))
-        verse_rows.append([key, int(start), int(end), bool(canonical), silence_after])
-
-    word_rows = [word_body[key] for key in emitted_keys]
-    letter_rows = [letter_body[key] for key in emitted_keys]
+        verse_rows.append(verse_row)
+        word_rows.append([*verse_row, word_array])
+        letter_rows.append([*verse_row, word_array, layout["text"], token_array])
 
     meta_common = {
         "schema_version": SCHEMA_VERSION,
         "slug": slug,
         "audio_category": delivery_meta.get("audio_category"),
-        "verse_count": len(verse_rows),
+        "units": "ms",
+        "verse_count": len({row[0] for row in verse_rows}),
         "occurrence_count": len(verse_rows),
         "script": script_id,
         "script_sha256": script_sha256,
-        # Omitted on the reference edition: a tier file is content-hashed into
-        # the release, so adding a key that says "hafs" would re-cut every
-        # published Hafs recitation as a refresh with no timing change.
-        **({} if riwayah == DEFAULT_SDK_RIWAYAH else {"riwayah": riwayah}),
+        "riwayah": riwayah,
         "unicode_indexing": UNICODE_INDEXING,
     }
     letter_doc = {
         "_meta": {
             **meta_common,
             "tier": "letter",
-            "layout": "rows=[[ref,start,end,canonical,words,text,tokens],...]; "
+            "layout": "rows=[[ref,start,end,canonical,silence_after,words,text,tokens],...]; "
             "words=[[widx,start,end],...]; "
             "tokens=[[word_occurrence,start,end,owns_sound,paint],...]; "
             "paint=[[scalar_from,scalar_to],...]",
@@ -310,7 +316,8 @@ def _build_tier_files(
         "_meta": {
             **meta_common,
             "tier": "word",
-            "layout": "rows=[[ref,start,end,canonical,words],...]; words=[[widx,start,end],...]",
+            "layout": "rows=[[ref,start,end,canonical,silence_after,words],...]; "
+            "words=[[widx,start,end],...]",
         },
         "rows": word_rows,
     }
@@ -334,6 +341,39 @@ def _build_tier_files(
         LetterTimestampsDoc.model_validate(letter_doc)
         files["letter_timestamps.json.gz"] = _gzip_deterministic(letter_doc)
     return files
+
+
+def _release_occurrences(
+    slug: str,
+    verses: dict[str, dict],
+    layouts: dict[str, dict],
+    digital_khatt_words: dict,
+    pads: PadParams,
+) -> list[dict]:
+    """``[{"ref", "canonical", "layout"}, ...]`` for the release timeline.
+
+    The canonical take per verse is the gated ``verses`` map's layout (built as
+    one batch so its clip pads see its neighbours). Every other recited span of
+    a verse that survived the gate is laid out on its own — its pads are
+    irrelevant to the public rows, which carry audible bounds. A verse whose
+    canonical take was gated out contributes nothing: all its repeats are
+    dropped with it, matching the published coverage semantics.
+    """
+    out = [
+        {"ref": ref, "canonical": True, "layout": layout}
+        for ref, layout in layouts.items()
+        if not ref.startswith("_")
+    ]
+    for occurrence in _load_occurrences(slug):
+        ref = occurrence["ref"]
+        if occurrence["canonical"] or ref not in verses:
+            continue
+        layout = build_verse_layouts(
+            reshape_canonical({ref: occurrence}, digital_khatt_words), **pads
+        ).get(ref)
+        if layout is not None:
+            out.append({"ref": ref, "canonical": False, "layout": layout})
+    return out
 
 
 def _verse_for_validate(layout: dict) -> dict:
@@ -1058,6 +1098,7 @@ def main() -> int:
     }
     script_sha256 = _sha256_hex(digital_khatt_script)
     from qua_shared.dataset_validation import (
+        check_canonical_uniqueness,
         fatal_violations,
         validate_dataset,
     )
@@ -1107,17 +1148,30 @@ def main() -> int:
         # segments are all derived once. Each adapter selects its public view of
         # the SAME layout, so timing/token ownership cannot drift.
         layouts = build_verse_layouts(reshape_canonical(verses, digital_khatt_words), **pads)
+        occurrences = _release_occurrences(slug, verses, layouts, digital_khatt_words, pads)
 
         # Boundary validate the SAME invariants the dataset does, against the
         # byte-exact segments (gapless within a segment, gaps only across
-        # boundaries) — source-relative ms.
-        for_validate = {
-            k: _verse_for_validate(layout) for k, layout in layouts.items() if not k.startswith("_")
-        }
+        # boundaries) — source-relative ms. Non-canonical takes are keyed
+        # ``ref#n`` so they skip the coverage check (a partial repeat is
+        # incomplete by definition) but still face the span invariants.
+        for_validate: dict[str, dict] = {}
+        for occurrence in occurrences:
+            key = occurrence["ref"]
+            if not occurrence["canonical"]:
+                key = f"{key}#{sum(1 for k in for_validate if k.startswith(key + '#')) + 1}"
+            for_validate[key] = _verse_for_validate(occurrence["layout"])
         rec_summary = validate_dataset(
             for_validate,
             expected_words={f"{s_num}:{a_num}": n for (s_num, a_num), n in edition_counts.items()},
         )
+        uniqueness = check_canonical_uniqueness((o["ref"], o["canonical"]) for o in occurrences)
+        rec_summary["violations"].extend(uniqueness)
+        rec_summary["violation_count"] += len(uniqueness)
+        for v in uniqueness:
+            rec_summary["by_kind"][v["violation"]] = (
+                rec_summary["by_kind"].get(v["violation"], 0) + 1
+            )
         fatal = fatal_violations(rec_summary["violations"])
         if fatal:
             log.error("  %s: %d fatal boundary violations — aborting cut", slug, len(fatal))
@@ -1139,12 +1193,12 @@ def main() -> int:
                 validation_summary_total["by_kind"].get(k, 0) + c
             )
 
-        # Tier files: ordered canonical occurrence rows today, extensible with
-        # repeated/partial occurrence rows later without a wire-format change.
+        # Tier files: every recited occurrence in timeline order, one canonical
+        # per verse.
         script_id, edition_script_sha256 = _edition_script(riwayah, script_sha256)
         tier_files = _build_tier_files(
             slug,
-            layouts,
+            occurrences,
             delivery_meta=rec,
             script_id=script_id,
             script_sha256=edition_script_sha256,

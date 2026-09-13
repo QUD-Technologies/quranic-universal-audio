@@ -54,7 +54,7 @@ def _ayah_of(verse_key: str) -> int:
 def split(doc: dict) -> dict[int, dict]:
     """Group timestamp rows by chapter. Returns ``{surah: shard_dict}``.
 
-    V3 occurrence rows preserve timeline order. Legacy keyed rows are sorted by
+    Occurrence rows preserve timeline order. Legacy keyed rows are sorted by
     ayah for byte stability.
     """
     src_meta = doc.get("_meta", {}) or {}

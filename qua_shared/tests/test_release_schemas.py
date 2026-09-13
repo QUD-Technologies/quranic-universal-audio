@@ -19,7 +19,7 @@ from qua_shared.schemas import (
 
 def _meta(tier: str, layout: str) -> dict:
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "slug": "example_reciter",
         "audio_category": "by_surah",
         "verse_count": 1,
@@ -39,7 +39,7 @@ def test_timestamp_tier_shapes_validate():
     WordTimestampsDoc.model_validate(
         {
             "_meta": _meta("word", "rows"),
-            "rows": [["100:1", 0, 2831, True, [[1, 70, 1550], [2, 1550, 2790]]]],
+            "rows": [["100:1", 0, 2831, True, 0, [[1, 70, 1550], [2, 1550, 2790]]]],
         }
     )
     LetterTimestampsDoc.model_validate(
@@ -51,6 +51,7 @@ def test_timestamp_tier_shapes_validate():
                     0,
                     2831,
                     True,
+                    0,
                     [[1, 70, 1550]],
                     "xy",
                     [[0, 70, 240, True, [[0, 1]]], [0, 240, 420, False, [[1, 2]]]],
@@ -81,8 +82,8 @@ def test_timestamp_tier_allows_repeated_occurrences_with_one_canonical():
         {
             "_meta": meta,
             "rows": [
-                ["1:1", 0, 100, False, [[1, 0, 100]]],
-                ["1:1", 200, 400, True, [[1, 200, 400]]],
+                ["1:1", 0, 100, False, 100, [[1, 0, 100]]],
+                ["1:1", 200, 400, True, 0, [[1, 200, 400]]],
             ],
         }
     )

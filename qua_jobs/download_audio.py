@@ -142,7 +142,7 @@ def _locate_verse_timestamps(catalog_path: Path, explicit: Path | None) -> Path:
 def _load_verse_windows(path: Path) -> dict[str, list[tuple[int, int, int]]]:
     """Parse a verse tier file into ``{chapter: [(ayah, start_ms, end_ms), ...]}``.
 
-    Reads gzipped or plain JSON. V3 rows are
+    Reads gzipped or plain JSON. Occurrence rows are
     ``[ref,start_ms,end_ms,canonical,silence_after_ms]``; only the canonical row
     is cut so repeated/partial takes cannot overwrite the same ayah filename.
     Legacy keyed release tiers remain accepted.

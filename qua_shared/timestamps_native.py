@@ -1,10 +1,18 @@
-"""Canonical timing projection from timestamp shard documents.
+"""Timing projections from timestamp shard documents.
 
-Both profiles land in the same canonical shape — one occasion per verse, words
-with source-relative times — so every downstream adapter (release tiers, HF
-dataset, coverage) reads one structure. The difference is depth: a native shard
-projects letters as well, a word-profile shard has none to project and emits
-``letters: []`` on every word.
+Two projections over the same segments:
+
+- **canonical** (``project_shard``): one occasion per verse — the earliest
+  complete continuous take — keyed by ref. What the HF dataset, coverage and
+  the FE read.
+- **all occurrences** (``project_shard_occurrences``): every contiguous recited
+  span as its own row in audio order, the canonical one flagged. What the GH
+  release timeline emits, so a repeated verse, a leading false-start or a
+  trailing partial is a row of its own rather than lost.
+
+Both profiles land in the same shape — words with source-relative times. The
+difference is depth: a native shard projects letters as well, a word-profile
+shard has none to project and emits ``letters: []`` on every word.
 """
 
 from __future__ import annotations
@@ -67,14 +75,34 @@ def _reading_segments(reading: dict) -> list[dict]:
                 }
             )
         out.append({"ref": part["ref"], "t": list(part["t"]), "words": timed_words})
-    return out
+    return _narrow_parts(out)
+
+
+def _narrow_parts(parts: list[dict]) -> list[dict]:
+    """Keep each part's ``t`` off the audio of its neighbours in the reading.
+
+    A part's ``t`` is its SEGMENT's span, so the parts of a segment that crosses
+    a verse boundary overlap — each claims (some of) the whole segment. Only the
+    outer edges are the segment's: the lead-in belongs to the first verse it
+    touches and the trailing silence to the last. Every inner edge is where the
+    neighbouring verse's words are. Parts that were already disjoint (two
+    segments joined by waṣl, a real pause between) are left alone.
+    """
+    for index, part in enumerate(parts):
+        start, end = int(part["t"][0]), int(part["t"][1])
+        if index > 0 and parts[index - 1]["words"]:
+            start = max(start, int(parts[index - 1]["words"][-1]["end_ms"]))
+        if index + 1 < len(parts) and parts[index + 1]["words"]:
+            end = min(end, int(parts[index + 1]["words"][0]["start_ms"]))
+        part["t"] = [start, max(start, end)]
+    return parts
 
 
 def _split_occasions(segments: list[dict], foreign_starts: list[int]) -> list[list[dict]]:
     occasions: list[list[dict]] = []
     current: list[dict] = []
     for segment in segments:
-        if current and any(current[-1]["t"][0] < at < segment["t"][0] for at in foreign_starts):
+        if current and any(_at(current[-1]) < at < _at(segment) for at in foreign_starts):
             occasions.append(current)
             current = []
         current.append(segment)
@@ -143,23 +171,90 @@ def _project(segments: list[dict]) -> dict:
     }
 
 
-def _select_occasions(segments: list[dict]) -> dict[str, dict]:
-    """One canonical occasion per verse, from every segment in audio order."""
-    segments.sort(key=lambda row: row["t"][0])
+def _at(segment: dict) -> int:
+    """Where a segment's recitation of its verse begins: its first word's start.
+
+    Not ``t[0]``. A part's ``t`` is the SEGMENT's span, and a segment crossing a
+    verse boundary hands (some of) that span to every verse it touches — the
+    word profile narrows a part to its own words only within one source verse,
+    so Warsh ``19:42`` inherited its segment's start while the ``19:41`` part
+    started later. Splitting occasions on ``t`` then read "19:41 began between
+    two takes of 19:42" and cut one complete take into two incomplete halves,
+    gating a fully-recited verse out of the dataset. Word times say where the
+    verse itself was recited, in either profile.
+    """
+    words = segment["words"]
+    return int(words[0]["start_ms"]) if words else int(segment["t"][0])
+
+
+def _group_by_ref(segments: list[dict]) -> tuple[dict[str, list[dict]], dict[str, list[int]]]:
+    segments.sort(key=_at)
     by_ref: dict[str, list[dict]] = defaultdict(list)
     for segment in segments:
         by_ref[segment["ref"]].append(segment)
-    starts = {ref: [row["t"][0] for row in rows] for ref, rows in by_ref.items()}
+    starts = {ref: [_at(row) for row in rows] for ref, rows in by_ref.items()}
+    return by_ref, starts
+
+
+def _foreign_starts(ref: str, starts: dict[str, list[int]]) -> list[int]:
+    return sorted(at for other, values in starts.items() if other != ref for at in values)
+
+
+def _target(rows: list[dict]) -> set[int]:
+    return set(range(1, max(_coverage(rows), default=0) + 1))
+
+
+def _select_occasions(segments: list[dict]) -> dict[str, dict]:
+    """One canonical occasion per verse, from every segment in audio order."""
+    by_ref, starts = _group_by_ref(segments)
     out = {}
     for ref, rows in by_ref.items():
-        foreign = sorted(at for other, values in starts.items() if other != ref for at in values)
-        target = set(range(1, max(_coverage(rows), default=0) + 1))
-        out[ref] = _project(_canonical(_split_occasions(rows, foreign), target))
+        occasions = _split_occasions(rows, _foreign_starts(ref, starts))
+        out[ref] = _project(_canonical(occasions, _target(rows)))
     return out
 
 
-def project_native_shard(shard: dict) -> dict[str, dict]:
-    """Select one canonical timing occasion per verse from a native shard."""
+def _occurrences(occasions: list[list[dict]], target: set[int]) -> list[tuple[bool, list[dict]]]:
+    """Every contiguous recited span of one verse, the canonical one flagged.
+
+    ``_canonical`` returns a contiguous sub-slice of exactly one occasion (a
+    leading false-start and trailing post-completion segments trimmed off).
+    Those trimmed ends become their own unflagged spans — they are audio the
+    reciter produced, just not part of the clean take — and every other
+    occasion is emitted whole and unflagged. Within-take lookbacks stay
+    embedded in their span.
+    """
+    canonical = _canonical(occasions, target)
+    out: list[tuple[bool, list[dict]]] = []
+    for occasion in occasions:
+        first = next((i for i, seg in enumerate(occasion) if seg is canonical[0]), None)
+        if first is None:
+            out.append((False, occasion))
+            continue
+        lead, trail = occasion[:first], occasion[first + len(canonical) :]
+        if lead:
+            out.append((False, lead))
+        out.append((True, canonical))
+        if trail:
+            out.append((False, trail))
+    return out
+
+
+def _all_occasions(segments: list[dict]) -> list[dict]:
+    """Every occurrence of every verse, in audio order, canonical flagged."""
+    by_ref, starts = _group_by_ref(segments)
+    out: list[dict] = []
+    for ref, rows in by_ref.items():
+        occasions = _split_occasions(rows, _foreign_starts(ref, starts))
+        for canonical, span in _occurrences(occasions, _target(rows)):
+            if not any(segment["words"] for segment in span):
+                continue
+            out.append({"ref": ref, "canonical": canonical, **_project(span)})
+    out.sort(key=lambda row: (row["verse_start_ms"], not row["canonical"], row["ref"]))
+    return out
+
+
+def _native_segments(shard: dict) -> list[dict]:
     version = (shard.get("_meta") or {}).get("schema_version")
     if version not in NATIVE_SHARD_SCHEMA_VERSIONS:
         raise ValueError(
@@ -167,8 +262,12 @@ def project_native_shard(shard: dict) -> dict[str, dict]:
             f"{' or '.join(map(str, NATIVE_SHARD_SCHEMA_VERSIONS))}, got {version!r}"
         )
     decoded = decode_document(shard)
-    segments = [row for reading in decoded["readings"] for row in _reading_segments(reading)]
-    return _select_occasions(segments)
+    return [row for reading in decoded["readings"] for row in _reading_segments(reading)]
+
+
+def project_native_shard(shard: dict) -> dict[str, dict]:
+    """Select one canonical timing occasion per verse from a native shard."""
+    return _select_occasions(_native_segments(shard))
 
 
 def _word_reading_segments(reading: dict) -> list[dict]:
@@ -199,23 +298,41 @@ def _word_reading_segments(reading: dict) -> list[dict]:
                 }
             )
         out.append({"ref": ref, "t": [int(start), int(end)], "words": timed_words})
-    return out
+    return _narrow_parts(out)
+
+
+def _word_segments(shard: dict) -> list[dict]:
+    version = (shard.get("_meta") or {}).get("schema_version")
+    if version != 14:
+        raise ValueError(f"word timestamp shard must use schema version 14, got {version!r}")
+    return [row for reading in shard["readings"] for row in _word_reading_segments(reading)]
 
 
 def project_word_shard(shard: dict) -> dict[str, dict]:
     """Select one canonical timing occasion per verse from a word shard."""
-    version = (shard.get("_meta") or {}).get("schema_version")
-    if version != 14:
-        raise ValueError(f"word timestamp shard must use schema version 14, got {version!r}")
-    segments = [row for reading in shard["readings"] for row in _word_reading_segments(reading)]
-    return _select_occasions(segments)
+    return _select_occasions(_word_segments(shard))
+
+
+def _segments(shard: dict) -> list[dict]:
+    if shard_profile(shard) == "word":
+        return _word_segments(shard)
+    return _native_segments(shard)
 
 
 def project_shard(shard: dict) -> dict[str, dict]:
     """Project a shard of either profile — the discriminator decides which."""
-    if shard_profile(shard) == "word":
-        return project_word_shard(shard)
-    return project_native_shard(shard)
+    return _select_occasions(_segments(shard))
+
+
+def project_shard_occurrences(shard: dict) -> list[dict]:
+    """Every occurrence in a shard of either profile, in audio order.
+
+    Each row is ``{"ref", "canonical", **projection}`` where the projection is
+    the same ``{"words", "verse_start_ms", "verse_end_ms", "segments"}`` body
+    ``project_shard`` returns; exactly one row per ref is canonical and equals
+    ``project_shard(shard)[ref]``.
+    """
+    return _all_occasions(_segments(shard))
 
 
 def select_complete_verses(
@@ -237,6 +354,7 @@ def select_complete_verses(
 __all__ = [
     "project_native_shard",
     "project_shard",
+    "project_shard_occurrences",
     "project_word_shard",
     "select_complete_verses",
 ]

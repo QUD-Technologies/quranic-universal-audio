@@ -26,12 +26,12 @@ running + historical, in one place: the **Jobs** tab — [admin-dashboard.md](ad
 
 Every adapter starts from the same bucket inputs. A native v13 chapter stores every recorded
 occasion as connected readings and ordered `parts` (see [shards.md](shards.md) and
-[timestamps-job.md](timestamps-job.md)). V3 GitHub tiers use an occurrence-capable ordered-row
-envelope but initially emit the single canonical take per verse; HF remains one row per canonical
+[timestamps-job.md](timestamps-job.md)). GitHub tiers (schema 3) are an ordered-row timeline of every recited
+occurrence with one canonical row per verse; HF remains one row per canonical
 ayah. Both are pure projections of the same native readings, so the TS-tab read path and the
 release/dataset adapters cannot drift at the identity layer. The shared loader runs the strict v13
 identity-closure audit before projection; malformed or mixed-version bucket shards block both
-adapters. GitHub schema 2 projects producer animation ownership onto exact DigitalKhatt V2; HF
+adapters. GitHub schema 3 projects producer animation ownership onto exact DigitalKhatt V2; HF
 keeps the exact text and word alignment but omits rendering-specific letter paint data.
 
 ## Release ledger (SQLite — migration `0014_releases.sql`)
@@ -110,7 +110,12 @@ The same predicate drives the Releases-tab buckets and the cut job's member disc
 1. Reads the bucket DB read-only → eligible reciters + the prior release's membership.
 2. Per reciter: reads every compact native v13 `timestamps/<ch>.json.br` shard and projects the canonical
    verse map (`_load_canonical_verses` → `select_complete_verses`, the earliest completing occasion),
-   then drops incomplete verses via `select_complete_verses` (missing a reference word index)
+   then drops incomplete verses via `select_complete_verses` (missing a reference word index).
+   The same shards are then projected a second time as **every** occurrence
+   (`verse_layout.load_shard_occurrences` → `timestamps_native.project_shard_occurrences`); each
+   non-canonical span of a verse that survived the gate is laid out on its own
+   (`_release_occurrences`) — a verse whose canonical take was gated drops all its repeats too.
+   `check_canonical_uniqueness` then hard-fails on any ref with ≠ 1 canonical row
    → builds the three
    tier files (verse/word/letter, top-down), `catalog.json`, a per-recitation `manifest.json`; packs
    a deterministic `<slug>.zip`; computes `content_hash = SHA-256(letter_tier.gz || catalog.json)`.
@@ -133,13 +138,13 @@ Global single-flight: only one cut in flight at a time; a publish landing mid-cu
 ### Versioning
 
 Auto-bump from the prior version (an operator `RELEASE_VERSION` override must still use release
-format major 3 or newer):
+format major 4 or newer):
 
 | Situation | Result |
 |---|---|
-| First schema-2 release, or prior release below v3 | `v3.0.0` |
-| Any `added` reciter after v3 | MINOR bump (`v3.N+1.0`) |
-| `refresh` and/or changed static refs only | PATCH bump (`v3.N.P+1`) |
+| First schema-3 release, or prior release below v4 | `v4.0.0` |
+| Any `added` reciter after v4 | MINOR bump (`v4.N+1.0`) |
+| `refresh` and/or changed static refs only | PATCH bump (`v4.N.P+1`) |
 | Nothing changed | error — set `RELEASE_VERSION` to force-cut |
 | Later breaking release-format change | raise `RELEASE_FORMAT_MAJOR`; the cut starts at that major |
 
@@ -166,9 +171,9 @@ gh:releases/v{X.Y.Z}/
 Each `<slug>.zip` contains:
 
 ```
-verse_timestamps.json.gz   # tier 1: ordered occurrence rows + following silence
-word_timestamps.json.gz    # tier 2: verse-row prefix + words
-letter_timestamps.json.gz  # tier 3: word-row prefix + exact DK text + paint tokens
+verse_timestamps.json.gz   # tier 1: [ref,start,end,canonical,silence_after] per recited span
+word_timestamps.json.gz    # tier 2: verse row + words
+letter_timestamps.json.gz  # tier 3: word row + exact DK text + paint tokens
 catalog.json               # this reciter's catalog projection (carries audio chapter_urls)
 ```
 
@@ -177,10 +182,14 @@ per-zip `sha256`, and the in-zip `catalog.json` already self-identifies the reci
 the release-level `manifest.json` exists.
 
 Each tier self-contains the level below; all times are relative to the matching source audio in
-`catalog.json`. Rows are ordered occurrences and exactly one row per verse ref is marked canonical.
-V3 initially emits only that canonical row; later repeated and partial takes can be appended without
-changing the format. The three `.json.gz` layers keep storage, startup speed, and network transfer
-cheap: download verse, word, or letter detail independently.
+`catalog.json`. Rows are a playback timeline (schema 3, release v4+): **every** contiguous recited
+span is a row, in audio order — whole-verse repeats, leading false-starts and trailing partials
+included — and exactly one row per verse ref is `canonical` (the earliest complete continuous take,
+the same one the HF dataset and the FE show). Every tier row is the exact prefix of the next tier's
+(`silence_after` sits at slot 4 on all three); `_meta` carries `units: "ms"`, `riwayah` (always,
+since schema 3), `verse_count` (distinct refs) and `occurrence_count` (rows). The three `.json.gz`
+layers keep storage, startup speed, and network transfer cheap: download verse, word, or letter
+detail independently.
 Use `shard.py` when an app prefers local per-surah files. There is no per-reciter `README.md`.
 
 **Letter-tier animation tokens.** A letter occurrence row is exactly its corresponding word row
@@ -231,8 +240,8 @@ the other helpers (`base.REQUIRED_ENTRYPOINTS`) and uploaded by the cut.
 
 ```json
 {
-  "schema_version": 2,
-  "release_version": "v3.0.0",
+  "schema_version": 3,
+  "release_version": "v4.0.0",
   "created_at": "2026-06-03T10:00:00Z",
   "previous_version": null,
   "recitation_count": 9,
@@ -394,12 +403,13 @@ with an **interior no-match gap** is the one exception to "single contiguous sli
 kept runs stitched gaplessly (the no-match audio excised) — see
 [Failed-alignment, no-match & deletes](#failed-alignment-no-match--deletes-at-publish).
 
-## Dedup semantics — what projection loses / preserves
+## Dedup semantics — what the canonical projection loses / preserves
 
-Bucket v13 stores every recorded occasion in native readings and parts. The native publishing
-projection reduces each verse to its single canonical take; the Inspector itself keeps all parts.
+Bucket v13 stores every recorded occasion in native readings and parts. The **canonical**
+projection (`project_shard`, what the HF dataset and the FE read) reduces each verse to its single
+canonical take; the Inspector itself keeps all parts.
 
-| Lost in projection | Preserved |
+| Lost in the canonical projection | Preserved |
 |---|---|
 | A non-canonical occasion's word/letter timestamps (an interleaved re-recitation of the same verse) | The whole verse `{1..N}` — the canonical occasion reaches full word coverage by construction |
 | A leading false-start prefix + trailing post-completion redundancy (an abandoned/redundant re-do within the canonical occasion) | Every recited segment in the bucket shard, time-ordered, addressable via `source_url` + offsets |
@@ -409,7 +419,13 @@ that completes word coverage `{1..N}`; within-pass backward **lookbacks** (a jum
 non-first word) inside that occasion are kept verbatim, so the canonical row is never missing a widx.
 Among multiple completing occasions the **earliest** (first recited) wins; a **leading false-start**
 (a restart at word 1 whose run re-covers the verse) and **trailing** post-completion segments are
-trimmed. Consumers wanting alternate takes read the raw bucket shards (every segment present).
+trimmed.
+
+The **GH release** loses none of it: `project_shard_occurrences` emits every occasion as a row —
+other occasions whole and unflagged, the canonical occasion's trimmed leading/trailing ends as
+their own unflagged rows — so "lost" above means *not the canonical row*, not absent from the
+release. The one true drop is a verse whose canonical take is incomplete: it and all its repeats
+are gated out together.
 
 ### Failed-alignment, no-match & deletes at publish
 
@@ -466,10 +482,13 @@ two surahs still blocks the run.
 Each artifact runs a fail-blocking validation pass before it is produced; the summary is persisted
 to the `gh_releases.validation_summary` / `per_recitation_releases.validation_summary` row.
 Block on the `HARD_FAIL_KINDS` in [dataset_validation.py](../../qua_shared/dataset_validation.py):
-`word_bleed_first`, `word_bleed_last`, `duration_arithmetic`, `intra_segment_gap` — `fatal_violations`
-aborts the cut on any of these. `coverage_gap` is reported but **non-fatal**, and incomplete verses
-are gated out by `select_complete_verses` *before* validation runs, so `coverage_gap` does not fire
-for emitted verses. Warn on: audio-slice checksum drift; TS-tab vs dataset-slice parity probe.
+`word_bleed_first`, `word_bleed_last`, `duration_arithmetic`, `intra_segment_gap`,
+`canonical_uniqueness` — `fatal_violations` aborts the cut on any of these. `coverage_gap` is
+reported but **non-fatal**, and incomplete verses are gated out by `select_complete_verses` *before*
+validation runs, so `coverage_gap` does not fire for emitted verses. In the cut, non-canonical
+occurrence rows are validated under `ref#n` keys: they face the span invariants but not
+`coverage_gap` (a partial repeat is incomplete by definition). Warn on: audio-slice checksum drift;
+TS-tab vs dataset-slice parity probe.
 
 ## TS-tab vs dataset-row parity
 
@@ -527,7 +546,8 @@ still detects any timing change.
   into `static_refs` (an edition bump is a release bump) and named by `editions[<riwayah>]`'s
   `words_asset` / `font_asset`. The CHANGELOG table carries no tier column; `tiers` lives in
   the manifest.
-- `RELEASE_FORMAT_MAJOR` -> v4.0.0 is cut only when the first non-Hafs reciter is
+- `RELEASE_FORMAT_MAJOR` -> v4.0.0 came with release schema 3 (every occurrence a row); the
+  multi-riwayah additions ride it. Originally planned to be cut only when the first non-Hafs reciter is
   actually publishable, not with the schema work.
 
 Full detail: [`editions.md`](editions.md).

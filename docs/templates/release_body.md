@@ -93,7 +93,8 @@ type VerseOccurrence = [
   ref: VerseKey, start_ms: Ms, end_ms: Ms, canonical: boolean, silence_after_ms: Ms
 ];
 type WordOccurrence = [
-  ref: VerseKey, start_ms: Ms, end_ms: Ms, canonical: boolean, words: Word[]
+  ...verse: VerseOccurrence,
+  words: Word[]
 ];
 type LetterOccurrence = [
   ...word: WordOccurrence,
@@ -109,27 +110,31 @@ type LetterTimestamps = {
 };
 ```
 
-The three tiers describe the same ordered occurrences at increasing detail. `WordOccurrence` shares the verse occurrence prefix through `canonical`; `LetterOccurrence` is exactly `WordOccurrence + [text, tokens]`. Every number is milliseconds from the start of the source audio.
+The three tiers describe the same ordered occurrences at increasing detail. `WordOccurrence` is exactly `VerseOccurrence + [words]`; `LetterOccurrence` is exactly `WordOccurrence + [text, tokens]`. Every number is milliseconds from the start of the source audio.
+
+Rows are a playback timeline: one row per contiguous recited span, in audio order. A reciter who repeats a verse, restarts it, or recites only part of it produces one row per span; exactly one row per verse is `canonical` — the earliest complete, continuous take. `rows.filter(r => r[3])` yields a clean one-take-per-verse dataset. Within-take lookbacks (a jump back mid-verse) stay inside their row, where `word_idx` repeats or steps backwards. `silence_after_ms` is the gap to the next row in the same chapter timeline, `0` for the chapter's last row; after filtering rows, recompute it from the kept set (`next.start_ms - end_ms`).
 
 **Verse tier** — audible occurrence spans plus the gap until the next occurrence in the same chapter timeline:
 
 ```jsonc
 {
-  "_meta": { "schema_version": 2, "slug": "example_reciter", "tier": "verse", "verse_count": 6236, "occurrence_count": 6236, "script": "digital_khatt_v2", "script_sha256": "…", "unicode_indexing": "scalar" },
+  "_meta": { "schema_version": 3, "slug": "example_reciter", "riwayah": "hafs", "units": "ms", "tier": "verse", "verse_count": 6236, "occurrence_count": 6301, "script": "digital_khatt_v2", "script_sha256": "…", "unicode_indexing": "scalar" },
   "rows": [
     // [ref, start_ms, end_ms, canonical, silence_after_ms]
-    ["1:1", 70, 2790, true, 41]
+    ["1:1", 70, 2790, true, 41],
+    ["1:2", 2831, 5100, true, 900],
+    ["1:2", 6000, 8300, false, 120]   // the reciter repeated 1:2
   ]
 }
 ```
 
-**Word tier** — the same occurrence prefix, then one `[word_idx, start_ms, end_ms]` per recited word:
+**Word tier** — the verse row, then one `[word_idx, start_ms, end_ms]` per recited word:
 
 ```jsonc
 {
-  "_meta": { "schema_version": 2, "slug": "example_reciter", "tier": "word", "verse_count": 6236, "occurrence_count": 6236, "script": "digital_khatt_v2", "script_sha256": "…", "unicode_indexing": "scalar" },
+  "_meta": { "schema_version": 3, "slug": "example_reciter", "riwayah": "hafs", "units": "ms", "tier": "word", "verse_count": 6236, "occurrence_count": 6301, "script": "digital_khatt_v2", "script_sha256": "…", "unicode_indexing": "scalar" },
   "rows": [[
-    "1:1", 70, 2790, true,
+    "1:1", 70, 2790, true, 41,
     [
       [1,   70,  770],   // بِسْمِ
       [2,  770, 1280],   // ٱللَّهِ
@@ -146,9 +151,9 @@ The three tiers describe the same ordered occurrences at increasing detail. `Wor
 
 ```jsonc
 {
-  "_meta": { "schema_version": 2, "slug": "example_reciter", "tier": "letter", "verse_count": 6236, "occurrence_count": 6236, "script": "digital_khatt_v2", "script_sha256": "…", "unicode_indexing": "scalar" },
+  "_meta": { "schema_version": 3, "slug": "example_reciter", "riwayah": "hafs", "units": "ms", "tier": "letter", "verse_count": 6236, "occurrence_count": 6301, "script": "digital_khatt_v2", "script_sha256": "…", "unicode_indexing": "scalar" },
   "rows": [[
-    "1:1", 70, 2790, true,
+    "1:1", 70, 2790, true, 41,
     [ [1, 70, 770], [2, 770, 1280], [3, 1280, 2050], [4, 2050, 2790] ],
     "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ",
     [
@@ -175,7 +180,7 @@ Ranges use Unicode scalar indexes, not UTF-16 code units. In JavaScript, index `
 
 ```ts
 type ReleaseManifest = {
-  schema_version: 2;
+  schema_version: 3;
   release_version: string;
   recitation_count: number;
   static_refs: Record<string, { sha256: string; bytes: number }>;
@@ -193,13 +198,13 @@ type ReleaseManifest = {
 
 ```jsonc
 {
-  "schema_version": 2,
-  "release_version": "v3.0.0",
+  "schema_version": 3,
+  "release_version": "v4.0.0",
   "recitation_count": 13,
   "recitations": {
     "example_reciter": {
       "zip": "example_reciter.zip",
-      "zip_url": "https://github.com/<owner>/<repo>/releases/download/v3.0.0/example_reciter.zip",
+      "zip_url": "https://github.com/<owner>/<repo>/releases/download/v4.0.0/example_reciter.zip",
       "sha256": "…", "bytes": 1234567,
       "coverage_ayahs": 6236,
       "change_kind": "added"
@@ -211,9 +216,9 @@ type ReleaseManifest = {
 **Release-level `catalog.json`** — reciter metadata plus the source audio URLs the timestamps refer to:
 
 ```ts
-type ReleaseCatalog = { schema_version: 2; recitations: ReciterCatalog[] };
+type ReleaseCatalog = { schema_version: 3; recitations: ReciterCatalog[] };
 type ReciterCatalog = {
-  schema_version: 2;
+  schema_version: 3;
   slug: string;
   name_en?: string; name_ar?: string;
   riwayah?: string; style?: string; channel?: string;
@@ -237,7 +242,7 @@ type ReciterCatalog = {
 
 ```jsonc
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "recitations": [
     {
       "slug": "example_reciter",

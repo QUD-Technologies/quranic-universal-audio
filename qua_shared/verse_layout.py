@@ -97,25 +97,22 @@ def _fit_boundary(
     return budget * pad_end / total, budget * pad_start / total
 
 
-def load_canonical_verses(ts_dir: Path) -> dict[str, dict]:
-    """Project every chapter shard in ``ts_dir`` into canonical verse timings.
+def _load_audited_shards(ts_dir: Path) -> tuple[list[dict], dict]:
+    """Every chapter shard in ``ts_dir``, audited, plus the delivery's ``_meta``.
 
-    The result carries a ``"_meta"`` entry naming the profile and edition every
-    shard agreed on. Downstream adapters already skip ``_``-prefixed keys, and
-    they need that fact: the deepest tier a delivery can emit, and which script
-    its words are written in, both follow from it.
-
-    A directory mixing profiles or editions is a corrupt delivery, not something
-    to merge — the tiers and the script would differ per chapter.
+    The meta names the profile and edition every shard agreed on: the deepest
+    tier a delivery can emit, and which script its words are written in, both
+    follow from it. A directory mixing profiles or editions is a corrupt
+    delivery, not something to merge — the tiers and the script would differ
+    per chapter.
     """
-    from qua_shared.timestamps_native import project_shard
     from qua_shared.timestamps_shards import shard_profile
     from qua_shared.timestamps_v13_audit import audit_v13_document
     from qua_shared.timestamps_word_audit import audit_word_document
 
-    out: dict[str, dict] = {}
+    documents: list[dict] = []
     if not ts_dir.exists():
-        return out
+        return documents, {}
     profiles: set[str] = set()
     riwayat: set[str] = set()
     for path in sorted(
@@ -137,18 +134,41 @@ def load_canonical_verses(ts_dir: Path) -> dict[str, dict]:
         else:
             audit_v13_document(document)
             riwayat.add(DEFAULT_SDK_RIWAYAH)
-        out.update(project_shard(document))
+        documents.append(document)
     if len(profiles) > 1 or len(riwayat) > 1:
         raise ValueError(
             f"{ts_dir} mixes shard profiles {sorted(profiles)} / editions {sorted(riwayat)} — "
             "one delivery is one edition"
         )
+    meta = {"profile": next(iter(profiles)), "riwayah": next(iter(riwayat))} if documents else {}
+    return documents, meta
+
+
+def load_canonical_verses(ts_dir: Path) -> dict[str, dict]:
+    """Project every chapter shard in ``ts_dir`` into canonical verse timings.
+
+    The result carries a ``"_meta"`` entry (see ``_load_audited_shards``);
+    downstream adapters already skip ``_``-prefixed keys.
+    """
+    from qua_shared.timestamps_native import project_shard
+
+    documents, meta = _load_audited_shards(ts_dir)
+    out: dict[str, dict] = {}
+    for document in documents:
+        out.update(project_shard(document))
     if out:
-        out["_meta"] = {
-            "profile": next(iter(profiles)),
-            "riwayah": next(iter(riwayat)),
-        }
+        out["_meta"] = meta
     return out
+
+
+def load_shard_occurrences(ts_dir: Path) -> list[dict]:
+    """Every occurrence of every verse across ``ts_dir``, chapter by chapter in
+    audio order — ``project_shard_occurrences`` rows, the canonical one per ref
+    flagged. The same audits as ``load_canonical_verses`` run first."""
+    from qua_shared.timestamps_native import project_shard_occurrences
+
+    documents, _meta = _load_audited_shards(ts_dir)
+    return [row for document in documents for row in project_shard_occurrences(document)]
 
 
 def reshape_canonical(canonical: dict, digital_khatt_words: dict) -> dict[str, dict]:
