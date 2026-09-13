@@ -304,6 +304,25 @@ predates the discriminator, and existing Hafs shards are never restamped.
 Boundary *timing* is derived by the same phoneme-free rule the native profile
 uses, from the same helpers — never stored, never reimplemented.
 
+Two facts about `parts` and `words` that every reader relies on:
+
+- **A segment stays gapless across an unwritten word.** Warsh/Qalun do not
+  write Hafs `57:24:10` (هُوَ); the reciter never says it, yet the Hafs proxy
+  alignment still times it, carving that interval out of the neighbours' audio.
+  `qua_sdk.integrations.word_shards` folds the span into the previous row
+  (forward padding, like every other word boundary) — or into the next row's
+  start when the absent word opens the reading. It never drops it: a hole there
+  fails the publish's `intra_segment_gap` gate. Shards written before this rule
+  were closed in place by `scripts/backfills/close_absent_word_gaps.py`.
+- **A part's `t` is its segment's span, and the reader narrows it.** A segment
+  crossing a verse boundary hands (some of) its whole span to each verse it
+  touches, so parts of one reading overlap. `qua_shared.timestamps_native`
+  clips every inner edge to the neighbouring part's words (lead-in stays with
+  the first verse, trailing silence with the last) and splits occasions on
+  first-word starts, not `t[0]`. Before that, Warsh `19:42` — one segment
+  `19:40:1-19:42:11` then a retake `19:42:4-15` — read as two incomplete takes
+  and was gated as "missing words" although coverage was complete.
+
 `qua_shared/timestamps_word_audit.py` gates every write. Its important check is
 the last one: word text must come from the edition index `words_sha256` names,
 and every ref must be a real word of that edition. Without it a shard could

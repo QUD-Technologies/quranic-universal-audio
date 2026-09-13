@@ -75,14 +75,34 @@ def _reading_segments(reading: dict) -> list[dict]:
                 }
             )
         out.append({"ref": part["ref"], "t": list(part["t"]), "words": timed_words})
-    return out
+    return _narrow_parts(out)
+
+
+def _narrow_parts(parts: list[dict]) -> list[dict]:
+    """Keep each part's ``t`` off the audio of its neighbours in the reading.
+
+    A part's ``t`` is its SEGMENT's span, so the parts of a segment that crosses
+    a verse boundary overlap — each claims (some of) the whole segment. Only the
+    outer edges are the segment's: the lead-in belongs to the first verse it
+    touches and the trailing silence to the last. Every inner edge is where the
+    neighbouring verse's words are. Parts that were already disjoint (two
+    segments joined by waṣl, a real pause between) are left alone.
+    """
+    for index, part in enumerate(parts):
+        start, end = int(part["t"][0]), int(part["t"][1])
+        if index > 0 and parts[index - 1]["words"]:
+            start = max(start, int(parts[index - 1]["words"][-1]["end_ms"]))
+        if index + 1 < len(parts) and parts[index + 1]["words"]:
+            end = min(end, int(parts[index + 1]["words"][0]["start_ms"]))
+        part["t"] = [start, max(start, end)]
+    return parts
 
 
 def _split_occasions(segments: list[dict], foreign_starts: list[int]) -> list[list[dict]]:
     occasions: list[list[dict]] = []
     current: list[dict] = []
     for segment in segments:
-        if current and any(current[-1]["t"][0] < at < segment["t"][0] for at in foreign_starts):
+        if current and any(_at(current[-1]) < at < _at(segment) for at in foreign_starts):
             occasions.append(current)
             current = []
         current.append(segment)
@@ -151,12 +171,28 @@ def _project(segments: list[dict]) -> dict:
     }
 
 
+def _at(segment: dict) -> int:
+    """Where a segment's recitation of its verse begins: its first word's start.
+
+    Not ``t[0]``. A part's ``t`` is the SEGMENT's span, and a segment crossing a
+    verse boundary hands (some of) that span to every verse it touches — the
+    word profile narrows a part to its own words only within one source verse,
+    so Warsh ``19:42`` inherited its segment's start while the ``19:41`` part
+    started later. Splitting occasions on ``t`` then read "19:41 began between
+    two takes of 19:42" and cut one complete take into two incomplete halves,
+    gating a fully-recited verse out of the dataset. Word times say where the
+    verse itself was recited, in either profile.
+    """
+    words = segment["words"]
+    return int(words[0]["start_ms"]) if words else int(segment["t"][0])
+
+
 def _group_by_ref(segments: list[dict]) -> tuple[dict[str, list[dict]], dict[str, list[int]]]:
-    segments.sort(key=lambda row: row["t"][0])
+    segments.sort(key=_at)
     by_ref: dict[str, list[dict]] = defaultdict(list)
     for segment in segments:
         by_ref[segment["ref"]].append(segment)
-    starts = {ref: [row["t"][0] for row in rows] for ref, rows in by_ref.items()}
+    starts = {ref: [_at(row) for row in rows] for ref, rows in by_ref.items()}
     return by_ref, starts
 
 
@@ -262,7 +298,7 @@ def _word_reading_segments(reading: dict) -> list[dict]:
                 }
             )
         out.append({"ref": ref, "t": [int(start), int(end)], "words": timed_words})
-    return out
+    return _narrow_parts(out)
 
 
 def _word_segments(shard: dict) -> list[dict]:

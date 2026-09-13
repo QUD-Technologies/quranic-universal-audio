@@ -146,6 +146,13 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/inspector
         run: python -m pytest scripts/devenv/tests
 
+      - name: Run backfill-script (scripts/backfills) tests
+        # One-shot bucket rewrites; the pure rule each applies is what's gated.
+        working-directory: ${{ github.workspace }}
+        env:
+          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/inspector
+        run: python -m pytest scripts/backfills/tests
+
       # Ruff (lint + format) is enforced locally by the pre-commit + pre-push
       # git hooks (see .husky/ + scripts/devenv/setup.sh), not in CI — it never
       # gated the build here and the reviewdog PR suggestions were noise.

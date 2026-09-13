@@ -12,6 +12,7 @@ from qua_shared.timestamps_codec import decode_document
 from qua_shared.timestamps_native import (
     project_native_shard,
     project_shard_occurrences,
+    project_word_shard,
     select_complete_verses,
 )
 from qua_shared.timestamps_shards import (
@@ -192,6 +193,60 @@ def test_complete_verse_gate_uses_native_word_indexes():
     kept, dropped = select_complete_verses(projected, {(1, 1): 3})
     assert kept == {}
     assert dropped == ["1:1"]
+
+
+def _word_shard(readings: list[dict]) -> dict:
+    return {"_meta": {"schema_version": 14, "profile": "word", "chapter": 19}, "readings": readings}
+
+
+def _word_reading(reading_id: str, parts: list[tuple[str, int, int, list[tuple[int, int, int]]]]):
+    """``parts``: ``(verse, t0, t1, [(word_index, start, end), ...])``."""
+    rows, out_parts = [], []
+    for verse, t0, t1, words in parts:
+        out_parts.append([verse, t0, t1, len(rows), len(words)])
+        rows.extend([f"{verse}:{index}", "x", start, end] for index, start, end in words)
+    return {
+        "id": reading_id,
+        "parts": out_parts,
+        "words": rows,
+        "boundaries": [[1, None]] * len(rows),
+    }
+
+
+def test_occasion_split_reads_word_starts_not_a_cross_verse_parts_span():
+    """Warsh 19:42 on the bucket: one segment 19:40:1-19:42:11 then a retake
+    19:42:4-15. The word profile gave the 19:42 part its SEGMENT's start while
+    the 19:41 part started later, so 19:41 looked like it began between the two
+    takes of 19:42 and the verse was split into two incomplete occasions and
+    gated as "missing words". Word times place the takes correctly."""
+    take_one = _word_reading(
+        "r55",
+        [
+            ("19:40", 0, 1000, [(1, 0, 500), (2, 500, 1000)]),
+            ("19:41", 1000, 3000, [(1, 1000, 1500), (2, 1500, 2000)]),
+            ("19:42", 0, 3000, [(1, 2000, 2300), (2, 2300, 2600), (3, 2600, 3000)]),
+        ],
+    )
+    take_two = _word_reading(
+        "r56",
+        [
+            (
+                "19:42",
+                3100,
+                5000,
+                [(2, 3100, 3500), (3, 3500, 4000), (4, 4000, 4500), (5, 4500, 5000)],
+            )
+        ],
+    )
+    projected = project_word_shard(_word_shard([take_one, take_two]))
+
+    kept, dropped = select_complete_verses(projected, {(19, 40): 2, (19, 41): 2, (19, 42): 5})
+    assert dropped == []
+    assert [w["index"] for w in kept["19:42"]["words"]] == [1, 2, 3, 2, 3, 4, 5]
+    assert kept["19:42"]["verse_start_ms"] == 2000
+    # A verse that really was interrupted still splits: 19:41 starts between two takes of 19:40.
+    starts = {ref: [row["start_ms"] for row in kept[ref]["segments"]] for ref in ("19:40", "19:41")}
+    assert starts == {"19:40": [0], "19:41": [1000]}
 
 
 def test_builder_delegates_to_staged_sdk(monkeypatch):
