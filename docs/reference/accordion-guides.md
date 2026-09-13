@@ -89,7 +89,7 @@ against the `GUIDE_VIEW_KEYS` allowlist in `inspector/constants.py`, and
 collapse), `ALL_GUIDE_KEYS` (every storable key — mirrors `GUIDE_VIEW_KEYS`),
 `REQUIRED_GUIDE_KEYS` (the gate set — `ALL_GUIDE_KEYS` minus aliases minus the
 guides of **owner-only** validation categories, i.e. rows with
-`IssueRegistry[cat].ownerOnly`; currently that drops `qalqala`),
+`IssueRegistry[cat].ownerOnly`; currently that drops `boundary_adj` and `qalqala`),
 `isGuideRead(guidesRead, category)`, `allGuidesRead(guidesRead)`. The FE-only
 `CurrentUser.guides_read` is updated optimistically by `markGuideReadLocally`
 after a successful POST.

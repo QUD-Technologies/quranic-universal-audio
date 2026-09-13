@@ -159,6 +159,7 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         scope: 'per_segment',
         displayTitle: 'May Require Boundary Adjustment',
         description: '',
+        ownerOnly: true,
         sorts: [{ kind: 'quran_order', default: true }],
     },
     cross_verse: {

@@ -34,15 +34,20 @@ ChecklistKey = Literal[
     "basmala_amin_intros",
 ]
 
-# The six validation category_counts that gate submission. Both client
-# and server independently enforce these are zero — the server is
+# The validation category_counts that gate submission. Both client and
+# server independently enforce these are zero — the server is
 # authoritative against the live segs on disk. ``repetitions`` is an
 # ignorable category like ``low_confidence``: any detected rep must be
 # split or marked ignored before the reviewer can mark ready.
+#
+# An owner-only category (registry ``owner_only``) must never appear here:
+# it is invisible to the reviewer, so blocking on it would leave them
+# staring at a count they cannot open, let alone resolve. That is why
+# ``boundary_adj`` is absent despite still being classified and surfaced
+# to owners. ``mark-ready-copy.test.ts`` asserts the rule.
 BLOCKING_COUNT_KEYS: tuple[str, ...] = (
     "low_confidence",
     "low_confidence_v2",
-    "boundary_adj",
     "cross_verse",
     "basmala_amin",
     "repetitions",

@@ -172,6 +172,7 @@ _REGISTRY: dict[str, IssueDefinition] = {
         scope="per_segment",
         display_title="May Require Boundary Adjustment",
         description="",
+        owner_only=True,
     ),
     "cross_verse": IssueDefinition(
         kind="cross_verse",
