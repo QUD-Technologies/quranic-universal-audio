@@ -65,12 +65,16 @@ describe('word-profile assembly', () => {
         expect(gaps.map((gap) => gap?.state)).toEqual(['join', 'join', 'join', 'stop']);
     });
 
-    it('lifts a mid-verse waqf mark off the word onto its gap', () => {
-        // U+06DA on word 2, which does not end the verse: the row gets the clean
-        // word and the gap carries the mark as its own bridge cell.
+    it('lifts a mid-verse waqf mark onto its gap only where a pause was recorded', () => {
+        // U+06DA on words 1 and 2, neither a verse end. Gap 1 (700-800 ms) is a
+        // recorded pause: the row gets the clean word and the gap carries the
+        // mark. Gap 2 has no duration: the reciter read through, so the mark
+        // stays in the word.
         const marked = { ...WORD_SHARD.readings[0]! };
         const words = marked.words.map((row) => [...row]) as typeof marked.words;
-        words[1] = [words[1]![0], String(words[1]![1]) + 'ۚ', words[1]![2], words[1]![3]];
+        for (const i of [0, 1]) {
+            words[i] = [words[i]![0], String(words[i]![1]) + 'ۚ', words[i]![2], words[i]![3]];
+        }
         const shard = decodeTimestampShard({
             ...WORD_SHARD, readings: [{ ...marked, words }],
         }) as TsWordShardResponse;
@@ -78,10 +82,12 @@ describe('word-profile assembly', () => {
             'r', shardOccasions(shard)[0]!, {}, {}, BY_SURAH, 'chapter.mp3',
         );
         const view = data.wordReadings[0]!.words;
-        expect(view[1]!.text).toBe(WORD_TEXTS[1]);
-        expect(view[1]!.boundary?.stopSign).toBe('ۚ');
+        expect(view[0]!.text).toBe(WORD_TEXTS[0]);
+        expect(view[0]!.boundary?.stopSign).toBe('ۚ');
+        expect(view[1]!.text).toBe(WORD_TEXTS[1] + 'ۚ');
+        expect(view[1]!.boundary?.stopSign).toBeNull();
         // The teleprompter's `display_text` keeps the mark: it splits it itself.
-        expect(data.words[1]!.display_text).toBe(WORD_TEXTS[1] + 'ۚ');
+        expect(data.words[0]!.display_text).toBe(WORD_TEXTS[0] + 'ۚ');
     });
 
     it('keeps the waqf mark inside the word at a verse end', () => {
