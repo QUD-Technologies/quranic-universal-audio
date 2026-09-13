@@ -43,13 +43,14 @@ export const CHECKLIST_ORDER: readonly ChecklistKey[] = [
     'basmala_amin_intros',
 ] as const;
 
-/** Six validation `category_counts` keys that BLOCK submission. Mirrors
+/** Validation `category_counts` keys that BLOCK submission. Mirrors
  *  `BLOCKING_COUNT_KEYS` on the backend. The reviewer must resolve or
- *  ignore each non-zero category before they can mark ready. */
+ *  ignore each non-zero category before they can mark ready. Owner-only
+ *  categories (registry `ownerOnly`) are excluded by rule — the reviewer
+ *  cannot see, let alone resolve, a category that never renders for them. */
 export const BLOCKING_COUNT_KEYS = [
     'low_confidence',
     'low_confidence_v2',
-    'boundary_adj',
     'cross_verse',
     'basmala_amin',
     'repetitions',
@@ -62,7 +63,6 @@ export type BlockingCountKey = (typeof BLOCKING_COUNT_KEYS)[number];
 export const BLOCKING_LABELS: Record<BlockingCountKey, string> = {
     low_confidence: 'Low confidence',
     low_confidence_v2: 'Low confidence v2',
-    boundary_adj: 'May require boundary adjustment',
     cross_verse: 'Cross-verse',
     basmala_amin: 'Basmala + amin',
     repetitions: 'Repetitions',

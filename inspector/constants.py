@@ -25,9 +25,12 @@ VALIDATION_CATEGORIES = (
 # read via ``POST /api/guides/viewed``. Collapsed form: ``low_confidence_v2``
 # folds into ``low_confidence`` (one required reading), so the alias never
 # appears here or in the ``guide_views`` table. This is the same set as the FE
-# registry's ``REQUIRED_GUIDE_KEYS`` (tabs/segments/guides/registry.ts) \u2014 keep
-# the two in lockstep when adding a guide. ``GUIDE_VIEW_KEY_ALIASES`` maps any
-# raw category the FE might post to its stored key.
+# registry's ``ALL_GUIDE_KEYS`` (tabs/segments/guides/registry.ts) \u2014 keep
+# the two in lockstep when adding a guide. It is a SUPERSET of the FE's
+# ``REQUIRED_GUIDE_KEYS`` onboarding set: an owner-only category (registry
+# ``owner_only``) keeps its guide readable and recordable but never gates a
+# first edit. ``GUIDE_VIEW_KEY_ALIASES`` maps any raw category the FE might
+# post to its stored key.
 GUIDE_VIEW_KEYS = (
     "overview",
     "general_editing",

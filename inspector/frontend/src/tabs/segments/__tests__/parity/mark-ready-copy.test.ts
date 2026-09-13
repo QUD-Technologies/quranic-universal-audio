@@ -22,6 +22,7 @@ import {
     isAllChecked,
     markReadyCopy,
 } from '../../copy/mark-ready';
+import { OWNER_ONLY_CATEGORIES } from '../../domain/registry';
 
 describe('mark-ready copy module', () => {
     it('exports exactly six checklist keys', () => {
@@ -42,6 +43,14 @@ describe('mark-ready copy module', () => {
         const expected = Object.keys(sample).sort();
         const actual = [...CHECKLIST_ORDER].sort();
         expect(actual).toEqual(expected);
+    });
+
+    it('no owner-only validation category gates submission', () => {
+        // An owner-only category is invisible to the reviewer, so it must never
+        // appear in the blocking-count panel they cannot act on.
+        for (const cat of OWNER_ONLY_CATEGORIES) {
+            expect(BLOCKING_COUNT_KEYS as readonly string[]).not.toContain(cat);
+        }
     });
 
     it('every checklist key has non-empty label text loaded from markdown', () => {
@@ -70,11 +79,13 @@ describe('mark-ready copy module', () => {
     });
 
     it('blocking count keys exactly match the backend list', () => {
-        // The backend enforces the same six keys via BLOCKING_COUNT_KEYS
-        // in qua_shared/schemas/mark_ready.py — these must stay aligned.
+        // The backend enforces the same keys via BLOCKING_COUNT_KEYS in
+        // qua_shared/schemas/wire/mark_ready.py — these must stay aligned.
+        // `boundary_adj` is deliberately absent: it is an owner-only category
+        // (see the owner-only test below), so a reviewer can neither see nor
+        // resolve it.
         expect([...BLOCKING_COUNT_KEYS].sort()).toEqual([
             'basmala_amin',
-            'boundary_adj',
             'cross_verse',
             'low_confidence',
             'low_confidence_v2',

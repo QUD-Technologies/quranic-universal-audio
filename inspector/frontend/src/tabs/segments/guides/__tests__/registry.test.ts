@@ -10,8 +10,10 @@ import {
     guideViewKey,
     hasAccordionGuide,
     isGuideRead,
+    ALL_GUIDE_KEYS,
     REQUIRED_GUIDE_KEYS,
 } from '../registry';
+import { OWNER_ONLY_CATEGORIES } from '../../domain/registry';
 
 describe('guideViewKey', () => {
     it('collapses the low_confidence_v2 alias to low_confidence', () => {
@@ -25,6 +27,14 @@ describe('guideViewKey', () => {
 });
 
 describe('REQUIRED_GUIDE_KEYS', () => {
+    it('excludes owner-only categories but ALL_GUIDE_KEYS keeps them', () => {
+        for (const cat of OWNER_ONLY_CATEGORIES) {
+            expect(REQUIRED_GUIDE_KEYS).not.toContain(cat);
+        }
+        expect(ALL_GUIDE_KEYS).toContain('qalqala');
+        expect(REQUIRED_GUIDE_KEYS).not.toContain('qalqala');
+    });
+
     it('never contains the low_confidence_v2 alias', () => {
         expect(REQUIRED_GUIDE_KEYS).not.toContain('low_confidence_v2');
         expect(REQUIRED_GUIDE_KEYS).toContain('low_confidence');

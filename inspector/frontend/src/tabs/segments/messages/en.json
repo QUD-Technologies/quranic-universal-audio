@@ -163,6 +163,8 @@
   "segments_footer_speed_aria_label": "Playback speed {speed}×",
   "segments_footer_autoplay_title": "Autoplay — when ON, play continues through the whole chapter (or advances card-to-card inside an open accordion); when OFF, stops at the end of each segment",
   "segments_footer_autoscroll_title": "Auto-scroll the list to follow the playing segment",
+  "segments_footer_end_chime_title": "Segment-end chime — play a short beep at the join between one segment and the next while autoplay runs, so the boundary is audible",
+  "segments_footer_end_chime_disabled_title": "Segment-end chime — turn autoplay on first; with autoplay off, playback stops at the end of each segment and there is no next segment to announce",
   "segments_footer_loading_audio_aria_label": "Loading audio",
   "segments_footer_pause_aria_label": "Pause",
   "segments_footer_play_aria_label": "Play",

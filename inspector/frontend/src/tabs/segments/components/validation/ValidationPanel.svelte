@@ -33,7 +33,7 @@
     import * as m from '../../../../lib/paraglide/messages';
     import { shadowPrewarm } from '../../../../lib/playback/shadow-audio';
     import { can } from '../../../../lib/stores/capabilities';
-    import { currentUser } from '../../../../lib/stores/current-user';
+    import { currentUser, isOwner } from '../../../../lib/stores/current-user';
     import type { SegValAnyItem, SegValLowConfidenceItem, SegValQalqalaItem, SegValidateResponse } from '../../../../lib/types/generated/schemas';
     import { activeTab } from '../../../../lib/utils/active-tab';
     import { TAB_NAMES } from '../../../../lib/utils/constants';
@@ -364,6 +364,7 @@
     let _baseMemoSegData: typeof $segAllData = null;
     let _baseMemoChapter: number | null = null;
     let _baseMemoLocale: string | null = null;
+    let _baseMemoOwner: boolean | null = null;
     let _baseMemoResult: BaseDescriptor[] = [];
 
     function buildBaseDescriptors(
@@ -371,22 +372,28 @@
         segDataRef: typeof $segAllData,
         chapterFilter: number | null,
         locale: string,
+        owner: boolean,
     ): BaseDescriptor[] {
         if (data === _baseMemoVal && segDataRef === _baseMemoSegData && chapterFilter === _baseMemoChapter
-            && locale === _baseMemoLocale) {
+            && locale === _baseMemoLocale && owner === _baseMemoOwner) {
             return _baseMemoResult;
         }
         _baseMemoVal = data;
         _baseMemoSegData = segDataRef;
         _baseMemoChapter = chapterFilter;
         _baseMemoLocale = locale;
+        _baseMemoOwner = owner;
 
         if (!data) {
             _baseMemoResult = [];
             return _baseMemoResult;
         }
 
-        const ordered = Object.values(IssueRegistry).slice()
+        // Owner-only categories are dropped outright for everyone else — no
+        // accordion, no count, no filter entry: the category may as well not
+        // exist for a non-owner.
+        const ordered = Object.values(IssueRegistry)
+            .filter((d) => owner || !d.ownerOnly)
             .sort((a, b) => a.accordionOrder - b.accordionOrder);
 
         // Build the live-uid set once so stale-filter has O(1) membership
@@ -498,7 +505,7 @@
         return out;
     }
 
-    $: _baseDescriptors = buildBaseDescriptors($segValidation, $segAllData, chapter, $localeStore);
+    $: _baseDescriptors = buildBaseDescriptors($segValidation, $segAllData, chapter, $localeStore, $isOwner);
     $: categories = projectVisible(_baseDescriptors, lcThreshold, activeQalqalaLetter, qalqalaEndOfVerse, $valSortPrefs, $autoSplitMap);
     // Filter signature: the subset of inputs that change the displayed list —
     // narrowing (chapter / LC threshold / qalqala letter / end-of-verse) plus

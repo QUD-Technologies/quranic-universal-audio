@@ -1,5 +1,7 @@
 import type { Locale } from '$lib/i18n/locale-store';
 
+import { IssueRegistry } from '../domain/registry';
+
 import basmalaAminGuide from './accordion/basmala_amin.guide';
 import boundaryAdjGuide from './accordion/boundary_adj.guide';
 import crossVerseGuide from './accordion/cross_verse.guide';
@@ -99,13 +101,13 @@ export function guideViewKey(category: string): string {
 }
 
 /**
- * The distinct guides a reviewer must read once before editing — the gate set.
- * Derived from the registry minus aliases, so registering a new guide here
- * auto-adds it; a guide that should NOT re-onboard established reviewers can be
- * registered in `accordionGuides` but left out of this list (badge-only).
+ * Every guide key the backend will store a view for — mirrors
+ * ``inspector/constants.py::GUIDE_VIEW_KEYS``. Superset of
+ * `REQUIRED_GUIDE_KEYS`: an owner-only category's guide is still readable (and
+ * its read still recorded) from the accordion `?`, it just doesn't onboard.
  * Order is the canonical reading order.
  */
-export const REQUIRED_GUIDE_KEYS: readonly string[] = Object.freeze([
+export const ALL_GUIDE_KEYS: readonly string[] = Object.freeze([
     'overview',
     'general_editing',
     'failed',
@@ -120,6 +122,18 @@ export const REQUIRED_GUIDE_KEYS: readonly string[] = Object.freeze([
     'basmala_amin',
     'flagging',
 ]);
+
+/**
+ * The distinct guides a reviewer must read once before editing — the gate set.
+ * `ALL_GUIDE_KEYS` minus the guides for owner-only validation categories
+ * (`IssueRegistry[cat].ownerOnly`), which are invisible to non-owners and so
+ * must not gate anyone's first edit or show up in the guides checklist. A guide
+ * that should NOT re-onboard established reviewers can be registered in
+ * `accordionGuides` but left out of `ALL_GUIDE_KEYS` (badge-only).
+ */
+export const REQUIRED_GUIDE_KEYS: readonly string[] = Object.freeze(
+    ALL_GUIDE_KEYS.filter((k) => !IssueRegistry[k]?.ownerOnly),
+);
 
 /** True iff this user has opened the guide for `category` (alias-aware). */
 export function isGuideRead(guidesRead: readonly string[], category: string): boolean {

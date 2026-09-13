@@ -26,6 +26,19 @@ export const autoScrollEnabled = writable<boolean>(
     localStorage.getItem(LS_KEYS.SEG_AUTOSCROLL) !== 'false',
 );
 
+/**
+ * Whether the segment-end chime is enabled — a short beep marking the join
+ * between one segment and the next while autoplay walks the list. Only
+ * meaningful with `autoPlayEnabled` ON (autoplay OFF stops at the segment
+ * end, so there is no "next one" to announce); the footer toggle is disabled
+ * in that state, and every fire site gates on autoplay independently so a
+ * stale persisted `true` can't leak a beep into non-autoplay playback.
+ * Persisted to localStorage via LS_KEYS.SEG_END_CHIME; default OFF.
+ */
+export const segmentEndChimeEnabled = writable<boolean>(
+    localStorage.getItem(LS_KEYS.SEG_END_CHIME) === 'true',
+);
+
 /** Which audio element is currently driving playback: 'main' = the main
  *  segments tab audio element, or `null` when idle. Retained as a typed
  *  token (rather than a bare boolean) so a future secondary audio source
