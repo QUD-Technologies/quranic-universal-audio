@@ -73,11 +73,35 @@ _APT = "apt-get update -qq >/dev/null && apt-get install -y -qq --no-install-rec
 #: which the release entrypoints pull in transitively.
 _BASE_DEPS = "huggingface_hub brotli pydantic"
 
+#: Where the runtime image keeps the optional ``qua_domain`` wheel (Dockerfile
+#: stage 1b -> ``/opt/wheels``). ``stage_job_code`` ships it to the aligner
+#: bucket under ``code/wheels/`` and ``job_command`` installs it, so a non-Hafs
+#: publish / cut projects into the riwayah's coordinates exactly like the Space.
+#: Absent wheel = Hafs-only jobs, the same degradation as the Space itself.
+QUA_DOMAIN_WHEEL_DIR = Path(os.environ.get("INSPECTOR_QUA_DOMAIN_WHEEL_DIR", "/opt/wheels"))
+QUA_DOMAIN_WHEEL_GLOB = "qua_domain-*.whl"
+STAGED_WHEEL_DIR = "code/wheels"
+#: Glob-guarded so a Hafs-only image (nothing staged) still launches jobs.
+_QUA_DOMAIN_INSTALL = (
+    f"if ls /aux/{STAGED_WHEEL_DIR}/{QUA_DOMAIN_WHEEL_GLOB} >/dev/null 2>&1; then "
+    f"pip install -q --root-user-action=ignore --no-deps "
+    f"/aux/{STAGED_WHEEL_DIR}/{QUA_DOMAIN_WHEEL_GLOB}; "
+    "else echo 'no qua-domain wheel staged - Hafs-only job'; fi"
+)
+
 
 def job_command(entrypoint: str, deps: str = "") -> list[str]:
-    """The ``bash -lc`` command for a job: system deps, pip deps, then the entrypoint."""
+    """The ``bash -lc`` command for a job: system deps, pip deps, the staged
+    ``qua_domain`` wheel (if any), then the entrypoint."""
     pip = f"pip install -q --root-user-action=ignore {_BASE_DEPS} {deps}".rstrip()
-    return ["bash", "-lc", f"{_APT} && {pip} && {entrypoint}"]
+    return ["bash", "-lc", f"{_APT} && {pip} && {_QUA_DOMAIN_INSTALL} && {entrypoint}"]
+
+
+def qua_domain_wheel() -> Path | None:
+    """The ``qua_domain`` wheel baked into this image, or ``None`` (Hafs-only)."""
+    if not QUA_DOMAIN_WHEEL_DIR.is_dir():
+        return None
+    return next(iter(sorted(QUA_DOMAIN_WHEEL_DIR.glob(QUA_DOMAIN_WHEEL_GLOB))), None)
 
 
 # ---------------------------------------------------------------------------
@@ -479,6 +503,16 @@ def stage_job_code() -> None:
         if path is not None:
             adds.append((str(path), target))
             seen_targets.add(target)
+
+    wheel = qua_domain_wheel()
+    if wheel is not None:
+        adds.append((str(wheel), f"{STAGED_WHEEL_DIR}/{wheel.name}"))
+    else:
+        log.warning(
+            "stage_job_code: no qua_domain wheel under %s - jobs run Hafs-only "
+            "(a non-Hafs publish/cut will fail)",
+            QUA_DOMAIN_WHEEL_DIR,
+        )
 
     expected = {f"code/{p}" for p in REQUIRED_ENTRYPOINTS + REQUIRED_STATIC_FILES}
     missing = sorted(expected - seen_targets)

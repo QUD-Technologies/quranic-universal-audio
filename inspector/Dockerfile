@@ -181,14 +181,18 @@ COPY inspector/requirements.txt ./inspector/requirements.txt
 # 1b always creates /wheels, so this directory copy succeeds whether or not the
 # build had a deploy key. An absent wheel is a Hafs-only image; a wheel that is
 # present and will not install is a build failure, not a silent downgrade.
-COPY --from=qua-domain-build /wheels/ /tmp/wheels/
+#
+# The wheel is KEPT at /opt/wheels after the install: HF Jobs run on a stock
+# python image, so services/admin/jobs/base.py stages it to the aligner bucket
+# and every job pip-installs it — a non-Hafs publish/cut needs the same
+# projection the Space uses. INSPECTOR_QUA_DOMAIN_WHEEL_DIR points there.
+COPY --from=qua-domain-build /wheels/ /opt/wheels/
 RUN pip install --no-cache-dir -r ./inspector/requirements.txt && \
-    if ls /tmp/wheels/qua_domain-*.whl >/dev/null 2>&1; then \
-      pip install --no-cache-dir --no-deps /tmp/wheels/qua_domain-*.whl; \
+    if ls /opt/wheels/qua_domain-*.whl >/dev/null 2>&1; then \
+      pip install --no-cache-dir --no-deps /opt/wheels/qua_domain-*.whl; \
     else \
       echo "no qua-domain wheel — Hafs-only image"; \
     fi && \
-    rm -rf /tmp/wheels && \
     pip uninstall -y pip setuptools wheel && \
     find /usr/local/lib/python3.11 -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 

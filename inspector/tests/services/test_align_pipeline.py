@@ -409,6 +409,9 @@ def test_job_command_uses_stock_image_with_system_and_pip_deps():
     assert (
         "pip install -q --root-user-action=ignore huggingface_hub brotli pydantic numpy" in cmd[2]
     )
+    # The staged qua_domain wheel installs after the pip deps, glob-guarded so a
+    # Hafs-only image (nothing staged) still launches.
+    assert "/aux/code/wheels/qua_domain-*.whl" in cmd[2]
     assert cmd[2].endswith("&& python /aux/code/qua_jobs/acquire_audio.py")
     assert "hf.co/spaces" not in base.JOB_IMAGE
 

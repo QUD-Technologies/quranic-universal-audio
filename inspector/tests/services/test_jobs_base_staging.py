@@ -43,14 +43,8 @@ def stub_batch(monkeypatch):
     return calls
 
 
-def test_stage_job_code_uploads_every_required_path(stub_batch, monkeypatch, tmp_path):
-    """Happy path against a synthetic, hermetic repo tree — every required
-    entrypoint AND every required static file must be in the upload manifest.
-
-    Mirrors the other tests' tmp_path + REPO_ROOT monkeypatch isolation so
-    the assertion no longer depends on the real ``qua_shared`` / ``qua_jobs``
-    trees on disk.
-    """
+def _write_minimal_tree(tmp_path):
+    """A synthetic, hermetic repo tree satisfying every required path."""
     (tmp_path / "qua_shared").mkdir(parents=True)
     (tmp_path / "qua_shared" / "__init__.py").write_text("")
     (tmp_path / "qua_jobs").mkdir(parents=True)
@@ -70,7 +64,19 @@ def test_stage_job_code_uploads_every_required_path(stub_batch, monkeypatch, tmp
     (tmp_path / "docs" / "templates" / "release_body.md").write_text("{{ release_title }}")
     (tmp_path / "docs" / "templates" / "hf_dataset_card.md").write_text("{{ dataset_title }}")
     (tmp_path / "LICENSE").write_text("MIT")
+
+
+def test_stage_job_code_uploads_every_required_path(stub_batch, monkeypatch, tmp_path):
+    """Happy path against a synthetic, hermetic repo tree — every required
+    entrypoint AND every required static file must be in the upload manifest.
+
+    Mirrors the other tests' tmp_path + REPO_ROOT monkeypatch isolation so
+    the assertion no longer depends on the real ``qua_shared`` / ``qua_jobs``
+    trees on disk.
+    """
+    _write_minimal_tree(tmp_path)
     monkeypatch.setattr(base, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(base, "QUA_DOMAIN_WHEEL_DIR", tmp_path / "no-wheels")
 
     base.stage_job_code()
     assert len(stub_batch) == 1
@@ -79,6 +85,25 @@ def test_stage_job_code_uploads_every_required_path(stub_batch, monkeypatch, tmp
         assert f"code/{rel}" in targets, f"missing entrypoint upload: {rel}"
     for rel in base.REQUIRED_STATIC_FILES:
         assert f"code/{rel}" in targets, f"missing static upload: {rel}"
+
+
+def test_stage_job_code_ships_qua_domain_wheel(stub_batch, monkeypatch, tmp_path):
+    """The image's qua_domain wheel rides along under code/wheels/ so a
+    non-Hafs publish/cut projects into the riwayah's coordinates; without a
+    wheel the upload still goes (Hafs-only jobs)."""
+    _write_minimal_tree(tmp_path)
+    monkeypatch.setattr(base, "REPO_ROOT", tmp_path)
+    wheels = tmp_path / "wheels"
+    monkeypatch.setattr(base, "QUA_DOMAIN_WHEEL_DIR", wheels)
+
+    base.stage_job_code()
+    assert not any(t.startswith("code/wheels/") for _s, t in stub_batch[-1]["add"])
+
+    wheels.mkdir()
+    (wheels / "qua_domain-0.1.0-py3-none-any.whl").write_bytes(b"PK")
+    base.stage_job_code()
+    targets = {t for _s, t in stub_batch[-1]["add"]}
+    assert "code/wheels/qua_domain-0.1.0-py3-none-any.whl" in targets
 
 
 def test_runtime_image_copies_digital_khatt_release_assets():
