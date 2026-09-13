@@ -369,7 +369,12 @@ function _onRangeBoundary(ev: { reason: string }): void {
                 setPlayingSegment({ chapter: nextSeg.chapter ?? active.chapter, index: nextSeg.index });
                 segCurrentIdx.set(nextSeg.index);
                 _segRange?.setRange({ startMs: nextSeg.time_start, endMs: nextSeg.time_end });
+                segPort.setPlaybackRate(get(playbackSpeed));
                 segPort.seekAndPlay(Math.max(resumeAt, nextSeg.time_start));
+                // The `stop` boundary halted the range's rAF loop. Re-arm it or
+                // nothing ticks (frozen cursor) and no further boundary fires
+                // (one chime, then the chapter runs on silently).
+                _segRange?.attach();
             });
         }
         return;
