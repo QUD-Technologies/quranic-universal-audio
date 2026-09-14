@@ -68,8 +68,6 @@
     const focusRef = $derived($focusWaslGroup?.focusRef ?? $loadedVerse?.data.verse_ref ?? '');
     const readings = $derived(displayData?.wordReadings ?? []);
     const marker = $derived(verseMarkerPrefix($deliveryRiwayah));
-    /** The packaged QPC faces decorate their own digits — and set marks higher. */
-    const qpcFace = $derived(marker === '');
 
     const verseOf = (location: string): string => location.split(':').slice(0, 2).join(':');
     /** Words from a neighbouring verse pulled in by a waṣl chain read as context. */
@@ -382,7 +380,7 @@
                                 class:stop-mark={stopMark(word.boundary) != null}
                             >{#if stopMark(word.boundary)}<span
                                     class="pause-waqf"
-                                    style={qpcWaqfRenderStyle(stopMark(word.boundary) ?? '', qpcFace)}
+                                    style={qpcWaqfRenderStyle(stopMark(word.boundary) ?? '', $deliveryRiwayah)}
                                 >{ZWSP + (stopMark(word.boundary) ?? '')}</span>{:else}{gapText(word.boundary)}{/if}</span>
                         </span>
                     {/if}
