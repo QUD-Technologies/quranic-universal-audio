@@ -1042,8 +1042,11 @@ def _preflight() -> int:
 # Per-recitation build — one worker per reciter, fanned out over a process pool.
 # ---------------------------------------------------------------------------
 
-#: Parallel build workers; ``0`` / unset = one per CPU. Set ``1`` to force serial.
+#: Parallel build workers; unset = ``DEFAULT_BUILD_WORKERS`` (capped by CPU count).
+#: Set ``1`` to force serial. A reciter build peaks at several GB, so one worker
+#: per vCPU OOM-kills the 8-vCPU/32 GB ``cpu-upgrade`` flavor.
 BUILD_WORKERS_ENV = "CUT_BUILD_WORKERS"
+DEFAULT_BUILD_WORKERS = 3
 
 
 @dataclass(frozen=True)
@@ -1074,7 +1077,7 @@ def _build_workers() -> int:
     raw = os.environ.get(BUILD_WORKERS_ENV, "").strip()
     if raw.isdigit() and int(raw) > 0:
         return int(raw)
-    return os.cpu_count() or 1
+    return max(1, min(DEFAULT_BUILD_WORKERS, os.cpu_count() or 1))
 
 
 def _build_members(eligible: list[dict], ctx: _BuildContext) -> list[dict]:
@@ -1090,7 +1093,9 @@ def _build_members(eligible: list[dict], ctx: _BuildContext) -> list[dict]:
     else:
         log.info("building %d recitations on %d workers", len(eligible), workers)
         with concurrent.futures.ProcessPoolExecutor(
-            max_workers=workers, mp_context=multiprocessing.get_context("fork")
+            max_workers=workers,
+            mp_context=multiprocessing.get_context("fork"),
+            max_tasks_per_child=1,  # release each reciter's peak memory to the OS
         ) as pool:
             results = list(pool.map(_build_member_task, eligible))
     return [m for m in results if m is not None]
