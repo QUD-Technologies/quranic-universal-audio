@@ -57,11 +57,6 @@ def _webhook_base() -> str | None:
     return AUTOMATION_PUBLIC_BASE_URL or None
 
 
-def _beams(beam: int, probe: int) -> list[int]:
-    """``[main, probe]`` deduped — mirrors the manual launch form."""
-    return [beam] if probe <= 0 or probe == beam else [beam, probe]
-
-
 def _ts_settings(
     cfg: AutomationConfig,
     *,
@@ -71,13 +66,13 @@ def _ts_settings(
     ``ts_generation_defaults`` — the single owner-wide source the Releases-tab
     "Timestamps generation" accordion edits.
 
-    All TS tunables (beam/probe/model/workers/batch_size/download_workers/
+    All TS tunables (beam/model/workers/batch_size/download_workers/
     padding/method) come from the shared defaults; only ``chapters`` is the
     automation's own per-launch scope choice.
     """
     d = cfg.ts_generation_defaults
     return TsJobSettings(
-        beams=_beams(d.beam, d.probe_beams),
+        beams=[d.beam],
         aligner_model=d.aligner_model,
         chapters=chapters or None,
         workers=d.workers,

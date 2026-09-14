@@ -34,7 +34,6 @@
     // editor bindings stay type-safe and the dirty check is apples-to-apples.
     interface Draft {
         beam: number;
-        probe_beams: number;
         aligner_model: string | null;
         workers: number | null;
         batch_size: number | null;
@@ -46,7 +45,6 @@
     function normalize(d: TsGenerationDefaultsBody): Draft {
         return {
             beam: d.beam ?? 50,
-            probe_beams: d.probe_beams ?? 2,
             aligner_model: d.aligner_model ?? null,
             workers: d.workers ?? null,
             batch_size: d.batch_size ?? null,
@@ -61,7 +59,6 @@
     function toBody(d: Draft): TsGenerationDefaultsBody {
         return {
             beam: d.beam,
-            probe_beams: d.probe_beams,
             aligner_model: d.aligner_model || null,
             workers: d.workers ?? null,
             batch_size: d.batch_size ?? null,
@@ -163,10 +160,6 @@
                         <label class="field">
                             <span class="lbl">beam</span>
                             <input type="number" min="1" bind:value={draft.beam} />
-                        </label>
-                        <label class="field">
-                            <span class="lbl">probe</span>
-                            <input type="number" min="0" bind:value={draft.probe_beams} />
                         </label>
                         {#if alignerModels.length > 1}
                             <label class="field wide">

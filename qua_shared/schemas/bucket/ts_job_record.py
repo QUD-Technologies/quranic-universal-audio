@@ -24,7 +24,7 @@ class TsJobSettings(BaseModel):
     """Job parameters chosen by the admin in the launch form.
 
     ``beams`` is the resolved list passed to ``align_batch_multi_beam`` —
-    ``[alignment_beam, *probe_beams]`` (deduped). Canonical beam = ``max(beams)``.
+    ``[alignment_beam]`` — one beam per run. Canonical beam = ``max(beams)``.
     """
 
     model_config = ConfigDict(extra="forbid")

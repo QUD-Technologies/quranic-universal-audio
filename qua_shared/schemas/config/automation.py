@@ -41,9 +41,8 @@ _DEFAULT_TIMEZONE = "Australia/Sydney"
 _DEFAULT_GUARD_MINUTES = 60
 #: Default reviewer-inactivity window before a claim is auto-released.
 _DEFAULT_INACTIVE_DAYS = 14
-#: Beam defaults shared with the manual TS launch form.
+#: Alignment beam shared with the manual TS launch form.
 _DEFAULT_BEAM = 50
-_DEFAULT_PROBE_BEAMS = 2
 
 _TIME_OF_DAY_RE = r"^([01]\d|2[0-3]):[0-5]\d$"
 
@@ -59,13 +58,13 @@ class TsGenerationDefaults(BaseModel):
     tunable comes from here; the only per-launch input is the manual form's
     ``chapters`` scope. A field unset here cedes to the job's ``DEFAULT_*``.
 
-    ``beam`` + ``probe_beams`` resolve to the ``[beam, probe]`` list passed to the
-    aligner. ``padding`` / ``method`` are the pipeline tunables (``None`` → the
-    job's ``DEFAULT_PADDING`` / ``DEFAULT_METHOD``).
+    ``beam`` is the single alignment beam. Probe beams are gone: a run aligns
+    once, under this beam, and nothing is re-aligned to cross-check it.
+    ``padding`` / ``method`` are the pipeline tunables (``None`` → the job's
+    ``DEFAULT_PADDING`` / ``DEFAULT_METHOD``).
     """
 
     beam: int = Field(default=_DEFAULT_BEAM, ge=1)
-    probe_beams: int = Field(default=_DEFAULT_PROBE_BEAMS, ge=0)
     #: Acoustic model (catalog id). ``None`` = the store's default model.
     aligner_model: str | None = None
     #: Aligner worker count. ``None`` = the job's capped default.
@@ -88,7 +87,7 @@ class AutoGenTsConfig(BaseModel):
     written comment (``gate_by_comments``) or flagged any segment
     (``gate_by_flags``). A checklist-bypass submission is always skipped.
 
-    The TS tunables (beam/probe/model/…) come from the shared
+    The TS tunables (beam/model/…) come from the shared
     ``ts_generation_defaults``; ``extra="allow"`` tolerates older saved blobs that
     still carry the retired per-automation ``beam`` / ``aligner_model`` keys.
     """
@@ -138,7 +137,7 @@ class StaleTsRegenConfig(BaseModel):
     consecutive edits coalesce into one regen. ``scope`` picks full-reciter vs
     just the affected chapters.
 
-    The TS tunables (beam/probe/…) come from the shared
+    The TS tunables (beam/…) come from the shared
     ``ts_generation_defaults``; ``extra="allow"`` tolerates older saved blobs that
     still carry the retired per-automation ``beam`` / ``probe_beams`` keys.
     """

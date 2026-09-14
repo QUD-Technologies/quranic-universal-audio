@@ -67,7 +67,7 @@ _TERMINAL_SUCCESS = ("succeeded", "completed")
 #: forever — and the single-flight guard then refuses every relaunch with "a
 #: timestamps job is already running". A full 114-chapter run lands in ~1-2 h,
 #: so anything past this ceiling is a corpse, not a run. Env-overridable.
-_STALE_RUN_HOURS_DEFAULT = 6.0
+_STALE_RUN_HOURS_DEFAULT = 2.0
 
 
 def _stale_run_hours() -> float:

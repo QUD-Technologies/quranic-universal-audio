@@ -53,7 +53,7 @@ Migration `0020_automation.sql`, repo `services/db/repo_automation.py`:
 ## Shared TS-generation defaults
 
 `AutomationConfig.ts_generation_defaults` (`TsGenerationDefaults`) is the single
-owner-wide source for the timestamps-generation knobs — beam/probe, aligner
+owner-wide source for the timestamps-generation knobs — beam, aligner
 model, workers, batch_size, download_workers, padding, method. It lives inside
 the same config blob (no separate table) and is the base every generation
 surface reads:

@@ -124,7 +124,7 @@ def generate_timestamps(user, slug):
 def _parse_ts_settings(body: dict) -> TsJobSettings:
     """Build ``TsJobSettings`` for a manual launch.
 
-    Every TS tunable (beam/probe/model/workers/batch_size/download_workers/
+    Every TS tunable (beam/model/workers/batch_size/download_workers/
     padding/method) comes from the owner-wide ``ts_generation_defaults`` — the
     single shared blob edited from the Releases-tab "Timestamps generation"
     accordion (the same source the automations read). The request body carries
@@ -137,8 +137,6 @@ def _parse_ts_settings(body: dict) -> TsJobSettings:
     defaults = automation_config.load_config().ts_generation_defaults
 
     beams: list[int] = [defaults.beam]
-    if defaults.probe_beams > 0 and defaults.probe_beams != defaults.beam:
-        beams.append(defaults.probe_beams)
 
     chapters_raw = body.get("chapters")
     chapters: list[int] | None = None

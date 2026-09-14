@@ -18,7 +18,7 @@ def test_defaults_are_all_disabled_with_shared_beam_defaults():
     assert cfg.auto_release_inactive.enabled is False
     # The TS tunables live in the shared defaults, not per-automation.
     assert cfg.ts_generation_defaults.beam == 50
-    assert cfg.ts_generation_defaults.probe_beams == 2
+    assert "probe_beams" not in type(cfg.ts_generation_defaults).model_fields
     assert cfg.gh_cut.interval_days == 7
     assert cfg.gh_cut.time_of_day == "09:00"
     assert cfg.gh_cut.timezone == "Australia/Sydney"

@@ -689,7 +689,7 @@ export interface AudioSurahsResponse {
  * written comment (``gate_by_comments``) or flagged any segment
  * (``gate_by_flags``). A checklist-bypass submission is always skipped.
  *
- * The TS tunables (beam/probe/model/…) come from the shared
+ * The TS tunables (beam/model/…) come from the shared
  * ``ts_generation_defaults``; ``extra="allow"`` tolerates older saved blobs that
  * still carry the retired per-automation ``beam`` / ``aligner_model`` keys.
  */
@@ -726,13 +726,13 @@ export interface AutomationConfig {
  * tunable comes from here; the only per-launch input is the manual form's
  * ``chapters`` scope. A field unset here cedes to the job's ``DEFAULT_*``.
  *
- * ``beam`` + ``probe_beams`` resolve to the ``[beam, probe]`` list passed to the
- * aligner. ``padding`` / ``method`` are the pipeline tunables (``None`` → the
- * job's ``DEFAULT_PADDING`` / ``DEFAULT_METHOD``).
+ * ``beam`` is the single alignment beam. Probe beams are gone: a run aligns
+ * once, under this beam, and nothing is re-aligned to cross-check it.
+ * ``padding`` / ``method`` are the pipeline tunables (``None`` → the job's
+ * ``DEFAULT_PADDING`` / ``DEFAULT_METHOD``).
  */
 export interface TsGenerationDefaults {
   beam?: number;
-  probe_beams?: number;
   aligner_model?: string | null;
   workers?: number | null;
   batch_size?: number | null;
@@ -776,7 +776,7 @@ export interface HfPublishConfig {
  * consecutive edits coalesce into one regen. ``scope`` picks full-reciter vs
  * just the affected chapters.
  *
- * The TS tunables (beam/probe/…) come from the shared
+ * The TS tunables (beam/…) come from the shared
  * ``ts_generation_defaults``; ``extra="allow"`` tolerates older saved blobs that
  * still carry the retired per-automation ``beam`` / ``probe_beams`` keys.
  */
@@ -1299,7 +1299,7 @@ export interface JobRecord {
  * Job parameters chosen by the admin in the launch form.
  *
  * ``beams`` is the resolved list passed to ``align_batch_multi_beam`` —
- * ``[alignment_beam, *probe_beams]`` (deduped). Canonical beam = ``max(beams)``.
+ * ``[alignment_beam]`` — one beam per run. Canonical beam = ``max(beams)``.
  */
 export interface TsJobSettings {
   beams?: number[];
