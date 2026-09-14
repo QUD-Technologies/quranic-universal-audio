@@ -25,6 +25,7 @@ MIN_SILENCE_FLOOR_MS = 50
 ASR_MODEL_IDS = {"Large": "hetchyy/r7", "Base": "aligner:Base"}
 VAD_MODEL_ID = "hetchyy/qua-bnd-trio-head"
 ALIGN_WORKERS = 16
+AUTO_SPLIT_TIMING_SOURCE = "align_stage_interactive_v1"
 
 
 @dataclass(frozen=True)
@@ -48,7 +49,7 @@ class AlignParams:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
     def batch_body(self, *, device: str | None = None) -> dict:
-        """The ``POST /api/v1/batches`` body for an alignment-only batch.
+        """The ``POST /api/v1/batches`` body for alignment plus split-candidate timing.
 
         ``device`` overrides the run's starting lane — the align stage passes the
         live one so a GPU→CPU fallback recreates the batch on CPU."""
@@ -60,6 +61,7 @@ class AlignParams:
             "pad_right_ms": self.pad_right_ms,
             "min_silence_floor_ms": self.min_silence_floor_ms,
             "include_word_timestamps": False,
+            "include_auto_split_timings": True,
             "include_merge_groups": True,
             "discard_session": True,
         }

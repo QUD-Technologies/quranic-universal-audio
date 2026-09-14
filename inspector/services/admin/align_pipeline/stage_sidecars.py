@@ -1,9 +1,11 @@
-"""Stage 3 — the two MFA sidecars, computed reciter-wide on the aligner Space.
+"""Stage 3 — review sidecars, computed reciter-wide on the aligner Space.
 
 Builds every chapter's ``ChapterCandidate`` from the staged aligner results (the
 same adaptation assemble uses, so the sidecars index exactly the rows that get
-published) and streams ``POST /api/v1/extraction/sidecars``. The Space runs one
-sidecar job at a time; a 409 waits and retries.
+published) and streams ``POST /api/v1/extraction/sidecars``. Auto Split reuses
+the align stage's candidate-only interactive timings; Low Confidence keeps its
+independent MFA probe. The Space runs one sidecar job at a time; a 409 waits and
+retries.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ from services.storage.hf_bucket import resolve_bucket_repo
 
 from . import adapt, progress, staging
 from .aligner_client import AlignerClient, AlignerError
-from .params import AlignParams
+from .params import AUTO_SPLIT_TIMING_SOURCE, AlignParams
 
 log = logging.getLogger("inspector")
 
@@ -32,17 +34,35 @@ class SidecarsStageError(RuntimeError):
     pass
 
 
-def candidates_for(
+def payloads_for(
     slug: str, run_id: str, chapters: list[int], sources: dict[int, str], riwayah: str
-) -> dict[str, dict]:
+) -> tuple[dict[str, dict], dict[str, list[list[dict] | None]] | None]:
     docs = staging.read_chapters(slug, run_id, chapters)
-    out: dict[str, dict] = {}
+    candidates: dict[str, dict] = {}
+    timings: dict[str, list[list[dict] | None]] = {}
     for ch in chapters:
         candidate, _events, _basmala = adapt.adapt_chapter(
             ch, docs[ch], source_url=sources[ch], riwayah=riwayah
         )
-        out[str(ch)] = candidate
-    return out
+        candidates[str(ch)] = candidate
+        kept_rows = [row for row in docs[ch].get("segments", []) if not adapt.is_special(row)]
+        timings[str(ch)] = [
+            row.get("words") if isinstance(row.get("words"), list) else None
+            for row in kept_rows
+        ]
+    current = all(
+        (docs[ch].get("_inspector") or {}).get("auto_split_timing_source")
+        == AUTO_SPLIT_TIMING_SOURCE
+        for ch in chapters
+    )
+    return candidates, timings if current else None
+
+
+def candidates_for(
+    slug: str, run_id: str, chapters: list[int], sources: dict[int, str], riwayah: str
+) -> dict[str, dict]:
+    """Compatibility view for callers that only need the staged candidates."""
+    return payloads_for(slug, run_id, chapters, sources, riwayah)[0]
 
 
 def run(
@@ -55,6 +75,9 @@ def run(
     if staging.read_json(staging.sidecar_path(slug, run_id, AUTO_SPLIT_FILE)) is not None:
         log.info("align %s: sidecars already staged, skipped", run_id)
         return
+    candidates, auto_split_timings = payloads_for(
+        slug, run_id, chapters, sources, params.riwayah
+    )
     body = {
         "slug": slug,
         "riwayah": params.riwayah,
@@ -62,7 +85,8 @@ def run(
             "repo": resolve_bucket_repo(),
             "path_tpl": f"reciters/{slug}/audio/{{chapter}}.mp3",
         },
-        "candidates": candidates_for(slug, run_id, chapters, sources, params.riwayah),
+        "candidates": candidates,
+        **({"auto_split_timings": auto_split_timings} if auto_split_timings is not None else {}),
     }
     result = _call(run_id, body)
     # A non-Hafs delivery gets no low-confidence probe (D12 — the Space answers

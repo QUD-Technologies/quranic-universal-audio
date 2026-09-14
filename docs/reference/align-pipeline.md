@@ -29,7 +29,8 @@ align     per-chapter loop, aligner Space POST /api/v1/batches (alignment-only) 
           items/<ch>/audio/stream with audio_ref=hf://buckets/<repo>/reciters/<slug>/audio/<ch>.mp3
           → staging/<slug>/<run>/chapters/<ch>.json (raw aligner result)
 sidecars  one reciter-wide POST /api/v1/extraction/sidecars (SSE) — the aligner runs
-          qua_timing_batch low_confidence + auto_split against the phoneme MFA Space
+          qua_timing_batch low_confidence against the phoneme MFA Space and builds
+          auto_split from interactive word timings returned by the align stage
           → staging/<slug>/<run>/sidecars/{low_confidence_v2,auto_split_v1}.json
           Hafs only for the probe: a non-Hafs delivery gets `low_confidence_v2: null`
           (D12, editions.md) and nothing is staged for it; auto_split_v1 is always staged
@@ -50,8 +51,13 @@ fallback) rides in `detail["device"]`, which the progress card renders.
 Parameters (`params.py`): model `Large` (the same `hetchyy/r7` checkpoint as the
 Katana extraction), `pad_left_ms=100`, `pad_right_ms=100`, `min_silence_floor_ms=50`,
 matcher/thresholds = whatever the Space runs, `include_merge_groups=true`,
-`discard_session=true`, no word timestamps, no split. Times are relative to the
-persisted mp3 (no trim).
+`include_auto_split_timings=true`, `discard_session=true`, no full word-timestamp
+pass, no split. Only cross-verse and repetition rows are timed. Those interactive
+word timings are returned with the alignment result and reused by Auto Split; times
+are segment-relative while segment bounds remain relative to the persisted mp3 (no trim).
+For each section boundary, the cursor is the midpoint between the preceding
+section's last word end and the following section's first word start, then shifted
+onto the chapter timeline by the segment start.
 
 ## Concurrency
 

@@ -167,6 +167,9 @@ def _stage_chapter(batch: _Batch, tracker: _Tracker, slug: str, run_id: str, cha
     progress.check_cancel(run_id)
     tracker.enter(chapter)
     result = _align_chapter(batch, tracker, slug, run_id, chapter)
+    result["_inspector"] = {
+        "auto_split_timing_source": _params.AUTO_SPLIT_TIMING_SOURCE,
+    }
     staging.write_json(staging.chapter_path(slug, run_id, chapter), result)
     tracker.finish(chapter, result.get("device"))
     log.info(

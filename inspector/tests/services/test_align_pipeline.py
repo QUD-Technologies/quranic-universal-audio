@@ -164,6 +164,14 @@ def test_adapt_spans_a_missing_ref_to_onto_ref_from():
     assert candidate["entries"][0]["segments"][0]["matched_ref"] == "7:1:1-7:1:1"
 
 
+def test_align_batch_requests_only_auto_split_candidate_timings():
+    from services.admin.align_pipeline.params import AlignParams
+
+    body = AlignParams().batch_body()
+    assert body["include_word_timestamps"] is False
+    assert body["include_auto_split_timings"] is True
+
+
 # ---------------------------------------------------------------------------
 # run lifecycle (worker stubbed)
 # ---------------------------------------------------------------------------
@@ -446,6 +454,43 @@ def test_sidecars_stage_skips_a_null_low_confidence(align_env, monkeypatch):
     assert (
         staging.read_json(staging.sidecar_path(SLUG, run.run_id, "low_confidence_v2.json")) is None
     )
+
+
+def test_sidecars_stage_sends_interactive_timings_in_published_segment_order(
+    align_env, monkeypatch
+):
+    from copy import deepcopy
+
+    from services.admin.align_pipeline import runs, stage_sidecars, staging
+    from services.admin.align_pipeline.params import AlignParams
+
+    _backend, _started = align_env
+    run = runs.start(SLUG, OWNER)
+    chapter = deepcopy(CH112)
+    chapter["_inspector"] = {"auto_split_timing_source": "align_stage_interactive_v1"}
+    chapter["segments"][3]["words"] = [
+        {"location": "112:3:1", "start": 0.1, "end": 0.4},
+        {"location": "112:3:2", "start": 0.5, "end": 0.9},
+        {"location": "112:4:1", "start": 1.5, "end": 1.9},
+        {"location": "112:4:2", "start": 2.0, "end": 2.4},
+        {"location": "112:4:3", "start": 2.5, "end": 2.9},
+        {"location": "112:4:4", "start": 3.0, "end": 3.4},
+        {"location": "112:4:5", "start": 3.5, "end": 3.9},
+    ]
+    staging.write_json(staging.chapter_path(SLUG, run.run_id, 112), chapter)
+    captured = {}
+
+    def fake_call(_run_id, body):
+        captured.update(body)
+        return {"low_confidence_v2": {"failures": []}, "auto_split_v1": {"by_uid": {}}}
+
+    monkeypatch.setattr(stage_sidecars, "_call", fake_call)
+
+    stage_sidecars.run(
+        SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"}
+    )
+
+    assert captured["auto_split_timings"]["112"] == [None, None, chapter["segments"][3]["words"]]
 
 
 def test_assemble_accepts_a_missing_low_confidence_off_hafs(align_env):
