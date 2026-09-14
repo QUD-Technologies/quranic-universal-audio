@@ -135,6 +135,11 @@ The same predicate drives the Releases-tab buckets and the cut job's member disc
 
 Global single-flight: only one cut in flight at a time; a publish landing mid-cut is rejected.
 
+Per-recitation builds (shard load, layout, validation, tier files, catalog.json) fan out over a
+forked process pool — one worker per CPU by default, `CUT_BUILD_WORKERS` overrides (`1` = serial;
+serial is also the fallback where `fork` is unavailable). Results keep catalog order; the first
+fatal-violation reciter aborts the cut. Job timeout defaults to 2h (`INSPECTOR_CUT_JOB_TIMEOUT`).
+
 ### Versioning
 
 Auto-bump from the prior version; an operator `RELEASE_VERSION` override (any `vX.Y.Z`) wins

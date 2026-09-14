@@ -508,3 +508,44 @@ def test_edition_assets_ship_script_and_font_per_non_hafs_riwayah():
     assert cut_release._static_content_type("warsh_words.json.gz") == "application/gzip"
     assert cut_release._static_content_type("DigitalKhattV2.otf") == "font/otf"
     assert cut_release._static_content_type("surah_info.json") == "application/json"
+
+
+def _ctx():
+    return cut_release._BuildContext(
+        surah_info={},
+        digital_khatt_words={},
+        script_sha256="x",
+        prior_members={},
+        pads=cut_release.pad_params_from_env(),
+    )
+
+
+def test_build_members_keeps_catalog_order_and_drops_shardless(monkeypatch):
+    monkeypatch.setenv(cut_release.BUILD_WORKERS_ENV, "1")
+    monkeypatch.setattr(
+        cut_release,
+        "_build_member",
+        lambda rec, ctx: None if rec["slug"] == "b" else {"slug": rec["slug"]},
+    )
+    out = cut_release._build_members([{"slug": "a"}, {"slug": "b"}, {"slug": "c"}], _ctx())
+    assert [m["slug"] for m in out] == ["a", "c"]
+
+
+def test_build_members_propagates_fatal_violations(monkeypatch):
+    monkeypatch.setenv(cut_release.BUILD_WORKERS_ENV, "1")
+
+    def boom(rec, ctx):
+        raise cut_release._FatalViolations(
+            rec["slug"], [{"violation": "x"}], {"violation_count": 1}
+        )
+
+    monkeypatch.setattr(cut_release, "_build_member", boom)
+    with pytest.raises(cut_release._FatalViolations, match="a: 1 fatal"):
+        cut_release._build_members([{"slug": "a"}], _ctx())
+
+
+def test_build_workers_env_override(monkeypatch):
+    monkeypatch.setenv(cut_release.BUILD_WORKERS_ENV, "3")
+    assert cut_release._build_workers() == 3
+    monkeypatch.setenv(cut_release.BUILD_WORKERS_ENV, "")
+    assert cut_release._build_workers() >= 1

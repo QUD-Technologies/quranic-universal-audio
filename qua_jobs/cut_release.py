@@ -30,6 +30,7 @@ Env:
 
 from __future__ import annotations
 
+import concurrent.futures
 import datetime
 import gzip
 import hashlib
@@ -37,12 +38,14 @@ import importlib.resources
 import io
 import json
 import logging
+import multiprocessing
 import os
 import sqlite3
 import sys
 import urllib.error
 import urllib.request
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -1035,6 +1038,235 @@ def _preflight() -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# Per-recitation build — one worker per reciter, fanned out over a process pool.
+# ---------------------------------------------------------------------------
+
+#: Parallel build workers; ``0`` / unset = one per CPU. Set ``1`` to force serial.
+BUILD_WORKERS_ENV = "CUT_BUILD_WORKERS"
+
+
+@dataclass(frozen=True)
+class _BuildContext:
+    """Read-only inputs every reciter build shares; inherited by forked workers."""
+
+    surah_info: dict
+    digital_khatt_words: dict
+    script_sha256: str
+    prior_members: dict[str, dict]
+    pads: PadParams
+
+
+class _FatalViolations(Exception):
+    """A reciter failed the hard boundary invariants; the whole cut aborts."""
+
+    def __init__(self, slug: str, fatal: list, summary: dict) -> None:
+        super().__init__(f"{slug}: {len(fatal)} fatal boundary violations")
+        self.slug, self.fatal, self.summary = slug, fatal, summary
+
+
+#: Set once in the parent before the pool forks so workers inherit it without
+#: pickling the multi-MB DigitalKhatt word index per task.
+_BUILD_CTX: _BuildContext | None = None
+
+
+def _build_workers() -> int:
+    raw = os.environ.get(BUILD_WORKERS_ENV, "").strip()
+    if raw.isdigit() and int(raw) > 0:
+        return int(raw)
+    return os.cpu_count() or 1
+
+
+def _build_members(eligible: list[dict], ctx: _BuildContext) -> list[dict]:
+    """Build every eligible recitation, in catalog order, on a forked process
+    pool (serial when forking is unavailable or a single worker is requested).
+    Raises ``_FatalViolations`` for the first reciter that fails hard."""
+    global _BUILD_CTX  # noqa: PLW0603 — fork-inherited context, see above
+    _BUILD_CTX = ctx
+    workers = min(_build_workers(), len(eligible))
+    can_fork = "fork" in multiprocessing.get_all_start_methods()
+    if workers <= 1 or not can_fork:
+        results = [_build_member_task(rec) for rec in eligible]
+    else:
+        log.info("building %d recitations on %d workers", len(eligible), workers)
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=workers, mp_context=multiprocessing.get_context("fork")
+        ) as pool:
+            results = list(pool.map(_build_member_task, eligible))
+    return [m for m in results if m is not None]
+
+
+def _build_member_task(rec: dict) -> dict | None:
+    assert _BUILD_CTX is not None
+    return _build_member(rec, _BUILD_CTX)
+
+
+def _verse_counts(riwayah: str, surah_info: dict) -> dict[int, int]:
+    from qua_shared.coverage import verse_counts_from_surah_info
+    from qua_shared.surah_words import surah_info_for
+
+    return verse_counts_from_surah_info(surah_info_for(riwayah, surah_info))
+
+
+def _validate_occurrences(slug: str, occurrences: list[dict], edition_counts: dict) -> dict:
+    """Boundary-validate the SAME invariants the dataset does, against the
+    byte-exact segments (gapless within a segment, gaps only across
+    boundaries) — source-relative ms. Non-canonical takes are keyed
+    ``ref#n`` so they skip the coverage check (a partial repeat is
+    incomplete by definition) but still face the span invariants.
+    Raises ``_FatalViolations`` on any hard failure."""
+    from qua_shared.dataset_validation import (
+        check_canonical_uniqueness,
+        fatal_violations,
+        validate_dataset,
+    )
+
+    for_validate: dict[str, dict] = {}
+    for occurrence in occurrences:
+        key = occurrence["ref"]
+        if not occurrence["canonical"]:
+            key = f"{key}#{sum(1 for k in for_validate if k.startswith(key + '#')) + 1}"
+        for_validate[key] = _verse_for_validate(occurrence["layout"])
+    rec_summary = validate_dataset(
+        for_validate,
+        expected_words={f"{s_num}:{a_num}": n for (s_num, a_num), n in edition_counts.items()},
+    )
+    uniqueness = check_canonical_uniqueness((o["ref"], o["canonical"]) for o in occurrences)
+    rec_summary["violations"].extend(uniqueness)
+    rec_summary["violation_count"] += len(uniqueness)
+    for v in uniqueness:
+        rec_summary["by_kind"][v["violation"]] = rec_summary["by_kind"].get(v["violation"], 0) + 1
+    fatal = fatal_violations(rec_summary["violations"])
+    if fatal:
+        raise _FatalViolations(slug, fatal, rec_summary)
+    return rec_summary
+
+
+def _build_member(rec: dict, ctx: _BuildContext) -> dict | None:
+    """One recitation's tier files + catalog.json + member row (``None`` when it
+    has no shards). Pure function of the bucket + ``ctx``; safe in a worker."""
+    from qua_shared.coverage import missing_coverage
+    from qua_shared.surah_words import word_counts_for
+    from qua_shared.timestamps_native import select_complete_verses
+
+    slug = rec["slug"]
+    log.info("  building %s...", slug)
+    verses = _load_canonical_verses(slug)
+    if not verses:
+        log.warning("  %s: no timestamps shards — skipping", slug)
+        return None
+
+    # The shards say which edition and how deep their timings go; the
+    # catalog row is not consulted here so a mislabelled row cannot make the
+    # release claim letter timings a proxy-timed delivery does not have.
+    shard_meta = verses.pop("_meta", {})
+    with_letters = shard_meta.get("profile", "native") == "native"
+    if not with_letters and not shard_meta.get("riwayah"):
+        raise ValueError(f"{slug}: word-profile shards name no riwayah")
+    riwayah = shard_meta.get("riwayah") or DEFAULT_SDK_RIWAYAH
+    _assert_riwayat_agree(slug, riwayah, rec.get("riwayah"))
+    tiers = ["verse", "word", "letter"] if with_letters else ["verse", "word"]
+
+    # Gate incomplete verses: any verse missing a reference word index (never
+    # recited) is dropped from the release — absent from the tier JSON and
+    # excluded from coverage_ayahs. The editor/TS tab still shows them.
+    edition_counts = word_counts_for(riwayah, ctx.surah_info)
+    verses, dropped_incomplete = select_complete_verses(verses, edition_counts)
+    if dropped_incomplete:
+        log.info(
+            "  %s: gated %d incomplete verse(s) (missing words): %s",
+            slug,
+            len(dropped_incomplete),
+            dropped_incomplete,
+        )
+
+    # Shared geometry: audible bounds, HF clip windows, and byte-exact psil
+    # segments are all derived once. Each adapter selects its public view of
+    # the SAME layout, so timing/token ownership cannot drift.
+    layouts = build_verse_layouts(reshape_canonical(verses, ctx.digital_khatt_words), **ctx.pads)
+    occurrences = _release_occurrences(slug, verses, layouts, ctx.digital_khatt_words, ctx.pads)
+    rec_summary = _validate_occurrences(slug, occurrences, edition_counts)
+
+    # Tier files: every recited occurrence in timeline order, one canonical
+    # per verse.
+    script_id, edition_script_sha256 = _edition_script(riwayah, ctx.script_sha256)
+    tier_files = _build_tier_files(
+        slug,
+        occurrences,
+        delivery_meta=rec,
+        script_id=script_id,
+        script_sha256=edition_script_sha256,
+        riwayah=riwayah,
+        with_letters=with_letters,
+    )
+
+    # catalog.json.
+    audio_manifest_path = _bucket_root() / "catalog" / "audio_manifest" / f"{slug}.json"
+    audio_manifest = None
+    if audio_manifest_path.exists():
+        try:
+            audio_manifest = json.loads(audio_manifest_path.read_bytes())
+        except (json.JSONDecodeError, OSError):
+            audio_manifest = None
+    # Concise coverage-gap notation (vs the full mushaf) for catalog.json +
+    # the changelog Missing column — whole missing surahs vs within-surah
+    # verse gaps, split so even a partial recitation stays short.
+    present_refs = {
+        (int(k.split(":")[0]), int(k.split(":")[1])) for k in verses if not k.startswith("_")
+    }
+    missing_surahs, missing_verses = missing_coverage(
+        present_refs, _verse_counts(riwayah, ctx.surah_info)
+    )
+    catalog_bytes = _build_catalog_json(
+        rec,
+        audio_manifest,
+        verses,
+        missing_surahs=missing_surahs,
+        missing_verses=missing_verses,
+    )
+
+    # content_hash — over the DEEPEST emitted tier + catalog bytes. The
+    # shallower tiers are exact prefixes of it, so hashing the deepest one
+    # still detects any timing change; naming it by tier keeps the hash
+    # meaningful for a delivery that has no letter tier.
+    deepest = f"{tiers[-1]}_timestamps.json.gz"
+    content_hash = _sha256_hex(tier_files[deepest] + catalog_bytes)
+
+    files = dict(tier_files)
+    files["catalog.json"] = catalog_bytes
+
+    coverage_ayahs = sum(1 for k in verses if not k.startswith("_"))
+    change_kind = _classify_change_kind(rec, ctx.prior_members, content_hash)
+
+    return {
+        "slug": slug,
+        "name_en": rec.get("name_en"),
+        "name_ar": rec.get("name_ar"),
+        "riwayah": rec.get("riwayah"),
+        "style": rec.get("style"),
+        "channel": rec.get("channel"),
+        "riwayah_name": rec.get("riwayah_name"),
+        "style_name": rec.get("style_name"),
+        "channel_name": rec.get("channel_name"),
+        "ts_version": str(rec["ts_version"]),
+        "tiers": tiers,
+        "shard_riwayah": riwayah,
+        "coverage_ayahs": coverage_ayahs,
+        "coverage_surahs": rec.get("chapter_count"),
+        "missing_surahs": missing_surahs,
+        "missing_verses": missing_verses,
+        "content_hash": content_hash,
+        "change_kind": change_kind,
+        # Frozen at cut time — what the ledger row stores.
+        "catalog_snapshot": json.loads(catalog_bytes.decode("utf-8")),
+        "_files": files,
+        "_zip_bytes": None,  # filled after version is known
+        "_validation": rec_summary,
+        "zip_sha256": "",
+        "zip_bytes": 0,
+    }
+
+
 def main() -> int:
     job_id = os.environ.get("JOB_ID", "").strip() or "unknown"
     launched_by = os.environ.get("LAUNCHED_BY") or None
@@ -1071,24 +1303,6 @@ def main() -> int:
     # 2. Build per-recitation artifacts and accumulate member rows.
     refs_dir = _code_root() / "data"
     surah_info = json.loads((refs_dir / "surah_info.json").read_bytes())
-    from qua_shared.coverage import missing_coverage, verse_counts_from_surah_info
-    from qua_shared.surah_words import surah_info_for, word_counts_for
-    from qua_shared.timestamps_native import select_complete_verses
-
-    # Per-edition, resolved once per riwayah below: Warsh and Qalun renumber 50
-    # of the 114 surahs, so Hafs counts would advertise phantom gaps.
-    verse_counts_by_riwayah: dict[str, dict[int, int]] = {}
-
-    def _verse_counts(riwayah: str) -> dict[int, int]:
-        if riwayah not in verse_counts_by_riwayah:
-            verse_counts_by_riwayah[riwayah] = verse_counts_from_surah_info(
-                surah_info_for(riwayah, surah_info)
-            )
-        return verse_counts_by_riwayah[riwayah]
-
-    # SDK slugs seen across this release's shards — drives the per-edition
-    # entries in ``static_refs``.
-    release_editions: set[str] = set()
 
     # The public projection is DigitalKhatt-only. Load and validate both assets
     # before reading any reciter so a broken staged image cannot make a release.
@@ -1103,181 +1317,47 @@ def main() -> int:
         DIGITAL_KHATT_FONT_FILENAME: digital_khatt_font,
     }
     script_sha256 = _sha256_hex(digital_khatt_script)
-    from qua_shared.dataset_validation import (
-        check_canonical_uniqueness,
-        fatal_violations,
-        validate_dataset,
-    )
 
     now = datetime.datetime.now(datetime.UTC)
     created_at_iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     created_at_date = now.strftime("%d-%m-%Y")
 
-    members: list[dict] = []
     validation_summary_total = {"violation_count": 0, "by_kind": {}, "violations": []}
     zip_bytes_by_slug: dict[str, bytes] = {}
 
-    for rec in eligible:
-        slug = rec["slug"]
-        log.info("  building %s...", slug)
-        verses = _load_canonical_verses(slug)
-        if not verses:
-            log.warning("  %s: no timestamps shards — skipping", slug)
-            continue
-
-        # The shards say which edition and how deep their timings go; the
-        # catalog row is not consulted here so a mislabelled row cannot make the
-        # release claim letter timings a proxy-timed delivery does not have.
-        shard_meta = verses.pop("_meta", {})
-        with_letters = shard_meta.get("profile", "native") == "native"
-        if not with_letters and not shard_meta.get("riwayah"):
-            raise ValueError(f"{slug}: word-profile shards name no riwayah")
-        riwayah = shard_meta.get("riwayah") or DEFAULT_SDK_RIWAYAH
-        _assert_riwayat_agree(slug, riwayah, rec.get("riwayah"))
-        release_editions.add(riwayah)
-        tiers = ["verse", "word", "letter"] if with_letters else ["verse", "word"]
-
-        # Gate incomplete verses: any verse missing a reference word index (never
-        # recited) is dropped from the release — absent from the tier JSON and
-        # excluded from coverage_ayahs. The editor/TS tab still shows them.
-        edition_counts = word_counts_for(riwayah, surah_info)
-        verses, dropped_incomplete = select_complete_verses(verses, edition_counts)
-        if dropped_incomplete:
-            log.info(
-                "  %s: gated %d incomplete verse(s) (missing words): %s",
-                slug,
-                len(dropped_incomplete),
-                dropped_incomplete,
-            )
-
-        # Shared geometry: audible bounds, HF clip windows, and byte-exact psil
-        # segments are all derived once. Each adapter selects its public view of
-        # the SAME layout, so timing/token ownership cannot drift.
-        layouts = build_verse_layouts(reshape_canonical(verses, digital_khatt_words), **pads)
-        occurrences = _release_occurrences(slug, verses, layouts, digital_khatt_words, pads)
-
-        # Boundary validate the SAME invariants the dataset does, against the
-        # byte-exact segments (gapless within a segment, gaps only across
-        # boundaries) — source-relative ms. Non-canonical takes are keyed
-        # ``ref#n`` so they skip the coverage check (a partial repeat is
-        # incomplete by definition) but still face the span invariants.
-        for_validate: dict[str, dict] = {}
-        for occurrence in occurrences:
-            key = occurrence["ref"]
-            if not occurrence["canonical"]:
-                key = f"{key}#{sum(1 for k in for_validate if k.startswith(key + '#')) + 1}"
-            for_validate[key] = _verse_for_validate(occurrence["layout"])
-        rec_summary = validate_dataset(
-            for_validate,
-            expected_words={f"{s_num}:{a_num}": n for (s_num, a_num), n in edition_counts.items()},
+    ctx = _BuildContext(
+        surah_info=surah_info,
+        digital_khatt_words=digital_khatt_words,
+        script_sha256=script_sha256,
+        prior_members=prior_members,
+        pads=pads,
+    )
+    try:
+        members = _build_members(eligible, ctx)
+    except _FatalViolations as exc:
+        log.error("  %s: %d fatal boundary violations — aborting cut", exc.slug, len(exc.fatal))
+        for v in exc.fatal[:5]:
+            log.error("    %s", v)
+        _post_webhook(
+            version=version_override or "",
+            job_id=job_id,
+            external_uri="",
+            members=[],
+            launched_by=launched_by,
+            status="failed",
+            validation_summary={"slug": exc.slug, "summary": exc.summary},
         )
-        uniqueness = check_canonical_uniqueness((o["ref"], o["canonical"]) for o in occurrences)
-        rec_summary["violations"].extend(uniqueness)
-        rec_summary["violation_count"] += len(uniqueness)
-        for v in uniqueness:
-            rec_summary["by_kind"][v["violation"]] = (
-                rec_summary["by_kind"].get(v["violation"], 0) + 1
-            )
-        fatal = fatal_violations(rec_summary["violations"])
-        if fatal:
-            log.error("  %s: %d fatal boundary violations — aborting cut", slug, len(fatal))
-            for v in fatal[:5]:
-                log.error("    %s", v)
-            _post_webhook(
-                version=version_override or "",
-                job_id=job_id,
-                external_uri="",
-                members=[],
-                launched_by=launched_by,
-                status="failed",
-                validation_summary={"slug": slug, "summary": rec_summary},
-            )
-            return 4
+        return 4
+    for m in members:
+        rec_summary = m.pop("_validation")
         validation_summary_total["violation_count"] += rec_summary["violation_count"]
         for k, c in rec_summary.get("by_kind", {}).items():
             validation_summary_total["by_kind"][k] = (
                 validation_summary_total["by_kind"].get(k, 0) + c
             )
-
-        # Tier files: every recited occurrence in timeline order, one canonical
-        # per verse.
-        script_id, edition_script_sha256 = _edition_script(riwayah, script_sha256)
-        tier_files = _build_tier_files(
-            slug,
-            occurrences,
-            delivery_meta=rec,
-            script_id=script_id,
-            script_sha256=edition_script_sha256,
-            riwayah=riwayah,
-            with_letters=with_letters,
-        )
-
-        # catalog.json.
-        audio_manifest_path = _bucket_root() / "catalog" / "audio_manifest" / f"{slug}.json"
-        audio_manifest = None
-        if audio_manifest_path.exists():
-            try:
-                audio_manifest = json.loads(audio_manifest_path.read_bytes())
-            except (json.JSONDecodeError, OSError):
-                audio_manifest = None
-        # Concise coverage-gap notation (vs the full mushaf) for catalog.json +
-        # the changelog Missing column — whole missing surahs vs within-surah
-        # verse gaps, split so even a partial recitation stays short.
-        present_refs = {
-            (int(k.split(":")[0]), int(k.split(":")[1])) for k in verses if not k.startswith("_")
-        }
-        missing_surahs, missing_verses = missing_coverage(present_refs, _verse_counts(riwayah))
-        catalog_bytes = _build_catalog_json(
-            rec,
-            audio_manifest,
-            verses,
-            missing_surahs=missing_surahs,
-            missing_verses=missing_verses,
-        )
-
-        # content_hash — over the DEEPEST emitted tier + catalog bytes. The
-        # shallower tiers are exact prefixes of it, so hashing the deepest one
-        # still detects any timing change; naming it by tier keeps the hash
-        # meaningful for a delivery that has no letter tier.
-        deepest = f"{tiers[-1]}_timestamps.json.gz"
-        content_hash = _sha256_hex(tier_files[deepest] + catalog_bytes)
-
-        files = dict(tier_files)
-        files["catalog.json"] = catalog_bytes
-
-        coverage_ayahs = sum(1 for k in verses if not k.startswith("_"))
-        change_kind = _classify_change_kind(rec, prior_members, content_hash)
-
-        # Build the catalog_snapshot (frozen at cut time, what the row stores).
-        catalog_snapshot = json.loads(catalog_bytes.decode("utf-8"))
-
-        members.append(
-            {
-                "slug": slug,
-                "name_en": rec.get("name_en"),
-                "name_ar": rec.get("name_ar"),
-                "riwayah": rec.get("riwayah"),
-                "style": rec.get("style"),
-                "channel": rec.get("channel"),
-                "riwayah_name": rec.get("riwayah_name"),
-                "style_name": rec.get("style_name"),
-                "channel_name": rec.get("channel_name"),
-                "ts_version": str(rec["ts_version"]),
-                "tiers": tiers,
-                "shard_riwayah": riwayah,
-                "coverage_ayahs": coverage_ayahs,
-                "coverage_surahs": rec.get("chapter_count"),
-                "missing_surahs": missing_surahs,
-                "missing_verses": missing_verses,
-                "content_hash": content_hash,
-                "change_kind": change_kind,
-                "catalog_snapshot": catalog_snapshot,
-                "_files": files,
-                "_zip_bytes": None,  # filled after version is known
-                "zip_sha256": "",
-                "zip_bytes": 0,
-            }
-        )
+    # SDK slugs seen across this release's shards — drives the per-edition
+    # entries in ``static_refs``.
+    release_editions: set[str] = {m["shard_riwayah"] for m in members}
 
     if not members:
         log.error("no members built — aborting")

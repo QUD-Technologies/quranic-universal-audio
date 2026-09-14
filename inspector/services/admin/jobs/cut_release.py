@@ -41,7 +41,7 @@ log = logging.getLogger("inspector")
 KIND = "cut_release"
 
 JOB_FLAVOR = os.environ.get("INSPECTOR_CUT_JOB_FLAVOR", "cpu-upgrade")
-JOB_TIMEOUT = os.environ.get("INSPECTOR_CUT_JOB_TIMEOUT", "1h")
+JOB_TIMEOUT = os.environ.get("INSPECTOR_CUT_JOB_TIMEOUT", "2h")
 
 
 def launch(
