@@ -11,6 +11,10 @@
  * node_modules):
  *   node <skill>/scripts/shoot.mjs --reciter <slug> --ref 45:32 [--ref 11:57] \
  *       [--words 1-3] [--out DIR] [--api https://…hf.space] [--port 5199]
+ *
+ * A ref may name an occasion: `--ref 2:26@3` shoots the THIRD time the reciter
+ * started that verse (default the first). A verse the reciter broke mid-way has
+ * one occasion per run, and a stop sign lives on an occasion's last boundary.
  */
 import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -41,7 +45,7 @@ const { values } = parseArgs({
 });
 
 if (!values.reciter || !values.ref?.length) {
-    console.error('usage: --reciter <slug> --ref <surah:verse> [--ref …] [--words a-b] [--out DIR] [--api URL] [--port N]');
+    console.error('usage: --reciter <slug> --ref <surah:verse[@occasion]> [--ref …] [--words a-b] [--out DIR] [--api URL] [--port N]');
     process.exit(2);
 }
 
@@ -63,8 +67,10 @@ const page = await browser.newPage({
 });
 
 let ok = 0;
-for (const ref of values.ref) {
+for (const spec of values.ref) {
+    const [ref, occ] = spec.split('@');
     const qs = new URLSearchParams({ reciter: values.reciter, ref });
+    if (occ) qs.set('occ', occ);
     if (values.words) qs.set('words', values.words);
     if (values.alltj) qs.set('alltj', '1');
     if (values.wasl) qs.set('wasl', '1');
@@ -76,13 +82,16 @@ for (const ref of values.ref) {
             { timeout: 30_000 },
         );
         const err = await page.evaluate(() => document.body.dataset.error);
-        if (err) { console.error(`✗ ${ref}: ${err}`); continue; }
-        const file = resolve(out, `${values.reciter}_${ref.replace(/:/g, '-')}.png`);
+        if (err) { console.error(`✗ ${spec}: ${err}`); continue; }
+        const file = resolve(
+            out,
+            `${values.reciter}_${ref.replace(/:/g, '-')}${occ ? `_occ${occ}` : ''}.png`,
+        );
         await (await page.$('#app')).screenshot({ path: file });
-        console.log(`✓ ${ref} → ${file}`);
+        console.log(`✓ ${spec} → ${file}`);
         ok += 1;
     } catch (e) {
-        console.error(`✗ ${ref}: ${e?.message ?? e}`);
+        console.error(`✗ ${spec}: ${e?.message ?? e}`);
     }
 }
 

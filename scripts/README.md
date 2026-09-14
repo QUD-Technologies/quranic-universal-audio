@@ -46,6 +46,7 @@ no-op-or-error by design. Idempotent `backfill_*`/`purge_*`/`convert_*` stay in
 ### `codegen/`
 - `regen_fe_types.py` — regenerate the FE TypeScript types from `qua_shared/schemas/` (CI-checked)
 - `regen_tajweed_rules.py` — regenerate the 45-rule native catalogue from quranic-phonemizer 2.15.3
+- `regen_waqf_render.mjs` — regenerate the per-QPC-face waqf-mark render calibration (`lib/utils/waqf-render-table.ts`) by measuring each mark's painted ink in headless Chromium; run FROM `inspector/frontend`
 - `update_readme_badges.py` — regenerate the root README stats badges from the prod bucket (daily cron)
 
 ### `bucket/`
