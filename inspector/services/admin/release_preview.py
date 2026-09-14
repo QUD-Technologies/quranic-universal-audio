@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from qua_shared.config_loader import repo_config
 from qua_shared.release_changelog import render_changelog
 from qua_shared.schemas import AdminReleasePreviewResponse
-from qua_shared.schemas.wire.release import RELEASE_FORMAT_MAJOR
 from services.db import get_conn, repo_releases
 
 
@@ -82,10 +81,7 @@ def build_release_preview() -> AdminReleasePreviewResponse:
             unchanged.append(row_payload)
 
     prior_version = prior["version"] if prior else None
-    prior_major = _major(prior_version)
-    if prior_major is None or prior_major < RELEASE_FORMAT_MAJOR:
-        computed_version = f"v{RELEASE_FORMAT_MAJOR}.0.0"
-    elif added:
+    if added:
         computed_version = _bump_minor(prior_version)
     elif refreshed:
         computed_version = _bump_patch(prior_version)
@@ -144,15 +140,6 @@ def current_auto_version() -> tuple[str | None, int]:
     if changed == 0 and eligible and preview.computed_version is not None:
         changed = 1  # the public schema/DigitalKhatt asset migration itself
     return preview.computed_version, changed
-
-
-def _major(version: str | None) -> int | None:
-    if not version:
-        return None
-    try:
-        return int(version.removeprefix("v").split(".", 1)[0])
-    except ValueError:
-        return None
 
 
 def _bump_minor(prior: str | None) -> str:

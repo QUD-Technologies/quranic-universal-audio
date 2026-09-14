@@ -74,10 +74,7 @@ from qua_shared.schemas import (  # noqa: E402
     VerseTimestampsDoc,
     WordTimestampsDoc,
 )
-from qua_shared.schemas.wire.release import (  # noqa: E402
-    RELEASE_FORMAT_MAJOR,
-    SCHEMA_VERSION,
-)
+from qua_shared.schemas.wire.release import SCHEMA_VERSION  # noqa: E402
 from qua_shared.verse_layout import (  # noqa: E402
     PadParams,
     build_verse_layouts,
@@ -563,30 +560,35 @@ def _classify_change_kind(rec: dict, prior_members: dict[str, dict], content_has
     return "refresh"
 
 
+def _parse_version_override(override: str | None) -> str | None:
+    """Normalise an operator ``RELEASE_VERSION`` to ``vX.Y.Z``; ``None`` when unset.
+
+    Called at job start so a malformed override fails before the hour-long build.
+    """
+    if not override:
+        return None
+    parts = override.removeprefix("v").split(".")
+    if len(parts) != 3 or any(not part.isdigit() for part in parts):
+        raise RuntimeError(f"invalid release version {override!r}; expected vX.Y.Z")
+    return f"v{'.'.join(parts)}"
+
+
 def _compute_version(
     prior_version: str | None, members: list[dict], static_refs_changed: bool, override: str | None
 ) -> str:
-    """Auto-bump per the public release contract; overrides cannot cross below its major.
+    """Auto-bump from the prior version; an operator override wins as-is.
     No-op (every member 'unchanged' AND static refs unchanged) raises.
     """
-    if override:
-        parts = override.removeprefix("v").split(".")
-        if len(parts) != 3 or any(not part.isdigit() for part in parts):
-            raise RuntimeError(f"invalid release version {override!r}; expected vX.Y.Z")
-        if int(parts[0]) < RELEASE_FORMAT_MAJOR:
-            raise RuntimeError(
-                f"schema {SCHEMA_VERSION} requires release v{RELEASE_FORMAT_MAJOR}.0.0 or newer"
-            )
-        return f"v{'.'.join(parts)}"
+    parsed = _parse_version_override(override)
+    if parsed:
+        return parsed
     if not prior_version:
-        return f"v{RELEASE_FORMAT_MAJOR}.0.0"
+        return "v0.1.0"
     parts = prior_version.lstrip("v").split(".")
     try:
         major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
     except (ValueError, IndexError) as e:
         raise RuntimeError(f"unparseable prior version {prior_version!r}") from e
-    if major < RELEASE_FORMAT_MAJOR:
-        return f"v{RELEASE_FORMAT_MAJOR}.0.0"
     has_added = any(m["change_kind"] == "added" for m in members)
     has_refresh = any(m["change_kind"] == "refresh" for m in members)
     if has_added:
@@ -1036,7 +1038,11 @@ def _preflight() -> int:
 def main() -> int:
     job_id = os.environ.get("JOB_ID", "").strip() or "unknown"
     launched_by = os.environ.get("LAUNCHED_BY") or None
-    version_override = os.environ.get("RELEASE_VERSION", "").strip() or None
+    try:
+        version_override = _parse_version_override(os.environ.get("RELEASE_VERSION", "").strip())
+    except RuntimeError as exc:
+        log.error("version override: %s", exc)
+        return 6
     # Clip-edge knobs remain shared with HF because layout construction and
     # boundary validation use the same windows. Public GH rows expose the
     # audible occurrence span and following silence separately.

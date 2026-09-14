@@ -137,16 +137,16 @@ Global single-flight: only one cut in flight at a time; a publish landing mid-cu
 
 ### Versioning
 
-Auto-bump from the prior version (an operator `RELEASE_VERSION` override must still use release
-format major 4 or newer):
+Auto-bump from the prior version; an operator `RELEASE_VERSION` override (any `vX.Y.Z`) wins
+as-is and is validated at job start, before the build:
 
 | Situation | Result |
 |---|---|
-| First schema-3 release, or prior release below v4 | `v4.0.0` |
-| Any `added` reciter after v4 | MINOR bump (`v4.N+1.0`) |
-| `refresh` and/or changed static refs only | PATCH bump (`v4.N.P+1`) |
+| No prior release | `v0.1.0` |
+| Any `added` reciter | MINOR bump (`vM.N+1.0`) |
+| `refresh` and/or changed static refs only | PATCH bump (`vM.N.P+1`) |
 | Nothing changed | error — set `RELEASE_VERSION` to force-cut |
-| Later breaking release-format change | raise `RELEASE_FORMAT_MAJOR`; the cut starts at that major |
+| Breaking release-format change | operator picks the major via `RELEASE_VERSION`; no code gate |
 
 ## GH release structure
 
@@ -546,8 +546,7 @@ still detects any timing change.
   into `static_refs` (an edition bump is a release bump) and named by `editions[<riwayah>]`'s
   `words_asset` / `font_asset`. The CHANGELOG table carries no tier column; `tiers` lives in
   the manifest.
-- `RELEASE_FORMAT_MAJOR` -> v4.0.0 came with release schema 3 (every occurrence a row); the
-  multi-riwayah additions ride it. Originally planned to be cut only when the first non-Hafs reciter is
-  actually publishable, not with the schema work.
+- Release schema 3 (every occurrence a row) carries the multi-riwayah additions; it does not
+  force a version major — the operator chooses via `RELEASE_VERSION`.
 
 Full detail: [`editions.md`](editions.md).

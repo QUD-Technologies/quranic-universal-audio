@@ -362,9 +362,9 @@ letter timings" from "this verse happened to have none".
   so far lives; publishing the SDK slug would open a second `hafs/` folder,
   duplicate the config in the card frontmatter and orphan the old split.
 
-`RELEASE_FORMAT_MAJOR` went to v4.0.0 with release schema 3 (the all-occurrence
-timeline, see [dataset-and-releases.md](dataset-and-releases.md)); the multi-riwayah
-additions rode that major rather than forcing one of their own (**D20**).
+Release schema 3 (the all-occurrence timeline, see
+[dataset-and-releases.md](dataset-and-releases.md)) carries the multi-riwayah additions; the
+release version is operator-chosen via `RELEASE_VERSION`, no schema-driven major gate (**D20**).
 
 ---
 

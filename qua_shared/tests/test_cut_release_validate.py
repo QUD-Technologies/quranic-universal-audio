@@ -333,26 +333,27 @@ def test_digital_khatt_assets_validate_and_hash(tmp_path):
     assert "surah_info.json" in out
 
 
-def test_schema_three_cut_starts_release_format_v4():
-    unchanged = [{"change_kind": "unchanged"}]
-    assert cut_release._compute_version("v3.4.0", unchanged, False, None) == "v4.0.0"
-
-
-def test_release_format_v4_keeps_normal_bumps_and_rejects_old_override():
+def test_compute_version_bumps_from_prior_regardless_of_schema():
     assert (
-        cut_release._compute_version("v4.0.0", [{"change_kind": "added"}], False, None) == "v4.1.0"
+        cut_release._compute_version("v3.4.0", [{"change_kind": "added"}], False, None) == "v3.5.0"
     )
     assert (
-        cut_release._compute_version("v4.1.0", [{"change_kind": "refresh"}], False, None)
-        == "v4.1.1"
+        cut_release._compute_version("v3.5.0", [{"change_kind": "refresh"}], False, None)
+        == "v3.5.1"
     )
-    with pytest.raises(RuntimeError, match="requires release v4"):
-        cut_release._compute_version("v3.4.0", [], False, "v3.5.0")
+    assert cut_release._compute_version(None, [{"change_kind": "added"}], False, None) == "v0.1.0"
 
 
-def test_unchanged_v4_release_still_refuses_a_noop_cut():
+def test_compute_version_override_wins_as_is():
+    assert cut_release._compute_version("v4.0.0", [], False, "3.5.0") == "v3.5.0"
+    assert cut_release._parse_version_override(None) is None
+    with pytest.raises(RuntimeError, match="invalid release version"):
+        cut_release._parse_version_override("v3.5")
+
+
+def test_unchanged_release_still_refuses_a_noop_cut():
     with pytest.raises(RuntimeError, match="nothing changed"):
-        cut_release._compute_version("v4.0.0", [{"change_kind": "unchanged"}], False, None)
+        cut_release._compute_version("v3.4.0", [{"change_kind": "unchanged"}], False, None)
 
 
 def test_audio_urls_come_from_sidecar_chapters():

@@ -22,7 +22,6 @@ from pydantic import BaseModel, ConfigDict, Field, RootModel, model_serializer, 
 from qua_shared.schemas.bucket.release_settings import ReleaseSettings
 
 SCHEMA_VERSION = 3
-RELEASE_FORMAT_MAJOR = 4
 VERSE_KEY_RE = re.compile(r"^[1-9]\d{0,2}:[1-9]\d{0,2}$")
 LOCATION_KEY_RE = re.compile(r"^[1-9]\d{0,2}:[1-9]\d{0,2}:[1-9]\d{0,2}$")
 
