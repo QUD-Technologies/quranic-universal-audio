@@ -439,6 +439,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     // to its pre-mutation index.
     let _prevRegChapter: number | null = null;
     let _prevRegIdx: number | null = null;
+    let _prevRegWindow: string | null = null;
 
     onMount(() => {
         // Register every non-readOnly row — both the main-list and any
@@ -446,10 +447,17 @@ import type { Segment } from '../../../../lib/types/view-models';
         // playing (chapter, index) so both instances render a synchronized
         // playhead. Keyed by (chapter, index) so same-index rows in different
         // chapters don't collide (validation panel with chapter=null).
-        if (!readOnly && !staged && rowEl) {
-            registerRow(rowChapter, seg.index, rowEl, canvasEl, _mountId, instanceRole);
+        //
+        // Staged pre-split pieces register too, carrying themselves as the
+        // entry's `segOverride`. They share the parent's (chapter, index), so
+        // without that the draw layer would resolve the PARENT's time window
+        // from the store and paint the cursor at the wrong x — which is why a
+        // cross-verse card showed no playhead until its split was dispatched.
+        if (!readOnly && rowEl) {
+            registerRow(rowChapter, seg.index, rowEl, canvasEl, _mountId, instanceRole, staged ? seg : null);
             _prevRegChapter = rowChapter;
             _prevRegIdx = seg.index;
+            _prevRegWindow = staged ? `${seg.time_start}:${seg.time_end}` : null;
         }
         // Preview-mode registration: snapshot rows in SavePreview / HistoryPanel
         // register with the panel's PreviewPlaybackContext so the play button
@@ -500,18 +508,22 @@ import type { Segment } from '../../../../lib/types/view-models';
     // drawActivePlayhead would draw on the wrong row (or miss this row
     // entirely). Fires after onMount completes — the `_prevRegChapter !==
     // null` guard prevents double-registration with the initial mount.
+    //
+    // Staged pieces keep a stable (chapter, index) but their time window is
+    // what identifies them, so re-register when that shifts as well.
+    $: _regWindow = staged ? `${seg.time_start}:${seg.time_end}` : null;
     $: if (
         rowEl
         && !readOnly
-        && !staged
-        && (rowChapter !== _prevRegChapter || seg.index !== _prevRegIdx)
+        && (rowChapter !== _prevRegChapter || seg.index !== _prevRegIdx || _regWindow !== _prevRegWindow)
     ) {
         if (_prevRegChapter !== null && _prevRegIdx !== null) {
             deregisterRow(_prevRegChapter, _prevRegIdx, _mountId);
         }
-        registerRow(rowChapter, seg.index, rowEl, canvasEl, _mountId, instanceRole);
+        registerRow(rowChapter, seg.index, rowEl, canvasEl, _mountId, instanceRole, staged ? seg : null);
         _prevRegChapter = rowChapter;
         _prevRegIdx = seg.index;
+        _prevRegWindow = _regWindow;
     }
 
     onDestroy(() => {

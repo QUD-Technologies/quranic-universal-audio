@@ -42,6 +42,17 @@
     // by UID — groups themselves are time-sorted, so relative position is
     // meaningful.
     //
+    // No-match filler: the backend's `seg_indices` is built from the verse's
+    // coverage map, which only ever contains segments that matched a
+    // reference. A segment with an EMPTY `matched_ref` sitting between the
+    // two bracketing segments of a gap is therefore invisible to it — and
+    // that unmatched row is usually the whole reason the words went missing.
+    // We walk the index span between consecutive bases and splice in every
+    // unmatched segment we find, so the card renders the full contiguous
+    // run (pair + every no-match row between them) instead of just the pair.
+    // Matched in-between segments (a different verse interleaved into the
+    // span) stay excluded — they belong to their own cards.
+    //
     // Memoized by split-op-only fingerprint over (chapterSegs, splitOps, base
     // UIDs) — see GenericIssueCard for the invariant rationale. Counting only
     // split ops (not all batches/ops) keeps trim/ref-edit ops as cache hits.
@@ -55,12 +66,27 @@
         const chapterSegs = getChapterSegments(item.chapter);
         const splitIdx = $splitGroupIndex;
         const ops = getChapterOpsSnapshot(item.chapter);
-        // Base UIDs are looked up per `seg_index`; include them in the key
-        // so a fixup that swaps the seg at a given index also invalidates.
+        // UIDs are looked up per index and folded into the key so a fixup
+        // that swaps the seg at a given index also invalidates the memo.
+        // Render plan: every base index, plus the unmatched ("no match")
+        // segments between consecutive bases. Built here rather than in the
+        // body below so the filler rows also fingerprint into the memo key.
         const baseUids: string[] = [];
-        for (const idx of item.seg_indices ?? []) {
+        const plan: Array<{ idx: number; filler: boolean }> = [];
+        const idxs = item.seg_indices ?? [];
+        for (let k = 0; k < idxs.length; k++) {
+            const idx = idxs[k]!;
             const base = getSegByChapterIndex(item.chapter, idx);
             baseUids.push(base?.segment_uid ?? `_${idx}`);
+            plan.push({ idx, filler: false });
+            const nextIdx = idxs[k + 1];
+            if (nextIdx == null || nextIdx <= idx + 1) continue;
+            for (let j = idx + 1; j < nextIdx; j++) {
+                const mid = getSegByChapterIndex(item.chapter, j);
+                if (!mid || mid.matched_ref) continue;
+                plan.push({ idx: j, filler: true });
+                baseUids.push(mid.segment_uid ?? `_${j}`);
+            }
         }
         // Bump on any reference-mutating op so memo busts when auto-fix /
         // edit-reference / merge / boundary-adjust change a base seg under
@@ -81,24 +107,30 @@
         for (const uid of baseUids) {
             if (splitIdx[uid]) committedTouches++;
         }
-        const key = `${item.chapter}|${(item.seg_indices ?? []).join(',')}|${baseUids.join(',')}|${chapterSegs.length}|${committedTouches}|${mutatingOpsCount}`;
+        const key = `${item.chapter}|${idxs.join(',')}|${baseUids.join(',')}|${chapterSegs.length}|${committedTouches}|${mutatingOpsCount}`;
         if (key !== _segRangeMemoKey) {
             _segRangeMemoKey = key;
             const out: Segment[] = [];
             const seenUids = new Set<string>();
-            for (const idx of item.seg_indices ?? []) {
-                const base = getSegByChapterIndex(item.chapter, idx);
+            const push = (s: Segment): void => {
+                const segKey = s.segment_uid ?? `${s.chapter}:${s.index}`;
+                if (seenUids.has(segKey)) return;
+                seenUids.add(segKey);
+                out.push(s);
+            };
+            for (const step of plan) {
+                const base = getSegByChapterIndex(item.chapter, step.idx);
                 if (!base) continue;
+                // A no-match filler is never a split parent — render it as-is.
+                if (step.filler) {
+                    push(base);
+                    continue;
+                }
                 const baseUid = base.segment_uid ?? null;
                 const committed = baseUid != null ? splitIdx[baseUid] : undefined;
                 const group = getSplitGroupMembers(baseUid, chapterSegs, committed, ops);
                 const list = group.length > 0 ? group : [base];
-                for (const s of list) {
-                    const segKey = s.segment_uid ?? `${s.chapter}:${s.index}`;
-                    if (seenUids.has(segKey)) continue;
-                    seenUids.add(segKey);
-                    out.push(s);
-                }
+                for (const s of list) push(s);
             }
             _segRangeMemoResult = out;
         }

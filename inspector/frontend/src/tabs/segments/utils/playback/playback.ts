@@ -62,6 +62,7 @@ import {
     segPort,
     setPlayingSegment,
 } from '../../stores/playback';
+import type { SegCanvas } from '../../types/segments-waveform';
 import { accordionStep } from '../accordion-nav';
 import { CHIME_TOTAL_MS, playSegmentEndChime } from './chime';
 import { drawSegPlayhead, drawWaveformFromPeaksForSeg } from '../waveform/draw-seg';
@@ -86,6 +87,14 @@ import { warmSeg } from './warmup';
  *  so cross-chapter advance (accordion -> another chapter's row) erases from
  *  the right canvas. */
 let _prevPlaying: { chapter: number; index: number } | null = null;
+
+/** Canvases of staged (not-yet-dispatched) split pieces that currently carry a
+ *  playhead. Staged pieces slice one parent window between them, so when the
+ *  cursor crosses out of a piece that piece needs its waveform repainted once
+ *  to erase the stale line — this set is what makes "once" possible instead of
+ *  repainting every idle piece on every frame. WeakSet so an unmounted row's
+ *  canvas is collectable without any teardown bookkeeping. */
+const _stagedCursorCanvases = new WeakSet<SegCanvas>();
 
 /** Active segment-bounded range. Used for accordion plays (always bounded
  *  to the played segment) and chapter-mode plays when autoplay is OFF.
@@ -980,10 +989,13 @@ export function drawActivePlayhead(timeMs?: number): void {
     // and any accordion row showing the same segment must be cleaned up.
     if (prev && pairChanged) {
         const prevSeg = getSegByChapterIndex(prev.chapter, prev.index);
-        if (prevSeg) {
-            for (const entry of getRowEntriesFor(prev.chapter, prev.index)) {
-                if (entry.canvas) drawWaveformFromPeaksForSeg(entry.canvas, prevSeg, prev.chapter);
-            }
+        for (const entry of getRowEntriesFor(prev.chapter, prev.index)) {
+            // Staged pieces erase against their OWN window — the store segment
+            // is their undivided parent.
+            const rowSeg = entry.segOverride ?? prevSeg;
+            if (!entry.canvas || !rowSeg) continue;
+            drawWaveformFromPeaksForSeg(entry.canvas, rowSeg, prev.chapter);
+            _stagedCursorCanvases.delete(entry.canvas);
         }
     }
 
@@ -1006,7 +1018,27 @@ export function drawActivePlayhead(timeMs?: number): void {
     // Draw the playhead on EVERY mounted twin for this (chapter, index) — main
     // list row and any accordion rows showing the same segment. Both need the
     // synchronized playhead per spec.
+    //
+    // Staged pre-split pieces are twins too, but each renders a SLICE of the
+    // parent's window and they all share the parent's (chapter, index). Draw
+    // them against their own window, and only while the playhead is inside it
+    // — so the cursor travels through the piece that is actually sounding and
+    // the pieces on either side stay clean. Leaving a piece erases its cursor
+    // once (tracked below) rather than repainting peaks every frame.
     for (const entry of getRowEntriesFor(active.chapter, active.index)) {
-        if (entry.canvas) drawSegPlayhead(entry.canvas, seg.time_start, seg.time_end, displayT, audioUrl);
+        if (!entry.canvas) continue;
+        const rowSeg = entry.segOverride ?? seg;
+        if (entry.segOverride) {
+            const inWindow = displayT >= rowSeg.time_start && displayT < rowSeg.time_end;
+            if (!inWindow) {
+                if (_stagedCursorCanvases.delete(entry.canvas)) {
+                    drawWaveformFromPeaksForSeg(entry.canvas, rowSeg, active.chapter);
+                }
+                continue;
+            }
+            _stagedCursorCanvases.add(entry.canvas);
+        }
+        const rowT = Math.min(rowSeg.time_end, Math.max(rowSeg.time_start, displayT));
+        drawSegPlayhead(entry.canvas, rowSeg.time_start, rowSeg.time_end, rowT, audioUrl);
     }
 }

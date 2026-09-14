@@ -46,7 +46,7 @@ Suppression: `is_suppressed_for(seg, cat)` = `is_ignored_for` (reads `seg.ignore
 | `classifier.py` | Per-segment classification — single source of truth. `classify_flags`/`classify_segment`/`classify_segment_full`/`classify_entry`. `is_ignored_for`/`is_resolved_by_edit`/`is_suppressed_for`. `compute_is_boundary_adj` (raw rule, no suppression) + `_check_boundary_adj` (persisted-field short-circuit + suppression). qalqala persisted-field short-circuit (local import of `compute_qalqala_letter`). |
 | `snapshot_classifier.py` | `classify_snapshot(snap)` — routes a loose SegSnapshot dict (history op-log shape) through `classify_segment`; no logic reimplemented. Used by save-flow history enrichment. |
 | `detail.py` | `_build_detail_lists` — single entry walk producing every per-category detail array + `verse_segments` coverage map + `sequence_gaps` + `basmala_amin` (per-chapter scan, missed-Basmala augmentation). `_compute_surah_offsets` / `_word_ord` (prefix-sum, O(1) ordinals). Each item carries `classified_issues`. Also identity helpers `resolve_segment_by_uid` / `resolve_segment_for_issue` / `filter_stale_issues`. |
-| `_missing.py` | `_build_missing_words` — verse coverage gaps → issue dicts with `auto_fix`/`auto_fix_up`/`auto_fix_down` targeting; merges `sequence_gaps`. |
+| `_missing.py` | `_build_missing_words` — verse coverage gaps → issue dicts with `auto_fix`/`auto_fix_up`/`auto_fix_down` targeting; merges `sequence_gaps`. `seg_indices` names only the **matched** segments bracketing each gap (the coverage map has no entry for an unmatched segment), so `MissingWordsCard.svelte` splices the no-match segments sitting between consecutive bases back into the rendered run — see below. |
 | `_structural.py` | `_check_structural_errors` — reads `segments.json` (verse-aggregated) via `load_seg_verses`. Returns `(errors, missing_verses, stats)`. |
 
 qalqala helper canonical path: `inspector/services/segments/qalqala.py::compute_qalqala_letter`. `services.qalqala` is an alias resolving to the same module (used by `classifier.py` fall-through and the retired perf report).
@@ -81,6 +81,8 @@ There is no separate `trigger-validation` route; `/validate` is the single class
 Store: `stores/validation.ts` — `segValidation` writable (`SegValidateResponse | null`), `splitGroupIndex` derived, `accordionViewActive` derived from `valUiOpenCategory`, `setValidation`/`clearValidation`.
 
 Components: `components/validation/{ValidationPanel,ErrorCard,GenericIssueCard,MissingVersesCard,MissingWordsCard,WaslBoundary,AccordionGuideModal}.svelte`. `ValidationPanel` filters stale items by live uid (`filterStaleIssues`) before render and owns accordion order.
+
+**`missing_words` render range.** The card renders a plan built from `item.seg_indices`: each base index expanded to its full split-group, **plus** every segment between consecutive bases whose `matched_ref` is empty. Those no-match rows are what the server cannot name — `_build_missing_words` derives `seg_indices` from the verse coverage map, which only holds matched segments — and they are usually the cause of the gap, so the card shows the whole contiguous run (pair + N no-match rows) rather than the bracketing pair alone. Matched in-between segments (a different verse interleaved into the span) stay excluded; they carry their own cards. The filler walk runs inside the memo-key phase so filler uids fingerprint into the cache key.
 
 ## Registry-pair invariant
 

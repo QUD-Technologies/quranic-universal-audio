@@ -286,6 +286,10 @@ export function pickProgrammaticMountId(chapter: number, index: number): symbol 
 function _pickHandoffMountId(entries: Iterable<RowEntry>): symbol | null {
     const byRole = new Map<RowInstanceRole, symbol>();
     for (const entry of entries) {
+        // Staged pre-split pieces render under the parent's (chapter, index)
+        // but expose no edit affordances — never hand a programmatic edit to
+        // one, or the chain claims a mount that can't service it.
+        if (entry.segOverride) continue;
         if (!byRole.has(entry.instanceRole)) byRole.set(entry.instanceRole, entry.mountId);
     }
     for (const role of _HANDOFF_ROLE_PREFERENCE) {

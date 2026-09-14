@@ -19,6 +19,7 @@
  * mount is unmounting without relying on the row/canvas element reference.
  */
 
+import type { Segment } from '../../../../lib/types/view-models';
 import type { SegCanvas } from '../../types/segments-waveform';
 
 /** Which DOM context a registered row is mounted in. Mirrors the
@@ -35,6 +36,16 @@ export interface RowEntry {
     row: HTMLElement;
     canvas: SegCanvas | null;
     instanceRole: RowInstanceRole;
+    /**
+     * Staged (not-yet-dispatched) split piece this mount renders, when it is
+     * one. Staged pieces all carry the PARENT's (chapter, index) — they have
+     * no store identity of their own — so the registry key alone cannot tell
+     * them apart, and the store segment's time window is the parent's, not
+     * the piece's. The playhead draw layer reads this to paint each piece
+     * against its own window, and the edit-handoff picker skips these mounts
+     * (a staged row owns no edit affordances).
+     */
+    segOverride: Segment | null;
 }
 
 /** Map<"chapter:index", Set<RowEntry>>. Set preserves insertion order so the
@@ -53,6 +64,7 @@ export function registerRow(
     canvas: HTMLCanvasElement | undefined,
     mountId: symbol,
     instanceRole: RowInstanceRole,
+    segOverride: Segment | null = null,
 ): void {
     const key = _key(chapter, index);
     let bucket = _registry.get(key);
@@ -60,7 +72,7 @@ export function registerRow(
         bucket = new Set<RowEntry>();
         _registry.set(key, bucket);
     }
-    bucket.add({ mountId, row, canvas: (canvas as SegCanvas) ?? null, instanceRole });
+    bucket.add({ mountId, row, canvas: (canvas as SegCanvas) ?? null, instanceRole, segOverride });
 }
 
 export function deregisterRow(chapter: number, index: number, mountId: symbol): void {
