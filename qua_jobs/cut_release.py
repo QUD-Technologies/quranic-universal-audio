@@ -1095,7 +1095,6 @@ def _build_members(eligible: list[dict], ctx: _BuildContext) -> list[dict]:
         with concurrent.futures.ProcessPoolExecutor(
             max_workers=workers,
             mp_context=multiprocessing.get_context("fork"),
-            max_tasks_per_child=1,  # release each reciter's peak memory to the OS
         ) as pool:
             results = list(pool.map(_build_member_task, eligible))
     return [m for m in results if m is not None]
