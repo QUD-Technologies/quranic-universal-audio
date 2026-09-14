@@ -166,6 +166,23 @@ export function setPlayingSegment(next: PlayingSegment | null): void {
     });
 }
 
+/** The staged (pre-split) piece the playhead is currently inside, as its
+ *  own time window, or null when no staged piece is sounding. Staged pieces
+ *  share their parent's (chapter, index), so `playingSegmentIndex` alone
+ *  cannot say which of them is live — the draw layer publishes this so only
+ *  that piece's row lights up. Identity-guarded: the rAF tick sets it every
+ *  frame. */
+export const stagedPlayheadWindow = writable<{ start: number; end: number } | null>(null);
+
+export function setStagedPlayheadWindow(next: { start: number; end: number } | null): void {
+    stagedPlayheadWindow.update((cur) => {
+        if (cur === next) return cur;
+        if (next == null) return null;
+        if (cur && cur.start === next.start && cur.end === next.end) return cur;
+        return { start: next.start, end: next.end };
+    });
+}
+
 /** True when main-tab audio is playing (not paused, and activeAudioSource
  *  === 'main'). Drives the per-row play-button glyph (stop vs play). */
 export const isMainAudioPlaying = writable<boolean>(false);
