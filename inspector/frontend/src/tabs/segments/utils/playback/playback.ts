@@ -61,6 +61,7 @@ import {
     segmentEndChimeEnabled,
     segPort,
     setPlayingSegment,
+    setStagedPlayheadWindow,
 } from '../../stores/playback';
 import type { SegCanvas } from '../../types/segments-waveform';
 import { accordionStep } from '../accordion-nav';
@@ -499,10 +500,6 @@ export function playFromSegment(
          *  chapters; the per-reciter VBR map decides clip-vs-chapter URL
          *  per sibling. */
         accordionSiblings?: Segment[] | null,
-        /** Stop boundary for the bounded range when the row's audible span is
-         *  narrower than the store segment's — a staged piece of a
-         *  pre-applied split plays only its own slice of the parent. */
-        endMsOverride?: number,
     },
 ): void {
     // Any new play supersedes a chime gap still waiting to resume the old one.
@@ -577,8 +574,8 @@ export function playFromSegment(
     _segRange?.dispose();
     _segRange = null;
 
-    const endMs = opts?.endMsOverride ?? seg.time_end;
-    const bounded = isAccordionPlay || !get(autoPlayEnabled) || _chimeArmed() || opts?.endMsOverride != null;
+    const endMs = seg.time_end;
+    const bounded = isAccordionPlay || !get(autoPlayEnabled) || _chimeArmed();
 
     if (bounded) {
         _segRange = new AudioRange({
@@ -1001,7 +998,10 @@ export function drawActivePlayhead(timeMs?: number): void {
 
     _prevPlaying = active ? { chapter: active.chapter, index: active.index } : null;
 
-    if (!active) return;
+    if (!active) {
+        setStagedPlayheadWindow(null);
+        return;
+    }
 
     const seg = getSegByChapterIndex(active.chapter, active.index);
     if (!seg) return;
@@ -1024,7 +1024,10 @@ export function drawActivePlayhead(timeMs?: number): void {
     // them against their own window, and only while the playhead is inside it
     // — so the cursor travels through the piece that is actually sounding and
     // the pieces on either side stay clean. Leaving a piece erases its cursor
-    // once (tracked below) rather than repainting peaks every frame.
+    // once (tracked below) rather than repainting peaks every frame. The
+    // piece that holds the cursor is published as `stagedPlayheadWindow` so
+    // its row alone carries the playing state.
+    let stagedWindow: { start: number; end: number } | null = null;
     for (const entry of getRowEntriesFor(active.chapter, active.index)) {
         if (!entry.canvas) continue;
         const rowSeg = entry.segOverride ?? seg;
@@ -1037,8 +1040,10 @@ export function drawActivePlayhead(timeMs?: number): void {
                 continue;
             }
             _stagedCursorCanvases.add(entry.canvas);
+            stagedWindow = { start: rowSeg.time_start, end: rowSeg.time_end };
         }
         const rowT = Math.min(rowSeg.time_end, Math.max(rowSeg.time_start, displayT));
         drawSegPlayhead(entry.canvas, rowSeg.time_start, rowSeg.time_end, rowT, audioUrl);
     }
+    setStagedPlayheadWindow(stagedWindow);
 }

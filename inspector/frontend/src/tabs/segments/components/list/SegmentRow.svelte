@@ -67,6 +67,7 @@ import type { Segment } from '../../../../lib/types/view-models';
         playingSegmentIndex,
         segListElement,
         segPort,
+        stagedPlayheadWindow,
     } from '../../stores/playback';
     import { valUiOpenCategory } from '../../stores/validation';
     import type {
@@ -352,11 +353,18 @@ import type { Segment } from '../../../../lib/types/view-models';
     $: rowPreviewUid = `${rowChapter}:${seg.index}:${seg.time_start}:${seg.time_end}`;
     $: previewActive = readOnly && !!previewCtx && _previewActiveUid === rowPreviewUid;
     $: previewPlaying = readOnly && !!previewCtx && _previewPlayingUid === rowPreviewUid;
+    // Staged pieces share the parent's (chapter, index): only the piece whose
+    // window holds the playhead is the playing one.
+    $: cursorInPiece = !staged
+        || (!!$stagedPlayheadWindow
+            && $stagedPlayheadWindow.start === seg.time_start
+            && $stagedPlayheadWindow.end === seg.time_end);
     $: isPlaying = previewActive
         || (!readOnly
             && !!$playingSegmentIndex
             && $playingSegmentIndex.chapter === rowChapter
-            && $playingSegmentIndex.index === seg.index);
+            && $playingSegmentIndex.index === seg.index
+            && cursorInPiece);
     // flashSegmentIndices is keyed by "chapter:index" — both the main-list
     // and accordion twin for the correctly-matched pair still light up, but
     // a same-index row in a different chapter (validation panel with
@@ -611,6 +619,7 @@ import type { Segment } from '../../../../lib/types/view-models';
         const isSelfPlaying = !!active
             && active.chapter === chapter
             && active.index === idx
+            && cursorInPiece
             && !segPort.paused;
         if (isSelfPlaying) {
             segPort.pause();
@@ -620,10 +629,11 @@ import type { Segment } from '../../../../lib/types/view-models';
             // autoscrolling when the same chapter is open, and keeps the
             // policy gate from advancing into the main display's chapter
             // when global autoplay is on.
+            // A staged piece starts at its own edge but plays through to the
+            // parent's end, so the cursor walks on into the next piece's card.
             playFromSegment(idx, chapter, staged ? seg.time_start : undefined, {
                 isAccordionPlay: instanceRole !== 'main',
                 accordionSiblings,
-                ...(staged ? { endMsOverride: seg.time_end } : {}),
             });
         }
     }
