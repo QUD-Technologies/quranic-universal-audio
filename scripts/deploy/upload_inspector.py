@@ -324,13 +324,15 @@ def _upload(
             private=True,
             exist_ok=True,
         )
-    _retry_on_429(
-        "add_space_secret",
-        api.add_space_secret,
-        repo_id=repo_id,
-        key="CELLS_DEPLOY_KEY",
-        value=cells_deploy_key,
-    )
+    # Pushing an empty value would overwrite a good secret already on the Space.
+    if cells_deploy_key:
+        _retry_on_429(
+            "add_space_secret",
+            api.add_space_secret,
+            repo_id=repo_id,
+            key="CELLS_DEPLOY_KEY",
+            value=cells_deploy_key,
+        )
     # Unlike CELLS_DEPLOY_KEY (hard-required — the frontend does not build
     # without the renderer package), qua-domain is optional: without it the
     # Space builds and serves Hafs, and every non-Hafs delivery fails loudly.
@@ -409,8 +411,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     cells_deploy_key = os.environ.get("CELLS_DEPLOY_KEY")
     if not cells_deploy_key and not args.dry_run:
-        print("ERROR: CELLS_DEPLOY_KEY missing in env.", file=sys.stderr)
-        return 2
+        print(
+            "    WARN: CELLS_DEPLOY_KEY absent from env; leaving the Space secret "
+            "as-is (the renderer package is vendored into the stage, so the "
+            "build only needs the key for a Space that never had it)."
+        )
 
     repo = repo_root()
     repo_id = SPACE_REPOS[args.env]
