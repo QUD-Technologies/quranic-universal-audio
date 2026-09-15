@@ -161,6 +161,22 @@ function waitForHeader(): Promise<HTMLElement | null> {
 }
 
 /**
+ * Right edge of what a container actually draws, ignoring its own padding.
+ *
+ * The Dashboard adds `padding-inline-end: var(--gutter)` to `.auth-controls`
+ * so the cluster lines up with the right rail. That padding is inside the
+ * box, so measuring the box put the last button a whole gutter further from
+ * the pill on the Dashboard than on every other tab. Measuring the children
+ * keeps the visible gap identical across tabs.
+ *
+ * Taking the max rather than the last child keeps it direction-agnostic.
+ */
+function visibleRightEdge(container: HTMLElement): number {
+  const edges = [...container.children].map((child) => child.getBoundingClientRect().right);
+  return edges.length ? Math.max(...edges) : container.getBoundingClientRect().right;
+}
+
+/**
  * Line the pill up with the app's own top-right cluster and clear their overlap.
  *
  * The pill is `position: fixed` in the corner at a height the package picked,
@@ -194,6 +210,7 @@ function placeHeader(): void {
   const barBox = bar.getBoundingClientRect();
   const barTop = barBox.top + window.scrollY;
   const barBottom = barBox.bottom + window.scrollY;
+  const barContentRight = visibleRightEdge(bar);
 
   // Centre the pill on the row before measuring the overlap, so the shift is
   // computed against where the pill actually ends up.
@@ -203,13 +220,13 @@ function placeHeader(): void {
 
   const pillBox = pill.getBoundingClientRect();
   const overlaps =
-    barBox.right > pillBox.left &&
+    barContentRight > pillBox.left &&
     barBox.left < pillBox.right &&
     barTop < pillBox.bottom &&
     barBottom > pillBox.top;
   if (!overlaps) return;
 
-  const shift = Math.ceil(barBox.right - pillBox.left + GAP_PX);
+  const shift = Math.ceil(barContentRight - pillBox.left + GAP_PX);
   if (barBox.left - shift >= MIN_LEFT_PX) {
     bar.style.marginRight = `${shift}px`;
   } else {
