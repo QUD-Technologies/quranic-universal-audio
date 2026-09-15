@@ -61,8 +61,16 @@ function injectHeaderTheme(): void {
     #${HEADER_ID} {
       background-image: none !important;
       background-color: var(--panel) !important;
-      border-color: var(--border-default) !important;
       color: var(--text-primary) !important;
+      /* the package only pads the leading edge, and the trailing control that
+         balanced it is hidden below */
+      padding-right: 1rem !important;
+    }
+    /* Every rule inside is painted in the package's own grey-200, including
+       borders we never target individually (the like-count separator). */
+    #${HEADER_ID},
+    #${HEADER_ID} * {
+      border-color: var(--border-default) !important;
     }
     /* author link */
     #${HEADER_ID} > div:first-child > a:first-of-type {
@@ -81,9 +89,15 @@ function injectHeaderTheme(): void {
       border-color: var(--border-default) !important;
       color: var(--text-secondary) !important;
     }
-    /* trailing icon button */
+    /* The trailing control expands the pill into HF's full Space header, which
+       only exists on the huggingface.co page. Served standalone there is
+       nothing to expand into, so all it does is set display:none on the pill
+       with no way to bring it back. Hide it, and the divider that set it off. */
     #${HEADER_ID} > div:nth-child(2) {
-      color: var(--text-muted) !important;
+      display: none !important;
+    }
+    #${HEADER_ID} > div:first-child {
+      border-right-width: 0 !important;
     }
   `;
   document.head.appendChild(style);
