@@ -221,11 +221,15 @@ function placeHeader(): void {
   const row = bar?.closest<HTMLElement>('header');
   if (!pill || !bar || !row) return;
 
+  const tabs = row.querySelector<HTMLElement>('.tab-bar');
+
   // Clear last pass before measuring, or each run compounds the previous one.
   // Safe to own outright: the header carries no padding of its own (the
-  // rail-aligned insets live on its children).
+  // rail-aligned insets live on its children), and nothing else transforms
+  // the tab bar.
   row.style.paddingRight = '';
   row.style.marginTop = '';
+  if (tabs) tabs.style.transform = '';
 
   const barBox = bar.getBoundingClientRect();
   const barTop = barBox.top + window.scrollY;
@@ -249,9 +253,29 @@ function placeHeader(): void {
   const reserve = Math.ceil(barContentRight - pillBox.left + GAP_PX);
   if (barBox.left - reserve >= MIN_LEFT_PX) {
     row.style.paddingRight = `${reserve}px`;
+    recentreTabs(tabs, reserve, pillBox.left);
   } else {
     row.style.marginTop = `${Math.ceil(pillBox.bottom + GAP_PX - barTop)}px`;
   }
+}
+
+/**
+ * Undo the sideways drift the reservation gives the centred tab bar.
+ *
+ * Padding shrinks the grid's content box from the right, so its midpoint — and
+ * with it the `justify-self: center` tab bar — moves left by half the
+ * reservation. The tabs are centred on the page, not on whatever room is left
+ * beside the pill, so shift them back. A transform keeps this purely visual:
+ * it cannot feed back into the measurements the reservation was derived from.
+ *
+ * Clamped so the correction never slides the tabs under the pill on a width
+ * where the two would otherwise meet.
+ */
+function recentreTabs(tabs: HTMLElement | null, reserve: number, pillLeft: number): void {
+  if (!tabs) return;
+  const box = tabs.getBoundingClientRect();
+  const shift = Math.min(Math.round(reserve / 2), Math.floor(pillLeft - GAP_PX - box.right));
+  if (shift > 0) tabs.style.transform = `translateX(${shift}px)`;
 }
 
 /**
