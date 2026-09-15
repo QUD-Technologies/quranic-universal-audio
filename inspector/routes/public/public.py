@@ -94,8 +94,14 @@ def space():
     ``*.hf.space`` URL gets no header unless the app draws one itself. We
     return ``author``/``likes`` alongside the id so the FE never has to make
     the browser-side Hub call, which 401s on a protected Space.
+
+    no-store: the payload is a few dozen bytes fetched once per page load, and
+    the like count already carries an hour-long server-side cache. A client
+    max-age bought nothing and cost correctness — a browser that cached the
+    first shipped shape kept replaying it across deploys, so the FE saw a
+    payload with no ``author`` and silently drew no header.
     """
-    return _with_cache(space_info_service.describe(), "public, max-age=3600")
+    return _with_cache(space_info_service.describe(), "no-store")
 
 
 @public_bp.route("/stats")

@@ -32,6 +32,63 @@ const GAP_PX = 12;
 /** Don't shove the controls so far left they leave the viewport. */
 const MIN_LEFT_PX = 8;
 
+/** Keep the pill off the very edge when the header row sits unusually high. */
+const MIN_TOP_PX = 8;
+
+/** Element id of the stylesheet that repaints the pill in our palette. */
+const THEME_STYLE_ID = 'space-header-theme';
+
+/**
+ * Repaint the pill in the app's palette.
+ *
+ * The package ships a fixed light treatment — a near-white gradient with
+ * grey-200 borders and grey-800 text — which reads as a foreign object dropped
+ * on our dark canvas. Every rule below points at a theme token, so the pill
+ * follows the light/dark toggle for free rather than needing a second set of
+ * overrides.
+ *
+ * The selectors lean on the package's element order (avatar, author, slash,
+ * name, likes) because it gives its nodes no classes. That order is the
+ * package's public shape — it is what `init()` builds — and a miss degrades to
+ * the package's own colours rather than breaking anything.
+ */
+function injectHeaderTheme(): void {
+  if (document.getElementById(THEME_STYLE_ID)) return;
+
+  const style = document.createElement('style');
+  style.id = THEME_STYLE_ID;
+  style.textContent = `
+    #${HEADER_ID} {
+      background-image: none !important;
+      background-color: var(--panel) !important;
+      border-color: var(--border-default) !important;
+      color: var(--text-primary) !important;
+    }
+    /* author link */
+    #${HEADER_ID} > div:first-child > a:first-of-type {
+      color: var(--text-muted) !important;
+    }
+    /* the "/" between owner and name */
+    #${HEADER_ID} > div:first-child > div {
+      color: var(--text-faint) !important;
+    }
+    /* space name */
+    #${HEADER_ID} > div:first-child > a:nth-of-type(2) {
+      color: var(--text-primary) !important;
+    }
+    /* like button */
+    #${HEADER_ID} > div:first-child > a:nth-of-type(3) {
+      border-color: var(--border-default) !important;
+      color: var(--text-secondary) !important;
+    }
+    /* trailing icon button */
+    #${HEADER_ID} > div:nth-child(2) {
+      color: var(--text-muted) !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 /** The shape `@huggingface/space-header` accepts in place of a lookup. */
 type SpaceData = { id: string; author: string; likes: number };
 
@@ -104,18 +161,27 @@ function waitForHeader(): Promise<HTMLElement | null> {
 }
 
 /**
- * Shift the app's own top-right cluster out from under the pill.
+ * Line the pill up with the app's own top-right cluster and clear their overlap.
  *
- * The pill is `position: fixed` in the top-right corner and its width depends
- * on how long `owner/name` is, so the offset can't be a constant — we measure
- * it. `.auth-controls` is the grid's end column, which in LTR lands directly
- * beneath the pill; in RTL it sits on the left and the rects never intersect,
- * so the same measurement naturally yields no shift.
+ * The pill is `position: fixed` in the corner at a height the package picked,
+ * which leaves it a few pixels above our header row — close enough to look
+ * like a mistake rather than a separate surface. We centre it on the row
+ * instead, and only then measure how far the row has to move to clear it.
+ *
+ * Its width tracks how long `owner/name` is, so neither offset can be a
+ * constant. `.auth-controls` is the grid's end column, which in LTR lands
+ * directly beneath the pill; in RTL it sits on the left and the rects never
+ * intersect, so the same measurement naturally yields no shift.
+ *
+ * All vertical maths happens in "page at rest" coordinates: the pill is fixed
+ * (so its viewport box already is that), while the header row scrolls, so its
+ * box is lifted back by `scrollY`. Without that the alignment would drift as
+ * soon as the reader scrolled.
  *
  * When the row is too narrow to absorb the shift (phones), the controls drop
  * below the pill instead of sliding off-screen.
  */
-function reserveRoomForHeader(): void {
+function placeHeader(): void {
   const pill = document.getElementById(HEADER_ID);
   const bar = document.querySelector<HTMLElement>('.auth-controls');
   const row = bar?.closest<HTMLElement>('header');
@@ -125,21 +191,29 @@ function reserveRoomForHeader(): void {
   bar.style.marginRight = '';
   row.style.marginTop = '';
 
-  const pillBox = pill.getBoundingClientRect();
   const barBox = bar.getBoundingClientRect();
+  const barTop = barBox.top + window.scrollY;
+  const barBottom = barBox.bottom + window.scrollY;
 
+  // Centre the pill on the row before measuring the overlap, so the shift is
+  // computed against where the pill actually ends up.
+  const pillHeight = pill.getBoundingClientRect().height;
+  const top = Math.max(MIN_TOP_PX, Math.round((barTop + barBottom - pillHeight) / 2));
+  pill.style.top = `${top}px`;
+
+  const pillBox = pill.getBoundingClientRect();
   const overlaps =
     barBox.right > pillBox.left &&
     barBox.left < pillBox.right &&
-    barBox.top < pillBox.bottom &&
-    barBox.bottom > pillBox.top;
+    barTop < pillBox.bottom &&
+    barBottom > pillBox.top;
   if (!overlaps) return;
 
   const shift = Math.ceil(barBox.right - pillBox.left + GAP_PX);
   if (barBox.left - shift >= MIN_LEFT_PX) {
     bar.style.marginRight = `${shift}px`;
   } else {
-    row.style.marginTop = `${Math.ceil(pillBox.bottom + GAP_PX - barBox.top)}px`;
+    row.style.marginTop = `${Math.ceil(pillBox.bottom + GAP_PX - barTop)}px`;
   }
 }
 
@@ -156,6 +230,10 @@ export async function installSpaceHeader(): Promise<void> {
   const space = await fetchSpace();
   if (!space) return;
 
+  // Land the overrides before the pill exists, so it never paints in the
+  // package's own light palette first.
+  injectHeaderTheme();
+
   try {
     const { init } = await import('@huggingface/space-header');
     // init() is sync-looking but does async work internally, so await the
@@ -170,15 +248,15 @@ export async function installSpaceHeader(): Promise<void> {
   const pill = await waitForHeader();
   if (!pill) return;
 
-  reserveRoomForHeader();
+  placeHeader();
 
   // Re-measure on viewport changes — the shift depends on both rects, and the
   // header row reflows (and can switch to the stacked branch) as width changes.
-  window.addEventListener('resize', reserveRoomForHeader, { passive: true });
+  window.addEventListener('resize', placeHeader, { passive: true });
 
   // The pill keeps growing after insertion (its avatar loads late), and each
   // size change moves the offset the controls need.
   if (typeof ResizeObserver !== 'undefined') {
-    new ResizeObserver(reserveRoomForHeader).observe(pill);
+    new ResizeObserver(placeHeader).observe(pill);
   }
 }
