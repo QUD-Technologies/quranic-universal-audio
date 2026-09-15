@@ -21,13 +21,14 @@ the redirect is transparent on hover (`NotificationsRail.navTarget`):
 | `flag.reply`, `flag.created`, `flag.replied` | "Open flagged segment" | `gotoSegments(slug, {openFlagged, focusFlaggedUid})` — Segments tab + Flagged accordion open + scrolled to the flagged segment |
 | `ts_report.created`, `ts_report.resolved` | "View reported verse" | `gotoTimestamps(slug, payload.verse_key)` — Timestamps tab, that reciter loaded + playhead seeked to the verse (categorized report / its resolution) |
 | `request.received` | (none) | informational — no click-through; a type pill (`payload.kind`) names the request kind |
+| `shard.missing` | "View reciter" | dashboard detail modal — the chapter's shard is gone, so there is nothing to open in Timestamps |
 | everything else | "View reciter" | dashboard detail modal (`openDetail`), when the reciter is still catalogued |
 
 A `cardBadge(n)` helper renders a small type pill next to the title:
 `request.received` → the kind (Edit existing combo / New riwāyah · style / New
 reciter), `reciter.marked_ready` → "Has notes", `flag.created` → "Flag · comment",
 `flag.replied` → "Flag · reply", `ts_report.created` → "Timestamps · report",
-`ts_report.resolved` → "Timestamps · resolved".
+`ts_report.resolved` → "Timestamps · resolved", `shard.missing` → "Data · missing".
 
 For `ts_report.created`, the card body shows the reporter's login (from
 `payload.author_login`, or "an anonymous listener") only to callers holding
@@ -107,6 +108,22 @@ Every title names its reciter, resolved once via `catalog.display_name(slug)`
 | `request.intake_discarded` | requester | "Your submission for X was discarded" + reason |
 | `flag.reply` | original flagger | "New reply on a segment you flagged in X" + reply text |
 | `reciter.marked_ready` | review-alert recipients (only when a comment box is non-empty) | "X marked ready — reviewer left notes" + the notes |
+
+## Owner data-integrity alerts
+
+One event, `shard.missing`, rides a **separate** capability:
+`notifications.receive_integrity_alerts` (owner-only by default, delegatable).
+It is deliberately not folded into the review alerts — a vanished shard is an
+infrastructure alarm, not review load to share out, so the two toggle
+independently from the Permissions tab.
+
+Emitted by `emit.notify_owners_shard_integrity(findings)` from the daily
+shard-integrity watchdog ([automation.md](automation.md) § Shard-integrity
+watchdog), not from any transition. One card per (delivery, chapter, kind);
+`source_key` is the finding's own `shardint:<kind>:<slug>:<chapter>`, so a gap
+that stays unrepaired notifies **once**, not on every sweep. The body says
+whether an interrupted-write temp still holds the payload (recoverable) or the
+chapter needs a re-align; `payload` carries `chapter` / `kind` / `orphan_path`.
 
 ## Owner review alerts
 

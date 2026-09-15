@@ -63,6 +63,10 @@ def ts_report_reported(name: str) -> str:
     return f"Timestamps issue reported · {name}"
 
 
+def shard_missing(name: str) -> str:
+    return f"Timestamps data missing · {name}"
+
+
 # --- User-facing: report resolution ---
 
 

@@ -49,6 +49,11 @@ _Resolver = Callable[[AuditRecord, ReciterRow | None, dict, str], list[_Target]]
 #: it to maintainers from the Permissions tab.
 REVIEW_ALERTS_CAP = "notifications.receive_review_alerts"
 
+#: Capability that gates the owner-facing data-integrity alerts (the daily
+#: shard-integrity sweep). Separate from the review alerts on purpose: a missing
+#: shard is an infrastructure alarm, not review load to share out.
+INTEGRITY_ALERTS_CAP = "notifications.receive_integrity_alerts"
+
 
 def _review_alert_recipients() -> list[str]:
     """Every user who currently holds ``REVIEW_ALERTS_CAP`` (owners + delegated
@@ -56,6 +61,65 @@ def _review_alert_recipients() -> list[str]:
     from services.auth import capabilities as _caps
 
     return _caps.users_with_capability(REVIEW_ALERTS_CAP)
+
+
+def _integrity_alert_recipients() -> list[str]:
+    """Every user holding ``INTEGRITY_ALERTS_CAP``. Lazy import, as above."""
+    from services.auth import capabilities as _caps
+
+    return _caps.users_with_capability(INTEGRITY_ALERTS_CAP)
+
+
+def notify_owners_shard_integrity(findings: list) -> int:
+    """Fan shard-integrity findings out to the integrity-alert recipients.
+
+    One card per (delivery, chapter, kind) — ``source_key`` is the finding's own
+    stable key, so a gap that stays unrepaired notifies **once**, not on every
+    sweep. Returns the number of findings that produced a card (a repeat finding
+    is deduped away by ``INSERT OR IGNORE`` and still counts here; the caller
+    uses it only for its run detail). Opens its own ``durable_transaction``;
+    best-effort, like every other emitter.
+    """
+    if not findings:
+        return 0
+    try:
+        from services.db import sync as _sync
+        from services.state import catalog
+
+        recipients = _integrity_alert_recipients()
+        if not recipients:
+            return 0
+        with _sync.durable_transaction():
+            for f in findings:
+                name = catalog.display_name(f.slug) or f.slug
+                if f.kind == "orphan_temp":
+                    body = (
+                        f"Chapter {f.chapter}'s timestamps shard is missing, but an "
+                        "interrupted-write temp file still holds it — recoverable."
+                    )
+                else:
+                    body = (
+                        f"Chapter {f.chapter}'s timestamps shard is missing from the "
+                        "bucket with no recoverable copy — it needs a re-align."
+                    )
+                for uid in recipients:
+                    repo_notifications.create(
+                        hf_user_id=uid,
+                        event="shard.missing",
+                        slug=f.slug,
+                        title=copy.shard_missing(name),
+                        body=body,
+                        payload={
+                            "chapter": f.chapter,
+                            "kind": f.kind,
+                            "orphan_path": f.orphan_path,
+                        },
+                        source_key=f.source_key,
+                    )
+        return len(findings)
+    except Exception:  # noqa: BLE001 — best-effort; never break the sweep
+        logger.exception("notifications.notify_owners_shard_integrity failed")
+        return 0
 
 
 def _owner_targets(title: str, body: str | None, payload: dict[str, Any] | None) -> list[_Target]:

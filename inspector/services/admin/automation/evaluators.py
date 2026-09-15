@@ -1,4 +1,4 @@
-"""The five automation evaluators — one per automation, each idempotent.
+"""The automation evaluators — one per automation, each idempotent.
 
 Every evaluator: (1) returns early if disabled; (2) derives candidates from live
 release state; (3) skips in-flight + failed-bucket rows (no auto-retry); (4)
@@ -31,6 +31,7 @@ from services.storage.data_loader import load_detailed
 
 from .actor import SYSTEM_AUTOMATION_ID, system_actor
 from .config import load_config
+from .integrity import eval_shard_integrity
 from .schedule import is_due
 
 logger = logging.getLogger(__name__)
@@ -512,6 +513,7 @@ def eval_auto_release_inactive(cfg: AutomationConfig, now: datetime) -> None:
 
 #: The evaluators in execution order (cheap event-driven first, scheduled next).
 EVALUATORS = (
+    eval_shard_integrity,
     eval_auto_gen_ts,
     eval_stale_ts_regen,
     eval_stale_metadata,

@@ -7,6 +7,8 @@ admin Releases tab. The engine is a single opt-in reconciler daemon; it reacts t
 
 ## The six automations
 
+Plus a non-acting watchdog, below.
+
 | id | What it does | Trigger | Owner settings |
 |---|---|---|---|
 | `auto_gen_ts` | Launch the timestamps job for a marked-ready recitation that clears the gates | A `ready_to_generate` row (marked-ready, no TS) | gate-by-comments, gate-by-flags |
@@ -23,6 +25,38 @@ launches therefore record into the same uniform `JobRecord` store as manual ones
 so every automated run is visible in the admin **Jobs** tab ([admin-dashboard.md](admin-dashboard.md) § Jobs compartment).
 `refresh_catalog.launch`) — and the manual `claim.force_released` transition for
 `auto_release_inactive`. Automation is a *decider*, not new job code.
+
+## Shard-integrity watchdog
+
+A seventh evaluator, `shard_integrity`
+(`services/admin/automation/integrity.py`), that is **not** one of the six: it
+takes no action, launches no job, and has **no config toggle**. It sweeps every
+delivery once every 24 h for chapters whose timestamps shard has vanished and
+notifies the data-integrity recipients ([notifications.md](notifications.md)
+§ Owner data-integrity alerts).
+
+- **Why always-on.** There is nothing to tune and no job cost, so an opt-in flag
+  would only mean the safety net is off exactly when it matters. The one knob is
+  the `notifications.receive_integrity_alerts` capability.
+- **Why not the GH cut.** The cut runs on demand, covers only release-eligible
+  deliveries, and surfaces a lost chapter as an ordinary "missing coverage" line
+  — so a gap can sit unnoticed until someone reads a changelog.
+- **Why daily.** The sweep lists two directories per delivery; at the 60 s tick
+  that would be thousands of pointless listings an hour. The cadence anchor is
+  the `automation_state` row, like the scheduled automations.
+- **What it detects** (`services/storage/shard_integrity.py`, Flask-free):
+  `orphan_temp` — the hidden `.{chapter}.json.br.{rand}` left by a *killed*
+  `write_validated_shard` whose non-atomic bucket rename already removed the
+  destination; the orphan holds the complete payload, so the repair is to
+  re-validate its bytes and publish them. `missing_shard` — audio present, no
+  shard, no orphan; that chapter needs a single-chapter re-align.
+- **False-positive guards.** A delivery with zero shards was never timestamped
+  (and is absent from every release), so it is not a finding; an orphan beside a
+  healthy shard is litter from a later-redone write, not a gap; and the sweep
+  uses `list_dir_strict`, never `list_dir` — the latter turns a bucket API error
+  into an empty list, which here would read as "every shard is gone". A delivery
+  whose listing fails is reported as *unreadable* in the run detail, never as
+  findings.
 
 ## Engine
 
@@ -48,7 +82,10 @@ Migration `0020_automation.sql`, repo `services/db/repo_automation.py`:
 - `automation_state` — per-automation `last_run_at` / `last_status` /
   `last_detail`. Written **only when an automation acts** — an idle tick writes
   nothing (no bucket upload). `next_run_at` is **not** stored; the route computes
-  it live so idle ticks stay write-free.
+  it live so idle ticks stay write-free. The one exception is the
+  `shard_integrity` watchdog, which records every sweep (clean ones included, as
+  `skipped`) because that row is also its cadence anchor — once a day, not once a
+  tick.
 
 ## Shared TS-generation defaults
 

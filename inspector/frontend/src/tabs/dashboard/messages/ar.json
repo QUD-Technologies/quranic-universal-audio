@@ -205,6 +205,7 @@
   "dashboard_notifs_badge_new_riwayah_style": "رواية / أسلوب جديد",
   "dashboard_notifs_badge_timestamps_report": "طوابع زمنية · بلاغ",
   "dashboard_notifs_badge_timestamps_resolved": "طوابع زمنية · تمت المعالجة",
+  "dashboard_notifs_badge_shard_missing": "بيانات · مفقودة",
   "dashboard_notifs_email_button_label": "البريد الإلكتروني",
   "dashboard_notifs_email_button_title": "إدارة إشعارات البريد الإلكتروني",
   "dashboard_notifs_empty": "لا إشعارات.",

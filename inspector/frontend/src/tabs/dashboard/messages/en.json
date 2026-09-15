@@ -197,6 +197,7 @@
   "dashboard_notifs_badge_new_riwayah_style": "New riwāyah / style",
   "dashboard_notifs_badge_timestamps_report": "Timestamps · report",
   "dashboard_notifs_badge_timestamps_resolved": "Timestamps · resolved",
+  "dashboard_notifs_badge_shard_missing": "Data · missing",
   "dashboard_notifs_email_button_label": "Email",
   "dashboard_notifs_email_button_title": "Manage email notifications",
   "dashboard_notifs_empty": "No notifications.",

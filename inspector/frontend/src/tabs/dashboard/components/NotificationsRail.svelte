@@ -177,6 +177,8 @@
             case 'ts_report.resolved':
             case 'ts_report.auto_resolved':
                 return m.dashboard_notifs_badge_timestamps_resolved();
+            case 'shard.missing':
+                return m.dashboard_notifs_badge_shard_missing();
             default:
                 return null;
         }

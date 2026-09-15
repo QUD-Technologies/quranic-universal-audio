@@ -523,6 +523,16 @@ CAPABILITIES: tuple[Capability, ...] = (
         maintainer=True,
     ),
     _c(
+        "notifications.receive_integrity_alerts",
+        G_ADMIN,
+        "Receive data-integrity alerts",
+        "Get a My Notifications card when the daily sweep finds a recitation "
+        "chapter whose timestamps shard has gone missing from the bucket. "
+        "Owner-only by default.",
+        contributor=False,
+        maintainer=False,
+    ),
+    _c(
         "notifications.receive_review_alerts",
         G_ADMIN,
         "Receive review alerts",
