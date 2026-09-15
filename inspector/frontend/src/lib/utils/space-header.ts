@@ -273,6 +273,15 @@ export async function installSpaceHeader(): Promise<void> {
 
   placeHeader();
 
+  // The pill labels the Space in a monospace face, so the webfont swap resizes
+  // it after that first pass. Both hooks below fire in a background tab, where
+  // rAF and ResizeObserver delivery are stalled and would otherwise leave the
+  // reservation stuck at the fallback-font width until the tab is first shown.
+  void document.fonts?.ready?.then(placeHeader);
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', placeHeader, { once: true });
+  }
+
   // Re-measure on viewport changes — the shift depends on both rects, and the
   // header row reflows (and can switch to the stacked branch) as width changes.
   window.addEventListener('resize', placeHeader, { passive: true });
