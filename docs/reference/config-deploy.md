@@ -18,7 +18,7 @@ Same code, profile selected by env presence:
 
 It also mounts `utils/wsgi.py::ForceHttpsScheme` on top of `ProxyFix`, pinning `wsgi.url_scheme` to https. `ProxyFix` trusts one hop, which is correct for the direct `*.hf.space` host, but a **custom domain adds a hop** — the nearest `X-Forwarded-Proto` is then HF's internal plaintext leg and werkzeug settles on `http`. Everything scheme-derived breaks together: the OAuth `redirect_uri` goes out as `http://…` (HF answers the authorize call with a 400) and `Secure` is dropped from our cross-site cookies, which a browser then discards because they are `SameSite=None`. Both deployed hostnames are https-only at the edge, so pinning states a fact rather than guessing the hop count — which differs per hostname, hence not simply widening `x_proto`.
 
-A custom domain also needs its **own** OAuth app: HF's auto-provisioned one (`hf_oauth: true`) only allow-lists the Space's own hosts, so the custom-domain `redirect_uri` 400s even over https. Register one under `/settings/applications/new` (scopes `openid` + `profile`, **not** a public/PKCE app, redirect URLs for every host that serves the app — the custom domain *and* `*.hf.space`), then set `INSPECTOR_OAUTH_CLIENT_ID` / `INSPECTOR_OAUTH_CLIENT_SECRET` as secrets on that Space. Those names take precedence over HF's injected pair (`services/auth/auth.py::oauth_client_credentials`), so `hf_oauth: true` stays in the README — which matters because the frontmatter is one template shared by dev and prod, and removing it would switch both at once and break the `*.hf.space` + iframe logins the injected pair serves. Clearing the two secrets falls back to HF's app.
+OAuth is **our own registered app**, not HF's: the frontmatter deliberately omits `hf_oauth`. Two reasons, either one sufficient. HF's auto-provisioned app allow-lists only the Space's own hosts, so a custom domain's `redirect_uri` is refused with a 400. And `hf_oauth` makes HF inject `OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET`, which collides with the Space secrets of the same name that carry our app — HF rejects the config outright (`Collision on variables and secrets names`) and the Space sits in `CONFIG_ERROR` without booting. Register the app under `/settings/applications/new` (scopes `openid` + `profile`, **not** a public/PKCE app), list a redirect URL for **every** host the Space answers on — the custom domain *and* `*.hf.space` — and put the pair in Space secrets. `OPENID_PROVIDER_URL` is unset and defaults to `https://huggingface.co`.
 
 ## Spaces
 
@@ -89,7 +89,8 @@ The image bakes the **dev** bucket as default (`INSPECTOR_BUCKET_REPO=hetchyy/qu
 
 | Var | Source | Purpose |
 |---|---|---|
-| `OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET` / `OPENID_PROVIDER_URL` | HF-injected (`hf_oauth: true`) | OAuth client + OIDC discovery. Auto-managed by HF; never persisted. |
+| `OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET` | **Space secrets** — an OAuth app we registered (the README omits `hf_oauth`, so HF injects nothing) | OAuth client. Its redirect URLs must cover every host the Space serves. |
+| `OPENID_PROVIDER_URL` | unset → `https://huggingface.co` | OIDC discovery base. |
 | `OAUTH_SCOPES` | `openid profile` | OAuth scopes requested. |
 | `INSPECTOR_SESSION_SECRET` | Space secret (≥32 hex) | Signs the `inspector_session` cookie. `services/auth/secrets_guard.py::get_session_secret` rejects unset/short values. Rotating logs everyone out. |
 | `INSPECTOR_DEV_MODE` | `1` auto-set locally when OAuth unconfigured | Bypasses OAuth; mints a synthetic per-role user. |

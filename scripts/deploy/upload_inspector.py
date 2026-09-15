@@ -80,6 +80,13 @@ SPACE_REPOS = {
 }
 
 # README frontmatter shipped to the Space. Mirrors the runbook §1 setup.
+#
+# Deliberately no `hf_oauth`. It makes HF provision its own OAuth app and inject
+# OAUTH_CLIENT_ID / OAUTH_CLIENT_SECRET, which collides with the Space secrets of
+# the same name that hold our own registered app — HF rejects the whole config
+# ("Collision on variables and secrets names") and the Space never boots. Our own
+# app is required anyway: HF's auto-provisioned one allow-lists only the Space's
+# own hosts, so a custom domain's redirect_uri is refused with a 400.
 SPACE_README = """---
 title: Quranic Universal Audio{suffix}
 emoji: 🎙️
@@ -90,8 +97,6 @@ sdk: docker
 app_port: 7860
 pinned: false
 header: mini
-hf_oauth: true
-hf_oauth_expiration_minutes: 480
 ---
 """
 
