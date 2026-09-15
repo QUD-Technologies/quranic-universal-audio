@@ -23,6 +23,15 @@
 
 const SPACE_ENDPOINT = '/api/public/space';
 
+/** Element id the package gives the pill it injects. */
+const HEADER_ID = 'huggingface-space-header';
+
+/** Breathing room between the pill and whatever we shift out from under it. */
+const GAP_PX = 12;
+
+/** Don't shove the controls so far left they leave the viewport. */
+const MIN_LEFT_PX = 8;
+
 /** The shape `@huggingface/space-header` accepts in place of a lookup. */
 type SpaceData = { id: string; author: string; likes: number };
 
@@ -59,6 +68,46 @@ async function fetchSpace(): Promise<SpaceData | null> {
 }
 
 /**
+ * Shift the app's own top-right cluster out from under the pill.
+ *
+ * The pill is `position: fixed` in the top-right corner and its width depends
+ * on how long `owner/name` is, so the offset can't be a constant — we measure
+ * it. `.auth-controls` is the grid's end column, which in LTR lands directly
+ * beneath the pill; in RTL it sits on the left and the rects never intersect,
+ * so the same measurement naturally yields no shift.
+ *
+ * When the row is too narrow to absorb the shift (phones), the controls drop
+ * below the pill instead of sliding off-screen.
+ */
+function reserveRoomForHeader(): void {
+  const pill = document.getElementById(HEADER_ID);
+  const bar = document.querySelector<HTMLElement>('.auth-controls');
+  const row = bar?.closest<HTMLElement>('header');
+  if (!pill || !bar || !row) return;
+
+  // Clear last pass before measuring, or each run compounds the previous one.
+  bar.style.marginRight = '';
+  row.style.marginTop = '';
+
+  const pillBox = pill.getBoundingClientRect();
+  const barBox = bar.getBoundingClientRect();
+
+  const overlaps =
+    barBox.right > pillBox.left &&
+    barBox.left < pillBox.right &&
+    barBox.top < pillBox.bottom &&
+    barBox.bottom > pillBox.top;
+  if (!overlaps) return;
+
+  const shift = Math.ceil(barBox.right - pillBox.left + GAP_PX);
+  if (barBox.left - shift >= MIN_LEFT_PX) {
+    bar.style.marginRight = `${shift}px`;
+  } else {
+    row.style.marginTop = `${Math.ceil(pillBox.bottom + GAP_PX - barBox.top)}px`;
+  }
+}
+
+/**
  * Inject the HF mini header, when this deploy is a Space served standalone.
  *
  * Safe to call unconditionally: every failure path is a silent no-op, and the
@@ -79,5 +128,21 @@ export async function installSpaceHeader(): Promise<void> {
     await init(space);
   } catch (err) {
     console.warn('space-header: injection failed, continuing without it', err);
+    return;
+  }
+
+  // The pill lands in the DOM during init(); wait one frame so layout has
+  // settled before measuring it.
+  requestAnimationFrame(reserveRoomForHeader);
+
+  // Re-measure on viewport changes — the shift depends on both rects, and the
+  // header row reflows (and can switch to the stacked branch) as width changes.
+  window.addEventListener('resize', reserveRoomForHeader, { passive: true });
+
+  // The pill itself can resize once its avatar image loads, which changes the
+  // offset the controls need.
+  const pill = document.getElementById(HEADER_ID);
+  if (pill && typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(reserveRoomForHeader).observe(pill);
   }
 }
