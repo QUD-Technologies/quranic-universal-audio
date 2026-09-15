@@ -67,6 +67,42 @@ async function fetchSpace(): Promise<SpaceData | null> {
   }
 }
 
+/** How long to keep waiting for the package to actually insert its pill. */
+const HEADER_WAIT_MS = 10_000;
+
+/**
+ * Resolve once the pill is in the DOM with a real box, or null on timeout.
+ *
+ * `init()` resolves before the element is laid out, so measuring on the next
+ * frame finds either nothing or a zero-size box — and, worse, leaves us with
+ * no element to attach the ResizeObserver to. Watch for it instead.
+ */
+function waitForHeader(): Promise<HTMLElement | null> {
+  const ready = (): HTMLElement | null => {
+    const el = document.getElementById(HEADER_ID);
+    return el && el.getBoundingClientRect().width > 0 ? el : null;
+  };
+
+  const found = ready();
+  if (found) return Promise.resolve(found);
+
+  return new Promise((resolve) => {
+    let timer = 0;
+    const observer = new MutationObserver(() => {
+      const el = ready();
+      if (!el) return;
+      observer.disconnect();
+      window.clearTimeout(timer);
+      resolve(el);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    timer = window.setTimeout(() => {
+      observer.disconnect();
+      resolve(null);
+    }, HEADER_WAIT_MS);
+  });
+}
+
 /**
  * Shift the app's own top-right cluster out from under the pill.
  *
@@ -131,18 +167,18 @@ export async function installSpaceHeader(): Promise<void> {
     return;
   }
 
-  // The pill lands in the DOM during init(); wait one frame so layout has
-  // settled before measuring it.
-  requestAnimationFrame(reserveRoomForHeader);
+  const pill = await waitForHeader();
+  if (!pill) return;
+
+  reserveRoomForHeader();
 
   // Re-measure on viewport changes — the shift depends on both rects, and the
   // header row reflows (and can switch to the stacked branch) as width changes.
   window.addEventListener('resize', reserveRoomForHeader, { passive: true });
 
-  // The pill itself can resize once its avatar image loads, which changes the
-  // offset the controls need.
-  const pill = document.getElementById(HEADER_ID);
-  if (pill && typeof ResizeObserver !== 'undefined') {
+  // The pill keeps growing after insertion (its avatar loads late), and each
+  // size change moves the offset the controls need.
+  if (typeof ResizeObserver !== 'undefined') {
     new ResizeObserver(reserveRoomForHeader).observe(pill);
   }
 }
