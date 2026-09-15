@@ -8,6 +8,12 @@
  * own wrapper for that case: it draws the same floating pill from inside the
  * app.
  *
+ * We always hand `init()` the space object rather than just the id. Given an
+ * id alone the package fetches `huggingface.co/api/spaces/<id>` from the
+ * browser, which is unauthenticated — on a private or protected Space that
+ * 401s and the package throws reading a field off the undefined response.
+ * Our own `/api/public/space` returns the same three fields at any visibility.
+ *
  * Two guards keep it to exactly the standalone case:
  *   - iframed  → the Space page already paints the pill above us; a second one
  *                inside the frame would double up.
@@ -16,6 +22,9 @@
  */
 
 const SPACE_ENDPOINT = '/api/public/space';
+
+/** The shape `@huggingface/space-header` accepts in place of a lookup. */
+type SpaceData = { id: string; author: string; likes: number };
 
 /** True when the app owns the whole tab rather than sitting in the Space page's iframe. */
 function isStandalone(): boolean {
@@ -27,13 +36,21 @@ function isStandalone(): boolean {
   }
 }
 
-async function fetchSpaceId(): Promise<string | null> {
+async function fetchSpace(): Promise<SpaceData | null> {
   try {
     const resp = await fetch(SPACE_ENDPOINT, { credentials: 'same-origin' });
     if (!resp.ok) return null;
-    const data: unknown = await resp.json();
-    const id = (data as { space_id?: unknown } | null)?.space_id;
-    return typeof id === 'string' && id.includes('/') ? id : null;
+    const data = (await resp.json()) as {
+      space_id?: unknown;
+      author?: unknown;
+      likes?: unknown;
+    } | null;
+
+    const id = data?.space_id;
+    const author = data?.author;
+    if (typeof id !== 'string' || !id.includes('/') || typeof author !== 'string') return null;
+
+    return { id, author, likes: typeof data?.likes === 'number' ? data.likes : 0 };
   } catch {
     // Offline, blocked, or the route is missing on an older deploy. The header
     // is decorative; never let it surface as an error.
@@ -51,12 +68,15 @@ async function fetchSpaceId(): Promise<string | null> {
 export async function installSpaceHeader(): Promise<void> {
   if (!isStandalone()) return;
 
-  const spaceId = await fetchSpaceId();
-  if (!spaceId) return;
+  const space = await fetchSpace();
+  if (!space) return;
 
   try {
     const { init } = await import('@huggingface/space-header');
-    init(spaceId);
+    // init() is sync-looking but does async work internally, so await the
+    // result: a bare call would reject unobserved and surface as an uncaught
+    // promise error in the console.
+    await init(space);
   } catch (err) {
     console.warn('space-header: injection failed, continuing without it', err);
   }

@@ -16,8 +16,6 @@ Slice B of phase 6.
 
 from __future__ import annotations
 
-import os
-
 from flask import Blueprint, Response, jsonify, request
 
 from qua_shared.schemas import (
@@ -32,6 +30,7 @@ from services import permissions
 from services import public_activity as public_activity_service
 from services import public_state as public_state_service
 from services import search_normalize as search_normalize_service
+from services import space_info as space_info_service
 from services.auth import capabilities as cap_service
 from utils.decorators import require_capability
 
@@ -87,18 +86,16 @@ def version(user):
 
 @public_bp.route("/space")
 def space():
-    """HF Space id (``owner/name``) this deploy runs on — ``null`` off-Space.
+    """Space identity for the FE's HF mini header — ``space_id`` null off-Space.
 
-    Unauthenticated on purpose: the Space id is public, and the FE needs it
-    before any identity call to inject the Hugging Face mini header. HF only
-    renders its own chrome on the ``huggingface.co/spaces/...`` page, so a
-    custom domain or the direct ``*.hf.space`` URL gets no header unless the
-    app draws one itself. Long max-age — the value is fixed for a container.
+    Unauthenticated on purpose: this is public metadata, and the FE needs it
+    before any identity call. HF only renders its own chrome on the
+    ``huggingface.co/spaces/...`` page, so a custom domain or the direct
+    ``*.hf.space`` URL gets no header unless the app draws one itself. We
+    return ``author``/``likes`` alongside the id so the FE never has to make
+    the browser-side Hub call, which 401s on a protected Space.
     """
-    return _with_cache(
-        {"space_id": os.environ.get("SPACE_ID") or None},
-        "public, max-age=3600",
-    )
+    return _with_cache(space_info_service.describe(), "public, max-age=3600")
 
 
 @public_bp.route("/stats")
