@@ -19,7 +19,7 @@ size_categories:
 
 <p align="center">
   <a href="https://huggingface.co/spaces/hetchyy/quranic-universal-aligner"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Tool-Qur'anic%20Universal%20Aligner-E8C32E" alt="Tool - Qur'anic Universal Aligner"></a>
-  <a href="https://hetchyy-quranic-universal-audio.hf.space/"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Website-Qur'anic%20Universal%20Audio-E8C32E" alt="Website - Qur'anic Universal Audio"></a>
+  <a href="https://universal-audio.qud.dev/"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Website-Qur'anic%20Universal%20Audio-E8C32E" alt="Website - Qur'anic Universal Audio"></a>
   <br>
   <a href="https://github.com/Wider-Community/quranic-universal-audio"><img src="https://img.shields.io/badge/Recitations-{{recitations}}-d4842a" alt="Timestamped recitations"></a>
   <a href="https://github.com/Wider-Community/quranic-universal-audio"><img src="https://img.shields.io/badge/Riwayat-{{riwayat}}-f0ad4e" alt="Timestamped riwayat"></a>

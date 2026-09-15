@@ -264,10 +264,8 @@ EMAIL_FROM_ADDRESS = (
     os.environ.get("INSPECTOR_EMAIL_FROM_ADDRESS", "").strip()
     or os.environ.get("GMAIL", "").strip()
 )
-# User-facing "visit the site" link in every email — the HF Space landing page.
-EMAIL_SITE_URL = os.environ.get(
-    "INSPECTOR_EMAIL_SITE_URL", "https://huggingface.co/spaces/hetchyy/quranic-universal-audio"
-)
+# User-facing "visit the site" link in every email — the public site.
+EMAIL_SITE_URL = os.environ.get("INSPECTOR_EMAIL_SITE_URL", "https://universal-audio.qud.dev")
 # The GitHub releases page linked from release emails.
 EMAIL_GH_RELEASES_URL = os.environ.get(
     "INSPECTOR_EMAIL_GH_RELEASES_URL",
