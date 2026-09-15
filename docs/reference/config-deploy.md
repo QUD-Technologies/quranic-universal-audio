@@ -16,6 +16,10 @@ Same code, profile selected by env presence:
 
 `INSPECTOR_BEHIND_PROXY=1` is the deployed-mode signal: it enables `ProxyFix` and skips the local auto-mount (the Space already provides the mount). Set in the image.
 
+It also mounts `utils/wsgi.py::ForceHttpsScheme` on top of `ProxyFix`, pinning `wsgi.url_scheme` to https. `ProxyFix` trusts one hop, which is correct for the direct `*.hf.space` host, but a **custom domain adds a hop** — the nearest `X-Forwarded-Proto` is then HF's internal plaintext leg and werkzeug settles on `http`. Everything scheme-derived breaks together: the OAuth `redirect_uri` goes out as `http://…` (HF answers the authorize call with a 400) and `Secure` is dropped from our cross-site cookies, which a browser then discards because they are `SameSite=None`. Both deployed hostnames are https-only at the edge, so pinning states a fact rather than guessing the hop count — which differs per hostname, hence not simply widening `x_proto`.
+
+A custom domain also needs its **own** OAuth app: HF's auto-provisioned one (`hf_oauth: true`) only allow-lists the Space's own hosts, so the custom-domain `redirect_uri` 400s even over https. Register the app under `/settings/applications/new`, supply `OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET` as Space secrets, and drop `hf_oauth: true` from the README so HF stops injecting its own pair.
+
 ## Spaces
 
 | Env | Space repo | Bucket (`INSPECTOR_BUCKET_REPO`) |
