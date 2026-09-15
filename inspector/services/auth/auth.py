@@ -199,26 +199,23 @@ def pop_popup(state: str | None) -> bool:
 
 
 def oauth_client_credentials() -> tuple[str | None, str | None]:
-    """The OAuth client this deploy should authenticate as.
+    """The OAuth client this deploy authenticates as.
 
-    ``hf_oauth: true`` in the Space README makes HF inject its own
-    ``OAUTH_CLIENT_ID`` / ``OAUTH_CLIENT_SECRET``, and that auto-provisioned
-    app only allow-lists the Space's own hosts. A **custom domain is not among
-    them**, so its ``redirect_uri`` is rejected with a 400 and login needs an
-    app we register ourselves.
+    ``OAUTH_CLIENT_ID`` / ``OAUTH_CLIENT_SECRET`` are Space **secrets** holding
+    an app we registered ourselves, not values HF injects. The Space README
+    deliberately omits ``hf_oauth`` for two reasons: HF's auto-provisioned app
+    allow-lists only the Space's own hosts, so a custom domain's
+    ``redirect_uri`` is refused with a 400; and leaving it on makes HF inject
+    these same two names, which collides with the secrets and drops the whole
+    Space into ``CONFIG_ERROR`` before it boots.
 
-    Rather than remove ``hf_oauth`` — the README frontmatter is one template
-    shared by dev and prod, so dropping it would move both at once and break
-    the ``*.hf.space`` and iframe logins that the injected pair serves — an
-    own app is supplied under its own names and simply wins when present.
-    Adding the two secrets to one Space switches that Space over; the other is
-    untouched, and clearing them falls straight back to HF's pair.
+    So the app's redirect URL list must cover **every** host the Space answers
+    on — the custom domain and `*.hf.space`.
     """
-    client_id = os.environ.get("INSPECTOR_OAUTH_CLIENT_ID") or os.environ.get("OAUTH_CLIENT_ID")
-    client_secret = os.environ.get("INSPECTOR_OAUTH_CLIENT_SECRET") or os.environ.get(
-        "OAUTH_CLIENT_SECRET"
+    return (
+        os.environ.get("OAUTH_CLIENT_ID") or None,
+        os.environ.get("OAUTH_CLIENT_SECRET") or None,
     )
-    return client_id or None, client_secret or None
 
 
 def init_oauth(app) -> OAuth:
