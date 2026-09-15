@@ -16,6 +16,8 @@ Slice B of phase 6.
 
 from __future__ import annotations
 
+import os
+
 from flask import Blueprint, Response, jsonify, request
 
 from qua_shared.schemas import (
@@ -81,6 +83,22 @@ def version(user):
     this number moves. no-store so a poll always sees the live counter.
     """
     return _with_cache({"db_seq": db_service.current_db_seq()}, "no-store")
+
+
+@public_bp.route("/space")
+def space():
+    """HF Space id (``owner/name``) this deploy runs on — ``null`` off-Space.
+
+    Unauthenticated on purpose: the Space id is public, and the FE needs it
+    before any identity call to inject the Hugging Face mini header. HF only
+    renders its own chrome on the ``huggingface.co/spaces/...`` page, so a
+    custom domain or the direct ``*.hf.space`` URL gets no header unless the
+    app draws one itself. Long max-age — the value is fixed for a container.
+    """
+    return _with_cache(
+        {"space_id": os.environ.get("SPACE_ID") or None},
+        "public, max-age=3600",
+    )
 
 
 @public_bp.route("/stats")

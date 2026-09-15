@@ -89,6 +89,7 @@ short_description: Visualize, edit & verify Qur'anic recitation timestamps
 sdk: docker
 app_port: 7860
 pinned: false
+header: mini
 hf_oauth: true
 hf_oauth_expiration_minutes: 480
 ---

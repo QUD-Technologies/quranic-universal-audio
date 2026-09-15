@@ -21,6 +21,7 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
+    "@huggingface/space-header": "^1.0.4",
     "@quranic-phonemizer/cells": "github:Hetchy/quranic-phonemizer-web#cells-v2.2.5",
     "chart.js": "^4.4.0",
     "chartjs-plugin-annotation": "^3.0.1"

@@ -31,6 +31,7 @@ import { mount } from 'svelte';
 import App from './App.svelte';
 import { initLocale } from './lib/i18n/locale.svelte';
 import { installAudioWarmup } from './lib/utils/audio-warmup';
+import { installSpaceHeader } from './lib/utils/space-header';
 
 // Sync <html dir/lang> with the locale Paraglide resolved (localStorage →
 // preferredLanguage → baseLocale) before the first paint, so an Arabic visitor
@@ -40,6 +41,11 @@ initLocale();
 // Hook the first user gesture to warm the browser's audio decoder + output
 // device, so the first chapter Play click doesn't pay that cold cost.
 installAudioWarmup();
+
+// Draw the HF mini header ourselves when the app is served standalone (custom
+// domain / direct Space URL), where huggingface.co renders no chrome for us.
+// Fire-and-forget: every failure path inside is a silent no-op.
+void installSpaceHeader();
 
 // Svelte 5 mount API. App.svelte and its descendants still use legacy
 // runes-free syntax (export let / on:click / $:); they keep working in
