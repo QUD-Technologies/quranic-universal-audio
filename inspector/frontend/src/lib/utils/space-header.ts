@@ -182,20 +182,24 @@ function visibleRightEdge(container: HTMLElement): number {
  * The pill is `position: fixed` in the corner at a height the package picked,
  * which leaves it a few pixels above our header row — close enough to look
  * like a mistake rather than a separate surface. We centre it on the row
- * instead, and only then measure how far the row has to move to clear it.
+ * instead, and only then reserve the width it covers.
  *
- * Its width tracks how long `owner/name` is, so neither offset can be a
- * constant. `.auth-controls` is the grid's end column, which in LTR lands
- * directly beneath the pill; in RTL it sits on the left and the rects never
- * intersect, so the same measurement naturally yields no shift.
+ * Room is made with padding on the header, not a margin on the cluster. The
+ * row is `grid-template-columns: 1fr auto 1fr`, and `1fr` is
+ * `minmax(auto, 1fr)`: a margin counts toward the item's outer size, so it
+ * grew the end track and the cluster slid left by *less* than the margin, a
+ * feedback loop that needed a second pass to converge. The header's own width
+ * comes from its parent, so padding shrinks the grid's content box without
+ * changing anything we just measured — `justify-self: end` then lands the
+ * cluster exactly at the new content edge, in one pass.
  *
  * All vertical maths happens in "page at rest" coordinates: the pill is fixed
  * (so its viewport box already is that), while the header row scrolls, so its
  * box is lifted back by `scrollY`. Without that the alignment would drift as
  * soon as the reader scrolled.
  *
- * When the row is too narrow to absorb the shift (phones), the controls drop
- * below the pill instead of sliding off-screen.
+ * When the row is too narrow to absorb the reservation (phones), the controls
+ * drop below the pill instead of being crushed.
  */
 function placeHeader(): void {
   const pill = document.getElementById(HEADER_ID);
@@ -204,7 +208,9 @@ function placeHeader(): void {
   if (!pill || !bar || !row) return;
 
   // Clear last pass before measuring, or each run compounds the previous one.
-  bar.style.marginRight = '';
+  // Safe to own outright: the header carries no padding of its own (the
+  // rail-aligned insets live on its children).
+  row.style.paddingRight = '';
   row.style.marginTop = '';
 
   const barBox = bar.getBoundingClientRect();
@@ -212,8 +218,8 @@ function placeHeader(): void {
   const barBottom = barBox.bottom + window.scrollY;
   const barContentRight = visibleRightEdge(bar);
 
-  // Centre the pill on the row before measuring the overlap, so the shift is
-  // computed against where the pill actually ends up.
+  // Centre the pill on the row before measuring the overlap, so the
+  // reservation is computed against where the pill actually ends up.
   const pillHeight = pill.getBoundingClientRect().height;
   const top = Math.max(MIN_TOP_PX, Math.round((barTop + barBottom - pillHeight) / 2));
   pill.style.top = `${top}px`;
@@ -226,9 +232,9 @@ function placeHeader(): void {
     barBottom > pillBox.top;
   if (!overlaps) return;
 
-  const shift = Math.ceil(barContentRight - pillBox.left + GAP_PX);
-  if (barBox.left - shift >= MIN_LEFT_PX) {
-    bar.style.marginRight = `${shift}px`;
+  const reserve = Math.ceil(barContentRight - pillBox.left + GAP_PX);
+  if (barBox.left - reserve >= MIN_LEFT_PX) {
+    row.style.paddingRight = `${reserve}px`;
   } else {
     row.style.marginTop = `${Math.ceil(pillBox.bottom + GAP_PX - barTop)}px`;
   }
