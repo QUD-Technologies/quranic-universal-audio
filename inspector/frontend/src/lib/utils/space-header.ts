@@ -254,9 +254,14 @@ export async function installSpaceHeader(): Promise<void> {
   // header row reflows (and can switch to the stacked branch) as width changes.
   window.addEventListener('resize', placeHeader, { passive: true });
 
-  // The pill keeps growing after insertion (its avatar loads late), and each
-  // size change moves the offset the controls need.
+  // Both boxes move the offset and neither change fires a resize event: the
+  // pill keeps growing after insertion (its avatar loads late), and the
+  // controls re-flow when identity resolves and the sign-in button gives way
+  // to the account cluster.
   if (typeof ResizeObserver !== 'undefined') {
-    new ResizeObserver(placeHeader).observe(pill);
+    const observer = new ResizeObserver(placeHeader);
+    observer.observe(pill);
+    const bar = document.querySelector('.auth-controls');
+    if (bar) observer.observe(bar);
   }
 }
