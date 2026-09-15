@@ -286,14 +286,27 @@ export async function installSpaceHeader(): Promise<void> {
   // header row reflows (and can switch to the stacked branch) as width changes.
   window.addEventListener('resize', placeHeader, { passive: true });
 
-  // Both boxes move the offset and neither change fires a resize event: the
-  // pill keeps growing after insertion (its avatar loads late), and the
-  // controls re-flow when identity resolves and the sign-in button gives way
-  // to the account cluster.
+  // The pill keeps changing size after insertion, and none of it fires a
+  // resize event.
   if (typeof ResizeObserver !== 'undefined') {
-    const observer = new ResizeObserver(placeHeader);
-    observer.observe(pill);
-    const bar = document.querySelector('.auth-controls');
-    if (bar) observer.observe(bar);
+    new ResizeObserver(placeHeader).observe(pill);
+  }
+
+  // Our own two reflows are watched with a MutationObserver rather than by
+  // observing the cluster's box, because mutations are delivered in a
+  // background tab where ResizeObserver is not:
+  //   - switching tabs adds/removes `rail-aligned` on the row, which moves the
+  //     cluster's drawn edge by one gutter;
+  //   - the cluster itself re-flows when identity resolves and the sign-in
+  //     button gives way to the account chip.
+  // Neither filter sees what placeHeader writes (inline styles on the row and
+  // the pill), so this cannot feed back on itself.
+  const bar = document.querySelector<HTMLElement>('.auth-controls');
+  const row = bar?.closest<HTMLElement>('header');
+  if (row) {
+    new MutationObserver(placeHeader).observe(row, { attributeFilter: ['class'] });
+  }
+  if (bar) {
+    new MutationObserver(placeHeader).observe(bar, { childList: true, subtree: true });
   }
 }
