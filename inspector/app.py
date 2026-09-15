@@ -103,6 +103,7 @@ from services.secrets_guard import MissingSecret, get_session_secret
 from services.state.state import InvalidTransition, NotAuthorizedForTransition, UnknownReciter
 from services.storage.hf_bucket import StorageReadOnly
 from utils.json_response import orjson_response
+from utils.wsgi import ForceHttpsScheme
 
 # ---------------------------------------------------------------------------
 # Structured logging
@@ -287,6 +288,11 @@ Compress(app)
 _behind_proxy = os.environ.get("INSPECTOR_BEHIND_PROXY") == "1"
 if _behind_proxy:
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+    # One trusted hop is right for the direct *.hf.space host but one short for
+    # a custom domain, where the nearest X-Forwarded-Proto is HF's internal
+    # plaintext leg. Pin the scheme so the OAuth redirect_uri and the Secure
+    # flag on our cross-site cookies stay correct on both hostnames.
+    app.wsgi_app = ForceHttpsScheme(app.wsgi_app)
 
 # Flask's secret key still signs anything that touches the session, but the
 # OAuth state no longer lives there — it's held server-side in a per-process
