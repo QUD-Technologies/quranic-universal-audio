@@ -32,7 +32,7 @@ Flat shims re-export it: `from services import auth`, `from services import perm
 | me | `GET /api/me` | `{login, hf_user_id, role, active_claim, active_claims, dev_mode}`; uniform null-filled shape when anonymous. `active_claim` = the **blocking** claim (open, not-marked-ready; via `repo_claims.open_claim_for_user`) — the field every FE one-claim gate keys off; marking ready releases the one-at-a-time hold so it drops to null. `active_claims` = the full under-review set assigned to the user (a marked-ready reciter stays in it; drives the picker's "mine" highlight) |
 | current user | `auth.py::current_user() -> User \| None` | reads cookie → `decode_session` → `resolve_role`; returns `User(hf_user_id, login, role)` frozen dataclass with live `role` |
 
-`is_oauth_configured()` = `OAUTH_CLIENT_ID` set AND `get_session_secret()` doesn't raise `MissingSecret`.
+`is_oauth_configured()` = a client id resolved by `oauth_client_credentials()` AND `get_session_secret()` doesn't raise `MissingSecret`. That resolver prefers `INSPECTOR_OAUTH_CLIENT_ID`/`INSPECTOR_OAUTH_CLIENT_SECRET` (an OAuth app we registered, needed on a custom domain — HF's auto-provisioned app allow-lists only the Space's own hosts) and otherwise falls back to the `OAUTH_CLIENT_ID`/`OAUTH_CLIENT_SECRET` pair HF injects for `hf_oauth: true`. Scopes come from `OAUTH_SCOPES`, default `openid profile`.
 `_safe_return_path` rejects absolute/protocol-relative URLs (open-redirect guard) → falls back to `/`.
 
 ### Local-dev identity (`auth.py::_dev_current_user`)

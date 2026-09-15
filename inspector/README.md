@@ -137,6 +137,7 @@ you:
 | `INSPECTOR_SESSION_SECRET` | bootstrap (auto-generated) | Signs login cookies |
 | `INSPECTOR_BUCKET_REPO` | bootstrap | Points the Space at your bucket |
 | `OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET` | **Hugging Face, automatically** | Login — injected because the Space enables `hf_oauth`; you never register an OAuth app |
+| `INSPECTOR_OAUTH_CLIENT_ID` / `INSPECTOR_OAUTH_CLIENT_SECRET` | unset | Override the pair above with an OAuth app you registered. Only needed for a **custom domain**, which HF's auto-provisioned app does not allow-list |
 
 Use a token scoped to your own repos. Get one at
 <https://huggingface.co/settings/tokens>.

@@ -198,6 +198,29 @@ def pop_popup(state: str | None) -> bool:
     return bool(val)
 
 
+def oauth_client_credentials() -> tuple[str | None, str | None]:
+    """The OAuth client this deploy should authenticate as.
+
+    ``hf_oauth: true`` in the Space README makes HF inject its own
+    ``OAUTH_CLIENT_ID`` / ``OAUTH_CLIENT_SECRET``, and that auto-provisioned
+    app only allow-lists the Space's own hosts. A **custom domain is not among
+    them**, so its ``redirect_uri`` is rejected with a 400 and login needs an
+    app we register ourselves.
+
+    Rather than remove ``hf_oauth`` — the README frontmatter is one template
+    shared by dev and prod, so dropping it would move both at once and break
+    the ``*.hf.space`` and iframe logins that the injected pair serves — an
+    own app is supplied under its own names and simply wins when present.
+    Adding the two secrets to one Space switches that Space over; the other is
+    untouched, and clearing them falls straight back to HF's pair.
+    """
+    client_id = os.environ.get("INSPECTOR_OAUTH_CLIENT_ID") or os.environ.get("OAUTH_CLIENT_ID")
+    client_secret = os.environ.get("INSPECTOR_OAUTH_CLIENT_SECRET") or os.environ.get(
+        "OAUTH_CLIENT_SECRET"
+    )
+    return client_id or None, client_secret or None
+
+
 def init_oauth(app) -> OAuth:
     """Register the HF OAuth provider on the Flask app. Idempotent."""
     global _oauth
@@ -206,11 +229,12 @@ def init_oauth(app) -> OAuth:
     # _CacheStateOAuth keeps the OAuth state in _state_cache instead of the
     # Flask session cookie (third-party and dropped by Safari inside the HF
     # iframe). The cache is wired in via the registry's `cache` slot.
+    client_id, client_secret = oauth_client_credentials()
     oauth = _CacheStateOAuth(app, cache=_state_cache)
     oauth.register(
         name="huggingface",
-        client_id=os.environ.get("OAUTH_CLIENT_ID"),
-        client_secret=os.environ.get("OAUTH_CLIENT_SECRET"),
+        client_id=client_id,
+        client_secret=client_secret,
         server_metadata_url=(
             f"{os.environ.get('OPENID_PROVIDER_URL', 'https://huggingface.co')}"
             "/.well-known/openid-configuration"
@@ -266,8 +290,8 @@ def assert_dev_mode_safe() -> None:
 
 
 def is_oauth_configured() -> bool:
-    """True when both the HF client id and the session secret are available."""
-    if not os.environ.get("OAUTH_CLIENT_ID"):
+    """True when both a client id and the session secret are available."""
+    if not oauth_client_credentials()[0]:
         return False
     try:
         get_session_secret()
