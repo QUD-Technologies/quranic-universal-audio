@@ -14,11 +14,15 @@
  * 401s and the package throws reading a field off the undefined response.
  * Our own `/api/public/space` returns the same three fields at any visibility.
  *
- * Two guards keep it to exactly the standalone case:
- *   - iframed  → the Space page already paints the pill above us; a second one
- *                inside the frame would double up.
- *   - no space id → running locally (or off-Space), where there is nothing to
- *                link back to.
+ * Both deployed shapes end up needing the same second half of this module.
+ * The pill is a floating overlay in the top-right corner, exactly where the
+ * app keeps its own controls, so whoever drew it, the header row has to make
+ * room. Embedded we cannot see HF's pill (it lives in the cross-origin page
+ * around our iframe), so the package's pill is still built — kept hidden — and
+ * measured as a stand-in for it.
+ *
+ * The one hard guard is the space id: without it we are running locally or off
+ * Space, and there is nothing to link back to.
  */
 
 const SPACE_ENDPOINT = '/api/public/space';
@@ -35,7 +39,27 @@ const MIN_LEFT_PX = 8;
 /** Keep the pill off the very edge when the header row sits unusually high. */
 const MIN_TOP_PX = 8;
 
-/** Element id of the stylesheet that repaints the pill in our palette. */
+/**
+ * Geometry of HF's own overlay pill on the `huggingface.co/spaces/...` page.
+ *
+ * There `header: mini` makes HF draw the pill in the *parent* document, over a
+ * full-viewport iframe, so the app cannot see or move it: the offsets below are
+ * its Tailwind `top-5` / `right-6`, read off the live page.
+ */
+const HF_PILL_TOP_PX = 20;
+const HF_PILL_RIGHT_PX = 24;
+
+/**
+ * Slack between HF's rendering of the pill and the package's.
+ *
+ * Same package, same Space, but HF's page gives it a roomier treatment — 433px
+ * against the package's own 411px at identical content. We size the embedded
+ * reservation off a local copy of the pill, so pad it by that difference
+ * (rounded up) or the cluster would sit under HF's wider one.
+ */
+const HF_PILL_PAD_PX = 24;
+
+/** Element id of the stylesheet that themes the pill, or hides it when embedded. */
 const THEME_STYLE_ID = 'space-header-theme';
 
 /**
@@ -98,6 +122,26 @@ function injectHeaderTheme(): void {
     }
     #${HEADER_ID} > div:first-child {
       border-right-width: 0 !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+/**
+ * Keep the package's pill out of sight, for the embedded case.
+ *
+ * `visibility` rather than `display`, because a `display: none` element has no
+ * box and the width we build the reservation from would read as zero.
+ */
+function hideLocalPill(): void {
+  if (document.getElementById(THEME_STYLE_ID)) return;
+
+  const style = document.createElement('style');
+  style.id = THEME_STYLE_ID;
+  style.textContent = `
+    #${HEADER_ID} {
+      visibility: hidden !important;
+      pointer-events: none !important;
     }
   `;
   document.head.appendChild(style);
@@ -190,6 +234,44 @@ function visibleRightEdge(container: HTMLElement): number {
   return edges.length ? Math.max(...edges) : container.getBoundingClientRect().right;
 }
 
+/** Just the sides of a box, in viewport coordinates. */
+type PillBox = { top: number; bottom: number; left: number; right: number };
+
+/**
+ * Where the pill the reader sees actually is.
+ *
+ * Standalone we drew it ourselves, so it can be measured *and* moved: it is
+ * `position: fixed` at a height the package picked, a few pixels above our
+ * header row — close enough to look like a mistake rather than a separate
+ * surface — so centre it on the row first and report where it landed.
+ *
+ * Embedded, the pill belongs to the huggingface.co document around our iframe.
+ * It is cross-origin, so it can be neither measured nor centred; what we have
+ * instead is a hidden local copy of the very same pill, which gives us its
+ * width. Everything else is HF's fixed corner offsets.
+ */
+function measurePill(row: { barTop: number; barBottom: number }): PillBox | null {
+  const pill = document.getElementById(HEADER_ID);
+  if (!pill) return null;
+
+  const box = pill.getBoundingClientRect();
+  if (box.width === 0) return null;
+
+  if (!isStandalone()) {
+    const right = window.innerWidth - HF_PILL_RIGHT_PX;
+    return {
+      top: HF_PILL_TOP_PX,
+      bottom: HF_PILL_TOP_PX + box.height,
+      left: right - box.width - HF_PILL_PAD_PX,
+      right,
+    };
+  }
+
+  const top = Math.max(MIN_TOP_PX, Math.round((row.barTop + row.barBottom - box.height) / 2));
+  pill.style.top = `${top}px`;
+  return pill.getBoundingClientRect();
+}
+
 /**
  * Line the pill up with the app's own top-right cluster and clear their overlap.
  *
@@ -216,10 +298,9 @@ function visibleRightEdge(container: HTMLElement): number {
  * drop below the pill instead of being crushed.
  */
 function placeHeader(): void {
-  const pill = document.getElementById(HEADER_ID);
   const bar = document.querySelector<HTMLElement>('.auth-controls');
   const row = bar?.closest<HTMLElement>('header');
-  if (!pill || !bar || !row) return;
+  if (!bar || !row) return;
 
   const tabs = row.querySelector<HTMLElement>('.tab-bar');
 
@@ -236,13 +317,8 @@ function placeHeader(): void {
   const barBottom = barBox.bottom + window.scrollY;
   const barContentRight = visibleRightEdge(bar);
 
-  // Centre the pill on the row before measuring the overlap, so the
-  // reservation is computed against where the pill actually ends up.
-  const pillHeight = pill.getBoundingClientRect().height;
-  const top = Math.max(MIN_TOP_PX, Math.round((barTop + barBottom - pillHeight) / 2));
-  pill.style.top = `${top}px`;
-
-  const pillBox = pill.getBoundingClientRect();
+  const pillBox = measurePill({ barTop, barBottom });
+  if (!pillBox) return;
   const overlaps =
     barContentRight > pillBox.left &&
     barBox.left < pillBox.right &&
@@ -279,21 +355,23 @@ function recentreTabs(tabs: HTMLElement | null, reserve: number, pillLeft: numbe
 }
 
 /**
- * Inject the HF mini header, when this deploy is a Space served standalone.
+ * Inject the HF mini header (standalone) or a hidden ruler for HF's own
+ * (embedded), and keep the header row clear of whichever one is on screen.
  *
  * Safe to call unconditionally: every failure path is a silent no-op, and the
- * dynamic import keeps the package out of the main bundle for local dev and
- * for the iframed Space page.
+ * dynamic import keeps the package out of the main bundle for local dev, where
+ * there is no Space to name.
  */
 export async function installSpaceHeader(): Promise<void> {
-  if (!isStandalone()) return;
-
   const space = await fetchSpace();
   if (!space) return;
 
   // Land the overrides before the pill exists, so it never paints in the
-  // package's own light palette first.
-  injectHeaderTheme();
+  // package's own light palette first. Embedded, the pill is only a ruler:
+  // hide it (HF draws the visible one) and leave it at the package's native
+  // size, which is what HF_PILL_PAD_PX is calibrated against.
+  if (isStandalone()) injectHeaderTheme();
+  else hideLocalPill();
 
   try {
     const { init } = await import('@huggingface/space-header');
