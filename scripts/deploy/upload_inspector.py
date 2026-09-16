@@ -87,6 +87,16 @@ SPACE_REPOS = {
 # ("Collision on variables and secrets names") and the Space never boots. Our own
 # app is required anyway: HF's auto-provisioned one allow-lists only the Space's
 # own hosts, so a custom domain's redirect_uri is refused with a 400.
+#
+# `header: mini` is deliberately absent. It makes the huggingface.co Space page
+# float HF's pill over a full-viewport iframe, in the same top-right corner the
+# app keeps its own controls — and the pill lives in that cross-origin page, so
+# the app can neither measure nor avoid it. `@huggingface/space-header` cannot
+# stand in as a ruler either: it returns early when `ancestorOrigins` contains
+# huggingface.co, which is exactly the embedded case. Without the key the Space
+# page draws its normal header above the app and nothing overlaps; the custom
+# domain is unaffected either way and gets its pill from the package
+# (`frontend/src/lib/utils/space-header.ts`).
 SPACE_README = """---
 title: Quranic Universal Audio{suffix}
 emoji: 🎙️
@@ -96,7 +106,6 @@ short_description: Visualize, edit & verify Qur'anic recitation timestamps
 sdk: docker
 app_port: 7860
 pinned: false
-header: mini
 ---
 """
 
