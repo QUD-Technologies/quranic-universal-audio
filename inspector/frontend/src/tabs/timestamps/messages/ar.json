@@ -43,6 +43,8 @@
   "ts_footer_picker_empty": "اختر قارئا",
   "ts_footer_picker_listbox_aria_label": "اختر قارئا",
   "ts_footer_picker_no_results": "لا نتائج",
+  "ts_footer_picker_riwayah_all": "الكل",
+  "ts_footer_picker_riwayah_aria_label": "تصفية حسب الرواية",
   "ts_footer_picker_search_aria_label": "ابحث في القرّاء",
   "ts_footer_picker_search_placeholder": "ابحث في القرّاء",
   "ts_footer_report_aria_label": "الإبلاغ عن مشكلة في الطوابع الزمنية للآية {verse}",

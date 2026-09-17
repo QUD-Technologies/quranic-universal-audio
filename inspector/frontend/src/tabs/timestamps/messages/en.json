@@ -39,6 +39,8 @@
   "ts_footer_picker_empty": "Pick a reciter",
   "ts_footer_picker_listbox_aria_label": "Pick reciter",
   "ts_footer_picker_no_results": "No results",
+  "ts_footer_picker_riwayah_all": "All",
+  "ts_footer_picker_riwayah_aria_label": "Filter by riwayah",
   "ts_footer_picker_search_aria_label": "Search reciters",
   "ts_footer_picker_search_placeholder": "Search reciters",
   "ts_footer_report_aria_label": "Report a timestamps issue on verse {verse}",

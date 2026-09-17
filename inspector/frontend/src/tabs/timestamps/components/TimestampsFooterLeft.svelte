@@ -20,7 +20,7 @@
     import { dashPort } from '../../../lib/playback/dash-port';
     import { playerContext } from '../../../lib/stores/player-context';
     import { LS_KEYS } from '../../../lib/utils/constants';
-    import { combinationCompact } from '../../../lib/utils/delivery-label';
+    import { combinationCompact, vocabLabel } from '../../../lib/utils/delivery-label';
     import { filterByFields } from '../../../lib/utils/fuzzy-match';
     import { catalogData } from '../../dashboard/stores/catalog-data';
     import { loadManifest } from '../services/ts_client';
@@ -46,6 +46,8 @@
     let manifestSlugs = $state(new Set<string>());
     let pickerOpen = $state(false);
     let pickerSearch = $state('');
+    /** Selected riwayah slug, or '' for "All". */
+    let pickerRiwayah = $state('');
     let searchInputEl: SearchInput | null = $state(null);
 
     onMount(() => {
@@ -55,8 +57,33 @@
     });
 
     const entries = $derived(resolveTsDeliveries($catalogData.reciters, manifestSlugs));
+
+    // Riwayah chips are built from the entries actually on offer — one chip per
+    // riwayah present, carrying its count, most-populated first. Only shown when
+    // there is more than one riwayah to choose between.
+    const riwayahChips = $derived.by(() => {
+        (void i18n.locale);
+        const counts = new Map<string, number>();
+        for (const e of entries) {
+            const r = e.delivery.riwayah;
+            if (r) counts.set(r, (counts.get(r) ?? 0) + 1);
+        }
+        return [...counts]
+            .map(([slug, count]) => ({ slug, count, label: vocabLabel('riwayah', slug) }))
+            .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+    });
+
+    // A chip that disappears (catalog reload, manifest change) must not leave a
+    // filter pinned to a riwayah with no entries behind it.
+    $effect(() => {
+        if (pickerRiwayah && !riwayahChips.some((c) => c.slug === pickerRiwayah)) pickerRiwayah = '';
+    });
+
+    const riwayahEntries = $derived(
+        pickerRiwayah ? entries.filter((e) => e.delivery.riwayah === pickerRiwayah) : entries,
+    );
     const filteredEntries = $derived(
-        filterByFields(entries, pickerSearch, (e) => [e.reciter.name, e.reciter.name_ar]),
+        filterByFields(riwayahEntries, pickerSearch, (e) => [e.reciter.name, e.reciter.name_ar]),
     );
     const curSlug = $derived($playerContext.delivery?.slug ?? '');
     const curEntry = $derived(findTsEntryBySlug($catalogData.reciters, manifestSlugs, curSlug));
@@ -65,6 +92,7 @@
     function closePicker(): void {
         pickerOpen = false;
         pickerSearch = '';
+        pickerRiwayah = '';
     }
 
     async function togglePicker(): Promise<void> {
@@ -75,6 +103,7 @@
         }
         pickerOpen = true;
         pickerSearch = '';
+        pickerRiwayah = '';
         await tick();
         searchInputEl?.focus();
     }
@@ -132,11 +161,33 @@
                         value={pickerSearch}
                         placeholder={m.ts_footer_picker_search_placeholder()}
                         count={filteredEntries.length}
-                        total={entries.length}
+                        total={riwayahEntries.length}
                         ariaLabel={m.ts_footer_picker_search_aria_label()}
                         on:input={(e) => { pickerSearch = e.detail; }}
                     />
                 </div>
+                {#if riwayahChips.length > 1}
+                    <div class="chips" role="group" aria-label={m.ts_footer_picker_riwayah_aria_label()}>
+                        <button
+                            type="button" class="chip" class:on={!pickerRiwayah}
+                            aria-pressed={!pickerRiwayah}
+                            onclick={() => { pickerRiwayah = ''; }}
+                        >
+                            {m.ts_footer_picker_riwayah_all()}
+                            <span class="chip-n">{entries.length}</span>
+                        </button>
+                        {#each riwayahChips as c (c.slug)}
+                            <button
+                                type="button" class="chip" class:on={pickerRiwayah === c.slug}
+                                aria-pressed={pickerRiwayah === c.slug}
+                                onclick={() => { pickerRiwayah = pickerRiwayah === c.slug ? '' : c.slug; }}
+                            >
+                                {c.label}
+                                <span class="chip-n">{c.count}</span>
+                            </button>
+                        {/each}
+                    </div>
+                {/if}
                 <div class="dropup-list">
                     {#each filteredEntries as e (e.delivery.slug)}
                         <button
@@ -272,6 +323,39 @@
         top: 0;
         z-index: 1;
     }
+    /* Riwayah filter chips — one row under the search, wrapping. */
+    .chips {
+        flex: 0 0 auto;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        padding-bottom: var(--s-1);
+        border-bottom: 1px solid var(--border-quiet);
+    }
+    .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 9px;
+        background: var(--panel-2);
+        border: 1px solid var(--border-quiet);
+        border-radius: 999px;
+        color: var(--text-muted);
+        cursor: pointer;
+        font: inherit;
+        font-size: var(--fs-meta);
+        line-height: 1.4;
+        white-space: nowrap;
+        transition: color var(--t-fast), background var(--t-fast), border-color var(--t-fast);
+    }
+    .chip:hover { color: var(--text-primary); border-color: var(--border-strong); background: var(--panel); }
+    .chip.on { color: var(--accent); background: var(--accent-tint); border-color: var(--accent); }
+    .chip-n {
+        color: var(--text-faint);
+        font-variant-numeric: tabular-nums;
+    }
+    .chip.on .chip-n { color: inherit; opacity: 0.75; }
+
     .dropup-list {
         flex: 1 1 auto;
         min-height: 0;
