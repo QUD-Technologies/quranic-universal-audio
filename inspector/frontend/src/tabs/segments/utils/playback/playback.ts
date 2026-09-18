@@ -60,11 +60,12 @@ import {
     segAudioBuffering,
     segmentEndChimeEnabled,
     segPort,
+    setAccordionNavCursor,
     setPlayingSegment,
     setStagedPlayheadWindow,
 } from '../../stores/playback';
 import type { SegCanvas } from '../../types/segments-waveform';
-import { accordionStep } from '../accordion-nav';
+import { accordionStep, isCurrentStop } from '../accordion-nav';
 import { CHIME_TOTAL_MS, playSegmentEndChime } from './chime';
 import { drawSegPlayhead, drawWaveformFromPeaksForSeg } from '../waveform/draw-seg';
 import { _fetchPeaksForClick } from '../waveform/utils';
@@ -96,6 +97,30 @@ let _prevPlaying: { chapter: number; index: number } | null = null;
  *  repainting every idle piece on every frame. WeakSet so an unmounted row's
  *  canvas is collectable without any teardown bookkeeping. */
 const _stagedCursorCanvases = new WeakSet<SegCanvas>();
+
+/**
+ * One-shot suppression of the next accordion autoplay advance.
+ *
+ * A structural edit under a live bounded range — labelling a WASL/WAQF
+ * boundary commits the staged cross-verse split — replaces the segment the
+ * range was built for. The range then hits its boundary as an artefact of the
+ * edit, not because the user listened to the end of a segment they chose, and
+ * advancing there is heard as "setting the label replayed a clip". Set by the
+ * label path; consumed by the very next `stop` boundary.
+ */
+let _suppressAdvanceOnce = false;
+
+/** Arm the suppression (no-op when nothing is bounded — there is no boundary
+ *  to suppress and a stale flag must not eat a later, legitimate advance). */
+export function suppressNextAccordionAdvance(): void {
+    if (_segRange) _suppressAdvanceOnce = true;
+}
+
+function _consumeAdvanceSuppression(): boolean {
+    if (!_suppressAdvanceOnce) return false;
+    _suppressAdvanceOnce = false;
+    return true;
+}
 
 /** Active segment-bounded range. Used for accordion plays (always bounded
  *  to the played segment) and chapter-mode plays when autoplay is OFF.
@@ -346,15 +371,24 @@ function _onRangeBoundary(ev: { reason: string }): void {
         // event resets the play-button glyph.
         const active = get(playingSegmentIndex);
         if (get(autoPlayEnabled) && active?.origin === 'accordion') {
+            // A structural edit under a live range (labelling a WASL/WAQF
+            // boundary commits the staged split) must not be heard as an
+            // advance — the boundary that follows it is an artefact of the
+            // segment set changing, not the user reaching the end of a
+            // segment they chose to play.
+            if (_consumeAdvanceSuppression()) return;
             const next = accordionStep(1);
-            if (next && !(next.chapter === active.chapter && next.index === active.index)) {
+            if (next && !isCurrentStop(next)) {
                 // The chime (when on) inserts its own silent gap here, so the
                 // beep sits between the two cards instead of over the next
                 // card's opening. Chime off = a microtask, as before.
                 _chimeSegmentEnd(() => {
                     const cur = get(playingSegmentIndex);
                     if (cur?.origin !== 'accordion') return; // superseded
-                    playFromSegment(next.index, next.chapter, undefined, { isAccordionPlay: true });
+                    playFromSegment(next.index, next.chapter, next.startMs, {
+                        isAccordionPlay: true,
+                        piece: { uid: next.uid, startMs: next.startMs, endMs: next.endMs },
+                    });
                 });
             }
             return;
@@ -500,6 +534,12 @@ export function playFromSegment(
          *  chapters; the per-reciter VBR map decides clip-vs-chapter URL
          *  per sibling. */
         accordionSiblings?: Segment[] | null,
+        /** The PIECE to play, when the target is one slice of a segment (a
+         *  staged cross-verse piece). Seeks to `startMs`, bounds the range at
+         *  `endMs` — so a piece plays as its own segment instead of running on
+         *  to the parent's end — and records the nav cursor under `uid` so ↑/↓
+         *  and the autoplay advance step from this piece. */
+        piece?: { uid: string; startMs: number; endMs: number } | null,
     },
 ): void {
     // Any new play supersedes a chime gap still waiting to resume the old one.
@@ -556,7 +596,18 @@ export function playFromSegment(
     const segSource = resolveSegSource(seg, resolvedChapter);
     if (segSource) segPort.setSource(segSource);
 
-    const seekMs = seekToMs ?? seg.time_start;
+    const piece = opts?.piece ?? null;
+    const seekMs = seekToMs ?? piece?.startMs ?? seg.time_start;
+
+    // Record the segment-level cursor for accordion nav. Playback initiation
+    // is the ONLY writer — labelling a boundary never moves it.
+    setAccordionNavCursor({
+        uid: piece?.uid ?? seg.segment_uid ?? '',
+        chapter: resolvedChapter,
+        index: segIndex,
+        startMs: piece?.startMs ?? seg.time_start,
+        endMs: piece?.endMs ?? seg.time_end,
+    });
 
     // Tear down any prior segment-bounded range. Playback regimes:
     //   - chapter mode + autoplay ON  → no AudioRange. Seek + play, chapter
@@ -574,8 +625,10 @@ export function playFromSegment(
     _segRange?.dispose();
     _segRange = null;
 
-    const endMs = seg.time_end;
-    const bounded = isAccordionPlay || !get(autoPlayEnabled) || _chimeArmed();
+    // A piece bounds at its own end so the next segment is reached by the
+    // advance (one stop per segment), not by the audio running through it.
+    const endMs = piece?.endMs ?? seg.time_end;
+    const bounded = piece != null || isAccordionPlay || !get(autoPlayEnabled) || _chimeArmed();
 
     if (bounded) {
         _segRange = new AudioRange({

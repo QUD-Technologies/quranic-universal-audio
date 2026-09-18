@@ -118,10 +118,18 @@ function navDefault(dir: 1 | -1): boolean {
     return true;
 }
 
-/** ↑/↓ within the open accordion — plays the prev/next card (skips context). */
+/** ↑/↓ within the open accordion — plays the prev/next SEGMENT. Every stop is
+ *  an actual segment (context rows and each piece of a multi-piece card
+ *  included), never a whole card, and the piece window is carried through so a
+ *  staged piece plays as itself rather than from its parent's start. */
 function navAccordion(dir: 1 | -1): boolean {
     const ref = accordionStep(dir);
-    if (ref) playFromSegment(ref.index, ref.chapter, undefined, { isAccordionPlay: true });
+    if (ref) {
+        playFromSegment(ref.index, ref.chapter, ref.startMs, {
+            isAccordionPlay: true,
+            piece: { uid: ref.uid, startMs: ref.startMs, endMs: ref.endMs },
+        });
+    }
     return true;
 }
 

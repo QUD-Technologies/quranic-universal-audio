@@ -620,6 +620,17 @@ import type { Segment } from '../../../../lib/types/view-models';
         }
     }
 
+    /** The piece descriptor for a play originating on this row. Staged pieces
+     *  share the parent's (chapter, index), so playback needs the window to
+     *  bound the range and the uid to move the accordion nav cursor onto this
+     *  piece. Non-staged rows are whole segments — null keeps the old path. */
+    function _piecePlayArg(): { uid: string; startMs: number; endMs: number } | null {
+        if (!staged) return null;
+        const uid = seg.segment_uid ?? '';
+        if (!uid) return null;
+        return { uid, startMs: seg.time_start, endMs: seg.time_end };
+    }
+
     function onPlayClick(e: MouseEvent): void {
         e.stopPropagation();
         if (readOnly) return;
@@ -642,11 +653,13 @@ import type { Segment } from '../../../../lib/types/view-models';
             // autoscrolling when the same chapter is open, and keeps the
             // policy gate from advancing into the main display's chapter
             // when global autoplay is on.
-            // A staged piece starts at its own edge but plays through to the
-            // parent's end, so the cursor walks on into the next piece's card.
+            // A staged piece plays as its own segment: bounded to its own
+            // window, so autoplay advances piece → piece like any other
+            // segment instead of running through the whole parent.
             playFromSegment(idx, chapter, staged ? seg.time_start : undefined, {
                 isAccordionPlay: instanceRole !== 'main',
                 accordionSiblings,
+                piece: _piecePlayArg(),
             });
         }
     }
@@ -891,9 +904,10 @@ import type { Segment } from '../../../../lib/types/view-models';
         if (get(editMode) || readOnly) return;
         const t = e.target as Element;
         if (t.closest('.seg-row-controls') || t.closest('canvas') || t.closest('.seg-text-ref')) return;
-        playFromSegment(seg.index, rowChapter, undefined, {
+        playFromSegment(seg.index, rowChapter, staged ? seg.time_start : undefined, {
             isAccordionPlay: instanceRole !== 'main',
             accordionSiblings,
+            piece: _piecePlayArg(),
         });
     }
 
@@ -923,6 +937,7 @@ import type { Segment } from '../../../../lib/types/view-models';
             playFromSegment(seg.index, chapter, timeMs, {
                 isAccordionPlay: instanceRole !== 'main',
                 accordionSiblings,
+                piece: _piecePlayArg(),
             });
         }
     }
@@ -976,6 +991,8 @@ import type { Segment } from '../../../../lib/types/view-models';
     data-seg-index={seg.index}
     data-seg-chapter={seg.chapter ?? undefined}
     data-seg-uid={seg.segment_uid || undefined}
+    data-seg-start={seg.time_start}
+    data-seg-end={seg.time_end}
     data-hist-time-start={readOnly || staged ? String(seg.time_start) : undefined}
     data-hist-time-end={readOnly || staged ? String(seg.time_end) : undefined}
     data-hist-audio-url={(readOnly || staged) && seg.audio_url ? seg.audio_url : undefined}

@@ -7,12 +7,14 @@
  * has no boundary — so the arrows keep seeking.
  */
 
+import { get } from 'svelte/store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { editingMode } from '../../../../lib/stores/editing-mode';
 import { setActiveTab } from '../../../../lib/utils/active-tab';
 import { TAB_NAMES } from '../../../../lib/utils/constants';
 import { activeRowActions } from '../../stores/active-actions';
+import { accordionNavCursor, playingSegmentIndex } from '../../stores/playback';
 import { valUiOpenCategory } from '../../stores/validation';
 import { handleSegmentsKey } from '../keyboard';
 
@@ -43,6 +45,8 @@ afterEach(() => {
     setActiveTab('dashboard');
     valUiOpenCategory.set(null);
     activeRowActions.set(null);
+    accordionNavCursor.set(null);
+    playingSegmentIndex.set(null);
     editingMode.set({ kind: 'view', viewReason: 'unauthenticated' });
 });
 
@@ -84,6 +88,24 @@ describe('WASL/WAQF digit shortcuts', () => {
         valUiOpenCategory.set(null);
         expect(press('Digit1')).toBe(false);
         expect(setWasl).not.toHaveBeenCalled();
+    });
+
+    it('leaves the nav cursor alone, so ↑/↓ still steps from the same segment', () => {
+        publishBundle(true);
+        const cursor = { uid: 'piece-1', chapter: 1, index: 4, startMs: 2000, endMs: 3000 };
+        accordionNavCursor.set({ ...cursor });
+        press('Digit1');
+        expect(setWasl).toHaveBeenCalledWith(true);
+        expect(get(accordionNavCursor)).toEqual(cursor);
+    });
+
+    it('does not move what is playing', () => {
+        publishBundle(true);
+        const playing = { chapter: 1, index: 4, origin: 'accordion' as const };
+        playingSegmentIndex.set({ ...playing });
+        press('Digit2');
+        expect(setWasl).toHaveBeenCalledWith(false);
+        expect(get(playingSegmentIndex)).toEqual(playing);
     });
 
     it('keeps the arrow keys on seek (they resolve to seek_back/seek_fwd)', () => {

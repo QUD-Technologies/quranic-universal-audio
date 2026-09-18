@@ -57,6 +57,7 @@
         focusWaslBoundary,
         pendingWaslConfirm,
     } from '../../stores/edit';
+    import { suppressNextAccordionAdvance } from '../../utils/playback/playback';
     import { resumePendingChain } from '../../utils/edit/reference';
     import { setIsWaslOnSegment } from '../../utils/edit/setIsWasl';
 
@@ -116,7 +117,11 @@
     onMount(() => {
         const uid = leftSeg.segment_uid ?? '';
         if (!uid) return;
-        onCommitReady?.(uid, commit);
+        // Hand up the KEYBOARD flavour: labelling with 1 / 2 is a pure data
+        // edit — it never resumes the post-split chain (which opens a
+        // ref-edit and moves focus) and never disturbs playback or the nav
+        // cursor. Clicking the picker keeps the chain behaviour below.
+        onCommitReady?.(uid, (value: boolean) => commit(value, { silent: true }));
         return () => onCommitReady?.(uid, null);
     });
 
@@ -153,7 +158,15 @@
         }
     }
 
-    function commit(value: boolean): void {
+    /**
+     * Apply the label. `silent` is the keyboard flavour: same data write, but
+     * no chain hand-off (no ref-edit, no focus move) and no audible advance —
+     * the structural change under a live bounded range would otherwise be
+     * heard as a replay.
+     */
+    function commit(value: boolean, opts?: { silent?: boolean }): void {
+        const silent = opts?.silent === true;
+        if (silent) suppressNextAccordionAdvance();
         if (onPick) {
             highlighted = null;
             onPick(value);
@@ -182,11 +195,14 @@
         } finally {
             highlighted = null;
             clearWaslPending(leftUid);
-            focusWaslBoundary.set(null);
+            if ($focusWaslBoundary === leftUid) focusWaslBoundary.set(null);
             // Re-enter the chain handoff. If a pending wasl gate was the
             // only thing blocking this entry, it now clears and the
             // chain pops + advances to the next ref-edit.
-            resumePendingChain();
+            //
+            // Keyboard labels skip it: the chain hand-off opens a ref-edit on
+            // the next piece, which steals focus from wherever the user is.
+            if (!silent) resumePendingChain();
         }
     }
 

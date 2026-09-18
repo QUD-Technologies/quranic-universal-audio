@@ -166,6 +166,44 @@ export function setPlayingSegment(next: PlayingSegment | null): void {
     });
 }
 
+/**
+ * The segment-level cursor for accordion navigation: the piece ↑/↓ and the
+ * autoplay advance step FROM. Persistent (unlike `stagedPlayheadWindow`,
+ * which the rAF tick clears the moment audio stops) and piece-granular
+ * (unlike `playingSegmentIndex`, whose (chapter, index) is shared by every
+ * staged piece of one cross-verse parent).
+ *
+ * Written only by playback initiation — a row's play button, a row click, a
+ * ↑/↓ step, the autoplay advance. Labelling a WASL/WAQF boundary must NEVER
+ * touch it, so ↑/↓ continues from the piece the user was on.
+ */
+export interface NavCursor {
+    /** Row/piece uid — the identity the accordion sequence is keyed by. */
+    uid: string;
+    chapter: number;
+    index: number;
+    startMs: number;
+    endMs: number;
+}
+
+export const accordionNavCursor = writable<NavCursor | null>(null);
+
+/** Identity-guarded setter — no-ops when the cursor already names this piece. */
+export function setAccordionNavCursor(next: NavCursor | null): void {
+    accordionNavCursor.update((cur) => {
+        if (next == null) return null;
+        if (
+            cur
+            && cur.uid === next.uid
+            && cur.chapter === next.chapter
+            && cur.index === next.index
+            && cur.startMs === next.startMs
+            && cur.endMs === next.endMs
+        ) return cur;
+        return { ...next };
+    });
+}
+
 /** The staged (pre-split) piece the playhead is currently inside, as its
  *  own time window, or null when no staged piece is sounding. Staged pieces
  *  share their parent's (chapter, index), so `playingSegmentIndex` alone
