@@ -28,7 +28,7 @@
  * `classList` directly.
  */
 
-import { writable } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 
 import type { Segment } from '../../../lib/types/view-models';
 import { derivedEq } from '../../../lib/utils/derived-eq';
@@ -195,6 +195,58 @@ export function clearWaslPending(leftUid: string): void {
         next.delete(leftUid);
         return next;
     });
+}
+
+/**
+ * Registry of pending WASL/WAQF boundaries that are the ONLY boundary in
+ * their cross-verse card (two pieces → one boundary), keyed by the left
+ * piece's UID and holding that picker's commit callback.
+ *
+ * With a single boundary the tab-wide ←/→ shortcut is unambiguous: whichever
+ * of the two pieces the user is on, the arrow can only mean "this boundary is
+ * waṣl / waqf". A card with three or more pieces has several boundaries, so
+ * its pickers deliberately stay OUT of this registry — there the keys only
+ * work on the focused picker (Tab highlights, Enter commits).
+ *
+ * ``WaslBoundary.svelte`` registers/unregisters itself; the keyboard
+ * dispatcher reads it through ``soleWaslBoundaryCommit()``.
+ */
+export const soleWaslBoundaries = writable<Map<string, (value: boolean) => void>>(new Map());
+
+export function registerSoleWaslBoundary(
+    leftUid: string,
+    commit: (value: boolean) => void,
+): void {
+    soleWaslBoundaries.update((m) => {
+        if (m.get(leftUid) === commit) return m;
+        const next = new Map(m);
+        next.set(leftUid, commit);
+        return next;
+    });
+}
+
+export function unregisterSoleWaslBoundary(leftUid: string): void {
+    soleWaslBoundaries.update((m) => {
+        if (!m.has(leftUid)) return m;
+        const next = new Map(m);
+        next.delete(leftUid);
+        return next;
+    });
+}
+
+/**
+ * The commit callback the ←/→ shortcut should drive, or null when the key must
+ * be left alone (seek). Prefers the boundary the split chain is paused on
+ * (``focusWaslBoundary``); otherwise only acts when exactly one sole-boundary
+ * card is waiting, so two open prompts never make the key ambiguous.
+ */
+export function soleWaslBoundaryCommit(): ((value: boolean) => void) | null {
+    const registry = get(soleWaslBoundaries);
+    if (registry.size === 0) return null;
+    const focused = get(focusWaslBoundary);
+    if (focused) return registry.get(focused) ?? null;
+    if (registry.size > 1) return null;
+    return registry.values().next().value ?? null;
 }
 
 // ---------------------------------------------------------------------------

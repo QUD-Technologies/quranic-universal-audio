@@ -224,6 +224,15 @@
         return groupMembers.length > 1 && isVerseBoundary(a, b);
     });
 
+    /** How many WASL/WAQF pickers this card renders — the inter-piece ones
+     *  plus the trailing `unmarked_wasl` picker against the next-verse context
+     *  row. Exactly one means the ←/→ shortcut is unambiguous from either
+     *  piece; two or more and the pickers keep to Tab/Enter only. */
+    $: waslBoundaryCount =
+        boundaryAt.filter(Boolean).length
+        + (showWaslPicker && lastMember && nextSeg ? 1 : 0);
+    $: soleWaslBoundary = waslBoundaryCount === 1;
+
     /** Dispatch the staged split. Unanswered boundaries commit as WAQF but
      *  stay flagged pending, so their pickers keep asking and amend the
      *  same op in place (the post-split path). */
@@ -380,14 +389,15 @@
                         rightSeg={next}
                         stagedValue={stagedPicks[i]}
                         onPick={(v) => onStagedPick(i, v)}
+                        soleBoundary={soleWaslBoundary}
                     />
                 {:else if next}
-                    <WaslBoundary leftSeg={mem} rightSeg={next} />
+                    <WaslBoundary leftSeg={mem} rightSeg={next} soleBoundary={soleWaslBoundary} />
                 {/if}
             {/if}
         {/each}
         {#if showWaslPicker && lastMember && nextSeg}
-            <WaslBoundary leftSeg={lastMember} rightSeg={nextSeg} />
+            <WaslBoundary leftSeg={lastMember} rightSeg={nextSeg} soleBoundary={soleWaslBoundary} />
         {/if}
         {#if nextSeg}
             <SegmentRow

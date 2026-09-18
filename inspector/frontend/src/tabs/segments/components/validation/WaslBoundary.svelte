@@ -28,17 +28,24 @@
      * unhooks focus, and calls resumePendingChain() so the post-split
      * chain advances to the next piece's ref-edit.
      *
-     * Keyboard (while this boundary is the paused chain step): ← commits WASL,
-     * → commits WAQF — one keypress each, advancing the chain to the next
-     * child's ref-edit. Tab moves the highlight between the two and Enter
-     * commits the highlighted one (the pick-then-confirm path). Handled
+     * Keyboard (while this boundary is pending): Tab moves the highlight
+     * between the two labels and Enter commits the highlighted one — handled
      * locally (the picker auto-focuses a button) and stopPropagation'd so the
-     * global Segments dispatcher doesn't also seek / cycle focus away on those
-     * keys. Space + other keys fall through. Catalogued in the footer guide as
-     * the 'wasl' shortcut context (reference only — not dispatcher-resolved).
+     * global Segments dispatcher doesn't also seek / cycle focus away.
+     *
+     * ←/→ commit WASL/WAQF outright, but ONLY when this is the card's single
+     * boundary (`soleBoundary` — a two-piece cross verse). Then the shortcut
+     * reads the same from either piece, so it also works while the user is on
+     * the first or the second part rather than on the picker itself: the
+     * picker registers its commit in `soleWaslBoundaries` and the tab
+     * dispatcher drives it. A card with three or more pieces has several
+     * boundaries, so an arrow would be ambiguous — there ←/→ only move the
+     * highlight (Enter still commits) and keep seeking outside the picker.
+     *
+     * Catalogued in the footer guide as the 'wasl' shortcut context.
      */
 
-    import { tick } from 'svelte';
+    import { onDestroy, tick } from 'svelte';
 
     import { editGate } from '../../../../lib/actions/editGate';
     import { localeStore, tr } from '../../../../lib/i18n/locale-store';
@@ -54,6 +61,8 @@
         clearWaslPending,
         focusWaslBoundary,
         pendingWaslConfirm,
+        registerSoleWaslBoundary,
+        unregisterSoleWaslBoundary,
     } from '../../stores/edit';
     import { resumePendingChain } from '../../utils/edit/reference';
     import { setIsWaslOnSegment } from '../../utils/edit/setIsWasl';
@@ -69,13 +78,20 @@
      */
     export let onPick: ((value: boolean) => void) | null = null;
     export let stagedValue: boolean | undefined = undefined;
+    /**
+     * True when this is the ONLY boundary in its card (a two-piece cross
+     * verse). Enables the one-keypress ←/→ commit, tab-wide via the
+     * `soleWaslBoundaries` registry. False in a multi-boundary card, where an
+     * arrow can't name a boundary unambiguously.
+     */
+    export let soleBoundary = false;
 
     let waslBtnEl: HTMLButtonElement | undefined;
     let waqfBtnEl: HTMLButtonElement | undefined;
 
     /** Transient keyboard highlight while this boundary is the paused chain
-     *  step. Tab toggles it, Enter commits it (←/→ commit WASL/WAQF outright).
-     *  Null whenever this picker isn't the active step. */
+     *  step. Tab toggles it, Enter commits it (and ←/→ move it in a
+     *  multi-boundary card). Null whenever this picker isn't the active step. */
     let highlighted: 'wasl' | 'waqf' | null = null;
 
     $: leftUid = leftSeg.segment_uid ?? '';
@@ -100,6 +116,27 @@
         void tick().then(() => el.focus());
     }
 
+    // Publish / withdraw the ←/→ commit for the tab dispatcher. Only a sole
+    // pending boundary registers, so the shortcut can never be ambiguous.
+    let registeredUid = '';
+
+    function syncRegistration(
+        uid: string,
+        pending: boolean,
+        sole: boolean,
+        rendered: boolean,
+    ): void {
+        const want = uid && pending && sole && rendered ? uid : '';
+        if (registeredUid === want) return;
+        if (registeredUid) unregisterSoleWaslBoundary(registeredUid);
+        if (want) registerSoleWaslBoundary(want, commit);
+        registeredUid = want;
+    }
+
+    $: syncRegistration(leftUid, isPending, soleBoundary, sameChapter);
+
+    onDestroy(() => syncRegistration('', false, false, false));
+
     /** Move the keyboard highlight to `side` (Tab) and pull DOM focus with it so
      *  the focus ring tracks the staged choice. */
     function setHighlight(side: 'wasl' | 'waqf', e: KeyboardEvent): void {
@@ -109,19 +146,22 @@
         (side === 'wasl' ? waslBtnEl : waqfBtnEl)?.focus();
     }
 
-    /** Keyboard nav for the paused chain step: ← commits WASL, → commits WAQF,
-     *  Tab toggles the highlight and Enter commits the highlighted choice —
-     *  each advancing the chain. Only intercepts while this boundary is pending
-     *  — other keys (Space preview, …) bubble to the global Segments dispatcher. */
+    /** Keyboard nav while this boundary is pending: Tab toggles the highlight,
+     *  Enter commits the highlighted choice, and ←/→ commit WASL/WAQF outright
+     *  when this is the card's sole boundary (otherwise they just move the
+     *  highlight) — each commit advancing the chain. Other keys (Space preview,
+     *  …) bubble to the global Segments dispatcher. */
     function onPickerKeydown(e: KeyboardEvent): void {
         if (!isPending) return;
         switch (e.key) {
             case 'ArrowLeft':
+                if (!soleBoundary) { setHighlight('wasl', e); break; }
                 e.preventDefault();
                 e.stopPropagation();
                 commit(true);
                 break;
             case 'ArrowRight':
+                if (!soleBoundary) { setHighlight('waqf', e); break; }
                 e.preventDefault();
                 e.stopPropagation();
                 commit(false);
