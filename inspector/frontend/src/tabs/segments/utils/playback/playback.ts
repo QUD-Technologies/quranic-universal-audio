@@ -1009,6 +1009,57 @@ export function reconcilePlayingAfterMutation(
     }
 }
 
+/**
+ * Re-anchor the playing pair onto the piece the playhead is actually inside,
+ * after a split replaced one segment with several.
+ *
+ * `reconcilePlayingAfterMutation` maps the pre-mutation UID forward, and a
+ * split preserves that UID on **piece 0** — so when the playhead is inside a
+ * LATER piece the pair gets pinned to piece 0 while the audio plays on inside
+ * its sibling. The draw loop then clamps the cursor to piece 0's window and it
+ * sits frozen at that row's right edge while nothing moves on the piece being
+ * heard. (The visible symptom of labelling a staged cross-verse boundary
+ * mid-playback: the split commits under the live range.)
+ *
+ * Also re-points the bounded range at the piece now playing, so its stop
+ * boundary lands at that piece's end rather than the old parent's, and clears
+ * `stagedPlayheadWindow` — the pieces are real rows now, not staged slices.
+ *
+ * Deliberately does NOT touch `accordionNavCursor`: a split preserves the
+ * staged children's UIDs, so the cursor already names the right piece, and an
+ * edit must never move where ↑/↓ steps from.
+ *
+ * No-op when nothing is playing in `chapter`, or when the pair already names
+ * the piece under the playhead.
+ */
+export function reanchorPlayingToPlayhead(chapter: number, pieces: Segment[]): void {
+    const active = get(playingSegmentIndex);
+    if (!active || active.chapter !== chapter) return;
+    if (pieces.length < 2) return;
+    const time = segPort.currentTimeMs();
+    const hit = pieces.find((p) => time >= p.time_start && time < p.time_end);
+    if (!hit) return;
+    if (hit.index === active.index) return;
+
+    setPlayingSegment({ chapter, index: hit.index });
+    setStagedPlayheadWindow(null);
+
+    // Re-point the live range without restarting audio: same playhead, new
+    // end. Nothing to do for an unbounded (chapter-continuous) play.
+    if (_segRange) {
+        _segRange.dispose();
+        _segRange = new AudioRange({
+            port: segPort,
+            range: { startMs: hit.time_start, endMs: hit.time_end },
+            policy: { kind: 'stop' },
+            onTick: _onRangeTick,
+            onBoundary: _onRangeBoundary,
+            playbackRate: () => get(playbackSpeed),
+        });
+        _segRange.start();
+    }
+}
+
 export function drawActivePlayhead(timeMs?: number): void {
     // Hoist above the pair-change erase branch (below): when the edit-preview
     // rAF owns the row's canvas, the erase branch iterates

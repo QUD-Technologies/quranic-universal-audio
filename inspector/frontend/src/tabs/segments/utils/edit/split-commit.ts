@@ -38,7 +38,7 @@ import {
     dkTextForRef,
     getVerseWordCounts,
 } from '../data/references';
-import { reconcilePlayingAfterMutation } from '../playback/playback';
+import { reanchorPlayingToPlayhead, reconcilePlayingAfterMutation } from '../playback/playback';
 import { finalizeEdit } from './common';
 
 export interface CommitSplitOptions {
@@ -153,6 +153,11 @@ export function commitSplit(
     }
 
     reconcilePlayingAfterMutation(chapter, prePlayingUid);
+    // The UID walk above lands on piece 0 (a split preserves the parent UID
+    // there). When the playhead is inside a later piece, move the pair onto
+    // THAT piece, or the cursor freezes at piece 0's edge while its sibling
+    // plays.
+    reanchorPlayingToPlayhead(chapter, pieces);
     clearFlashForChapter(chapter);
     markDirty(chapter, undefined, true);
 
