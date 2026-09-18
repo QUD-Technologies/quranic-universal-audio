@@ -1,3 +1,5 @@
+import { describe, expect, it, vi } from 'vitest';
+
 import { waslCommitForPiece, type WaslCommits } from '../wasl-binding';
 
 /** n pieces → n-1 pickers, each keyed by the piece above it. */

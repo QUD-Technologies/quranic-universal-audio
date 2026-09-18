@@ -7,6 +7,8 @@
  * has no boundary — so the arrows keep seeking.
  */
 
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { editingMode } from '../../../../lib/stores/editing-mode';
 import { setActiveTab } from '../../../../lib/utils/active-tab';
 import { TAB_NAMES } from '../../../../lib/utils/constants';
