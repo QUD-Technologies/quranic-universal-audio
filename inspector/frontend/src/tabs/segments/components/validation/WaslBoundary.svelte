@@ -28,12 +28,14 @@
      * unhooks focus, and calls resumePendingChain() so the post-split
      * chain advances to the next piece's ref-edit.
      *
-     * Keyboard (while this boundary is the paused chain step): ← highlights
-     * WASL, → highlights WAQF (positional), Tab toggles between them, and
-     * Enter commits the highlighted choice — advancing the chain to the next
-     * child's ref-edit. Handled locally (the picker auto-focuses a button)
-     * and stopPropagation'd so the global Segments dispatcher doesn't also
-     * seek / cycle focus away on those keys. Space + other keys fall through.
+     * Keyboard (while this boundary is the paused chain step): ← commits WASL,
+     * → commits WAQF — one keypress each, advancing the chain to the next
+     * child's ref-edit. Tab moves the highlight between the two and Enter
+     * commits the highlighted one (the pick-then-confirm path). Handled
+     * locally (the picker auto-focuses a button) and stopPropagation'd so the
+     * global Segments dispatcher doesn't also seek / cycle focus away on those
+     * keys. Space + other keys fall through. Catalogued in the footer guide as
+     * the 'wasl' shortcut context (reference only — not dispatcher-resolved).
      */
 
     import { tick } from 'svelte';
@@ -72,7 +74,7 @@
     let waqfBtnEl: HTMLButtonElement | undefined;
 
     /** Transient keyboard highlight while this boundary is the paused chain
-     *  step. ←/→ pick positionally (WASL · WAQF), Tab toggles, Enter commits.
+     *  step. Tab toggles it, Enter commits it (←/→ commit WASL/WAQF outright).
      *  Null whenever this picker isn't the active step. */
     let highlighted: 'wasl' | 'waqf' | null = null;
 
@@ -98,8 +100,8 @@
         void tick().then(() => el.focus());
     }
 
-    /** Move the keyboard highlight to `side` and pull DOM focus with it so the
-     *  focus ring tracks the staged choice. */
+    /** Move the keyboard highlight to `side` (Tab) and pull DOM focus with it so
+     *  the focus ring tracks the staged choice. */
     function setHighlight(side: 'wasl' | 'waqf', e: KeyboardEvent): void {
         e.preventDefault();
         e.stopPropagation();
@@ -107,18 +109,22 @@
         (side === 'wasl' ? waslBtnEl : waqfBtnEl)?.focus();
     }
 
-    /** Keyboard nav for the paused chain step: ← / → highlight WASL / WAQF
-     *  positionally, Tab toggles, Enter commits the highlighted choice and
-     *  advances the chain. Only intercepts while this boundary is pending —
-     *  other keys (Space preview, …) bubble to the global Segments dispatcher. */
+    /** Keyboard nav for the paused chain step: ← commits WASL, → commits WAQF,
+     *  Tab toggles the highlight and Enter commits the highlighted choice —
+     *  each advancing the chain. Only intercepts while this boundary is pending
+     *  — other keys (Space preview, …) bubble to the global Segments dispatcher. */
     function onPickerKeydown(e: KeyboardEvent): void {
         if (!isPending) return;
         switch (e.key) {
             case 'ArrowLeft':
-                setHighlight('wasl', e);
+                e.preventDefault();
+                e.stopPropagation();
+                commit(true);
                 break;
             case 'ArrowRight':
-                setHighlight('waqf', e);
+                e.preventDefault();
+                e.stopPropagation();
+                commit(false);
                 break;
             case 'Tab':
                 setHighlight(highlighted === 'wasl' ? 'waqf' : 'wasl', e);

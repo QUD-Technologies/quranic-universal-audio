@@ -10,6 +10,12 @@
  *                   focused (playing, non-context) card row.
  *   - 'edit'      — only while in trim / split edit mode; the stepper + cursor
  *                   keys that override seek/seek.
+ *   - 'wasl'      — only while a cross-verse WASL/WAQF boundary is the paused
+ *                   chain step. Owned by `WaslBoundary.svelte` itself (it has
+ *                   focus and stopPropagation's these keys), so the dispatcher
+ *                   never resolves this pool — the entries exist so the keys
+ *                   are documented in the footer guide and reserved against
+ *                   rebinding collisions.
  *
  * A key TOKEN is `e.code` with an optional `Ctrl+` prefix (e.g. `KeyA`,
  * `Space`, `ArrowUp`, `Comma`, `Ctrl+KeyS`). Only `rebindable` actions can be
@@ -19,7 +25,7 @@
 
 import * as m from '../../../lib/paraglide/messages';
 
-export type ShortcutContext = 'default' | 'accordion' | 'edit';
+export type ShortcutContext = 'default' | 'accordion' | 'edit' | 'wasl';
 
 export interface ShortcutAction {
     /** Stable id — also the localStorage override key. */
@@ -76,6 +82,12 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     { id: 'edit_replay',   label: m.segments_shortcuts_action_edit_replay,   context: 'edit',      defaultKey: 'KeyR',       rebindable: false },
     { id: 'edit_confirm',  label: m.segments_shortcuts_action_edit_confirm,  context: 'edit',      defaultKey: 'Enter',      rebindable: false },
     { id: 'edit_cancel',   label: m.segments_shortcuts_action_edit_cancel,   context: 'edit',      defaultKey: 'Escape',     rebindable: false },
+
+    // ---- Cross-verse WASL / WAQF boundary (wasl — owned by WaslBoundary) ----
+    { id: 'wasl_pick_wasl',label: m.segments_shortcuts_action_wasl_pick_wasl,context: 'wasl',      defaultKey: 'ArrowLeft',  rebindable: false },
+    { id: 'wasl_pick_waqf',label: m.segments_shortcuts_action_wasl_pick_waqf,context: 'wasl',      defaultKey: 'ArrowRight', rebindable: false },
+    { id: 'wasl_toggle',   label: m.segments_shortcuts_action_wasl_toggle,   context: 'wasl',      defaultKey: 'Tab',        rebindable: false },
+    { id: 'wasl_confirm',  label: m.segments_shortcuts_action_wasl_confirm,  context: 'wasl',      defaultKey: 'Enter',      rebindable: false },
 ];
 
 export const SHORTCUT_SECTIONS: ShortcutSection[] = [
@@ -98,6 +110,11 @@ export const SHORTCUT_SECTIONS: ShortcutSection[] = [
         title: m.segments_shortcuts_section_adjusting_title,
         hint: m.segments_shortcuts_section_adjusting_hint,
         ids: ['edit_step_back', 'edit_step_fwd', 'edit_cycle', 'edit_replay', 'edit_confirm', 'edit_cancel'],
+    },
+    {
+        title: m.segments_shortcuts_section_wasl_title,
+        hint: m.segments_shortcuts_section_wasl_hint,
+        ids: ['wasl_pick_wasl', 'wasl_pick_waqf', 'wasl_toggle', 'wasl_confirm'],
     },
 ];
 

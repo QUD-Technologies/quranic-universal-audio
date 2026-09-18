@@ -1,6 +1,6 @@
 # Keyboard shortcuts (Segments tab)
 
-User-editable, context-scoped keyboard shortcuts for the Segments editor. A pressed key resolves to an action through a user-overridable binding map; the active **context** (default / accordion / edit) decides which pool of bindings is live. The footer popover (`ShortcutsGuide.svelte`, left of the speed control) is the reference + inline rebinder. This subsystem is Segments-only; the Timestamps tab has its own separate `TimestampsKeyboard` + `TimestampsShortcutsGuide`.
+User-editable, context-scoped keyboard shortcuts for the Segments editor. A pressed key resolves to an action through a user-overridable binding map; the active **context** (default / accordion / edit, plus a reference-only `wasl` pool) decides which pool of bindings is live. The footer popover (`ShortcutsGuide.svelte`, left of the speed control) is the reference + inline rebinder. This subsystem is Segments-only; the Timestamps tab has its own separate `TimestampsKeyboard` + `TimestampsShortcutsGuide`.
 
 ## Files
 
@@ -29,7 +29,9 @@ A token is `e.code` with an optional `Ctrl+` prefix (Ctrl OR Meta both normalise
 | `accordion` | `valUiOpenCategory !== null` (a validation accordion is open) | `accordion` then `default` (accordion overrides) |
 | `default` | otherwise (main-list browsing) | `default` only |
 
-`default`-pool actions stay live inside an open accordion (they act on the focused card); `accordion`-pool actions are additive. Conflict groups for rebinding: `default`+`accordion` share one (they can be live together), `edit` is separate.
+The catalogue carries a fourth context, `wasl`, that the dispatcher never resolves: the cross-verse WASL/WAQF boundary owns those keys itself (see **Self-contained widgets** below). Its entries exist so the keys appear in the footer guide and can't be claimed by a rebind.
+
+`default`-pool actions stay live inside an open accordion (they act on the focused card); `accordion`-pool actions are additive. Conflict groups for rebinding: `default`+`accordion` share one (they can be live together); `edit` and `wasl` are each separate.
 
 ## Keymap
 
@@ -68,6 +70,15 @@ A token is `e.code` with an optional `Ctrl+` prefix (Ctrl OR Meta both normalise
 | Enter / Escape | Confirm / cancel | `edit_confirm` / `edit_cancel` * |
 | Space, , / . | Play preview, speed | (handled inline in `handleEditKey`) |
 
+**Cross-verse WASL/WAQF boundary** (all fixed; owned by `WaslBoundary.svelte`, not the dispatcher):
+
+| Key | Action | id |
+|---|---|---|
+| ← | Choose WASL (commits + advances the chain) | `wasl_pick_wasl` |
+| → | Choose WAQF (commits + advances the chain) | `wasl_pick_waqf` |
+| Tab | Highlight the other choice | `wasl_toggle` |
+| Enter | Confirm the highlighted choice | `wasl_confirm` |
+
 `*` = `rebindable: false` (structural; shown in the popover as reference only).
 
 ## Row/card action registry
@@ -96,4 +107,4 @@ Structural keys (Enter / Escape / Tab / in-edit arrows / Ctrl+S / R) are intenti
 
 ## Self-contained widgets (outside the dispatcher)
 
-`WaslBoundary.svelte` — the WASL/WAQF picker that pauses a cross-verse split chain after each child's ref-edit — owns its own keyboard, not the dispatcher. While the boundary is the paused step (auto-focused), `←`/`→` highlight WASL/WAQF positionally, `Tab` toggles, and `Enter` commits the highlighted choice and advances the chain to the next child. It `stopPropagation`s those keys so the global handler doesn't also seek / move focus; everything else (Space preview, …) falls through to `handleSegmentsKey`.
+`WaslBoundary.svelte` — the WASL/WAQF picker that pauses a cross-verse split chain after each child's ref-edit — owns its own keyboard, not the dispatcher. While the boundary is the paused step (auto-focused), `←` commits WASL and `→` commits WAQF in one keypress (positional, matching the on-screen `WASL · WAQF` order), each advancing the chain to the next child; `Tab` moves the highlight between the two and `Enter` commits the highlighted one. It `stopPropagation`s those keys so the global handler doesn't also seek / move focus; everything else (Space preview, …) falls through to `handleSegmentsKey`. The four keys are catalogued in `SHORTCUT_ACTIONS` under the `wasl` context (`rebindable: false`) purely so the footer guide lists them — `handleSegmentsKey` never selects that context.
