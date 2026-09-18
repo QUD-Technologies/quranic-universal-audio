@@ -15,6 +15,8 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
+    env:
+      QUD_SITE_DEPLOY_HOOK: ${{ secrets.QUD_SITE_DEPLOY_HOOK }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,12 +36,17 @@ jobs:
 
       - name: Commit docs update
         run: |
-          if git diff --quiet -- README.md; then
+          if git diff --quiet -- README.md data/stats.json; then
             echo "README badges already current"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add README.md
+          git add README.md data/stats.json
           git commit -m "docs(readme): update badges"
           git push
+
+      # qud.dev reads data/stats.json at build time; a rebuild picks up the new numbers.
+      - name: Rebuild qud.dev
+        if: env.QUD_SITE_DEPLOY_HOOK != ''
+        run: curl -fsS -X POST "$QUD_SITE_DEPLOY_HOOK"

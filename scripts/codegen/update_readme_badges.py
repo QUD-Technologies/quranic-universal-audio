@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Refresh README stats badges from the production Inspector bucket."""
+"""Refresh README stats badges and data/stats.json from the production Inspector bucket.
+
+``data/stats.json`` carries the same numbers as raw values for other consumers
+(the qud.dev project page reads it at build time).
+"""
 
 from __future__ import annotations
 
@@ -16,6 +20,7 @@ from urllib.parse import quote
 PROD_BUCKET_ID = "hetchyy/quranic-inspector-bucket"
 DB_BUCKET_PATH = "db/inspector.db"
 DEFAULT_README = Path(__file__).resolve().parents[2] / "README.md"
+DEFAULT_STATS = Path(__file__).resolve().parents[2] / "data" / "stats.json"
 
 START_MARKER = "  <!-- stats-badges:start -->"
 END_MARKER = "  <!-- stats-badges:end -->"
@@ -191,6 +196,26 @@ def render_badges(catalog: BadgeStats, aligned: BadgeStats) -> str:
     return "\n".join(lines)
 
 
+def render_stats_json(catalog: BadgeStats, aligned: BadgeStats) -> str:
+    """Raw counts for consumers that want numbers, not badges."""
+    doc = {
+        "schema_version": 1,
+        "catalog": {
+            "reciters": catalog.reciters,
+            "mushafs": catalog.mushafs,
+            "riwayat": catalog.riwayat,
+            "seconds": catalog.seconds,
+        },
+        "aligned": {
+            "reciters": aligned.reciters,
+            "mushafs": aligned.mushafs,
+            "riwayat": aligned.riwayat,
+            "seconds": aligned.seconds,
+        },
+    }
+    return json.dumps(doc, indent=2) + "\n"
+
+
 def replace_badges(readme: str, badges: str) -> str:
     if START_MARKER in readme and END_MARKER in readme:
         before, rest = readme.split(START_MARKER, 1)
@@ -210,6 +235,7 @@ def replace_badges(readme: str, badges: str) -> str:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--readme", type=Path, default=DEFAULT_README)
+    parser.add_argument("--stats", type=Path, default=DEFAULT_STATS)
     parser.add_argument("--db-path", type=Path)
     parser.add_argument("--bucket-id", default=PROD_BUCKET_ID)
     parser.add_argument("--dry-run", action="store_true")
@@ -250,6 +276,7 @@ def main() -> int:
         readme = args.readme.read_text(encoding="utf-8")
         updated = replace_badges(readme, badges)
         args.readme.write_text(updated, encoding="utf-8")
+        args.stats.write_text(render_stats_json(catalog_stats, aligned_stats), encoding="utf-8")
         return 0
     finally:
         if temp_db is not None:
