@@ -40,6 +40,7 @@ import type { Segment } from '../../../../lib/types/view-models';
 import { type AnimationLoop,createAnimationLoop } from '../../../../lib/utils/animation';
 import { audioSrcMatches } from '../../../../lib/utils/audio';
 import {
+    getChapterSegments,
     getSegByChapterIndex,
     pickerDisplayChapter,
     segAllData,
@@ -98,6 +99,15 @@ let _prevPlaying: { chapter: number; index: number } | null = null;
  *  repainting every idle piece on every frame. WeakSet so an unmounted row's
  *  canvas is collectable without any teardown bookkeeping. */
 const _stagedCursorCanvases = new WeakSet<SegCanvas>();
+
+/**
+ * End of the contiguous piece GROUP the current play spans, or null when the
+ * play covers a single segment. `ensureBoundedRange` rebuilds `_segRange` from
+ * the pair's own segment — which after a split is one piece — so without this
+ * a rebuild mid-play re-bounds a group play to that piece's end and the audio
+ * stops there.
+ */
+let _activeGroupEndMs: number | null = null;
 
 /** Active segment-bounded range. Used for accordion plays (always bounded
  *  to the played segment) and chapter-mode plays when autoplay is OFF.
@@ -333,7 +343,48 @@ function _chimeSegmentEnd(resume: () => void): void {
     _chimeGapTimer = setTimeout(done, scheduled ? CHIME_GAP_MS * 3 : CHIME_GAP_MS);
 }
 
+/**
+ * Keep the pair on the piece the playhead is inside during a GROUP play.
+ *
+ * A card's pieces are contiguous, so a group play crosses from one to the next
+ * with no new `play()`. `onSegTimeUpdate` cannot be relied on for that: it
+ * bails whenever the port isn't playing the *active* chapter (accordion cards
+ * routinely mount rows from another chapter) and it only scans the main list's
+ * filtered slice. Without this the pair — and with it the row highlight and
+ * the waveform cursor — stuck on the piece that started the play while the
+ * audio ran on into the next one.
+ *
+ * Runs on the bounded-range tick, which is exactly the accordion/group-play
+ * path, and moves `segCurrentIdx` + the nav cursor in lockstep (see
+ * `updateSegHighlight`, which forces the pair back onto `segCurrentIdx`).
+ *
+ * `groupEndMs` is the caller's group bound (`_activeGroupEndMs` on the tick);
+ * null means this play covers a single segment and there is nothing to follow.
+ */
+export function followGroupPlayhead(timeMs: number, groupEndMs: number | null): void {
+    if (groupEndMs == null) return;
+    const active = get(playingSegmentIndex);
+    if (!active) return;
+    const cur = getSegByChapterIndex(active.chapter, active.index);
+    if (cur && timeMs >= cur.time_start && timeMs < cur.time_end) return; // still inside
+    for (const seg of getChapterSegments(active.chapter)) {
+        if (timeMs < seg.time_start || timeMs >= seg.time_end) continue;
+        if (seg.index === active.index) return;
+        setPlayingSegment({ chapter: active.chapter, index: seg.index });
+        segCurrentIdx.set(seg.index);
+        setAccordionNavCursor({
+            uid: seg.segment_uid ?? '',
+            chapter: active.chapter,
+            index: seg.index,
+            startMs: seg.time_start,
+            endMs: seg.time_end,
+        });
+        return;
+    }
+}
+
 function _onRangeTick(timeMs: number): void {
+    followGroupPlayhead(timeMs, _activeGroupEndMs);
     drawActivePlayhead(timeMs);
     updateSegHighlight();
 }
@@ -458,10 +509,16 @@ export function ensureBoundedRange(): void {
         // rAF without re-seeking, enforcing from the live playhead.
         const seg = getSegByChapterIndex(active.chapter, active.index);
         if (!seg) return;
+        // Honour the group the current play spans (see `_activeGroupEndMs`):
+        // rebuilding at `seg.time_end` re-bounds a group play to the piece the
+        // pair names and stops the audio at its edge.
+        const boundEnd = _activeGroupEndMs != null && _activeGroupEndMs > seg.time_end
+            ? _activeGroupEndMs
+            : seg.time_end;
         _drawLoop.stop(); // AudioRange owns the playhead rAF in bounded mode
         _segRange = new AudioRange({
             port: segPort,
-            range: { startMs: segPort.currentTimeMs(), endMs: seg.time_end },
+            range: { startMs: segPort.currentTimeMs(), endMs: boundEnd },
             policy: { kind: 'stop' },
             onTick: _onRangeTick,
             onBoundary: _onRangeBoundary,
@@ -612,6 +669,11 @@ export function playFromSegment(
     // crosses each edge, so ↑/↓ and the advance still step per segment).
     const groupEnd = opts?.groupEndMs ?? null;
     const endMs = groupEnd != null && groupEnd > seg.time_end ? groupEnd : seg.time_end;
+    // Remember it: `ensureBoundedRange` rebuilds the range from the pair's own
+    // segment, which after a split is ONE piece — re-bounding a group play to
+    // piece 0's end pauses the audio there. Any toggle (autoplay, chime) or an
+    // edit-mode exit can trigger that rebuild mid-play.
+    _activeGroupEndMs = endMs > seg.time_end ? endMs : null;
     const bounded = isAccordionPlay || !get(autoPlayEnabled) || _chimeArmed();
 
     if (bounded) {
@@ -868,6 +930,21 @@ export function onSegTimeUpdate(fileMs?: number): void {
                 && timeMs >= activeSeg.time_start && timeMs < activeSeg.time_end) {
             nextCurrentIdx = active.index;
             nextCurrentChapter = active.chapter;
+        } else {
+            // Past the active segment and the displayed slice can't say where
+            // we are — scan the playing CHAPTER. Accordion playback runs
+            // through a card's contiguous pieces, and those rows often aren't
+            // in `displayedSegments`; without this the pair (and with it the
+            // highlight and the waveform cursor) stuck on the piece that
+            // started the play while the audio ran on into the next one.
+            for (const s of getChapterSegments(active.chapter)) {
+                if (timeMs >= s.time_start && timeMs < s.time_end) {
+                    if (currentSrc && !audioSrcMatches(s.audio_url, currentSrc)) continue;
+                    nextCurrentIdx = s.index;
+                    nextCurrentChapter = active.chapter;
+                    break;
+                }
+            }
         }
     }
     segCurrentIdx.set(nextCurrentIdx);
