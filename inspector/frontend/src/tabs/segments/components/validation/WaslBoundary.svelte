@@ -28,18 +28,16 @@
      * unhooks focus, and calls resumePendingChain() so the post-split
      * chain advances to the next piece's ref-edit.
      *
-     * Keyboard. Inside the picker (it auto-focuses when the split chain pauses
-     * here): Tab moves the highlight between the two labels, Enter commits the
-     * highlighted one, ←/→ commit WASL/WAQF outright. stopPropagation'd so the
-     * global dispatcher doesn't also seek / move focus.
+     * Keyboard (while this boundary is the paused chain step): ← highlights
+     * WASL, → highlights WAQF (positional), Tab toggles between them, and
+     * Enter commits the highlighted choice — advancing the chain to the next
+     * child's ref-edit. Handled locally (the picker auto-focuses a button)
+     * and stopPropagation'd so the global Segments dispatcher doesn't also
+     * seek / cycle focus away on those keys. Space + other keys fall through.
      *
-     * Outside the picker, ←/→ still label this boundary while its card is the
-     * focused one — that path does NOT live here: the picker hands its commit
-     * up via `onCommitReady`, the card forwards it to its member rows as
-     * `onCardSetWasl`, and `handleSegmentsKey` drives it through the
-     * `activeRowActions` bundle (exactly like L / F / C). The card only
-     * forwards it when it renders a SINGLE boundary, so an arrow can never be
-     * ambiguous; in a multi-boundary card the arrows keep seeking.
+     * Separately, the picker exports its commit via `onCommitReady` so the
+     * card can bind it to the tab-wide 1 (waṣl) / 2 (waqf) shortcut, which
+     * labels a boundary from the focused piece without touching the picker.
      */
 
     import { onMount, tick } from 'svelte';
@@ -75,10 +73,9 @@
     export let stagedValue: boolean | undefined = undefined;
     /**
      * Hand this picker's commit callback to the owning card — `(uid, commit)`
-     * on mount, `(uid, null)` on unmount — so the card can publish it as the
-     * keyboard's `setWasl` action. Keyed by uid so a re-render that mounts the
-     * replacement before destroying this one can't clear the live entry. Set
-     * only on a card's single boundary.
+     * on mount, `(uid, null)` on unmount, keyed by the LEFT piece's uid so the
+     * card can map a focused row to the boundary under it. The card republishes
+     * it as the keyboard's `setWasl` action (1 = waṣl, 2 = waqf).
      */
     export let onCommitReady:
         | ((uid: string, commit: ((value: boolean) => void) | null) => void)
@@ -88,8 +85,8 @@
     let waqfBtnEl: HTMLButtonElement | undefined;
 
     /** Transient keyboard highlight while this boundary is the paused chain
-     *  step. Tab toggles it, Enter commits it. Null whenever this picker isn't
-     *  the active step. */
+     *  step. ←/→ pick positionally (WASL · WAQF), Tab toggles, Enter commits.
+     *  Null whenever this picker isn't the active step. */
     let highlighted: 'wasl' | 'waqf' | null = null;
 
     $: leftUid = leftSeg.segment_uid ?? '';
@@ -114,8 +111,8 @@
         void tick().then(() => el.focus());
     }
 
-    // Hand the commit up to the card (which publishes it to the keyboard
-    // registry) for as long as this picker is mounted.
+    // Publish the commit to the owning card for as long as this picker is
+    // mounted, so the card's rows can offer it as a keyboard action.
     onMount(() => {
         const uid = leftSeg.segment_uid ?? '';
         if (!uid) return;
@@ -123,8 +120,8 @@
         return () => onCommitReady?.(uid, null);
     });
 
-    /** Move the keyboard highlight to `side` (Tab) and pull DOM focus with it so
-     *  the focus ring tracks the staged choice. */
+    /** Move the keyboard highlight to `side` and pull DOM focus with it so the
+     *  focus ring tracks the staged choice. */
     function setHighlight(side: 'wasl' | 'waqf', e: KeyboardEvent): void {
         e.preventDefault();
         e.stopPropagation();
@@ -132,22 +129,18 @@
         (side === 'wasl' ? waslBtnEl : waqfBtnEl)?.focus();
     }
 
-    /** Keyboard nav for the focused picker while it is pending: ← commits WASL,
-     *  → commits WAQF, Tab toggles the highlight and Enter commits the
-     *  highlighted choice — each advancing the split chain. Other keys (Space
-     *  preview, …) bubble to the global Segments dispatcher. */
+    /** Keyboard nav for the paused chain step: ← / → highlight WASL / WAQF
+     *  positionally, Tab toggles, Enter commits the highlighted choice and
+     *  advances the chain. Only intercepts while this boundary is pending —
+     *  other keys (Space preview, …) bubble to the global Segments dispatcher. */
     function onPickerKeydown(e: KeyboardEvent): void {
         if (!isPending) return;
         switch (e.key) {
             case 'ArrowLeft':
-                e.preventDefault();
-                e.stopPropagation();
-                commit(true);
+                setHighlight('wasl', e);
                 break;
             case 'ArrowRight':
-                e.preventDefault();
-                e.stopPropagation();
-                commit(false);
+                setHighlight('waqf', e);
                 break;
             case 'Tab':
                 setHighlight(highlighted === 'wasl' ? 'waqf' : 'wasl', e);

@@ -10,13 +10,12 @@
  *   - 'accordion' — a validation accordion is open. Accordion-pool actions
  *                   (goto / ignore / auto-fill / toggle-context) act on the
  *                   focused card via the active-row registry; ↑/↓ + autoplay
- *                   navigate the accordion sequence. Default-pool actions still
- *                   apply (acting on the focused card row). ←/→ label the
- *                   focused card's WASL/WAQF boundary instead of seeking when
- *                   it has exactly one (see `waslBoundaryKey`).
+ *                   navigate the accordion sequence. 1 / 2 label the WASL /
+ *                   WAQF boundary belonging to the focused piece. Default-pool
+ *                   actions still apply (acting on the focused card row).
  *   - 'default'   — main-list browsing.
  *
- * Row/card edit actions (A/S/E/G/L/F/C) are dispatched through the
+ * Row/card edit actions (A/S/E/G/L/F/C/1/2) are dispatched through the
  * `activeRowActions` registry, which the primary SegmentRow publishes — so a
  * keyboard edit behaves identically to clicking that row's button (same
  * validation-category auto-ignore, mountId, overlay positioning).
@@ -89,6 +88,19 @@ function callRowAction(name: keyof RowActionBundle, gate: boolean): boolean {
     if (typeof fn !== 'function') return false;
     if (gate && gateKeyboardEdit()) return true;
     (fn as () => void)();
+    return true;
+}
+
+/** 1 / 2 inside an open accordion — label the WASL/WAQF boundary that belongs
+ *  to the focused piece (the picker below it, or the one above it for the last
+ *  piece; a two-piece cross verse resolves to its single boundary either way).
+ *  Identical to clicking that label, so it also switches an already-labelled
+ *  boundary. Unhandled when the focused row has no boundary. */
+function markWasl(value: boolean): boolean {
+    const setWasl = get(activeRowActions)?.setWasl;
+    if (typeof setWasl !== 'function') return false;
+    if (gateKeyboardEdit()) return true;
+    setWasl(value);
     return true;
 }
 
@@ -209,23 +221,6 @@ function handleEditKey(e: KeyboardEvent, mode: 'trim' | 'split'): boolean {
     }
 }
 
-/**
- * ←/→ label the focused card's WASL/WAQF boundary — ← waṣl, → waqf, exactly
- * like clicking that label (so it also switches a wrong one). Published as
- * `setWasl` in the active-row bundle by the card itself, and ONLY by a card
- * that renders a single boundary: whichever of its pieces is focused, the
- * arrow can only mean that one boundary. Every other row leaves the key
- * unhandled, so the arrows keep seeking. Returns true when consumed.
- */
-function waslBoundaryKey(e: KeyboardEvent): boolean {
-    if (e.code !== 'ArrowLeft' && e.code !== 'ArrowRight') return false;
-    const setWasl = get(activeRowActions)?.setWasl;
-    if (typeof setWasl !== 'function') return false;
-    if (gateKeyboardEdit()) return true;
-    setWasl(e.code === 'ArrowLeft');
-    return true;
-}
-
 export function handleSegmentsKey(e: KeyboardEvent): boolean {
     if (!shouldHandleKey(e, 'segments')) return false;
 
@@ -250,8 +245,6 @@ export function handleSegmentsKey(e: KeyboardEvent): boolean {
     }
 
     const ctx = get(valUiOpenCategory) !== null ? 'accordion' : 'default';
-    if (ctx === 'accordion' && waslBoundaryKey(e)) return true;
-
     const actionId = resolve(tokenFromEvent(e), ctx);
     if (!actionId) return false;
 
@@ -276,6 +269,8 @@ export function handleSegmentsKey(e: KeyboardEvent): boolean {
         case 'toggle_context': return callRowAction('toggleContext', false);
         case 'ignore':         return callRowAction('ignore', true);
         case 'autofill':       return callRowAction('autofill', true);
+        case 'mark_wasl':      return markWasl(true);
+        case 'mark_waqf':      return markWasl(false);
 
         default:               return false;
     }

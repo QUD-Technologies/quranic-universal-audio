@@ -1,6 +1,6 @@
 # Keyboard shortcuts (Segments tab)
 
-User-editable, context-scoped keyboard shortcuts for the Segments editor. A pressed key resolves to an action through a user-overridable binding map; the active **context** (default / accordion / edit, plus a reference-only `wasl` pool) decides which pool of bindings is live. The footer popover (`ShortcutsGuide.svelte`, left of the speed control) is the reference + inline rebinder. This subsystem is Segments-only; the Timestamps tab has its own separate `TimestampsKeyboard` + `TimestampsShortcutsGuide`.
+User-editable, context-scoped keyboard shortcuts for the Segments editor. A pressed key resolves to an action through a user-overridable binding map; the active **context** (default / accordion / edit) decides which pool of bindings is live. The footer popover (`ShortcutsGuide.svelte`, left of the speed control) is the reference + inline rebinder. This subsystem is Segments-only; the Timestamps tab has its own separate `TimestampsKeyboard` + `TimestampsShortcutsGuide`.
 
 ## Files
 
@@ -29,9 +29,7 @@ A token is `e.code` with an optional `Ctrl+` prefix (Ctrl OR Meta both normalise
 | `accordion` | `valUiOpenCategory !== null` (a validation accordion is open) | `accordion` then `default` (accordion overrides) |
 | `default` | otherwise (main-list browsing) | `default` only |
 
-The catalogue carries a fourth context, `wasl`, that `resolve()` never serves: `Tab`/`Enter` belong to the focused `WaslBoundary` picker, and `←`/`→` are intercepted in `handleSegmentsKey` (`waslBoundaryKey`) **ahead of** the pools — only when the focused card published a `setWasl` action, otherwise the arrows seek as usual. See **WASL/WAQF boundary keys** below. Its entries exist so the keys appear in the footer guide and can't be claimed by a rebind.
-
-`default`-pool actions stay live inside an open accordion (they act on the focused card); `accordion`-pool actions are additive. Conflict groups for rebinding: `default`+`accordion` share one (they can be live together); `edit` and `wasl` are each separate.
+`default`-pool actions stay live inside an open accordion (they act on the focused card); `accordion`-pool actions are additive. Conflict groups for rebinding: `default`+`accordion` share one (they can be live together), `edit` is separate.
 
 ## Keymap
 
@@ -59,6 +57,7 @@ The catalogue carries a fourth context, `wasl`, that `resolve()` never serves: `
 | C | Toggle context rows | `toggle_context` |
 | L | Ignore issue | `ignore` |
 | F | Auto-fill | `autofill` |
+| 1 / 2 | Mark the focused piece's WASL/WAQF boundary waṣl / waqf | `mark_wasl` / `mark_waqf` |
 
 **Trim / split edit** (all fixed):
 
@@ -70,17 +69,6 @@ The catalogue carries a fourth context, `wasl`, that `resolve()` never serves: `
 | Enter / Escape | Confirm / cancel | `edit_confirm` / `edit_cancel` * |
 | Space, , / . | Play preview, speed | (handled inline in `handleEditKey`) |
 
-**WASL/WAQF boundary** (all fixed):
-
-| Key | Action | id |
-|---|---|---|
-| ← | Label the focused card's boundary **waṣl** | `wasl_pick_wasl` |
-| → | Label it **waqf** | `wasl_pick_waqf` |
-| Tab | Highlight the other choice (inside the focused picker) | `wasl_toggle` |
-| Enter | Commit the highlighted choice (inside the focused picker) | `wasl_confirm` |
-
-`←`/`→` apply while a card that renders **exactly one** boundary is the focused row — either of its two pieces, playing or current — and are identical to clicking that label, so they also switch an already-labelled boundary. A card with two or more boundaries (three or more pieces) publishes no `setWasl`, so there the arrows keep seeking and its pickers stay on click / Tab / Enter.
-
 `*` = `rebindable: false` (structural; shown in the popover as reference only).
 
 ## Row/card action registry
@@ -89,6 +77,7 @@ Row-owned edit actions (A/S/E/G + delete) and card-owned ones (L ignore, F auto-
 
 - **Primary** = `!readOnly && !isContext && (isPlaying || (instanceRole === 'main' && !accordionOpen && segCurrentIdx === seg.index))`. One row is primary at a time (the main list is hidden while an accordion is open). Cleared on unmount.
 - **Card callbacks** (`onCardIgnore` / `onCardAutofill` / `onCardToggleContext`) are passed by `GenericIssueCard` / `MissingWordsCard` to their main member `SegmentRow`s and forwarded into the bundle.
+- **`setWasl` (1 / 2)**: each `WaslBoundary` picker publishes its commit to its `GenericIssueCard` via `onCommitReady(uid, commit)`, keyed by the uid of the piece **above** it. The card gives every main member row the commit for the boundary **directly below** that row, falling back to the boundary **above** it for the last piece (which has none below). So a focused piece always maps to exactly one boundary, and a two-piece cross verse resolves to its single boundary from either side — no ambiguity even with three or more pieces. A row with no boundary on either side publishes no `setWasl`, and the keys are then unhandled. `1`/`2` are ordinary rebindable `accordion`-pool actions; `←`/`→` keep seeking.
 - **`edit_ref` fallback**: when no bundle is published (paused main-list row, or tests), E resolves the current segment from `displayedSegments` + `segCurrentIdx`. Mutating keyboard actions run `gateKeyboardEdit()` (the keyboard equivalent of `use:editGate`).
 
 ## Accordion navigation + auto-scroll
@@ -109,15 +98,4 @@ Structural keys (Enter / Escape / Tab / in-edit arrows / Ctrl+S / R) are intenti
 
 ## Self-contained widgets (outside the dispatcher)
 
-`WaslBoundary.svelte` — the WASL/WAQF picker rendered between adjacent pieces of a cross-verse card — owns `Tab`/`Enter`/`←`/`→` **while it has focus** (the split chain auto-focuses it when it pauses on a pending boundary): `Tab` moves the highlight, `Enter` commits the highlighted label, `←`/`→` commit waṣl/waqf. It `stopPropagation`s those keys so the global handler doesn't also seek; everything else (Space preview, …) falls through to `handleSegmentsKey`.
-
-## WASL/WAQF boundary keys
-
-`←`/`→` are **not** picker-focus-bound — they work while the user is on the first or the second part of the cross verse, with no split or pending state involved:
-
-- `GenericIssueCard` counts the pickers it renders (`waslBoundaryCount` = inter-piece boundaries + the trailing `unmarked_wasl` one). When that is exactly **1**, the picker's commit callback — handed up on mount via its `onCommitReady` prop — is forwarded to the card's main member rows as `onCardSetWasl`.
-- `SegmentRow` publishes it into the `activeRowActions` bundle as `setWasl`, alongside `ignore` / `autofill` / `toggleContext`. Only the **primary** row publishes, so the action always belongs to the card the keyboard is acting on; either piece being primary resolves to the same single boundary.
-- `handleSegmentsKey` → `waslBoundaryKey(e)` runs before the binding pools in the `accordion` context: no `setWasl` in the bundle ⇒ key unhandled ⇒ `seek_back` / `seek_fwd` as normal. With one, it runs `gateKeyboardEdit()` and calls `setWasl(true)` for `←`, `setWasl(false)` for `→` — the same commit path as a click (amends the pending split op while it's still in the dirty buffer, else emits a `set_is_wasl` op, then resumes the chain).
-- Multi-boundary cards publish nothing, which is the ambiguity guard: an arrow there could not say which boundary it meant.
-
-The four keys are catalogued in `SHORTCUT_ACTIONS` under the `wasl` context (`rebindable: false`) so the footer guide lists them; `resolve()` is never asked for that pool.
+`WaslBoundary.svelte` — the WASL/WAQF picker that pauses a cross-verse split chain after each child's ref-edit — owns its own keyboard, not the dispatcher. While the boundary is the paused step (auto-focused), `←`/`→` highlight WASL/WAQF positionally, `Tab` toggles, and `Enter` commits the highlighted choice and advances the chain to the next child. It `stopPropagation`s those keys so the global handler doesn't also seek / move focus; everything else (Space preview, …) falls through to `handleSegmentsKey`. The picker's own keys are unchanged by the `1`/`2` shortcut: that path goes through the card + row registry (see **Row/card action registry**) and never needs the picker focused.

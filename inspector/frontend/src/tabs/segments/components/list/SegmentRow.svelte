@@ -180,9 +180,9 @@ import type { Segment } from '../../../../lib/types/view-models';
      * Card-level action callbacks, set ONLY by accordion cards on their main
      * (non-context) member rows. Forwarded into the active-row action bundle so
      * the keyboard shortcuts L (ignore) / F (auto-fill) / C (toggle context) /
-     * ← → (label the card's WASL/WAQF boundary) can act on the focused card.
-     * `null` on every other placement — `onCardSetWasl` is also null on a card
-     * with several boundaries, where an arrow couldn't name one.
+     * 1–2 (label the WASL/WAQF boundary under this piece) can act on the
+     * focused card. `null` on every other placement — `onCardSetWasl` is also
+     * null on a row with no boundary below or above it.
      */
     export let onCardIgnore: (() => void) | null = null;
     export let onCardAutofill: (() => void) | null = null;
@@ -776,8 +776,8 @@ import type { Segment } from '../../../../lib/types/view-models';
     // Active-row action registry — publish this row's edit actions while it is
     // the "primary" target (playing, or the main-list current segment when
     // paused), so global keyboard shortcuts (A / S / E / G / L / F / C) act on
-    // it (A / S / E / G / L / F / C and the ←/→ wasl labels). Accordion cards
-    // forward their card-level callbacks via the onCard* props. Only one row is primary at a time (the main list is
+    // it (A / S / E / G / L / F / C / 1 / 2). Accordion cards forward their
+    // card-level callbacks via the onCard* props. Only one row is primary at a time (the main list is
     // hidden while an accordion is open).
     // ---------------------------------------------------------------------
     $: accordionOpen = $valUiOpenCategory !== null;

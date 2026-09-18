@@ -11,8 +11,8 @@
  *
  * Conflicts: 'default' and 'accordion' actions can be live at the same time
  * (the accordion pool extends default), so they share one uniqueness group;
- * 'edit' and 'wasl' are each their own group. `setBinding` refuses a token
- * already used by another rebindable action in the same group.
+ * 'edit' is its own group. `setBinding` refuses a token already used by
+ * another rebindable action in the same group.
  */
 
 import { LS_KEYS } from '../../../lib/utils/constants';
@@ -69,11 +69,9 @@ export function hasCustomBindings(): boolean {
     return Object.keys(overrides).length > 0;
 }
 
-/** Conflict group: default+accordion share one; edit and wasl are separate. */
-function groupOf(ctx: ShortcutContext): 'main' | 'edit' | 'wasl' {
-    if (ctx === 'edit') return 'edit';
-    if (ctx === 'wasl') return 'wasl';
-    return 'main';
+/** Conflict group: default+accordion share one; edit is separate. */
+function groupOf(ctx: ShortcutContext): 'main' | 'edit' {
+    return ctx === 'edit' ? 'edit' : 'main';
 }
 
 export interface RebindResult {
@@ -117,20 +115,12 @@ export function resetAll(): void {
  *  - 'edit'      → only edit-pool actions.
  *  - 'accordion' → accordion-pool first (overrides), then default-pool.
  *  - 'default'   → default-pool only.
- *  - 'wasl'      → wasl-pool only (never requested: WaslBoundary handles its
- *                  own keys locally; the pool is reference/reservation only).
  * Returns null when nothing is bound to the token in scope.
  */
 export function resolve(token: string, mode: ShortcutContext): string | null {
     if (!token) return null;
     const pools: ShortcutContext[] =
-        mode === 'edit'
-            ? ['edit']
-            : mode === 'wasl'
-              ? ['wasl']
-              : mode === 'accordion'
-                ? ['accordion', 'default']
-                : ['default'];
+        mode === 'edit' ? ['edit'] : mode === 'accordion' ? ['accordion', 'default'] : ['default'];
     for (const pool of pools) {
         for (const a of SHORTCUT_ACTIONS) {
             if (a.context !== pool) continue;

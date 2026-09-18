@@ -224,30 +224,32 @@
         return groupMembers.length > 1 && isVerseBoundary(a, b);
     });
 
-    /** How many WASL/WAQF pickers this card renders — the inter-piece ones plus
-     *  the trailing `unmarked_wasl` picker against the next-verse context row.
-     *  Exactly one means ←/→ can label it from anywhere in the card (whichever
-     *  piece is focused); two or more would be ambiguous, so the keyboard
-     *  action isn't published and the arrows keep seeking. */
-    $: waslBoundaryCount =
-        boundaryAt.filter(Boolean).length
-        + (showWaslPicker && lastMember && nextSeg ? 1 : 0);
-    $: soleWaslBoundary = waslBoundaryCount === 1;
-
-    /** Mounted pickers' commit callbacks, keyed by their left piece's uid.
-     *  A single entry (on a single-boundary card) is published to the
-     *  active-row registry as `setWasl`, so ← (waṣl) / → (waqf) act on this
-     *  card while either of its pieces is the focused row. */
+    // ---- WASL/WAQF keyboard binding (1 = waṣl, 2 = waqf) ----
+    // Each mounted picker publishes its commit here, keyed by the uid of the
+    // piece ABOVE it. A focused piece therefore labels the boundary directly
+    // below itself; the last piece has none below, so it falls back to the one
+    // above it. On a two-piece cross verse both pieces resolve to the single
+    // boundary between them.
     let waslCommits = new Map<string, (value: boolean) => void>();
+
     function takeWaslCommit(uid: string, commit: ((value: boolean) => void) | null): void {
         const next = new Map(waslCommits);
         if (commit) next.set(uid, commit);
         else next.delete(uid);
         waslCommits = next;
     }
-    $: cardSetWasl = soleWaslBoundary && waslCommits.size === 1
-        ? (waslCommits.values().next().value ?? null)
-        : null;
+
+    function waslCommitFor(
+        i: number,
+        members: Segment[],
+        commits: Map<string, (value: boolean) => void>,
+    ): ((value: boolean) => void) | null {
+        const below = members[i]?.segment_uid ?? '';
+        if (below && commits.has(below)) return commits.get(below) ?? null;
+        const above = i > 0 ? members[i - 1]?.segment_uid ?? '' : '';
+        if (above && commits.has(above)) return commits.get(above) ?? null;
+        return null;
+    }
 
     /** Dispatch the staged split. Unanswered boundaries commit as WAQF but
      *  stay flagged pending, so their pickers keep asking and amend the
@@ -396,7 +398,7 @@
                 accordionSiblings={siblings}
                 onCardIgnore={canIgnore ? handleIgnore : null}
                 onCardToggleContext={toggleContext}
-                onCardSetWasl={cardSetWasl}
+                onCardSetWasl={waslCommitFor(i, mainMembers, waslCommits)}
             />
             {#if boundaryAt[i]}
                 {@const next = mainMembers[i + 1]}
@@ -406,23 +408,15 @@
                         rightSeg={next}
                         stagedValue={stagedPicks[i]}
                         onPick={(v) => onStagedPick(i, v)}
-                        onCommitReady={soleWaslBoundary ? takeWaslCommit : null}
+                        onCommitReady={takeWaslCommit}
                     />
                 {:else if next}
-                    <WaslBoundary
-                        leftSeg={mem}
-                        rightSeg={next}
-                        onCommitReady={soleWaslBoundary ? takeWaslCommit : null}
-                    />
+                    <WaslBoundary leftSeg={mem} rightSeg={next} onCommitReady={takeWaslCommit} />
                 {/if}
             {/if}
         {/each}
         {#if showWaslPicker && lastMember && nextSeg}
-            <WaslBoundary
-                leftSeg={lastMember}
-                rightSeg={nextSeg}
-                onCommitReady={soleWaslBoundary ? takeWaslCommit : null}
-            />
+            <WaslBoundary leftSeg={lastMember} rightSeg={nextSeg} onCommitReady={takeWaslCommit} />
         {/if}
         {#if nextSeg}
             <SegmentRow

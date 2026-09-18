@@ -30,9 +30,10 @@ export interface RowActionBundle {
     ignore?: () => void;
     autofill?: () => void;
     toggleContext?: () => void;
-    /** Label the card's WASL/WAQF boundary (← waṣl / → waqf). Published only
-     *  by cross-verse cards that render exactly ONE boundary, so the key can
-     *  never be ambiguous; absent everywhere else (the arrows then seek). */
+    /** Label this row's WASL/WAQF boundary (1 = waṣl, 2 = waqf) — the picker
+     *  directly BELOW the row, or the one above it when the row is the last
+     *  piece. Set only on the main member rows of a card that renders a
+     *  boundary. */
     setWasl?: (value: boolean) => void;
 }
 
