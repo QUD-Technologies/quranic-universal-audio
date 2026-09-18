@@ -11,9 +11,9 @@
  *                   (goto / ignore / auto-fill / toggle-context) act on the
  *                   focused card via the active-row registry; ↑/↓ + autoplay
  *                   navigate the accordion sequence. Default-pool actions still
- *                   apply (acting on the focused card row). ←/→ answer a
- *                   waiting single WASL/WAQF boundary instead of seeking
- *                   (see `waslBoundaryKey`).
+ *                   apply (acting on the focused card row). ←/→ label the
+ *                   focused card's WASL/WAQF boundary instead of seeking when
+ *                   it has exactly one (see `waslBoundaryKey`).
  *   - 'default'   — main-list browsing.
  *
  * Row/card edit actions (A/S/E/G/L/F/C) are dispatched through the
@@ -38,7 +38,7 @@ import { resolve, tokenFromEvent } from '../shortcuts/store.svelte';
 import { activeRowActions, type RowActionBundle } from '../stores/active-actions';
 import { segCurrentIdx } from '../stores/chapter';
 import { isDirty } from '../stores/dirty';
-import { editMode, soleWaslBoundaryCommit } from '../stores/edit';
+import { editMode } from '../stores/edit';
 import { displayedSegments } from '../stores/filters';
 import { historyVisible } from '../stores/history';
 import { savedFilterView } from '../stores/navigation';
@@ -210,20 +210,19 @@ function handleEditKey(e: KeyboardEvent, mode: 'trim' | 'split'): boolean {
 }
 
 /**
- * ←/→ on a waiting cross-verse WASL/WAQF boundary — answers it in one
- * keypress (← waṣl, → waqf) instead of seeking, then lets the split chain
- * advance. Only fires for a card whose two pieces share a SINGLE boundary
- * (`soleWaslBoundaries`), so it reads the same whether the user is on the
- * first or the second part; a card with more boundaries is left to its
- * focused picker (Tab / Enter) and the arrows keep seeking. Returns true
- * when the key was consumed.
+ * ←/→ label the focused card's WASL/WAQF boundary — ← waṣl, → waqf, exactly
+ * like clicking that label (so it also switches a wrong one). Published as
+ * `setWasl` in the active-row bundle by the card itself, and ONLY by a card
+ * that renders a single boundary: whichever of its pieces is focused, the
+ * arrow can only mean that one boundary. Every other row leaves the key
+ * unhandled, so the arrows keep seeking. Returns true when consumed.
  */
 function waslBoundaryKey(e: KeyboardEvent): boolean {
     if (e.code !== 'ArrowLeft' && e.code !== 'ArrowRight') return false;
-    const commit = soleWaslBoundaryCommit();
-    if (!commit) return false;
+    const setWasl = get(activeRowActions)?.setWasl;
+    if (typeof setWasl !== 'function') return false;
     if (gateKeyboardEdit()) return true;
-    commit(e.code === 'ArrowLeft');
+    setWasl(e.code === 'ArrowLeft');
     return true;
 }
 

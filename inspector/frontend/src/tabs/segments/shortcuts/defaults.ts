@@ -10,14 +10,15 @@
  *                   focused (playing, non-context) card row.
  *   - 'edit'      — only while in trim / split edit mode; the stepper + cursor
  *                   keys that override seek/seek.
- *   - 'wasl'      — only while a cross-verse WASL/WAQF boundary is waiting for
- *                   an answer. Not resolved through `resolve()`: Tab/Enter are
- *                   owned by the focused `WaslBoundary.svelte` picker, and ←/→
- *                   are intercepted ahead of the pools by `waslBoundaryKey`
- *                   (only for a card with a SINGLE boundary, so the arrow is
- *                   unambiguous from either piece — elsewhere they still seek).
- *                   The entries exist to document the keys in the footer guide
- *                   and reserve them against rebinding collisions.
+ *   - 'wasl'      — the WASL/WAQF boundary keys. Not resolved through
+ *                   `resolve()`: Tab/Enter belong to the focused
+ *                   `WaslBoundary.svelte` picker, and ←/→ are intercepted
+ *                   ahead of the pools by `waslBoundaryKey`, which acts on the
+ *                   focused card's `setWasl` bundle entry — published only by
+ *                   a card with a SINGLE boundary, so the arrow is unambiguous
+ *                   from either piece and keeps seeking everywhere else. The
+ *                   entries exist to document the keys in the footer guide and
+ *                   reserve them against rebinding collisions.
  *
  * A key TOKEN is `e.code` with an optional `Ctrl+` prefix (e.g. `KeyA`,
  * `Space`, `ArrowUp`, `Comma`, `Ctrl+KeyS`). Only `rebindable` actions can be

@@ -8,7 +8,7 @@
  * Row-owned actions (adjust / split / edit-ref / goto / delete) are wired by
  * SegmentRow itself; card-owned actions (ignore / auto-fill / toggle-context)
  * are passed down as callbacks from the accordion card and forwarded into the
- * bundle. Keyboard shortcuts then call `get(activeRowActions)?.adjust?.()` etc.,
+ * bundle (ignore / auto-fill / toggle-context / set-wasl). Keyboard shortcuts then call `get(activeRowActions)?.adjust?.()` etc.,
  * guaranteeing identical behaviour to clicking the row's buttons.
  *
  * `owner` is the publishing row's per-mount Symbol so a row only clears the
@@ -30,6 +30,10 @@ export interface RowActionBundle {
     ignore?: () => void;
     autofill?: () => void;
     toggleContext?: () => void;
+    /** Label the card's WASL/WAQF boundary (← waṣl / → waqf). Published only
+     *  by cross-verse cards that render exactly ONE boundary, so the key can
+     *  never be ambiguous; absent everywhere else (the arrows then seek). */
+    setWasl?: (value: boolean) => void;
 }
 
 export const activeRowActions = writable<RowActionBundle | null>(null);

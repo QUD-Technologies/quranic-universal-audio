@@ -9,7 +9,6 @@ User-editable, context-scoped keyboard shortcuts for the Segments editor. A pres
 | `tabs/segments/shortcuts/defaults.ts` | Catalogue — `SHORTCUT_ACTIONS` (id · label · `context` · `defaultKey` · `rebindable`) + `SHORTCUT_SECTIONS` (popover grouping). Single source of truth for every key. |
 | `tabs/segments/shortcuts/store.svelte.ts` | Binding store (runes `$state`). localStorage overrides (`insp_seg_shortcuts`), `keyFor` / `setBinding` / `resetAll`, `resolve(token, context)` reverse lookup, `tokenFromEvent`, `prettyKey`. |
 | `tabs/segments/utils/keyboard.ts` | `handleSegmentsKey(e)` — the dispatcher. Picks context, resolves the action, runs it. Returns `true` when handled (caller `preventDefault`s). |
-| `tabs/segments/stores/edit.ts` | Among the edit stores: `pendingWaslConfirm` / `focusWaslBoundary` + the `soleWaslBoundaries` registry that backs the `←`/`→` WASL/WAQF shortcut. |
 | `tabs/segments/stores/active-actions.ts` | `activeRowActions` registry — the focused/primary `SegmentRow`'s edit-action bundle, so row/card keys reach the right row. |
 | `tabs/segments/utils/accordion-nav.ts` | `accordionSequence()` / `accordionStep(dir)` — DOM-read ordered (chapter,index) list of the open accordion's rows for ↑/↓ + autoplay. |
 | `tabs/segments/components/footer/ShortcutsGuide.svelte` | Footer drop-up: grouped reference + click-to-rebind + Reset. Wired into `SegmentsFooter.svelte`'s `.transport-left`. |
@@ -30,7 +29,7 @@ A token is `e.code` with an optional `Ctrl+` prefix (Ctrl OR Meta both normalise
 | `accordion` | `valUiOpenCategory !== null` (a validation accordion is open) | `accordion` then `default` (accordion overrides) |
 | `default` | otherwise (main-list browsing) | `default` only |
 
-The catalogue carries a fourth context, `wasl`, that `resolve()` never serves: a waiting cross-verse WASL/WAQF boundary answers `Tab`/`Enter` in the picker itself, and `←`/`→` are intercepted in `handleSegmentsKey` (`waslBoundaryKey`) **ahead of** the pools — only while a single-boundary card is waiting, otherwise the arrows seek as usual. See **Self-contained widgets** below. Its entries exist so the keys appear in the footer guide and can't be claimed by a rebind.
+The catalogue carries a fourth context, `wasl`, that `resolve()` never serves: `Tab`/`Enter` belong to the focused `WaslBoundary` picker, and `←`/`→` are intercepted in `handleSegmentsKey` (`waslBoundaryKey`) **ahead of** the pools — only when the focused card published a `setWasl` action, otherwise the arrows seek as usual. See **WASL/WAQF boundary keys** below. Its entries exist so the keys appear in the footer guide and can't be claimed by a rebind.
 
 `default`-pool actions stay live inside an open accordion (they act on the focused card); `accordion`-pool actions are additive. Conflict groups for rebinding: `default`+`accordion` share one (they can be live together); `edit` and `wasl` are each separate.
 
@@ -71,16 +70,16 @@ The catalogue carries a fourth context, `wasl`, that `resolve()` never serves: a
 | Enter / Escape | Confirm / cancel | `edit_confirm` / `edit_cancel` * |
 | Space, , / . | Play preview, speed | (handled inline in `handleEditKey`) |
 
-**Cross-verse WASL/WAQF boundary** (all fixed; `WaslBoundary.svelte` + the `waslBoundaryKey` intercept):
+**WASL/WAQF boundary** (all fixed):
 
 | Key | Action | id |
 |---|---|---|
-| ← | Choose WASL — commits + advances the chain. **Only when the card has exactly one boundary** (two pieces); works from either piece, not just the focused picker | `wasl_pick_wasl` |
-| → | Choose WAQF — same single-boundary rule | `wasl_pick_waqf` |
-| Tab | Highlight the other choice (focused picker) | `wasl_toggle` |
-| Enter | Confirm the highlighted choice (focused picker) | `wasl_confirm` |
+| ← | Label the focused card's boundary **waṣl** | `wasl_pick_wasl` |
+| → | Label it **waqf** | `wasl_pick_waqf` |
+| Tab | Highlight the other choice (inside the focused picker) | `wasl_toggle` |
+| Enter | Commit the highlighted choice (inside the focused picker) | `wasl_confirm` |
 
-In a card with two or more boundaries (three or more pieces — several annotations in one cross verse) the arrows deliberately do **nothing new**: an arrow couldn't name which boundary it meant, so the pickers keep Tab-to-highlight + Enter-to-commit and `←`/`→` stay on seek outside the picker (inside it they only move the highlight).
+`←`/`→` apply while a card that renders **exactly one** boundary is the focused row — either of its two pieces, playing or current — and are identical to clicking that label, so they also switch an already-labelled boundary. A card with two or more boundaries (three or more pieces) publishes no `setWasl`, so there the arrows keep seeking and its pickers stay on click / Tab / Enter.
 
 `*` = `rebindable: false` (structural; shown in the popover as reference only).
 
@@ -110,13 +109,15 @@ Structural keys (Enter / Escape / Tab / in-edit arrows / Ctrl+S / R) are intenti
 
 ## Self-contained widgets (outside the dispatcher)
 
-`WaslBoundary.svelte` — the WASL/WAQF picker that pauses a cross-verse split chain after each child's ref-edit — owns `Tab`/`Enter` itself: while the boundary is the paused step (auto-focused), `Tab` moves the highlight between the two labels and `Enter` commits the highlighted one, advancing the chain to the next child. It `stopPropagation`s those keys so the global handler doesn't also seek / move focus; everything else (Space preview, …) falls through to `handleSegmentsKey`.
+`WaslBoundary.svelte` — the WASL/WAQF picker rendered between adjacent pieces of a cross-verse card — owns `Tab`/`Enter`/`←`/`→` **while it has focus** (the split chain auto-focuses it when it pauses on a pending boundary): `Tab` moves the highlight, `Enter` commits the highlighted label, `←`/`→` commit waṣl/waqf. It `stopPropagation`s those keys so the global handler doesn't also seek; everything else (Space preview, …) falls through to `handleSegmentsKey`.
 
-`←`/`→` are the one-keypress answer (positional, matching the on-screen `WASL · WAQF` order) and are **not** picker-focus-bound, so they work while the user is on the first or the second part of the cross verse:
+## WASL/WAQF boundary keys
 
-- `GenericIssueCard` counts the pickers it renders (`waslBoundaryCount` = inter-piece boundaries + the trailing `unmarked_wasl` one) and passes `soleBoundary` when that count is exactly **1**.
-- A sole, pending, rendered picker registers its commit callback in `soleWaslBoundaries` (`stores/edit.ts`, keyed by the left piece's UID) and withdraws it on commit/unmount.
-- `handleSegmentsKey` → `waslBoundaryKey(e)` runs before the binding pools in the `accordion` context: it takes `soleWaslBoundaryCommit()` — the boundary named by `focusWaslBoundary`, else the single registered one, else `null` (two cards waiting ⇒ ambiguous ⇒ no interception) — runs `gateKeyboardEdit()`, and commits `←`=waṣl / `→`=waqf.
-- Multi-boundary cards never register, so nothing changes for them: the arrows seek outside the picker and only move the highlight inside it.
+`←`/`→` are **not** picker-focus-bound — they work while the user is on the first or the second part of the cross verse, with no split or pending state involved:
+
+- `GenericIssueCard` counts the pickers it renders (`waslBoundaryCount` = inter-piece boundaries + the trailing `unmarked_wasl` one). When that is exactly **1**, the picker's commit callback — handed up on mount via its `onCommitReady` prop — is forwarded to the card's main member rows as `onCardSetWasl`.
+- `SegmentRow` publishes it into the `activeRowActions` bundle as `setWasl`, alongside `ignore` / `autofill` / `toggleContext`. Only the **primary** row publishes, so the action always belongs to the card the keyboard is acting on; either piece being primary resolves to the same single boundary.
+- `handleSegmentsKey` → `waslBoundaryKey(e)` runs before the binding pools in the `accordion` context: no `setWasl` in the bundle ⇒ key unhandled ⇒ `seek_back` / `seek_fwd` as normal. With one, it runs `gateKeyboardEdit()` and calls `setWasl(true)` for `←`, `setWasl(false)` for `→` — the same commit path as a click (amends the pending split op while it's still in the dirty buffer, else emits a `set_is_wasl` op, then resumes the chain).
+- Multi-boundary cards publish nothing, which is the ambiguity guard: an arrow there could not say which boundary it meant.
 
 The four keys are catalogued in `SHORTCUT_ACTIONS` under the `wasl` context (`rebindable: false`) so the footer guide lists them; `resolve()` is never asked for that pool.

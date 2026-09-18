@@ -179,12 +179,15 @@ import type { Segment } from '../../../../lib/types/view-models';
     /**
      * Card-level action callbacks, set ONLY by accordion cards on their main
      * (non-context) member rows. Forwarded into the active-row action bundle so
-     * the keyboard shortcuts L (ignore) / F (auto-fill) / C (toggle context)
-     * can act on the focused card. `null` on every other placement.
+     * the keyboard shortcuts L (ignore) / F (auto-fill) / C (toggle context) /
+     * ← → (label the card's WASL/WAQF boundary) can act on the focused card.
+     * `null` on every other placement — `onCardSetWasl` is also null on a card
+     * with several boundaries, where an arrow couldn't name one.
      */
     export let onCardIgnore: (() => void) | null = null;
     export let onCardAutofill: (() => void) | null = null;
     export let onCardToggleContext: (() => void) | null = null;
+    export let onCardSetWasl: ((value: boolean) => void) | null = null;
     /**
      * Staged piece of a pre-applied cross-verse split that is not in the
      * store yet (see `utils/validation/staged-split.ts`). The row looks and
@@ -773,8 +776,8 @@ import type { Segment } from '../../../../lib/types/view-models';
     // Active-row action registry — publish this row's edit actions while it is
     // the "primary" target (playing, or the main-list current segment when
     // paused), so global keyboard shortcuts (A / S / E / G / L / F / C) act on
-    // it. Accordion cards forward their card-level callbacks via the
-    // onCard* props. Only one row is primary at a time (the main list is
+    // it (A / S / E / G / L / F / C and the ←/→ wasl labels). Accordion cards
+    // forward their card-level callbacks via the onCard* props. Only one row is primary at a time (the main list is
     // hidden while an accordion is open).
     // ---------------------------------------------------------------------
     $: accordionOpen = $valUiOpenCategory !== null;
@@ -784,7 +787,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     let _pubKey = '';
     $: {
         if (isPrimaryForShortcuts) {
-            const k = `${rowChapter}:${seg.index}:${!!onCardIgnore}:${!!onCardAutofill}:${!!onCardToggleContext}`;
+            const k = `${rowChapter}:${seg.index}:${!!onCardIgnore}:${!!onCardAutofill}:${!!onCardToggleContext}:${!!onCardSetWasl}`;
             if (k !== _pubKey) {
                 _pubKey = k;
                 publishRowActions({
@@ -800,6 +803,7 @@ import type { Segment } from '../../../../lib/types/view-models';
                     ignore: onCardIgnore ?? undefined,
                     autofill: onCardAutofill ?? undefined,
                     toggleContext: onCardToggleContext ?? undefined,
+                    setWasl: onCardSetWasl ?? undefined,
                 });
             }
         } else if (_pubKey) {

@@ -224,14 +224,30 @@
         return groupMembers.length > 1 && isVerseBoundary(a, b);
     });
 
-    /** How many WASL/WAQF pickers this card renders — the inter-piece ones
-     *  plus the trailing `unmarked_wasl` picker against the next-verse context
-     *  row. Exactly one means the ←/→ shortcut is unambiguous from either
-     *  piece; two or more and the pickers keep to Tab/Enter only. */
+    /** How many WASL/WAQF pickers this card renders — the inter-piece ones plus
+     *  the trailing `unmarked_wasl` picker against the next-verse context row.
+     *  Exactly one means ←/→ can label it from anywhere in the card (whichever
+     *  piece is focused); two or more would be ambiguous, so the keyboard
+     *  action isn't published and the arrows keep seeking. */
     $: waslBoundaryCount =
         boundaryAt.filter(Boolean).length
         + (showWaslPicker && lastMember && nextSeg ? 1 : 0);
     $: soleWaslBoundary = waslBoundaryCount === 1;
+
+    /** Mounted pickers' commit callbacks, keyed by their left piece's uid.
+     *  A single entry (on a single-boundary card) is published to the
+     *  active-row registry as `setWasl`, so ← (waṣl) / → (waqf) act on this
+     *  card while either of its pieces is the focused row. */
+    let waslCommits = new Map<string, (value: boolean) => void>();
+    function takeWaslCommit(uid: string, commit: ((value: boolean) => void) | null): void {
+        const next = new Map(waslCommits);
+        if (commit) next.set(uid, commit);
+        else next.delete(uid);
+        waslCommits = next;
+    }
+    $: cardSetWasl = soleWaslBoundary && waslCommits.size === 1
+        ? (waslCommits.values().next().value ?? null)
+        : null;
 
     /** Dispatch the staged split. Unanswered boundaries commit as WAQF but
      *  stay flagged pending, so their pickers keep asking and amend the
@@ -380,6 +396,7 @@
                 accordionSiblings={siblings}
                 onCardIgnore={canIgnore ? handleIgnore : null}
                 onCardToggleContext={toggleContext}
+                onCardSetWasl={cardSetWasl}
             />
             {#if boundaryAt[i]}
                 {@const next = mainMembers[i + 1]}
@@ -389,15 +406,23 @@
                         rightSeg={next}
                         stagedValue={stagedPicks[i]}
                         onPick={(v) => onStagedPick(i, v)}
-                        soleBoundary={soleWaslBoundary}
+                        onCommitReady={soleWaslBoundary ? takeWaslCommit : null}
                     />
                 {:else if next}
-                    <WaslBoundary leftSeg={mem} rightSeg={next} soleBoundary={soleWaslBoundary} />
+                    <WaslBoundary
+                        leftSeg={mem}
+                        rightSeg={next}
+                        onCommitReady={soleWaslBoundary ? takeWaslCommit : null}
+                    />
                 {/if}
             {/if}
         {/each}
         {#if showWaslPicker && lastMember && nextSeg}
-            <WaslBoundary leftSeg={lastMember} rightSeg={nextSeg} soleBoundary={soleWaslBoundary} />
+            <WaslBoundary
+                leftSeg={lastMember}
+                rightSeg={nextSeg}
+                onCommitReady={soleWaslBoundary ? takeWaslCommit : null}
+            />
         {/if}
         {#if nextSeg}
             <SegmentRow
