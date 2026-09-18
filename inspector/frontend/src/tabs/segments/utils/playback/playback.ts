@@ -1015,6 +1015,12 @@ export function reanchorPlayingAfterSplit(chapter: number, pieces: Segment[]): v
     if (!target || target.index === active.index) return;
 
     setPlayingSegment({ chapter, index: target.index });
+    // `segCurrentIdx` MUST move in lockstep — `updateSegHighlight` forces
+    // `playingSegmentIndex` back onto it on every rAF frame, so leaving it on
+    // the pre-split index snaps the pair straight back to piece 0 and the
+    // highlight + cursor sit on the first piece (the same trap the
+    // deleted-gap jump documents above).
+    segCurrentIdx.set(target.index);
     // The pieces are real rows now, so the staged-slice signal is stale; the
     // real row lights up from the pair alone.
     setStagedPlayheadWindow(null);

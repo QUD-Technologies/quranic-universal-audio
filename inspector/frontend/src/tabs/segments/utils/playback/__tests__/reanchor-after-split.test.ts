@@ -21,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 
 import type { Segment } from '../../../../../lib/types/view-models';
+import { segCurrentIdx } from '../../../stores/chapter';
 import {
     accordionNavCursor,
     playingSegmentIndex,
@@ -62,6 +63,7 @@ let seek: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
     // The pair as `reconcilePlayingAfterMutation` leaves it: piece 0.
     playingSegmentIndex.set({ chapter: 1, index: 4, origin: 'accordion' });
+    segCurrentIdx.set(4); // pre-split index, as the time→segment scan left it
     stagedPlayheadWindow.set({ start: 2000, end: 3000 });
     accordionNavCursor.set(null);
     pause = vi.spyOn(segPort, 'pause').mockImplementation(() => {});
@@ -70,6 +72,7 @@ beforeEach(() => {
 
 afterEach(() => {
     vi.restoreAllMocks();
+    segCurrentIdx.set(-1);
     playingSegmentIndex.set(null);
     stagedPlayheadWindow.set(null);
     accordionNavCursor.set(null);
@@ -89,6 +92,24 @@ describe('reanchorPlayingAfterSplit', () => {
         atTime(3000);
         reanchorPlayingAfterSplit(1, PIECES);
         expect(get(playingSegmentIndex)).toEqual({ chapter: 1, index: 5, origin: 'accordion' });
+    });
+
+    it('moves segCurrentIdx in lockstep, or the highlight snaps back to piece 0', () => {
+        // `updateSegHighlight` forces the pair back onto `segCurrentIdx` every
+        // rAF frame: a pair moved without it is reverted within one frame, and
+        // the highlight + cursor sit on the first piece.
+        onSecondPiece();
+        atTime(2500);
+        reanchorPlayingAfterSplit(1, PIECES);
+        expect(get(segCurrentIdx)).toBe(5);
+        expect(get(playingSegmentIndex)?.index).toBe(get(segCurrentIdx));
+    });
+
+    it('leaves segCurrentIdx alone when the pair already names the right piece', () => {
+        accordionNavCursor.set({ uid: 'parent', chapter: 1, index: 4, startMs: 1000, endMs: 2000 });
+        atTime(1500);
+        reanchorPlayingAfterSplit(1, PIECES);
+        expect(get(segCurrentIdx)).toBe(4);
     });
 
     it('never pauses or seeks the port — labelling must not disturb playback', () => {
