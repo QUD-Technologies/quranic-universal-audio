@@ -24,15 +24,15 @@ describe('waslCommitForPiece', () => {
         expect(calls).toEqual(['a', 'a']); // the one boundary, from either piece
     });
 
-    it('three pieces: each piece labels the boundary below it, the last one the boundary above', () => {
+    it('three pieces: each piece labels the boundary ABOVE it, the first one the boundary below', () => {
         const uids = ['a', 'b', 'c'];
         const { commits, calls } = cardWithBoundaries(uids);
 
-        waslCommitForPiece(0, uids, commits)?.(true);  // a|b
-        waslCommitForPiece(1, uids, commits)?.(true);  // b|c
-        waslCommitForPiece(2, uids, commits)?.(true);  // no boundary below → b|c
+        waslCommitForPiece(0, uids, commits)?.(true);  // none above → a|b
+        waslCommitForPiece(1, uids, commits)?.(true);  // above → a|b
+        waslCommitForPiece(2, uids, commits)?.(true);  // above → b|c
 
-        expect(calls).toEqual(['a', 'b', 'b']);
+        expect(calls).toEqual(['a', 'a', 'b']);
     });
 
     it('four pieces: every piece maps to exactly one boundary', () => {
@@ -41,21 +41,31 @@ describe('waslCommitForPiece', () => {
 
         for (let i = 0; i < uids.length; i++) waslCommitForPiece(i, uids, commits)?.(true);
 
-        expect(calls).toEqual(['a', 'b', 'c', 'c']);
+        expect(calls).toEqual(['a', 'a', 'b', 'c']);
     });
 
     it('returns null when no picker is mounted on either side', () => {
         expect(waslCommitForPiece(0, ['a'], new Map())).toBeNull();
     });
 
-    it('returns null for a piece with no uid and no labelled piece above it', () => {
+    it('returns null for a first piece with no uid and nothing above it', () => {
         const commits: WaslCommits = new Map([['a', vi.fn()]]);
         expect(waslCommitForPiece(0, [undefined, 'b'], commits)).toBeNull();
     });
 
-    it('falls back upward only — a piece above with no picker does not leak a wrong boundary', () => {
-        // Pickers exist for 'a' only; piece 2 ('c') has neither 'c' nor 'b' keyed.
+    it('does not leak a wrong boundary when neither side has a picker', () => {
+        // Pickers exist for 'a' only; piece 2 ('c') has neither 'b' (above)
+        // nor 'c' (below) keyed.
         const commits: WaslCommits = new Map([['a', vi.fn()]]);
         expect(waslCommitForPiece(2, ['a', 'b', 'c'], commits)).toBeNull();
+    });
+
+    it('the trailing unmarked_wasl picker still reaches a single-member card', () => {
+        // One member, one picker keyed by it (the join to the next verse).
+        const commits: WaslCommits = new Map();
+        const calls: string[] = [];
+        commits.set('only', () => calls.push('only'));
+        waslCommitForPiece(0, ['only'], commits)?.(true);
+        expect(calls).toEqual(['only']);
     });
 });

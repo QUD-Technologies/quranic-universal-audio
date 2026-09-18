@@ -189,6 +189,13 @@ import type { Segment } from '../../../../lib/types/view-models';
     export let onCardToggleContext: (() => void) | null = null;
     export let onCardSetWasl: ((_value: boolean) => void) | null = null;
     /**
+     * End of the contiguous piece group this row belongs to (a card's
+     * multi-piece split group). Extends this row's bounded play so the audio
+     * runs through the whole group and the cursor walks from piece to piece,
+     * instead of cutting at every piece edge. Null everywhere else.
+     */
+    export let groupEndMs: number | null = null;
+    /**
      * Staged piece of a pre-applied cross-verse split that is not in the
      * store yet (see `utils/validation/staged-split.ts`). The row looks and
      * acts like any other, drawing its own waveform from the piece's time
@@ -660,6 +667,7 @@ import type { Segment } from '../../../../lib/types/view-models';
                 isAccordionPlay: instanceRole !== 'main',
                 accordionSiblings,
                 piece: _piecePlayArg(),
+                groupEndMs,
             });
         }
     }
@@ -908,6 +916,7 @@ import type { Segment } from '../../../../lib/types/view-models';
             isAccordionPlay: instanceRole !== 'main',
             accordionSiblings,
             piece: _piecePlayArg(),
+            groupEndMs,
         });
     }
 
@@ -938,6 +947,7 @@ import type { Segment } from '../../../../lib/types/view-models';
                 isAccordionPlay: instanceRole !== 'main',
                 accordionSiblings,
                 piece: _piecePlayArg(),
+                groupEndMs,
             });
         }
     }

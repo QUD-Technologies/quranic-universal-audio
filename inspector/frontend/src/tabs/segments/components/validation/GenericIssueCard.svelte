@@ -225,11 +225,19 @@
         return groupMembers.length > 1 && isVerseBoundary(a, b);
     });
 
+    /** End of this card's contiguous piece group, for rows to extend their
+     *  bounded play across it: the pieces are slices of one window, so the
+     *  audio must run through the whole group with the cursor walking piece to
+     *  piece, not stop at each piece edge. Null for a single-piece card. */
+    $: groupPlayEndMs = mainMembers.length > 1
+        ? (mainMembers[mainMembers.length - 1]?.time_end ?? null)
+        : null;
+
     // ---- WASL/WAQF keyboard binding (1 = waṣl, 2 = waqf) ----
     // Each mounted picker publishes its commit here, keyed by the uid of the
-    // piece ABOVE it. A focused piece therefore labels the boundary directly
-    // below itself; the last piece has none below, so it falls back to the one
-    // above it. On a two-piece cross verse both pieces resolve to the single
+    // piece ABOVE it. A focused piece labels the boundary directly ABOVE
+    // itself; the FIRST piece has none above, so it doubles for the one below
+    // it. On a two-piece cross verse both pieces resolve to the single
     // boundary between them.
     let waslCommits: WaslCommits = new Map();
 
@@ -396,6 +404,7 @@
                 onCardIgnore={canIgnore ? handleIgnore : null}
                 onCardToggleContext={toggleContext}
                 onCardSetWasl={waslCommitFor(i, mainMembers, waslCommits)}
+                groupEndMs={groupPlayEndMs}
             />
             {#if boundaryAt[i]}
                 {@const next = mainMembers[i + 1]}

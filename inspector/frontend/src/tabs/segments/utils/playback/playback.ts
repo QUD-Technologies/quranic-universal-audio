@@ -511,6 +511,13 @@ export function playFromSegment(
          *  to the parent's end — and records the nav cursor under `uid` so ↑/↓
          *  and the autoplay advance step from this piece. */
         piece?: { uid: string; startMs: number; endMs: number } | null,
+        /** End of the contiguous piece GROUP this row belongs to (a card's
+         *  multi-piece split group). Extends the bounded range so the audio
+         *  runs through the whole group — the pieces are contiguous slices of
+         *  one window, so stopping at each piece edge cut the audio and made
+         *  the advance start a fresh play of the next piece. Only ever
+         *  extends: a value inside this segment is ignored. */
+        groupEndMs?: number | null,
     },
 ): void {
     // Any new play supersedes a chime gap still waiting to resume the old one.
@@ -596,10 +603,16 @@ export function playFromSegment(
     _segRange?.dispose();
     _segRange = null;
 
-    // A piece bounds at its own end so the next segment is reached by the
-    // advance (one stop per segment), not by the audio running through it.
-    const endMs = piece?.endMs ?? seg.time_end;
-    const bounded = piece != null || isAccordionPlay || !get(autoPlayEnabled) || _chimeArmed();
+    // NOT bounded at the piece end. A multi-piece segment's pieces are
+    // contiguous slices of one window, so cutting the range at a piece edge
+    // stopped the audio early and the advance then started a FRESH play of the
+    // next piece — audible as "piece 1 stops early and jumps to piece 2".
+    // Play through the whole window instead and let the cursor walk from piece
+    // to piece (the staged draw branch below republishes the nav cursor as it
+    // crosses each edge, so ↑/↓ and the advance still step per segment).
+    const groupEnd = opts?.groupEndMs ?? null;
+    const endMs = groupEnd != null && groupEnd > seg.time_end ? groupEnd : seg.time_end;
+    const bounded = isAccordionPlay || !get(autoPlayEnabled) || _chimeArmed();
 
     if (bounded) {
         _segRange = new AudioRange({
@@ -868,6 +881,19 @@ export function onSegTimeUpdate(fileMs?: number): void {
         setPlayingSegment({ chapter: nextCurrentChapter, index: nextCurrentIdx });
         if (displayed) {
             const curSeg = displayed.find(s => s.index === nextCurrentIdx);
+            // Continuous playback crossed into this segment without a new
+            // play(), so move the nav cursor with it — otherwise ↑/↓ and the
+            // autoplay advance keep stepping from the segment the user
+            // originally pressed play on.
+            if (curSeg) {
+                setAccordionNavCursor({
+                    uid: curSeg.segment_uid ?? '',
+                    chapter: nextCurrentChapter,
+                    index: nextCurrentIdx,
+                    startMs: curSeg.time_start,
+                    endMs: curSeg.time_end,
+                });
+            }
             const nextSeg = nextDisplayedSeg(displayed, nextCurrentIdx);
             warmSeg(nextSeg, get(selectedReciter), curSeg ?? null);
             if (curSeg) {
@@ -1121,6 +1147,7 @@ export function drawActivePlayhead(timeMs?: number): void {
     // piece that holds the cursor is published as `stagedPlayheadWindow` so
     // its row alone carries the playing state.
     let stagedWindow: { start: number; end: number } | null = null;
+    let stagedCursorSeg: Segment | null = null;
     for (const entry of getRowEntriesFor(active.chapter, active.index)) {
         if (!entry.canvas) continue;
         const rowSeg = entry.segOverride ?? seg;
@@ -1134,9 +1161,23 @@ export function drawActivePlayhead(timeMs?: number): void {
             }
             _stagedCursorCanvases.add(entry.canvas);
             stagedWindow = { start: rowSeg.time_start, end: rowSeg.time_end };
+            // Continuous playback walks the cursor from piece to piece without
+            // a new play() per piece, so the nav cursor has to follow it here
+            // or ↑/↓ and the autoplay advance would keep stepping from the
+            // piece the user originally pressed play on.
+            stagedCursorSeg = rowSeg;
         }
         const rowT = Math.min(rowSeg.time_end, Math.max(rowSeg.time_start, displayT));
         drawSegPlayhead(entry.canvas, rowSeg.time_start, rowSeg.time_end, rowT, audioUrl);
     }
     setStagedPlayheadWindow(stagedWindow);
+    if (stagedCursorSeg && active) {
+        setAccordionNavCursor({
+            uid: stagedCursorSeg.segment_uid ?? '',
+            chapter: active.chapter,
+            index: active.index,
+            startMs: stagedCursorSeg.time_start,
+            endMs: stagedCursorSeg.time_end,
+        });
+    }
 }
