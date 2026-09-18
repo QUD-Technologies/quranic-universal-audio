@@ -51,6 +51,7 @@ import {
 import { editCanvas, editMode, splitPreviewSelection } from '../../stores/edit';
 import { displayedSegments } from '../../stores/filters';
 import {
+    accordionNavCursor,
     activeAudioSource,
     autoPlayEnabled,
     isMainAudioPlaying,
@@ -97,30 +98,6 @@ let _prevPlaying: { chapter: number; index: number } | null = null;
  *  repainting every idle piece on every frame. WeakSet so an unmounted row's
  *  canvas is collectable without any teardown bookkeeping. */
 const _stagedCursorCanvases = new WeakSet<SegCanvas>();
-
-/**
- * One-shot suppression of the next accordion autoplay advance.
- *
- * A structural edit under a live bounded range — labelling a WASL/WAQF
- * boundary commits the staged cross-verse split — replaces the segment the
- * range was built for. The range then hits its boundary as an artefact of the
- * edit, not because the user listened to the end of a segment they chose, and
- * advancing there is heard as "setting the label replayed a clip". Set by the
- * label path; consumed by the very next `stop` boundary.
- */
-let _suppressAdvanceOnce = false;
-
-/** Arm the suppression (no-op when nothing is bounded — there is no boundary
- *  to suppress and a stale flag must not eat a later, legitimate advance). */
-export function suppressNextAccordionAdvance(): void {
-    if (_segRange) _suppressAdvanceOnce = true;
-}
-
-function _consumeAdvanceSuppression(): boolean {
-    if (!_suppressAdvanceOnce) return false;
-    _suppressAdvanceOnce = false;
-    return true;
-}
 
 /** Active segment-bounded range. Used for accordion plays (always bounded
  *  to the played segment) and chapter-mode plays when autoplay is OFF.
@@ -371,12 +348,6 @@ function _onRangeBoundary(ev: { reason: string }): void {
         // event resets the play-button glyph.
         const active = get(playingSegmentIndex);
         if (get(autoPlayEnabled) && active?.origin === 'accordion') {
-            // A structural edit under a live range (labelling a WASL/WAQF
-            // boundary commits the staged split) must not be heard as an
-            // advance — the boundary that follows it is an artefact of the
-            // segment set changing, not the user reaching the end of a
-            // segment they chose to play.
-            if (_consumeAdvanceSuppression()) return;
             const next = accordionStep(1);
             if (next && !isCurrentStop(next)) {
                 // The chime (when on) inserts its own silent gap here, so the
@@ -1010,54 +981,66 @@ export function reconcilePlayingAfterMutation(
 }
 
 /**
- * Re-anchor the playing pair onto the piece the playhead is actually inside,
- * after a split replaced one segment with several.
+ * Re-anchor the playing pair onto the piece the user is actually on, after a
+ * split replaced one segment with several.
  *
  * `reconcilePlayingAfterMutation` maps the pre-mutation UID forward, and a
- * split preserves that UID on **piece 0** — so when the playhead is inside a
- * LATER piece the pair gets pinned to piece 0 while the audio plays on inside
- * its sibling. The draw loop then clamps the cursor to piece 0's window and it
- * sits frozen at that row's right edge while nothing moves on the piece being
- * heard. (The visible symptom of labelling a staged cross-verse boundary
- * mid-playback: the split commits under the live range.)
+ * split preserves that UID on **piece 0** — so when the user is on a LATER
+ * piece the pair lands on piece 0. Everything keyed off the pair then points
+ * at the wrong row: the draw loop clamps the cursor to piece 0's window (it
+ * sits frozen at that row's edge while its sibling plays) and the row
+ * highlight jumps back to the first piece.
  *
- * Also re-points the bounded range at the piece now playing, so its stop
- * boundary lands at that piece's end rather than the old parent's, and clears
- * `stagedPlayheadWindow` — the pieces are real rows now, not staged slices.
+ * Touches **nothing but the pair**. In particular it must never go near the
+ * port or the live `AudioRange`: `dispose()` pauses and `start()` re-seeks, so
+ * re-pointing a range mid-play is heard as a pause-and-jump-back — and there
+ * is nothing to re-point anyway, since a split leaves each piece's window
+ * exactly where the staged slice already was, so the existing range is still
+ * correct.
  *
- * Deliberately does NOT touch `accordionNavCursor`: a split preserves the
- * staged children's UIDs, so the cursor already names the right piece, and an
- * edit must never move where ↑/↓ steps from.
- *
- * No-op when nothing is playing in `chapter`, or when the pair already names
- * the piece under the playhead.
+ * Target piece, in order:
+ *  1. `accordionNavCursor` — the piece the user is on. A split preserves the
+ *     staged children's UIDs, so this matches even though the rows re-render.
+ *  2. The piece containing the playhead.
+ *  3. The last piece starting at or before the playhead — the playhead parks
+ *     exactly on a piece's end when a bounded play finishes, which belongs to
+ *     the piece that just played, not to piece 0.
  */
-export function reanchorPlayingToPlayhead(chapter: number, pieces: Segment[]): void {
+export function reanchorPlayingAfterSplit(chapter: number, pieces: Segment[]): void {
     const active = get(playingSegmentIndex);
     if (!active || active.chapter !== chapter) return;
     if (pieces.length < 2) return;
-    const time = segPort.currentTimeMs();
-    const hit = pieces.find((p) => time >= p.time_start && time < p.time_end);
-    if (!hit) return;
-    if (hit.index === active.index) return;
 
-    setPlayingSegment({ chapter, index: hit.index });
+    const target = _pieceForNavCursor(pieces) ?? _pieceAtPlayhead(pieces);
+    if (!target || target.index === active.index) return;
+
+    setPlayingSegment({ chapter, index: target.index });
+    // The pieces are real rows now, so the staged-slice signal is stale; the
+    // real row lights up from the pair alone.
     setStagedPlayheadWindow(null);
+}
 
-    // Re-point the live range without restarting audio: same playhead, new
-    // end. Nothing to do for an unbounded (chapter-continuous) play.
-    if (_segRange) {
-        _segRange.dispose();
-        _segRange = new AudioRange({
-            port: segPort,
-            range: { startMs: hit.time_start, endMs: hit.time_end },
-            policy: { kind: 'stop' },
-            onTick: _onRangeTick,
-            onBoundary: _onRangeBoundary,
-            playbackRate: () => get(playbackSpeed),
-        });
-        _segRange.start();
+/** The piece the accordion nav cursor names, by uid then by window. */
+function _pieceForNavCursor(pieces: Segment[]): Segment | null {
+    const cursor = get(accordionNavCursor);
+    if (!cursor) return null;
+    if (cursor.uid) {
+        const byUid = pieces.find((p) => p.segment_uid === cursor.uid);
+        if (byUid) return byUid;
     }
+    return pieces.find((p) => p.time_start === cursor.startMs) ?? null;
+}
+
+/** The piece the playhead is inside, else the last one it has reached. */
+function _pieceAtPlayhead(pieces: Segment[]): Segment | null {
+    const time = segPort.currentTimeMs();
+    const inside = pieces.find((p) => time >= p.time_start && time < p.time_end);
+    if (inside) return inside;
+    let reached: Segment | null = null;
+    for (const p of pieces) {
+        if (time >= p.time_start) reached = p;
+    }
+    return reached;
 }
 
 export function drawActivePlayhead(timeMs?: number): void {

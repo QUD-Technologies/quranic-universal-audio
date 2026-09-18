@@ -57,7 +57,6 @@
         focusWaslBoundary,
         pendingWaslConfirm,
     } from '../../stores/edit';
-    import { suppressNextAccordionAdvance } from '../../utils/playback/playback';
     import { resumePendingChain } from '../../utils/edit/reference';
     import { setIsWaslOnSegment } from '../../utils/edit/setIsWasl';
 
@@ -160,13 +159,12 @@
 
     /**
      * Apply the label. `silent` is the keyboard flavour: same data write, but
-     * no chain hand-off (no ref-edit, no focus move) and no audible advance —
-     * the structural change under a live bounded range would otherwise be
-     * heard as a replay.
+     * no chain hand-off — no ref-edit, no focus move. Neither flavour touches
+     * playback: the pieces keep the windows their staged slices had, so the
+     * live range stays valid and the audio is left exactly as it was.
      */
     function commit(value: boolean, opts?: { silent?: boolean }): void {
         const silent = opts?.silent === true;
-        if (silent) suppressNextAccordionAdvance();
         if (onPick) {
             highlighted = null;
             onPick(value);
