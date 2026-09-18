@@ -187,7 +187,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     export let onCardIgnore: (() => void) | null = null;
     export let onCardAutofill: (() => void) | null = null;
     export let onCardToggleContext: (() => void) | null = null;
-    export let onCardSetWasl: ((value: boolean) => void) | null = null;
+    export let onCardSetWasl: ((_value: boolean) => void) | null = null;
     /**
      * Staged piece of a pre-applied cross-verse split that is not in the
      * store yet (see `utils/validation/staged-split.ts`). The row looks and
@@ -362,12 +362,22 @@ import type { Segment } from '../../../../lib/types/view-models';
         || (!!$stagedPlayheadWindow
             && $stagedPlayheadWindow.start === seg.time_start
             && $stagedPlayheadWindow.end === seg.time_end);
-    $: isPlaying = previewActive
-        || (!readOnly
-            && !!$playingSegmentIndex
-            && $playingSegmentIndex.chapter === rowChapter
-            && $playingSegmentIndex.index === seg.index
-            && cursorInPiece);
+    $: segIsCurrent = !readOnly
+        && !!$playingSegmentIndex
+        && $playingSegmentIndex.chapter === rowChapter
+        && $playingSegmentIndex.index === seg.index;
+    $: isPlaying = previewActive || (segIsCurrent && cursorInPiece);
+    // `stagedPlayheadWindow` is a live rAF signal — it goes null the moment
+    // audio stops, so `cursorInPiece` alone can't say which piece the user is
+    // ON once playback ends. Latch the last piece the cursor was inside (only
+    // ever one at a time, since a non-null window sets every other piece's
+    // latch false) and use that for the keyboard registry below; the visual
+    // playing state keeps the live signal.
+    let _stagedCursorLatched = false;
+    $: if (staged && $stagedPlayheadWindow) {
+        _stagedCursorLatched = $stagedPlayheadWindow.start === seg.time_start
+            && $stagedPlayheadWindow.end === seg.time_end;
+    }
     // flashSegmentIndices is keyed by "chapter:index" — both the main-list
     // and accordion twin for the correctly-matched pair still light up, but
     // a same-index row in a different chapter (validation panel with
@@ -775,19 +785,29 @@ import type { Segment } from '../../../../lib/types/view-models';
     // ---------------------------------------------------------------------
     // Active-row action registry — publish this row's edit actions while it is
     // the "primary" target (playing, or the main-list current segment when
-    // paused), so global keyboard shortcuts (A / S / E / G / L / F / C) act on
-    // it (A / S / E / G / L / F / C / 1 / 2). Accordion cards forward their
-    // card-level callbacks via the onCard* props. Only one row is primary at a time (the main list is
+    // paused), so global keyboard shortcuts (A / S / E / G / L / F / C / 1 / 2)
+    // act on it. Accordion cards forward their card-level callbacks via the
+    // onCard* props. Only one row is primary at a time (the main list is
     // hidden while an accordion is open).
+    //
+    // Two primary tests, because a STAGED piece (a pre-applied cross-verse
+    // auto-split, the usual shape of a cross_verse card) can't service the
+    // edit actions — they need a real store-backed segment — but it CAN take
+    // the WASL/WAQF label: 1 / 2 on a staged boundary just record the pick the
+    // card commits with the split, exactly like clicking the picker. So the
+    // wasl action publishes for staged rows too, and the rest doesn't.
     // ---------------------------------------------------------------------
     $: accordionOpen = $valUiOpenCategory !== null;
-    $: isPrimaryForShortcuts = !readOnly && !isContext && !staged && !!rowEl
+    $: isPrimaryRow = !readOnly && !isContext && !!rowEl
         && (isPlaying
+            || (staged && segIsCurrent && _stagedCursorLatched)
             || (instanceRole === 'main' && !accordionOpen && $segCurrentIdx === seg.index));
+    $: isPrimaryForShortcuts = isPrimaryRow && !staged;
+    $: isPrimaryForWasl = isPrimaryRow && !!onCardSetWasl;
     let _pubKey = '';
     $: {
-        if (isPrimaryForShortcuts) {
-            const k = `${rowChapter}:${seg.index}:${!!onCardIgnore}:${!!onCardAutofill}:${!!onCardToggleContext}:${!!onCardSetWasl}`;
+        if (isPrimaryForShortcuts || isPrimaryForWasl) {
+            const k = `${rowChapter}:${seg.index}:${isPrimaryForShortcuts}:${!!onCardIgnore}:${!!onCardAutofill}:${!!onCardToggleContext}:${isPrimaryForWasl}`;
             if (k !== _pubKey) {
                 _pubKey = k;
                 publishRowActions({
@@ -795,15 +815,15 @@ import type { Segment } from '../../../../lib/types/view-models';
                     chapter: rowChapter,
                     index: seg.index,
                     uid: seg.segment_uid ?? null,
-                    adjust: doAdjust,
-                    split: () => void doSplit(),
-                    editRef: doEditRef,
-                    goto: () => void doGoto(),
-                    delete: doDelete,
-                    ignore: onCardIgnore ?? undefined,
-                    autofill: onCardAutofill ?? undefined,
-                    toggleContext: onCardToggleContext ?? undefined,
-                    setWasl: onCardSetWasl ?? undefined,
+                    adjust: isPrimaryForShortcuts ? doAdjust : undefined,
+                    split: isPrimaryForShortcuts ? () => void doSplit() : undefined,
+                    editRef: isPrimaryForShortcuts ? doEditRef : undefined,
+                    goto: isPrimaryForShortcuts ? () => void doGoto() : undefined,
+                    delete: isPrimaryForShortcuts ? doDelete : undefined,
+                    ignore: (isPrimaryForShortcuts && onCardIgnore) || undefined,
+                    autofill: (isPrimaryForShortcuts && onCardAutofill) || undefined,
+                    toggleContext: (isPrimaryForShortcuts && onCardToggleContext) || undefined,
+                    setWasl: (isPrimaryForWasl && onCardSetWasl) || undefined,
                 });
             }
         } else if (_pubKey) {

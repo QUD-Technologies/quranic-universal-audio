@@ -32,6 +32,7 @@
     } from '../../stores/staged-split';
     import { splitGroupIndex } from '../../stores/validation';
     import { ignoreIssueOnSegment } from '../../utils/edit/ignore';
+    import { waslCommitForPiece, type WaslCommits } from '../../utils/validation/wasl-binding';
     import { commitSplit, finalizeSplit } from '../../utils/edit/split-commit';
     import { isVerseBoundary } from '../../utils/validation/boundary-state';
     import { isIgnoredFor } from '../../utils/validation/classified-issues';
@@ -230,10 +231,10 @@
     // below itself; the last piece has none below, so it falls back to the one
     // above it. On a two-piece cross verse both pieces resolve to the single
     // boundary between them.
-    let waslCommits = new Map<string, (value: boolean) => void>();
+    let waslCommits: WaslCommits = new Map();
 
-    function takeWaslCommit(uid: string, commit: ((value: boolean) => void) | null): void {
-        const next = new Map(waslCommits);
+    function takeWaslCommit(uid: string, commit: ((_value: boolean) => void) | null): void {
+        const next: WaslCommits = new Map(waslCommits);
         if (commit) next.set(uid, commit);
         else next.delete(uid);
         waslCommits = next;
@@ -242,13 +243,9 @@
     function waslCommitFor(
         i: number,
         members: Segment[],
-        commits: Map<string, (value: boolean) => void>,
-    ): ((value: boolean) => void) | null {
-        const below = members[i]?.segment_uid ?? '';
-        if (below && commits.has(below)) return commits.get(below) ?? null;
-        const above = i > 0 ? members[i - 1]?.segment_uid ?? '' : '';
-        if (above && commits.has(above)) return commits.get(above) ?? null;
-        return null;
+        commits: WaslCommits,
+    ): ((_value: boolean) => void) | null {
+        return waslCommitForPiece(i, members.map((mem) => mem.segment_uid), commits);
     }
 
     /** Dispatch the staged split. Unanswered boundaries commit as WAQF but

@@ -69,7 +69,7 @@
      * and hands every click to `onPick`; the card commits the split once all
      * of its boundaries are answered.
      */
-    export let onPick: ((value: boolean) => void) | null = null;
+    export let onPick: ((_value: boolean) => void) | null = null;
     export let stagedValue: boolean | undefined = undefined;
     /**
      * Hand this picker's commit callback to the owning card — `(uid, commit)`
@@ -78,7 +78,7 @@
      * it as the keyboard's `setWasl` action (1 = waṣl, 2 = waqf).
      */
     export let onCommitReady:
-        | ((uid: string, commit: ((value: boolean) => void) | null) => void)
+        | ((_uid: string, _commit: ((_value: boolean) => void) | null) => void)
         | null = null;
 
     let waslBtnEl: HTMLButtonElement | undefined;
