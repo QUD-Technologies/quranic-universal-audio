@@ -51,7 +51,7 @@ Anyone is welcome to contribute — you just need to login with an account. The 
 
 - **Reviewing timestamps:** while there is no formal way to edit timestamps directly, you can report any general issues that might be present for published recitations, and we'll try our best to resolve them.
 
-- **General feedback:** bug reports, feature requests, suggestions, and collaborations are welcome. Feel free to [open an issue on GitHub](https://github.com/Wider-Community/quranic-universal-audio/issues) or reach out directly.
+- **General feedback:** bug reports, feature requests, suggestions, and collaborations are welcome. Feel free to [open an issue on GitHub](https://github.com/QUD-Technologies/quranic-universal-audio/issues) or reach out directly.
 
 - **Supporting the project:** like, star, post, share the data and spread the project.
 
@@ -59,7 +59,7 @@ Anyone is welcome to contribute — you just need to login with an account. The 
 
 Audio and timestamps are published in two open formats, pick by your use case:
 
-- [GitHub Releases](https://github.com/Wider-Community/quranic-universal-audio/releases) — JSON files per recitation, in verse, word and letter tiers, paired with the original chapter audio by URL; best for apps and offline use. Audio isn't bundled — you stream it from the source links. Released shortly after timestamps are generated or refreshed.
+- [GitHub Releases](https://github.com/QUD-Technologies/quranic-universal-audio/releases) — JSON files per recitation, in verse, word and letter tiers, paired with the original chapter audio by URL; best for apps and offline use. Audio isn't bundled — you stream it from the source links. Released shortly after timestamps are generated or refreshed.
 - [Hugging Face Dataset](https://huggingface.co/datasets/hetchyy/quranic-universal-ayahs) — the same timestamps in parquet, one row per ayah with the ayah's audio embedded. Best for ML and analysis: query and filter rows, and get audio plus timestamps together.
 
 Both formats support both gapless surah and ayah-by-ayah playback. Both ship a single take per ayah (the first occurrence), so in rare cases where a reciter repeats an ayah fully or partially at the ayah start/end, follow-along highlighting may pause until they move past the repetition (within-ayah repetitions are still preserved). A unified API — which also exposes the full, unfiltered duplicates — is on the roadmap.

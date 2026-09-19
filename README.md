@@ -11,8 +11,8 @@
   <img src="https://img.shields.io/badge/%F0%9F%8E%AF%20Aligned-64748b" alt="🎯 Aligned"> <img src="https://img.shields.io/badge/Mushafs-56-d4842a" alt="Mushafs: 56"> <img src="https://img.shields.io/badge/Riwayat-4-f0ad4e" alt="Riwayat: 4"> <img src="https://img.shields.io/badge/Hours-1%2C650h%2B-d4842a" alt="Hours: 1,650h+">
   <!-- stats-badges:end -->
   <br>
-  <a href="https://github.com/Wider-Community/quranic-universal-audio/releases/latest"><img src="https://img.shields.io/github/v/release/Wider-Community/quranic-universal-audio?label=Release&color=4a5568" alt="Latest Release"></a>
-  <a href="https://github.com/Wider-Community/quranic-universal-audio"><img src="https://img.shields.io/github/stars/Wider-Community/quranic-universal-audio?style=social" alt="GitHub stars"></a>
+  <a href="https://github.com/QUD-Technologies/quranic-universal-audio/releases/latest"><img src="https://img.shields.io/github/v/release/QUD-Technologies/quranic-universal-audio?label=Release&color=4a5568" alt="Latest Release"></a>
+  <a href="https://github.com/QUD-Technologies/quranic-universal-audio"><img src="https://img.shields.io/github/stars/QUD-Technologies/quranic-universal-audio?style=social" alt="GitHub stars"></a>
   <a href="https://discord.gg/cZ3V2FynXz"><img src="https://img.shields.io/badge/Discord-Join-5865f2?logo=discord&logoColor=white" alt="Discord"></a>
 </p>
 
@@ -57,7 +57,7 @@
 
 Audio, timestamps and metadata ship in two open formats — pick by your use case.
 
-| | [GitHub Releases](https://github.com/Wider-Community/quranic-universal-audio/releases) | [Hugging Face Dataset](https://huggingface.co/datasets/hetchyy/quranic-universal-ayahs) |
+| | [GitHub Releases](https://github.com/QUD-Technologies/quranic-universal-audio/releases) | [Hugging Face Dataset](https://huggingface.co/datasets/hetchyy/quranic-universal-ayahs) |
 |---|---|---|
 | **Best for** | Apps, offline use, archives | ML research, analysis, direct audio access |
 | **Shape** | JSON per recitation, in ayah / word / letter tiers | Parquet, one row per ayah |
@@ -69,7 +69,7 @@ Audio, timestamps and metadata ship in two open formats — pick by your use cas
 
 Visit the [website](https://universal-audio.qud.dev/) and read the overview info and editing guide to get started in contributing recitations and fixing alignment errors.
 
-Issues and pull requests are welcome. If you've found a bug or have a feature idea, open an [issue](https://github.com/Wider-Community/quranic-universal-audio/issues) or jump into the Discord.
+Issues and pull requests are welcome. If you've found a bug or have a feature idea, open an [issue](https://github.com/QUD-Technologies/quranic-universal-audio/issues) or jump into the Discord.
 
 To contribute code to the repo directly, fork the repo and see [inspector/README.md](inspector/README.md) for setup instructions.
 

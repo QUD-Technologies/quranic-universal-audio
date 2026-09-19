@@ -21,13 +21,13 @@ size_categories:
   <a href="https://huggingface.co/spaces/hetchyy/quranic-universal-aligner"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Tool-Qur'anic%20Universal%20Aligner-E8C32E" alt="Tool - Qur'anic Universal Aligner"></a>
   <a href="https://universal-audio.qud.dev/"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Website-Qur'anic%20Universal%20Audio-E8C32E" alt="Website - Qur'anic Universal Audio"></a>
   <br>
-  <a href="https://github.com/Wider-Community/quranic-universal-audio"><img src="https://img.shields.io/badge/Recitations-{{recitations}}-d4842a" alt="Timestamped recitations"></a>
-  <a href="https://github.com/Wider-Community/quranic-universal-audio"><img src="https://img.shields.io/badge/Riwayat-{{riwayat}}-f0ad4e" alt="Timestamped riwayat"></a>
-  <a href="https://github.com/Wider-Community/quranic-universal-audio"><img src="https://img.shields.io/badge/Hours-{{hours}}-d4842a" alt="Timestamped audio hours"></a>
+  <a href="https://github.com/QUD-Technologies/quranic-universal-audio"><img src="https://img.shields.io/badge/Recitations-{{recitations}}-d4842a" alt="Timestamped recitations"></a>
+  <a href="https://github.com/QUD-Technologies/quranic-universal-audio"><img src="https://img.shields.io/badge/Riwayat-{{riwayat}}-f0ad4e" alt="Timestamped riwayat"></a>
+  <a href="https://github.com/QUD-Technologies/quranic-universal-audio"><img src="https://img.shields.io/badge/Hours-{{hours}}-d4842a" alt="Timestamped audio hours"></a>
   <br>
-  <a href="https://github.com/Wider-Community/quranic-universal-audio/releases/latest"><img src="https://img.shields.io/github/v/release/Wider-Community/quranic-universal-audio?label=Release&color=4a5568" alt="Latest Release"></a>
-  <a href="https://github.com/Wider-Community/quranic-universal-audio"><img src="https://img.shields.io/github/stars/Wider-Community/quranic-universal-audio?style=social" alt="GitHub stars"></a>
-  <a href="https://github.com/Wider-Community/quranic-universal-audio/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-CC%20BY%204.0-4a5568" alt="License"></a>
+  <a href="https://github.com/QUD-Technologies/quranic-universal-audio/releases/latest"><img src="https://img.shields.io/github/v/release/QUD-Technologies/quranic-universal-audio?label=Release&color=4a5568" alt="Latest Release"></a>
+  <a href="https://github.com/QUD-Technologies/quranic-universal-audio"><img src="https://img.shields.io/github/stars/QUD-Technologies/quranic-universal-audio?style=social" alt="GitHub stars"></a>
+  <a href="https://github.com/QUD-Technologies/quranic-universal-audio/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-CC%20BY%204.0-4a5568" alt="License"></a>
 </p>
 
 <h1 align="center">Qur'anic Universal Ayahs</h1>
@@ -119,7 +119,7 @@ print(catalog[0]["name_en"], catalog[0]["riwayah"])
 ## Notes
 
 - Best for quick access to verse audio and timestamps together, ayah-by-ayah playback, and ML research.
-- Also see [GitHub Releases](https://github.com/Wider-Community/quranic-universal-audio/releases/latest), a parallel format using JSON files with versioning and checksums, suitable for offline usage.
+- Also see [GitHub Releases](https://github.com/QUD-Technologies/quranic-universal-audio/releases/latest), a parallel format using JSON files with versioning and checksums, suitable for offline usage.
 - Recitation audio is not relicensed, and remains the property of upstream sources/reciters.
 
 ## License

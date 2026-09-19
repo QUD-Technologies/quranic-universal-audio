@@ -29,4 +29,4 @@ Recitations are sourced from the sites below. Each recording remains the propert
 
 If you are a reciter, producer, rights holder, or source and you would like material removed or changed to a link-only reference, please let us know and we will act promptly and in good faith — typically within a few days, no questions asked.
 
-Open an issue on [GitHub](https://github.com/Wider-Community/quranic-universal-audio/issues) or reach the maintainers on [Discord](https://discord.gg/cZ3V2FynXz). Please identify the specific recording or material and where it appears (e.g. the reciter, dataset, or release), and we will remove it, relink it to your source, or update the attribution as you prefer.
+Open an issue on [GitHub](https://github.com/QUD-Technologies/quranic-universal-audio/issues) or reach the maintainers on [Discord](https://discord.gg/cZ3V2FynXz). Please identify the specific recording or material and where it appears (e.g. the reciter, dataset, or release), and we will remove it, relink it to your source, or update the attribution as you prefer.

@@ -17,7 +17,7 @@
 
 services:
   inspector:
-    image: ghcr.io/wider-community/inspector:latest
+    image: ghcr.io/qud-technologies/inspector:latest
     container_name: inspector
     pull_policy: always
     ports:

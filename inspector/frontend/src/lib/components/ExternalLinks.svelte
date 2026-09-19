@@ -13,8 +13,8 @@
     // `gh`/`discord` are brand names (data — not translated); `rel`/`hf` are
     // chrome labels keyed to common_*. The base `label` holds the brand fallback.
     const links: Link[] = [
-        { key: 'gh', label: 'GitHub', href: 'https://github.com/Wider-Community/quranic-universal-audio' },
-        { key: 'rel', label: 'Releases', href: 'https://github.com/Wider-Community/quranic-universal-audio/releases' },
+        { key: 'gh', label: 'GitHub', href: 'https://github.com/QUD-Technologies/quranic-universal-audio' },
+        { key: 'rel', label: 'Releases', href: 'https://github.com/QUD-Technologies/quranic-universal-audio/releases' },
         { key: 'hf', label: 'Dataset', href: 'https://huggingface.co/datasets/hetchyy/quranic-universal-ayahs' },
         { key: 'discord', label: 'Discord', href: DISCORD_URL },
     ];

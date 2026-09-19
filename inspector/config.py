@@ -269,7 +269,7 @@ EMAIL_SITE_URL = os.environ.get("INSPECTOR_EMAIL_SITE_URL", "https://universal-a
 # The GitHub releases page linked from release emails.
 EMAIL_GH_RELEASES_URL = os.environ.get(
     "INSPECTOR_EMAIL_GH_RELEASES_URL",
-    "https://github.com/Wider-Community/quranic-universal-audio/releases",
+    "https://github.com/QUD-Technologies/quranic-universal-audio/releases",
 )
 # Base URL for functional links (the manage deep-link + unsubscribe endpoint) —
 # the direct app host. Reuses INSPECTOR_PUBLIC_BASE_URL; localhost in dev.

@@ -27,7 +27,7 @@ def _manifest(version: str, recs: dict[str, str]) -> dict:
             slug: {
                 "content_hash": h,
                 "ts_version": f"{version}-ts",
-                "zip_url": f"https://github.com/Wider-Community/quranic-universal-audio/releases/download/{version}/{slug}.zip",
+                "zip_url": f"https://github.com/QUD-Technologies/quranic-universal-audio/releases/download/{version}/{slug}.zip",
             }
             for slug, h in recs.items()
         },
@@ -78,7 +78,7 @@ def test_all_current_no_changes():
 
 
 def test_repo_derived_from_manifest_zip_url():
-    assert repo_from_manifest(BASELINE) == "Wider-Community/quranic-universal-audio"
+    assert repo_from_manifest(BASELINE) == "QUD-Technologies/quranic-universal-audio"
     assert repo_from_manifest({"recitations": {}}) is None
 
 

@@ -44,7 +44,7 @@ def test_first_release_added_only():
         previous_version=None,
         release_date="2026-06-03",
         members=[_member("Abdulbasit Abdulsamad"), _member("Saud Al-Shuraim")],
-        owner="Wider-Community",
+        owner="QUD-Technologies",
         repo="quranic-universal-audio",
         hf_dataset="hetchyy/quranic-universal-ayahs",
     )

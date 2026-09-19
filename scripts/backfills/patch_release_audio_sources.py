@@ -147,7 +147,7 @@ def _fixed_audio_block(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tag", help="Release tag (default: latest)")
-    parser.add_argument("--repo", default="Wider-Community/quranic-universal-audio")
+    parser.add_argument("--repo", default="QUD-Technologies/quranic-universal-audio")
     parser.add_argument(
         "--bucket-mount",
         type=Path,
