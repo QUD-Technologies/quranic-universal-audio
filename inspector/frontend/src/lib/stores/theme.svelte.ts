@@ -87,8 +87,6 @@ class ThemeStore {
         this.current = theme;
         if (typeof document !== 'undefined') {
             document.documentElement.setAttribute('data-theme', theme);
-            const favicon = document.querySelector<HTMLLinkElement>('#app-favicon');
-            if (favicon) favicon.href = `/favicon-${theme}.webp`;
         }
         if (typeof window !== 'undefined') {
             // Let the canvas-theme resolver drop its cache before listeners redraw.
