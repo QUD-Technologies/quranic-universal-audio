@@ -31,7 +31,8 @@ RUN sed '1d;$d' public/fonts/DigitalKhattV2.otf.gz.b64 | \
 RUN --mount=type=secret,id=PRIVATE_REPO_TOKEN,required=false \
     if [ -s /run/secrets/PRIVATE_REPO_TOKEN ]; then \
       TOKEN="$(cat /run/secrets/PRIVATE_REPO_TOKEN)" && \
-      git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf ssh://git@github.com/; \
+      AUTH="$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)" && \
+      git config --global http.https://github.com/.extraheader "AUTHORIZATION: basic $AUTH"; \
     fi && \
     npm ci && \
     rm -f /root/.gitconfig

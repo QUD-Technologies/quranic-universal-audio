@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@huggingface/space-header": "^1.0.4",
-    "@quranic-phonemizer/cells": "github:QUD-Technologies/phonemizer-website#cells-v2.2.5",
+    "@quranic-phonemizer/cells": "git+https://github.com/QUD-Technologies/phonemizer-website.git#cells-v2.2.5",
     "chart.js": "^4.4.0",
     "chartjs-plugin-annotation": "^3.0.1"
   },

@@ -33,7 +33,8 @@ jobs:
         env:
           PRIVATE_REPO_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          git config --global url."https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/".insteadOf ssh://git@github.com/
+          AUTH="$(printf 'x-access-token:%s' "$PRIVATE_REPO_TOKEN" | base64 -w0)"
+          git config --global http.https://github.com/.extraheader "AUTHORIZATION: basic $AUTH"
 
       - name: Install deps
         run: npm ci
@@ -174,7 +175,8 @@ jobs:
         env:
           PRIVATE_REPO_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          git config --global url."https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/".insteadOf ssh://git@github.com/
+          AUTH="$(printf 'x-access-token:%s' "$PRIVATE_REPO_TOKEN" | base64 -w0)"
+          git config --global http.https://github.com/.extraheader "AUTHORIZATION: basic $AUTH"
 
       - name: Install codegen deps
         run: |
