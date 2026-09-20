@@ -6,7 +6,7 @@
 templates so the frontend doesn't need its own env knob.
 """
 
-from flask import Blueprint, Response, jsonify
+from flask import Blueprint, Response, jsonify, request
 
 from config import (
     ANALYSIS_LETTER_FONT_SIZE,
@@ -39,6 +39,7 @@ def ts_config():
     config = TsConfigResponse(
         manifest_url="/api/ts/manifest",
         shard_url_template="/api/ts/shard/{reciter}/{chapter}",
+        verse_url_template="/api/ts/verse/{reciter}/{chapter}",
         # D20 Track B: reciter dropdown migrates off ``manifest.json.gz`` to the
         # v2 catalog served by the Inspector backend. Frontend prefers this
         # when present; ``manifest_url`` stays as the fallback feeding
@@ -110,6 +111,41 @@ def ts_shard(reciter, chapter):
     )
     if body is None:
         return jsonify(ErrorEnvelope(error="Shard not found").model_dump(exclude_none=True)), 404
+    return Response(body, mimetype="application/json", headers=_SHARD_HEADERS)
+
+
+@ts_bp.route("/verse/<reciter>/<int:chapter>")
+def ts_verse(reciter, chapter):
+    """Serve one ayah of a chapter as a shard document.
+
+    For clients that show a single verse: a chapter shard carries every verse
+    it times (Al-Baqarah is ~1 MB Brotli), where one verse of it is ~6 KB. The
+    body is a valid shard — same ``_meta``, a subset of ``readings`` — plus
+    ``ayah`` and ``ayahs``, so a verse picker learns what the chapter offers
+    without downloading it.
+
+    ``?ayah=<n>`` picks the verse; omitting it serves the chapter's first timed
+    verse, which is what a client wants on a chapter change. An ayah the
+    chapter does not time is a 404, same as an absent chapter.
+
+    Visibility matches ``/shard``: this is a subset of that document, so the
+    owner-preview bypass and the everyayah gate are read the same way.
+    """
+    raw = request.args.get("ayah")
+    if raw is not None and not raw.isdigit():
+        return jsonify(
+            ErrorEnvelope(error="ayah must be a positive integer").model_dump(exclude_none=True)
+        ), 400
+    user = auth_service.current_user()
+    body = ts_serve.verse_bytes(
+        reciter,
+        chapter,
+        int(raw) if raw is not None else None,
+        allow_unreleased=_capabilities.can(user, "timestamps.view_unreleased"),
+        include_everyayah=user is not None and permissions.is_owner(user),
+    )
+    if body is None:
+        return jsonify(ErrorEnvelope(error="Verse not found").model_dump(exclude_none=True)), 404
     return Response(body, mimetype="application/json", headers=_SHARD_HEADERS)
 
 

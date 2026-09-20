@@ -2165,6 +2165,7 @@ export interface TsCompactRender {
 export interface TsConfigResponse {
   manifest_url: string;
   shard_url_template: string;
+  verse_url_template: string;
   catalog_url: string;
   unified_display_max_height: number;
   anim_highlight_color: string;
@@ -2214,6 +2215,7 @@ export interface TsManifestResponse {
   commit?: string;
   dataset_base_url: string;
   shard_url_template: string;
+  verse_url_template?: string;
   resources?: {
     [k: string]: string;
   };
@@ -2241,6 +2243,7 @@ export interface TsManifestReciter {
   riwayah: string;
   style: string;
   source: string;
+  recording_year?: number | null;
   audio_category: AudioCategory;
   ts_chapters?: number[];
   vbr_chapters?: number[];

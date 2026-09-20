@@ -9,6 +9,12 @@ bucket body is the compact v12 wire body, so serving is a byte
 pass-through cached through a small per-process LRU so chapter scrubbing
 within one reciter doesn't re-pay the bucket fetch.
 
+``verse_bytes()`` serves one ayah of a chapter instead of the whole shard, for
+clients that show a single verse and would otherwise pay a chapter to read it
+(Al-Baqarah is ~1 MB Brotli; its median verse slice is ~6 KB). The chapter is
+inflated and parsed once, every verse's slice is serialized in that pass, and
+the parsed document is dropped — see ``_chapter_slices()``.
+
 ``invalidate()`` drops the cache for tests / future hot-reload.
 """
 
@@ -22,6 +28,9 @@ import threading
 from collections import OrderedDict
 from datetime import UTC, datetime
 from pathlib import Path
+
+import brotli
+import orjson
 
 from config import DK_SCRIPT_PATH
 from qua_shared.catalog_visibility import is_everyayah_channel
@@ -74,6 +83,22 @@ _served_slugs_by_visibility: dict[bool, set[str]] = {False: set(), True: set()}
 _SHARD_LRU_CAP = 256
 _shard_lru: OrderedDict[tuple[str, int], bytes] = OrderedDict()
 
+# Per-chapter verse slices, keyed ``(reciter, chapter)``. The value holds every
+# ayah's ready-to-send JSON body, so the expensive part (inflate + parse) is
+# paid once per chapter and every later verse in it is a dict lookup.
+#
+# The cap is small on purpose: a chapter's slices together weigh about what its
+# inflated shard does (Al-Baqarah, the largest, is ~7.8 MB), and a reader moves
+# through one chapter at a time. Three lets a reader flip between chapters
+# without re-parsing while bounding the cost at roughly one chapter's inflate.
+_SLICE_LRU_CAP = 3
+_slice_lru: OrderedDict[tuple[str, int], dict[int, bytes]] = OrderedDict()
+# Compressed verse bodies, keyed ``(reciter, chapter, ayah)``. Brotli of one
+# slice is ~1-2 ms, small enough to not need a cache for correctness, big enough
+# to be worth skipping when a reader replays the same verse.
+_VERSE_LRU_CAP = 256
+_verse_lru: OrderedDict[tuple[str, int, int], bytes] = OrderedDict()
+
 
 def _build_manifest_dict(reciters_block: dict[str, dict]) -> dict:
     """Assemble + serialize the decompressed manifest body through the wire model.
@@ -92,6 +117,7 @@ def _build_manifest_dict(reciters_block: dict[str, dict]) -> dict:
             "commit": "",
             "dataset_base_url": "",
             "shard_url_template": "/api/ts/shard/{reciter}/{chapter}",
+            "verse_url_template": "/api/ts/verse/{reciter}/{chapter}",
             "resources": {key: f"/api/ts/resource/{key}" for key in _RESOURCE_KEYS},
             "reciters": reciters_block,
             "editions": _edition_blocks(reciters_block),
@@ -261,6 +287,7 @@ def _bucket_reciter_block(
     riwayah = delivery.riwayah if delivery is not None else DEFAULT_RIWAYAH
     style = delivery.style if delivery is not None else "murattal"
     source = delivery.source if delivery is not None else ""
+    recording_year = delivery.recording_year if delivery is not None else None
     audio_category = delivery.audio_category.value if delivery is not None else "by_surah"
 
     return {
@@ -269,6 +296,9 @@ def _bucket_reciter_block(
         "riwayah": riwayah,
         "style": style,
         "source": source,
+        # Tells apart two deliveries a reader would otherwise see as one name:
+        # the same reciter, riwayah and style, recorded years apart.
+        "recording_year": recording_year,
         "audio_category": audio_category,
         "ts_chapters": ts_chapters,
         "vbr_chapters": vbr_chapters_for_reciter(slug),
@@ -426,6 +456,126 @@ def shard_bytes(
     return _load_bucket_shard(reciter, chapter)
 
 
+def _ayah_of(ref: str) -> int | None:
+    """The ayah number in a ``"<chapter>:<ayah>"`` part ref, or ``None``.
+
+    A reading's parts can also carry a non-verse ref (a basmala before the
+    chapter, say). Those belong to no ayah and are skipped rather than guessed
+    at, so a malformed ref can never be filed under verse 0.
+    """
+    _, _, tail = ref.partition(":")
+    return int(tail) if tail.isdigit() else None
+
+
+def _chapter_slices(reciter: str, chapter: int, body: bytes) -> dict[int, bytes] | None:
+    """Every ayah of ``chapter`` as its own ready-to-send shard body.
+
+    One inflate + one parse per chapter, then the parsed document is dropped:
+    holding it would cost ~83 MB for Al-Baqarah against ~7.8 MB for its slices,
+    and a client that reads verses never needs the chapter shape again.
+
+    Each slice is a valid shard document — the same ``_meta`` and a subset of
+    ``readings`` — so a client decodes a verse with the decoder it already has
+    for chapters. It carries two extra keys: ``ayah`` (the one asked for) and
+    ``ayahs`` (every ayah this chapter times), which is what a verse picker
+    needs and cannot otherwise learn without downloading the chapter.
+
+    A reading that spans several ayahs is kept whole in each of their slices.
+    Splitting it would mean re-timing its cells, and the client already narrows
+    a reading to the verse it asked for.
+    """
+    cached = _slice_lru.get((reciter, chapter))
+    if cached is not None:
+        _slice_lru.move_to_end((reciter, chapter))
+        return cached
+
+    try:
+        doc = orjson.loads(brotli.decompress(body))
+    except (brotli.error, orjson.JSONDecodeError) as exc:
+        log.warning("timestamps: chapter %s/%s is not a readable shard: %s", reciter, chapter, exc)
+        return None
+    meta = doc.get("_meta") or {}
+    readings = doc.get("readings") or []
+
+    # ayah -> reading indices, in shard order and deduped (a reading with two
+    # parts in the same ayah must still appear once in that ayah's slice).
+    by_ayah: dict[int, dict[int, None]] = {}
+    for index, reading in enumerate(readings):
+        for part in reading.get("parts") or []:
+            ref = part[0] if isinstance(part, list) else part.get("ref")
+            ayah = _ayah_of(ref) if isinstance(ref, str) else None
+            if ayah is not None:
+                by_ayah.setdefault(ayah, {})[index] = None
+    ayahs = sorted(by_ayah)
+
+    slices = {
+        ayah: orjson.dumps(
+            {
+                "_meta": meta,
+                "ayah": ayah,
+                "ayahs": ayahs,
+                "readings": [readings[index] for index in by_ayah[ayah]],
+            }
+        )
+        for ayah in ayahs
+    }
+
+    _slice_lru[(reciter, chapter)] = slices
+    _slice_lru.move_to_end((reciter, chapter))
+    while len(_slice_lru) > _SLICE_LRU_CAP:
+        _slice_lru.popitem(last=False)
+    return slices
+
+
+def verse_bytes(
+    reciter: str,
+    chapter: int,
+    ayah: int | None = None,
+    allow_unreleased: bool = False,
+    include_everyayah: bool = False,
+) -> bytes | None:
+    """Return one ayah of a chapter as Brotli shard bytes, or ``None``.
+
+    ``ayah`` defaults to the chapter's first timed verse, so a client that has
+    just switched chapters gets a verse and the chapter's ayah list in one
+    request instead of asking what exists and then asking for it.
+
+    Visibility is ``shard_bytes``'s — this serves a strict subset of the same
+    document and must not widen who can read it.
+    """
+    body = shard_bytes(
+        reciter,
+        chapter,
+        allow_unreleased=allow_unreleased,
+        include_everyayah=include_everyayah,
+    )
+    if body is None:
+        return None
+    slices = _chapter_slices(reciter, chapter, body)
+    if not slices:
+        return None
+    if ayah is None:
+        ayah = next(iter(slices))
+    raw = slices.get(ayah)
+    if raw is None:
+        return None
+
+    key = (reciter, chapter, ayah)
+    cached = _verse_lru.get(key)
+    if cached is not None:
+        _verse_lru.move_to_end(key)
+        return cached
+    # Quality 5 rather than the 6 a stored shard is built at: a verse is
+    # compressed per request, and the last point costs more time than it saves
+    # bytes on a body this small.
+    compressed = brotli.compress(raw, quality=5, mode=brotli.MODE_TEXT)
+    _verse_lru[key] = compressed
+    _verse_lru.move_to_end(key)
+    while len(_verse_lru) > _VERSE_LRU_CAP:
+        _verse_lru.popitem(last=False)
+    return compressed
+
+
 def ts_validation_doc(
     reciter: str,
     allow_unreleased: bool = False,
@@ -478,6 +628,8 @@ def invalidate() -> None:
             _served_slugs_by_visibility[visibility].clear()
         _served_slugs.clear()
         _shard_lru.clear()
+        _slice_lru.clear()
+        _verse_lru.clear()
         _resource_bytes.clear()
     # Outside the lock — different module's cache, no ordering dependency.
     from services.storage import cache as _cache

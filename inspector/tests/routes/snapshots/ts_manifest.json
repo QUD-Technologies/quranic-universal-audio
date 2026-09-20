@@ -8,6 +8,7 @@
       "audio_category": "by_surah",
       "name_ar": null,
       "name_en": "Reciter TS",
+      "recording_year": null,
       "riwayah": "hafs",
       "source": "src",
       "style": "mur",
@@ -135,5 +136,6 @@
     "qpc_hafs": "/api/ts/resource/qpc_hafs"
   },
   "schema_version": 1,
-  "shard_url_template": "/api/ts/shard/{reciter}/{chapter}"
+  "shard_url_template": "/api/ts/shard/{reciter}/{chapter}",
+  "verse_url_template": "/api/ts/verse/{reciter}/{chapter}"
 }

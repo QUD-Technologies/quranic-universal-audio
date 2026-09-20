@@ -11,5 +11,6 @@
   "catalog_url": "/api/static/catalog.json",
   "manifest_url": "/api/ts/manifest",
   "shard_url_template": "/api/ts/shard/{reciter}/{chapter}",
-  "unified_display_max_height": 800
+  "unified_display_max_height": 800,
+  "verse_url_template": "/api/ts/verse/{reciter}/{chapter}"
 }

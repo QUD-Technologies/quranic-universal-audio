@@ -88,6 +88,9 @@ class TsConfigResponse(BaseModel):
 
     manifest_url: str
     shard_url_template: str
+    #: Single-verse read path. Takes ``?ayah=<n>``; without it, serves the
+    #: chapter's first timed verse.
+    verse_url_template: str
     catalog_url: str
     unified_display_max_height: int
     anim_highlight_color: str
@@ -129,6 +132,11 @@ class TsManifestReciter(BaseModel):
     riwayah: str
     style: str
     source: str
+    #: Year the recitation was recorded, when the catalog knows it. Present so a
+    #: client can tell apart two deliveries that agree on name, riwayah and
+    #: style; ``None`` whenever the catalog has no year, including for a
+    #: delivery whose siblings do have one.
+    recording_year: int | None = None
     #: Short form ``by_surah`` / ``by_ayah`` (NOT ``*_audio``).
     audio_category: AudioCategory
     ts_chapters: list[int] = Field(default_factory=list)
@@ -183,6 +191,9 @@ class TsManifestResponse(BaseModel):
     commit: str = ""
     dataset_base_url: str
     shard_url_template: str
+    #: Single-verse read path, advertised beside the chapter one so a client
+    #: that only ever shows a verse never has to hardcode it.
+    verse_url_template: str = ""
     resources: dict[str, str] = Field(default_factory=dict)
     reciters: dict[str, TsManifestReciter] = Field(default_factory=dict)
     #: Keyed by INSPECTOR riwayah slug (what a reciter block's ``riwayah``
