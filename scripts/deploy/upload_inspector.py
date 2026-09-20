@@ -178,6 +178,16 @@ def _stage_cells_package(repo: Path, stage_root: Path) -> None:
     dependency. The installed version must match the tag in ``package.json``.
     """
     frontend = repo / "inspector" / "frontend"
+    staged_frontend = stage_root / "inspector" / "frontend"
+    manifest_path = staged_frontend / "package.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    declared = str(manifest.get("dependencies", {}).get(_CELLS_PACKAGE, ""))
+    if declared.startswith("file:vendor/") and declared.endswith(".tgz"):
+        archive = staged_frontend / declared.removeprefix("file:")
+        if not archive.is_file():
+            raise RuntimeError(f"vendored {_CELLS_PACKAGE} archive is missing: {archive}")
+        return
+
     source = frontend / "node_modules" / "@quranic-phonemizer" / "cells"
     source_manifest = source / "package.json"
     if not source_manifest.is_file():
@@ -187,10 +197,6 @@ def _stage_cells_package(repo: Path, stage_root: Path) -> None:
     package_meta = json.loads(source_manifest.read_text(encoding="utf-8"))
     version = str(package_meta.get("version", ""))
 
-    staged_frontend = stage_root / "inspector" / "frontend"
-    manifest_path = staged_frontend / "package.json"
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    declared = str(manifest.get("dependencies", {}).get(_CELLS_PACKAGE, ""))
     if not version or f"cells-v{version}" not in declared:
         raise RuntimeError(
             f"installed {_CELLS_PACKAGE} {version or '<unknown>'} does not match {declared!r}"
