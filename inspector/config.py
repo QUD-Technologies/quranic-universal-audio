@@ -265,7 +265,7 @@ EMAIL_FROM_ADDRESS = (
     or os.environ.get("GMAIL", "").strip()
 )
 # User-facing "visit the site" link in every email — the public site.
-EMAIL_SITE_URL = os.environ.get("INSPECTOR_EMAIL_SITE_URL", "https://universal-audio.qud.dev")
+EMAIL_SITE_URL = os.environ.get("INSPECTOR_EMAIL_SITE_URL", "https://audio.qud.dev")
 # The GitHub releases page linked from release emails.
 EMAIL_GH_RELEASES_URL = os.environ.get(
     "INSPECTOR_EMAIL_GH_RELEASES_URL",
