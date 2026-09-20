@@ -54,6 +54,39 @@ def test_verse_carries_the_chapter_ayah_list(flask_client, chapter):
 
     assert doc["ayah"] == 1
     assert doc["ayahs"] == [1, 2, 3]
+    assert doc["ayah_ranges"] == [[1, 2], [3, 3]]
+
+
+def test_verse_carries_every_wasl_group_not_only_the_selected_one(flask_client, monkeypatch):
+    from services.reference import timestamps as ts_serve
+
+    body = _shard(
+        {
+            "id": "r1",
+            "parts": [
+                ["2:1", 0, 100, 0, 1],
+                ["2:2", 100, 200, 0, 1],
+                ["2:3", 200, 300, 0, 1],
+            ],
+        },
+        {
+            "id": "r2",
+            "parts": [
+                ["2:4", 300, 400, 0, 1],
+                ["2:5", 400, 500, 0, 1],
+                ["2:6", 500, 600, 0, 1],
+            ],
+        },
+    )
+    monkeypatch.setattr(ts_serve, "shard_bytes", lambda *a, **k: body)
+    ts_serve._slice_lru.clear()
+    ts_serve._verse_lru.clear()
+
+    doc = _read(flask_client.get("/api/ts/verse/reciter_a/2?ayah=1"))
+    assert doc["ayah_ranges"] == [[1, 3], [4, 6]]
+
+    ts_serve._slice_lru.clear()
+    ts_serve._verse_lru.clear()
 
 
 def test_verse_keeps_a_reading_that_spans_two_ayahs(flask_client, chapter):

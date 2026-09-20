@@ -467,6 +467,53 @@ def _ayah_of(ref: str) -> int | None:
     return int(tail) if tail.isdigit() else None
 
 
+def _ayah_ranges(ayahs: list[int], readings: list[dict]) -> list[list[int]]:
+    """Picker rows for the chapter, preserving every cross-ayah reading.
+
+    A verse slice contains only readings that touch the requested ayah, so its
+    client cannot discover the connected groups elsewhere in the chapter.  The
+    full shard is already parsed here; reduce that knowledge to tiny inclusive
+    ranges and send the same list with every slice.
+
+    Published groups are contiguous.  If malformed or overlapping input ever
+    appears, leave the affected ayah scalar rather than inventing a range.
+    """
+    available = set(ayahs)
+    grouped: dict[int, tuple[int, int]] = {}
+    for reading in readings:
+        members: list[int] = []
+        for part in reading.get("parts") or []:
+            ref = part[0] if isinstance(part, list) else part.get("ref")
+            ayah = _ayah_of(ref) if isinstance(ref, str) else None
+            if ayah is not None and ayah not in members:
+                members.append(ayah)
+        if (
+            len(members) > 1
+            and all(ayah in available for ayah in members)
+            and all(ayah == members[0] + index for index, ayah in enumerate(members))
+        ):
+            span = (members[0], members[-1])
+            for ayah in members:
+                held = grouped.get(ayah)
+                if held is None or span[1] - span[0] > held[1] - held[0]:
+                    grouped[ayah] = span
+
+    ranges: list[list[int]] = []
+    consumed: set[int] = set()
+    for ayah in ayahs:
+        if ayah in consumed:
+            continue
+        span = grouped.get(ayah)
+        member_set = set(range(span[0], span[1] + 1)) if span else set()
+        if span and ayah == span[0] and not member_set.intersection(consumed):
+            ranges.append([span[0], span[1]])
+            consumed.update(member_set)
+        else:
+            ranges.append([ayah, ayah])
+            consumed.add(ayah)
+    return ranges
+
+
 def _chapter_slices(reciter: str, chapter: int, body: bytes) -> dict[int, bytes] | None:
     """Every ayah of ``chapter`` as its own ready-to-send shard body.
 
@@ -476,9 +523,10 @@ def _chapter_slices(reciter: str, chapter: int, body: bytes) -> dict[int, bytes]
 
     Each slice is a valid shard document — the same ``_meta`` and a subset of
     ``readings`` — so a client decodes a verse with the decoder it already has
-    for chapters. It carries two extra keys: ``ayah`` (the one asked for) and
-    ``ayahs`` (every ayah this chapter times), which is what a verse picker
-    needs and cannot otherwise learn without downloading the chapter.
+    for chapters. It carries three extra keys: ``ayah`` (the one asked for),
+    ``ayahs`` (every ayah this chapter times), and ``ayah_ranges`` (the complete
+    picker rows, with connected readings collapsed). A client cannot otherwise
+    learn the groups outside the selected slice without downloading the chapter.
 
     A reading that spans several ayahs is kept whole in each of their slices.
     Splitting it would mean re-timing its cells, and the client already narrows
@@ -507,6 +555,7 @@ def _chapter_slices(reciter: str, chapter: int, body: bytes) -> dict[int, bytes]
             if ayah is not None:
                 by_ayah.setdefault(ayah, {})[index] = None
     ayahs = sorted(by_ayah)
+    ayah_ranges = _ayah_ranges(ayahs, readings)
 
     slices = {
         ayah: orjson.dumps(
@@ -514,6 +563,7 @@ def _chapter_slices(reciter: str, chapter: int, body: bytes) -> dict[int, bytes]
                 "_meta": meta,
                 "ayah": ayah,
                 "ayahs": ayahs,
+                "ayah_ranges": ayah_ranges,
                 "readings": [readings[index] for index in by_ayah[ayah]],
             }
         )

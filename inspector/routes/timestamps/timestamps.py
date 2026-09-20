@@ -121,8 +121,9 @@ def ts_verse(reciter, chapter):
     For clients that show a single verse: a chapter shard carries every verse
     it times (Al-Baqarah is ~1 MB Brotli), where one verse of it is ~6 KB. The
     body is a valid shard — same ``_meta``, a subset of ``readings`` — plus
-    ``ayah`` and ``ayahs``, so a verse picker learns what the chapter offers
-    without downloading it.
+    ``ayah``, ``ayahs``, and the chapter-wide ``ayah_ranges``, so a verse picker
+    learns both what the chapter offers and which ayahs read together without
+    downloading it.
 
     ``?ayah=<n>`` picks the verse; omitting it serves the chapter's first timed
     verse, which is what a client wants on a chapter change. An ayah the
