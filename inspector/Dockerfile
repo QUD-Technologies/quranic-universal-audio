@@ -28,16 +28,13 @@ COPY inspector/frontend ./
 RUN sed '1d;$d' public/fonts/DigitalKhattV2.otf.gz.b64 | \
       base64 -d | gzip -dc > public/fonts/DigitalKhattV2.otf && \
     [ "$(head -c 4 public/fonts/DigitalKhattV2.otf)" = "OTTO" ]
-RUN --mount=type=ssh,required=false \
-    --mount=type=secret,id=CELLS_DEPLOY_KEY,required=false \
-    mkdir -p -m 700 /root/.ssh && \
-    if [ -f /run/secrets/CELLS_DEPLOY_KEY ]; then \
-      cp /run/secrets/CELLS_DEPLOY_KEY /root/.ssh/id_ed25519 && \
-      chmod 600 /root/.ssh/id_ed25519; \
+RUN --mount=type=secret,id=PRIVATE_REPO_TOKEN,required=false \
+    if [ -s /run/secrets/PRIVATE_REPO_TOKEN ]; then \
+      TOKEN="$(cat /run/secrets/PRIVATE_REPO_TOKEN)" && \
+      git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf ssh://git@github.com/; \
     fi && \
-    ssh-keyscan -H github.com >> /root/.ssh/known_hosts && \
     npm ci && \
-    rm -f /root/.ssh/id_ed25519
+    rm -f /root/.gitconfig
 RUN npm run build
 
 
@@ -66,22 +63,19 @@ ARG QUA_COMMIT=29e073322f8197f2af5ecdb95d09780d6655bec7
 # offers no identity, and the fetch then fails as "Permission denied
 # (publickey)" — which reads like an unauthorized key rather than a mangled
 # one. A CI secret round-trip is exactly where that mangling happens.
-RUN --mount=type=secret,id=QUA_DOMAIN_DEPLOY_KEY,required=false \
-    mkdir -p -m 700 /root/.ssh && \
-    if [ -s /run/secrets/QUA_DOMAIN_DEPLOY_KEY ]; then \
-      tr -d '\r' < /run/secrets/QUA_DOMAIN_DEPLOY_KEY > /root/.ssh/id_ed25519 && \
-      printf '\n' >> /root/.ssh/id_ed25519 && \
-      chmod 600 /root/.ssh/id_ed25519 && \
-      ssh-keyscan -H github.com >> /root/.ssh/known_hosts && \
+RUN --mount=type=secret,id=PRIVATE_REPO_TOKEN,required=false \
+    if [ -s /run/secrets/PRIVATE_REPO_TOKEN ]; then \
+      TOKEN="$(cat /run/secrets/PRIVATE_REPO_TOKEN)" && \
+      git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf git@github.com: && \
       git init --quiet src && cd src && \
       git remote add origin git@github.com:QUD-Technologies/qua.git && \
       git sparse-checkout set --cone packages/quran-domain && \
       git fetch --quiet --depth 1 --filter=blob:none origin "$QUA_COMMIT" && \
       git checkout --quiet FETCH_HEAD && \
       pip wheel --no-deps --no-cache-dir --wheel-dir /wheels ./packages/quran-domain && \
-      cd / && rm -rf /root/.ssh /build/src; \
+      cd / && rm -rf /root/.gitconfig /build/src; \
     else \
-      echo "QUA_DOMAIN_DEPLOY_KEY absent or empty — building Hafs-only (no qua-domain)"; \
+      echo "PRIVATE_REPO_TOKEN absent or empty — building Hafs-only (no qua-domain)"; \
     fi && \
     mkdir -p /wheels
 

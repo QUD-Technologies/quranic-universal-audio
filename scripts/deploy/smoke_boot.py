@@ -115,7 +115,7 @@ def _poll_healthz(port: int, timeout: int) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    p = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     p.add_argument(
         "--context",
         default=str(_REPO_ROOT),
@@ -142,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
         # Both deploy keys are optional at the docker layer (`required=false`);
         # absent, the image builds without the renderer package / without
         # qua-domain, and the boot assertion below still has to pass.
-        for secret in ("CELLS_DEPLOY_KEY", "QUA_DOMAIN_DEPLOY_KEY"):
+        for secret in ("PRIVATE_REPO_TOKEN",):
             if os.environ.get(secret):
                 build.extend(["--secret", f"id={secret},env={secret}"])
         _run([*build, "-f", str(dockerfile), "-t", args.tag, str(context)])

@@ -40,7 +40,7 @@ no-op-or-error by design. Idempotent `backfill_*`/`purge_*`/`convert_*` stay in
 - `bootstrap_dev_env.py` — provision a contributor's personal bucket + Space
 - `seed_fixtures.py` — download the public fixtures → `.fixtures` (offline tier-0)
 - `make_fixtures_dataset.py` — maintainer: (re)build the PII-free public fixtures dataset
-- `install_qua_domain.py` — install the pinned `qua-domain` edition package from `QUD-Technologies/qua` via the `QUA_DOMAIN_DEPLOY_KEY` SSH key; exits 0 having installed nothing when no credential exists (Hafs-only runtime)
+- `install_qua_domain.py` — install the pinned `qua-domain` edition package from `QUD-Technologies/qua` via `PRIVATE_REPO_TOKEN` (with legacy SSH-key fallback); exits 0 having installed nothing when no credential exists (Hafs-only runtime)
 - `make_synthetic_delivery.py` — write a synthetic non-Hafs delivery (segs + optional word-profile shard, built from `qua_domain` itself) into a bucket, for multi-riwayah verification
 
 ### `codegen/`

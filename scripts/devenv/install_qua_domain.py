@@ -12,10 +12,10 @@ inside a private monorepo — so it is installed from an exact commit recorded i
 
 Credentials, in order:
 
-1. ``QUA_DOMAIN_DEPLOY_KEY`` — an SSH private key, read-only, scoped to
-   ``QUD-Technologies/qua`` alone. What CI, the image build, and both Spaces use. Mirrors
-   the ``CELLS_DEPLOY_KEY`` arrangement the frontend build already uses.
-2. Whatever git credential the developer already has for the monorepo (an
+1. ``PRIVATE_REPO_TOKEN`` — a read-only token for QUD Technologies private
+   repositories. CI, the image build, and both Spaces use it.
+2. ``QUA_DOMAIN_DEPLOY_KEY`` — the legacy repository-scoped SSH key.
+3. Whatever git credential the developer already has for the monorepo (an
    ``ssh-agent`` identity, a ``gh auth`` helper). A contributor who works on the
    sibling repo needs nothing extra.
 
@@ -51,6 +51,7 @@ from qua_shared.qua_domain_pin import (  # noqa: E402
 )
 
 DEPLOY_KEY_ENV = "QUA_DOMAIN_DEPLOY_KEY"
+TOKEN_ENV = "PRIVATE_REPO_TOKEN"
 
 #: ``StrictHostKeyChecking=no`` is safe here and unavoidable: the image build and
 #: the HF Space runner have no known_hosts, the host is pinned to github.com in
@@ -79,6 +80,11 @@ def _git_env(key_path: Path | None) -> dict[str, str]:
     env = dict(os.environ)
     if key_path is not None:
         env["GIT_SSH_COMMAND"] = f"ssh -i {key_path.as_posix()} {_SSH_OPTS}"
+    token = os.environ.get(TOKEN_ENV, "").strip()
+    if token:
+        env["GIT_CONFIG_COUNT"] = "1"
+        env["GIT_CONFIG_KEY_0"] = f"url.https://x-access-token:{token}@github.com/.insteadOf"
+        env["GIT_CONFIG_VALUE_0"] = "git@github.com:"
     env["GIT_TERMINAL_PROMPT"] = "0"  # fail fast instead of blocking on a prompt
     return env
 
@@ -115,6 +121,9 @@ def fetch_package(dest: Path, key_path: Path | None) -> Path:
 
 def _credential_available() -> tuple[str | None, str]:
     """``(deploy key text | None, human reason)`` — the second is always printed."""
+    token = os.environ.get(TOKEN_ENV, "").strip()
+    if token:
+        return None, f"{TOKEN_ENV} is set"
     key = os.environ.get(DEPLOY_KEY_ENV, "").strip()
     if key:
         return key, f"{DEPLOY_KEY_ENV} is set"

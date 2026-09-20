@@ -46,12 +46,12 @@ def test_the_optional_dependency_never_fails_a_build_that_lacks_the_key():
     #   - the secret mount is `required=false`, so buildkit does not error;
     #   - the runtime install is guarded, so a missing wheel is not a failure.
     text = DOCKERFILE.read_text(encoding="utf-8")
-    assert "--mount=type=secret,id=QUA_DOMAIN_DEPLOY_KEY,required=false" in text
+    assert "--mount=type=secret,id=PRIVATE_REPO_TOKEN,required=false" in text
     assert "no qua-domain wheel — Hafs-only image" in text
     # buildx mounts a secret that resolved to "" as an empty file that EXISTS,
     # so the key test has to be -s. With -f a fork PR copies an empty key,
     # fails git auth and takes the whole image build down with it.
-    assert "[ -s /run/secrets/QUA_DOMAIN_DEPLOY_KEY ]" in text
-    assert "[ -f /run/secrets/QUA_DOMAIN_DEPLOY_KEY ]" not in text
+    assert "[ -s /run/secrets/PRIVATE_REPO_TOKEN ]" in text
+    assert "[ -f /run/secrets/PRIVATE_REPO_TOKEN ]" not in text
     # And the installer exits 0 rather than raising when there is no credential.
     assert "return 0" in INSTALLER.read_text(encoding="utf-8").split("skipped —")[1]

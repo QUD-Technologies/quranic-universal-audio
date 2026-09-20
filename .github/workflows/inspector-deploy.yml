@@ -84,15 +84,6 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - name: Start renderer SSH agent
-        env:
-          CELLS_DEPLOY_KEY: ${{ secrets.CELLS_DEPLOY_KEY }}
-        run: |
-          eval "$(ssh-agent -s)"
-          ssh-add - <<< "$CELLS_DEPLOY_KEY"
-          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
-          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
-
       - name: Build image (cached)
         uses: docker/build-push-action@v6
         with:
@@ -103,7 +94,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
-          ssh: default
           # qua-domain (the four riwayat's scripts/fonts/projection) is fetched
           # by a Dockerfile stage from the private monorepo. `required=false` at
           # the mount, so a missing secret yields a Hafs-only image, not a
@@ -112,7 +102,7 @@ jobs:
           # newlines, so an unquoted multi-line value delivers only its first
           # line and the container gets an unparseable key.
           secrets: |
-            "QUA_DOMAIN_DEPLOY_KEY=${{ secrets.QUA_DOMAIN_DEPLOY_KEY }}"
+            "PRIVATE_REPO_TOKEN=${{ secrets.PAT_TOKEN }}"
 
       - name: Boot smoke test (/healthz)
         run: python scripts/deploy/smoke_boot.py --skip-build --tag inspector-smoke:latest
@@ -141,12 +131,9 @@ jobs:
 
       - name: Configure private renderer access
         env:
-          CELLS_DEPLOY_KEY: ${{ secrets.CELLS_DEPLOY_KEY }}
+          PRIVATE_REPO_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$CELLS_DEPLOY_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+          git config --global url."https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/".insteadOf ssh://git@github.com/
 
       - name: Install frontend dependencies for Space staging
         working-directory: inspector/frontend
@@ -176,10 +163,6 @@ jobs:
       - name: Upload to Hugging Face Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          CELLS_DEPLOY_KEY: ${{ secrets.CELLS_DEPLOY_KEY }}
-          # Pushed onto the Space as a secret so ITS Docker build can fetch
-          # qua-domain. Absent, upload_inspector warns and leaves the Space's
-          # existing secret alone.
-          QUA_DOMAIN_DEPLOY_KEY: ${{ secrets.QUA_DOMAIN_DEPLOY_KEY }}
+          PRIVATE_REPO_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           python scripts/deploy/upload_inspector.py "${{ steps.env.outputs.env }}"

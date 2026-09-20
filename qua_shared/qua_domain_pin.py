@@ -10,9 +10,9 @@ Bump it like a lockfile entry: change ``QUA_COMMIT``, run
 Dockerfile's ``ARG QUA_COMMIT`` default matches this value, because HF Spaces
 build without build args — the Dockerfile literal is the pin on the Space.
 
-Credentials never live here. The installer reads an SSH deploy key from
-``QUA_DOMAIN_DEPLOY_KEY`` (CI and the image build) or falls back to whatever
-git credential the developer already has for the monorepo.
+Credentials never live here. CI and the image build use ``PRIVATE_REPO_TOKEN``;
+the installer also accepts the legacy ``QUA_DOMAIN_DEPLOY_KEY`` or an existing
+developer git credential.
 """
 
 from __future__ import annotations

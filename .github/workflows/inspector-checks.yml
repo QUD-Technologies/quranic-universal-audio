@@ -6,15 +6,9 @@ name: Inspector checks (reusable)
 on:
   workflow_call:
     secrets:
-      CELLS_DEPLOY_KEY:
-        description: Read-only SSH deploy key for the private renderer repository
+      PAT_TOKEN:
+        description: Read-only token for QUD Technologies private dependencies
         required: true
-      QUA_DOMAIN_DEPLOY_KEY:
-        description: >-
-          Read-only SSH deploy key for QUD-Technologies/qua, source of the qua-domain
-          edition package. Optional: without it the backend tests exercise the
-          Hafs-only degraded path instead of the real edition data.
-        required: false
 
 jobs:
   frontend-checks:
@@ -37,12 +31,9 @@ jobs:
 
       - name: Configure private renderer access
         env:
-          CELLS_DEPLOY_KEY: ${{ secrets.CELLS_DEPLOY_KEY }}
+          PRIVATE_REPO_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$CELLS_DEPLOY_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+          git config --global url."https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/".insteadOf ssh://git@github.com/
 
       - name: Install deps
         run: npm ci
@@ -106,7 +97,7 @@ jobs:
       - name: Install qua-domain (multi-riwayah edition data)
         working-directory: ${{ github.workspace }}
         env:
-          QUA_DOMAIN_DEPLOY_KEY: ${{ secrets.QUA_DOMAIN_DEPLOY_KEY }}
+          PRIVATE_REPO_TOKEN: ${{ secrets.PAT_TOKEN }}
         # Exits 0 having installed nothing when the secret is absent (a fork).
         # The edition tests then skip and the degraded-path tests still run.
         run: python scripts/devenv/install_qua_domain.py
@@ -181,12 +172,9 @@ jobs:
 
       - name: Configure private renderer access
         env:
-          CELLS_DEPLOY_KEY: ${{ secrets.CELLS_DEPLOY_KEY }}
+          PRIVATE_REPO_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$CELLS_DEPLOY_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+          git config --global url."https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/".insteadOf ssh://git@github.com/
 
       - name: Install codegen deps
         run: |

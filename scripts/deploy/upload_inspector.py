@@ -322,8 +322,7 @@ def _upload(
     repo_id: str,
     token: str,
     commit_msg: str,
-    cells_deploy_key: str,
-    qua_domain_deploy_key: str,
+    private_repo_token: str,
 ) -> str:
     api = HfApi(token=token)
     # The prod/dev Spaces are permanent — skip the create_repo call (it 409s on
@@ -343,26 +342,9 @@ def _upload(
         "add_space_secret",
         api.add_space_secret,
         repo_id=repo_id,
-        key="CELLS_DEPLOY_KEY",
-        value=cells_deploy_key,
+        key="PRIVATE_REPO_TOKEN",
+        value=private_repo_token,
     )
-    # Unlike CELLS_DEPLOY_KEY (hard-required — the frontend does not build
-    # without the renderer package), qua-domain is optional: without it the
-    # Space builds and serves Hafs, and every non-Hafs delivery fails loudly.
-    # Pushing an empty value would overwrite a good secret already on the Space.
-    if qua_domain_deploy_key:
-        _retry_on_429(
-            "add_space_secret",
-            api.add_space_secret,
-            repo_id=repo_id,
-            key="QUA_DOMAIN_DEPLOY_KEY",
-            value=_whole_private_key(qua_domain_deploy_key),
-        )
-    else:
-        print(
-            "    WARN: QUA_DOMAIN_DEPLOY_KEY absent from env; leaving the Space "
-            "secret as-is. A Space that never had it builds Hafs-only."
-        )
     _retry_on_429(
         "upload_folder",
         api.upload_folder,
@@ -422,9 +404,9 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    cells_deploy_key = os.environ.get("CELLS_DEPLOY_KEY")
-    if not cells_deploy_key and not args.dry_run:
-        print("ERROR: CELLS_DEPLOY_KEY missing in env.", file=sys.stderr)
+    private_repo_token = os.environ.get("PRIVATE_REPO_TOKEN")
+    if not private_repo_token and not args.dry_run:
+        print("ERROR: PRIVATE_REPO_TOKEN missing in env.", file=sys.stderr)
         return 2
 
     repo = repo_root()
@@ -465,8 +447,7 @@ def main(argv: list[str] | None = None) -> int:
             repo_id,
             token,
             commit_msg,
-            cells_deploy_key or "",
-            os.environ.get("QUA_DOMAIN_DEPLOY_KEY") or "",
+            private_repo_token or "",
         )
         print(f"==> Done. Space: {url}")
 

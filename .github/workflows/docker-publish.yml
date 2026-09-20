@@ -90,15 +90,6 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - name: Start renderer SSH agent
-        env:
-          CELLS_DEPLOY_KEY: ${{ secrets.CELLS_DEPLOY_KEY }}
-        run: |
-          eval "$(ssh-agent -s)"
-          ssh-add - <<< "$CELLS_DEPLOY_KEY"
-          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
-          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
-
       - name: Log in to GHCR
         if: steps.decide.outputs.push == 'true'
         uses: docker/login-action@v3
@@ -131,7 +122,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
-          ssh: default
           # qua-domain (the four riwayat's scripts/fonts/projection) is fetched
           # by a Dockerfile stage from the private monorepo. `required=false` at
           # the mount, so a missing secret yields a Hafs-only image, not a
@@ -140,7 +130,7 @@ jobs:
           # newlines, so an unquoted multi-line value delivers only its first
           # line and the container gets an unparseable key.
           secrets: |
-            "QUA_DOMAIN_DEPLOY_KEY=${{ secrets.QUA_DOMAIN_DEPLOY_KEY }}"
+            "PRIVATE_REPO_TOKEN=${{ secrets.PAT_TOKEN }}"
 
       - name: Summary
         run: |
