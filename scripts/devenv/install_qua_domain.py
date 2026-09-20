@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install ``qua-domain`` from the pinned ``Hetchy/qua`` commit.
+"""Install ``qua-domain`` from the pinned ``QUD-Technologies/qua`` commit.
 
 ``qua-domain`` carries the four riwayat's exact scripts, coordinate indexes,
 fonts, and the Hafs->target word projection. It is not on PyPI — it is a package
@@ -13,7 +13,7 @@ inside a private monorepo — so it is installed from an exact commit recorded i
 Credentials, in order:
 
 1. ``QUA_DOMAIN_DEPLOY_KEY`` — an SSH private key, read-only, scoped to
-   ``Hetchy/qua`` alone. What CI, the image build, and both Spaces use. Mirrors
+   ``QUD-Technologies/qua`` alone. What CI, the image build, and both Spaces use. Mirrors
    the ``CELLS_DEPLOY_KEY`` arrangement the frontend build already uses.
 2. Whatever git credential the developer already has for the monorepo (an
    ``ssh-agent`` identity, a ``gh auth`` helper). A contributor who works on the
@@ -70,9 +70,7 @@ def _write_key(text: str, directory: Path) -> Path:
     #  - no trailing newline (a CI secret box strips it);
     #  - CRLF line endings — which is what write_text does on Windows unless
     #    newline="" disables translation. OpenSSH parses neither.
-    key.write_text(
-        text.replace("\r\n", "\n").rstrip("\n") + "\n", encoding="utf-8", newline=""
-    )
+    key.write_text(text.replace("\r\n", "\n").rstrip("\n") + "\n", encoding="utf-8", newline="")
     key.chmod(stat.S_IRUSR | stat.S_IWUSR)
     return key
 
@@ -157,8 +155,18 @@ def main() -> int:
         package = fetch_package(tmpdir / "src", key_path)
         if args.wheel_dir:
             args.wheel_dir.mkdir(parents=True, exist_ok=True)
-            _run([sys.executable, "-m", "pip", "wheel", "--no-deps",
-                  "--wheel-dir", str(args.wheel_dir), str(package)])
+            _run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "wheel",
+                    "--no-deps",
+                    "--wheel-dir",
+                    str(args.wheel_dir),
+                    str(package),
+                ]
+            )
             built = sorted(args.wheel_dir.glob("qua_domain-*.whl"))
             print(f"qua-domain: built {built[-1].name if built else '(nothing?)'}")
             return 0

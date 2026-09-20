@@ -44,7 +44,7 @@ RUN npm run build
 # --- Stage 1b: build the qua-domain wheel from the pinned monorepo commit ---
 # qua-domain carries the four riwayat's exact scripts, coordinate indexes,
 # fonts, and the Hafs->target word projection. It is a package inside the
-# PRIVATE Hetchy/qua monorepo, so it is fetched with a read-only SSH deploy key
+# PRIVATE QUD-Technologies/qua monorepo, so it is fetched with a read-only SSH deploy key
 # — the same arrangement stage 1 uses for the renderer package.
 #
 # `required=false` is load-bearing: a fork, or any build without the secret,
@@ -74,7 +74,7 @@ RUN --mount=type=secret,id=QUA_DOMAIN_DEPLOY_KEY,required=false \
       chmod 600 /root/.ssh/id_ed25519 && \
       ssh-keyscan -H github.com >> /root/.ssh/known_hosts && \
       git init --quiet src && cd src && \
-      git remote add origin git@github.com:Hetchy/qua.git && \
+      git remote add origin git@github.com:QUD-Technologies/qua.git && \
       git sparse-checkout set --cone packages/quran-domain && \
       git fetch --quiet --depth 1 --filter=blob:none origin "$QUA_COMMIT" && \
       git checkout --quiet FETCH_HEAD && \

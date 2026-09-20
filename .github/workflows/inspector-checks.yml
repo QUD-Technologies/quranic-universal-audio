@@ -11,7 +11,7 @@ on:
         required: true
       QUA_DOMAIN_DEPLOY_KEY:
         description: >-
-          Read-only SSH deploy key for Hetchy/qua, source of the qua-domain
+          Read-only SSH deploy key for QUD-Technologies/qua, source of the qua-domain
           edition package. Optional: without it the backend tests exercise the
           Hafs-only degraded path instead of the real edition data.
         required: false

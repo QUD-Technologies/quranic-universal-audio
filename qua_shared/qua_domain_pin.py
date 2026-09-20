@@ -1,4 +1,4 @@
-"""The pinned ``Hetchy/qua`` revision the edition data is built from.
+"""The pinned ``QUD-Technologies/qua`` revision the edition data is built from.
 
 ``qua-domain`` is not on PyPI — it is a package inside the private monorepo,
 installed from an exact commit. This module is the single place that commit is
@@ -17,10 +17,10 @@ git credential the developer already has for the monorepo.
 
 from __future__ import annotations
 
-QUA_REPO = "Hetchy/qua"
-QUA_SSH_URL = "git@github.com:Hetchy/qua.git"
+QUA_REPO = "QUD-Technologies/qua"
+QUA_SSH_URL = "git@github.com:QUD-Technologies/qua.git"
 
-#: Exact commit on ``Hetchy/qua@main`` the edition assets come from.
+#: Exact commit on ``QUD-Technologies/qua@main`` the edition assets come from.
 #: 29e0733 = "alias the Universal Audio vocabulary slugs" — the first revision
 #: whose ``normalize_riwayah`` accepts all four Inspector vocabulary slugs.
 QUA_COMMIT = "29e073322f8197f2af5ecdb95d09780d6655bec7"
