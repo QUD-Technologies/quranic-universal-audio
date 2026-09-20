@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link id="app-favicon" rel="icon" type="image/webp" href="/favicon-dark.webp">
     <title>Quranic Universal Audio</title>
     <!-- Flash-free theme: set data-theme on <html> synchronously, BEFORE any
          stylesheet parses, so the resolved theme paints on the first frame (no
@@ -22,9 +22,11 @@
             t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
           }
           document.documentElement.setAttribute('data-theme', t);
+          document.getElementById('app-favicon').href = '/favicon-' + t + '.webp';
         } catch (e) {
-          document.documentElement.setAttribute('data-theme',
-            (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light');
+          var fallback = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+          document.documentElement.setAttribute('data-theme', fallback);
+          document.getElementById('app-favicon').href = '/favicon-' + fallback + '.webp';
         }
       })();
     </script>

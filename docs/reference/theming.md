@@ -32,6 +32,11 @@ are theme-agnostic and re-skin for free.
 3. `ThemeToggle.svelte` (a sun/moon icon button in the header's `.auth-controls`)
    calls `themeStore.toggle()`.
 
+The browser favicon follows the same resolved theme, including explicit overrides:
+`index.html` chooses `favicon-light.webp` or `favicon-dark.webp` before first paint,
+and `themeStore` swaps the icon on every live theme change. Both assets are the QUA
+marks used by qud.dev rather than a separate Inspector symbol.
+
 ## The tokens
 
 - `styles/tokens.css` `:root` — the **dark** values, the full set. Every new
