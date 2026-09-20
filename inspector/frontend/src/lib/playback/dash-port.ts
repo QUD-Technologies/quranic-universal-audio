@@ -11,8 +11,8 @@
  * `/api/seg/audio-proxy/...`, whose CDN tier is a SAME-ORIGIN 200/206 stream
  * with `Access-Control-Allow-Origin: *` (no 302 redirect) — so proxied URLs
  * would route through `MediaElementAudioSourceNode` fine. But some dashboard
- * sources are RAW cross-origin (Quran.Foundation `qf_api` links served
- * directly, not via the proxy), and constructing a `MediaElementAudioSourceNode`
+ * sources are raw cross-origin links served directly rather than through the
+ * proxy, and constructing a `MediaElementAudioSourceNode`
  * on a cross-origin element silences playback per the Web Audio spec. Full-
  * chapter playback doesn't need sample-accurate end-of-region cutoff, so we
  * keep the element on its default audio sink across the board.

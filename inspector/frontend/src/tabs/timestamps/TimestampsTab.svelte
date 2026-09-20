@@ -8,7 +8,7 @@
      * audio / animation / waveform cursor in sync (the player never unmounts).
      *
      * This tab renders only: the waveform + the mega analysis display
-     * (words / letters / phonemes / translations). The word-by-word animation
+     * (words / letters / phonemes). The word-by-word animation
      * lives in the shared NowReciting bar; the footer controls (reciter picker,
      * shuffles, analysis toggles, loop, bookmark, shortcuts) live in the shared
      * BottomPlayer's slots (TimestampsFooterLeft / TimestampsFooterRight).
@@ -74,14 +74,13 @@
         loadQpc,
         loadTsValidation,
         loadVbrChapters,
-        loadVerseTranslations,
         reciterAudioFromManifest,
         shardOccasions,
         type TsReciterAudio,
     } from './services/ts_client';
     import { isWordShard } from '../../lib/types/ts-client';
     import { editionFontStack, ensureEditionFont } from '../../lib/refs/edition-font';
-    import { DEFAULT_RIWAYAH, DEFAULT_SDK_RIWAYAH, toInspectorSlug } from '../../lib/riwayat';
+    import { DEFAULT_SDK_RIWAYAH, toInspectorSlug } from '../../lib/riwayat';
     import type { ChapterOccasion } from '../../lib/recitation-data/occasions';
     import { isInWaslGroup, waslGroupOf } from '../../lib/recitation-data/wasl';
     import { findTsEntryBySlug, isTsCapable, resolveTsDeliveries } from './services/ts-published';
@@ -90,10 +89,7 @@
         showLetters,
         showPhonemes,
         wordProfile,
-        showTranslations,
-        translationLanguage,
         tsConfig,
-        verseTranslations,
     } from './stores/display';
     import { tsLoading } from './stores/loading';
     import { initTajweedSettings } from './stores/tajweed-settings';
@@ -176,12 +172,6 @@
     // the `$:` below recomputes the analysis vars on a theme flip.
     let curTheme = themeStore.current;
     $: hlVars = resolveHighlightVars($recitationConfigStore.highlightColor, modelForTheme(curTheme));
-    // Glosses are keyed in Hafs upstream; the server reverse-projects them when
-    // this names another edition (D9). `null` (a slug this build does not know)
-    // means no glosses rather than Hafs ones: gloss n would land on a different
-    // word for every renumbered verse.
-    $: glossRiwayah = toInspectorSlug($deliveryRiwayah);
-
     $: hlVarsText = Object.entries(hlVars)
         .map(([k, v]) => `${k}: ${v}`)
         .join('; ');
@@ -208,16 +198,12 @@
         void loadQpc().catch(() => {});
         void loadDk().catch(() => {});
 
-        // Display prefs (letters/phonemes/translations) hydrate regardless of
+        // Display prefs (letters/phonemes) hydrate regardless of
         // the (now-removed) view mode.
         const sL = localStorage.getItem(LS_KEYS.TS_SHOW_LETTERS);
         const sP = localStorage.getItem(LS_KEYS.TS_SHOW_PHONEMES);
-        const sT = localStorage.getItem(LS_KEYS.TS_SHOW_TRANSLATIONS);
-        const sLang = localStorage.getItem(LS_KEYS.TS_TRANSLATION_LANG);
         if (sL !== null) showLetters.set(sL === 'true');
         if (sP !== null) showPhonemes.set(sP === 'true');
-        if (sT !== null) showTranslations.set(sT === 'true');
-        if (sLang) translationLanguage.set(sLang);
         initTajweedSettings();
 
         try {
@@ -841,11 +827,6 @@
                     warmStartMs,
                     warmEndMs,
                 );
-                if (get(showTranslations) && data.words.length) {
-                    void loadVerseTranslations(
-                        data.words, get(translationLanguage), glossRiwayah,
-                    ).catch(() => {});
-                }
             }
         } catch { /* seek 0 is an acceptable fallback */ }
         primeShuffle({ target, proxyUrl, rawUrl, seekSec });
@@ -975,36 +956,12 @@
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Translations (Analysis only) — lazily fetch glosses for the focus verse.
-    // ---------------------------------------------------------------------
-    let _trReq = 0;
-    $: refreshTranslations($loadedVerse, $showTranslations, $translationLanguage);
-    function refreshTranslations(
-        lv: typeof $loadedVerse,
-        on: boolean,
-        lang: string,
-    ): void {
-        if (!on || !lv || lv.data.words.length === 0) {
-            verseTranslations.set({});
-            return;
-        }
-        const token = ++_trReq;
-        loadVerseTranslations(lv.data.words, lang, glossRiwayah)
-            .then((map) => { if (token === _trReq) verseTranslations.set(map); })
-            .catch(() => { if (token === _trReq) verseTranslations.set({}); });
-    }
-
     // Prewarm the next sequential verse so it renders instantly on advance:
-    // peaks always (baked tier or ffmpeg/CDN fallback), glosses only when
-    // translations are visible. Within-chapter; the cross-chapter / random next
-    // is warmed by primeShuffleSlot. All calls idempotent (shared caches).
-    $: prewarmNext($loadedVerse, $showTranslations, $translationLanguage);
-    function prewarmNext(
-        lv: typeof $loadedVerse,
-        transOn: boolean,
-        lang: string,
-    ): void {
+    // peaks always (baked tier or ffmpeg/CDN fallback). Within-chapter; the
+    // cross-chapter / random next is warmed by primeShuffleSlot. All calls are
+    // idempotent (shared caches).
+    $: prewarmNext($loadedVerse);
+    function prewarmNext(lv: typeof $loadedVerse): void {
         if (!lv) return;
         const next = focusIdx >= 0 ? chapterOccasions[focusIdx + 1] : undefined;
         if (!next) return;
@@ -1015,9 +972,6 @@
             Math.max(0, Math.round(next.startMs)),
             Math.round(next.endMs),
         );
-        if (transOn && next.lv.data.words.length) {
-            void loadVerseTranslations(next.lv.data.words, lang, glossRiwayah).catch(() => {});
-        }
     }
 
     // (The once-per-occasion shuffle guard resets implicitly: `shuffleFiredForIdx`

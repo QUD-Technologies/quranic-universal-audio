@@ -4,8 +4,8 @@
      * `center-trail` slot (just right of the speed button) when the Timestamps
      * tab is active.
      *
-     * A single flat row:  loop · letters · phonemes · wipe · tajweed ·
-     * translations(globe) · help. `wipe` toggles the continuous karaoke-style
+     * A single flat row: loop · letters · phonemes · wipe · tajweed · help.
+     * `wipe` toggles the continuous karaoke-style
      * highlight (vs the discrete fill).
      * All operate on the shared player (dashPort) + timestamps display stores.
      * The help button opens the shortcuts/guide drop-up.
@@ -24,7 +24,6 @@
     import { loadedVerse } from '../stores/verse';
     import { findWordAt } from '../utils/loop-target';
     import TajweedSettingsPanel from './TajweedSettingsPanel.svelte';
-    import TranslationGlobe from './TranslationGlobe.svelte';
 
     let guideOpen = $state(false);
     let tajweedOpen = $state(false);
@@ -82,7 +81,7 @@
     }
 
     type GuideRow = {
-        icon?: 'letters' | 'phonemes' | 'globe';
+        icon?: 'letters' | 'phonemes';
         img?: string;
         key?: string;
         label: string;
@@ -104,7 +103,6 @@
             { title: m.ts_shortcuts_section_display(), rows: [
                 { icon: 'letters', key: 'L', label: m.ts_shortcuts_label_letters() },
                 { icon: 'phonemes', key: 'P', label: m.ts_shortcuts_label_phonemes() },
-                { icon: 'globe', label: m.ts_shortcuts_label_translations() },
             ] },
             { title: m.ts_shortcuts_section_interactions(), rows: [
                 { key: 'Click', label: m.ts_shortcuts_label_seek_to_word() },
@@ -206,8 +204,6 @@
             </div>
         {/if}
     </div>
-
-    <TranslationGlobe />
 
     <div class="guide-wrap" use:clickOutside={() => (guideOpen = false)}>
         <button

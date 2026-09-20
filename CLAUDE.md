@@ -61,7 +61,7 @@ inspector/
 ├── config.py         Env-overridable tunables (paths, timeouts, thresholds)
 ├── constants.py      Domain literals (validation categories, muqattaat, qalqala)
 ├── routes/           Thin Flask blueprints (subpackages: admin/ audio/ auth/ claims/ public/ segments/ timestamps/)
-├── services/         Business logic, Flask-free (except auth/auth.py authlib glue) — subpackages: db/ storage/ audio/ auth/ admin/ state/ segments/ validation/ activity/ reference/ ts_reports/ quran_foundation/
+├── services/         Business logic, Flask-free (except auth/auth.py authlib glue) — subpackages: db/ storage/ audio/ auth/ admin/ state/ segments/ validation/ activity/ reference/ ts_reports/
 ├── domain/           Pure model — Segment, SegmentCommand, identity
 ├── adapters/         JSON ↔ domain conversion
 ├── utils/            Pure utilities + cross-cutting decorators
@@ -101,7 +101,7 @@ Deep, agent-facing reference docs live in `docs/reference/` (flat). **Read the o
 
 | Doc | Open when working on |
 |---|---|
-| [`architecture.md`](docs/reference/architecture.md) | backend layering, `services/`+`routes/` subpackage map, caching, app.py boot, Quran Foundation |
+| [`architecture.md`](docs/reference/architecture.md) | backend layering, `services/`+`routes/` subpackage map, caching, app.py boot |
 | [`database.md`](docs/reference/database.md) | the SQLite substrate — repos, migrations, bucket sync, db_seq CAS |
 | [`state-machine.md`](docs/reference/state-machine.md) | lifecycle states, flags, transition matrix, events |
 | [`auth-permissions.md`](docs/reference/auth-permissions.md) | OAuth identity, roles, predicates, edit-lock, CSRF, admin endpoints, activity rails |

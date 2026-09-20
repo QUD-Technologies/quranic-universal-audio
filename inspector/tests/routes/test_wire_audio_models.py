@@ -5,9 +5,6 @@ the shape ``inspector/routes/audio/metadata.py`` actually emits, and these
 tests pin that the model both *validates* a live route response and *reproduces*
 its exact key set on dump (the regression net for the Phase-5 route cutover).
 
-The QF-routing branch (``via``/``origin_url``) can't be exercised without
-wiring the Quran.Foundation Content API, so it's covered by a representative
-inline fixture built to match what ``_apply_qf_routing`` writes.
 """
 
 from __future__ import annotations
@@ -29,7 +26,7 @@ def _install_manifest(backend, slug: str, chapters: dict) -> None:
 def test_model_validates_live_audio_surahs_response(flask_client, tmp_reciter_dir):
     """The live ``/api/audio/surahs`` body validates AND round-trips key-for-key.
 
-    Covers the un-routed (no-QF) path: every entry carries exactly ``url`` and
+    Every entry carries exactly ``url`` and
     ``duration_ms``. ``duration_ms`` is derived from the sidecar's
     ``duration_sec`` (chapter 1) and ``None`` when neither manifest nor peaks
     yield a length (chapter 2).
@@ -61,7 +58,7 @@ def test_model_validates_live_audio_surahs_response(flask_client, tmp_reciter_di
     # The route always emits ``duration_ms`` (nullable), so no ``exclude_none``.
     dumped = model.model_dump(by_alias=True)
     assert dumped == body
-    # The un-routed entries carry neither QF key, but always carry duration_ms.
+    # Every entry carries exactly the canonical fields.
     for entry in dumped["surahs"].values():
         assert set(entry.keys()) == {"url", "duration_ms"}
 
@@ -74,46 +71,6 @@ def test_audio_surahs_404_is_not_this_model(flask_client, tmp_reciter_dir):
     assert res.get_json() == {"error": "Reciter not found"}
 
 
-def test_entry_model_round_trips_qf_routed_shape():
-    """A ``via="qf_api"`` entry keeps ``origin_url`` and a null ``duration_ms``.
-
-    Representative inline fixture matching what ``_apply_qf_routing`` writes on a
-    successful Content-API swap: ``url`` becomes the QF link, ``origin_url`` holds
-    our CDN link, ``duration_ms`` is dropped to ``None``.
-    """
-    routed = {
-        "url": "https://api.quran.foundation/qdc/1.mp3",
-        "duration_ms": None,
-        "via": "qf_api",
-        "origin_url": "https://cdn.example/1.mp3",
-    }
-    entry = AudioSurahEntry.model_validate(routed)
-    assert entry.via == "qf_api"
-    assert entry.duration_ms is None
-    # ``duration_ms: None`` is kept (route always emits it); only via/origin_url
-    # are dropped when unset — here both are set, so the dump is identical.
-    assert entry.model_dump(by_alias=True) == routed
-
-
-def test_entry_model_round_trips_qf_fallback_shape():
-    """A ``via="qf_fallback"`` entry keeps our link + duration, no ``origin_url``.
-
-    On a Content-API failure ``_apply_qf_routing`` tags every chapter
-    ``qf_fallback`` without touching ``url``/``duration_ms`` and without adding
-    ``origin_url``.
-    """
-    fallback = {
-        "url": "https://cdn.example/1.mp3",
-        "duration_ms": 12500,
-        "via": "qf_fallback",
-    }
-    entry = AudioSurahEntry.model_validate(fallback)
-    assert entry.via == "qf_fallback"
-    assert entry.origin_url is None
-    # ``origin_url`` is dropped (unset); ``duration_ms`` is kept (here 12500).
-    assert entry.model_dump(by_alias=True) == fallback
-
-
 def test_response_model_rejects_unknown_top_level_key():
     """``extra="forbid"`` guards the producer contract — unknown keys fail."""
     import pytest
@@ -121,15 +78,6 @@ def test_response_model_rejects_unknown_top_level_key():
 
     with pytest.raises(ValidationError):
         AudioSurahsResponse.model_validate({"surahs": {}, "unexpected": 1})
-
-
-def test_entry_model_rejects_unknown_via_literal():
-    """``via`` is a closed set the FE switches on — an unknown value fails."""
-    import pytest
-    from pydantic import ValidationError
-
-    with pytest.raises(ValidationError):
-        AudioSurahEntry.model_validate({"url": "x", "duration_ms": None, "via": "qf_other"})
 
 
 def test_entry_model_requires_duration_ms_key():

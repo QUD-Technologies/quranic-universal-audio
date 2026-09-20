@@ -207,7 +207,7 @@
      guides gate; single host so it looks identical everywhere. -->
 <InfoModal />
 
-<!-- Quran.Foundation bookmarks sidebar. -->
+<!-- Browser-local bookmarks sidebar. -->
 <BookmarksPanel />
 
 <style>

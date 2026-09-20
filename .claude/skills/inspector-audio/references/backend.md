@@ -30,9 +30,9 @@ Optional `?download=1` (+ `&chapter=<n>`) makes every tier emit `Content-Disposi
 
 ## Audio metadata route (dashboard player)
 
-`routes/audio/metadata.py` — `audio_surahs(...)`, `audio_meta_bp` (`url_prefix=/api/audio`). `GET /api/audio/surahs/<category>/<source>/<slug>` returns per-chapter `{url, duration_ms}` for the dashboard `BottomPlayer`, with `_apply_qf_routing` swapping in Quran-Foundation Content-API URLs where applicable. (Distinct from the seg-tab routes; easy to miss.)
+`routes/audio/metadata.py` — `audio_surahs(...)`, `audio_meta_bp` (`url_prefix=/api/audio`). `GET /api/audio/surahs/<category>/<source>/<slug>` returns the manifest-owned per-chapter `{url, duration_ms}` for the dashboard `BottomPlayer`. The route must never substitute another recording because timestamps, peaks, and bitrate metadata share the manifest audio's timebase. (Distinct from the seg-tab routes; easy to miss.)
 
-`duration_ms` is derived from the manifest's `duration_sec`. **Fallback:** when a chapter's manifest duration is null/missing, the route reads the duration baked into the slim peaks header (`reciters/<slug>/peaks/<ch>.json.gz`) via `audio_fetch.read_prefetched_peaks_duration_ms` — so a reciter probed before the manifest carried durations still shows a real scrubber length instead of 0:00. Stays `null` only when peaks are also absent. (QF-routed chapters keep `duration_ms=null` on purpose — `_apply_qf_routing` nulls it because the `/qdc/` re-encodes differ in length; it runs after the peaks fallback.)
+`duration_ms` is derived from the manifest's `duration_sec`. **Fallback:** when a chapter's manifest duration is null/missing, the route reads the duration baked into the slim peaks header (`reciters/<slug>/peaks/<ch>.json.gz`) via `audio_fetch.read_prefetched_peaks_duration_ms` — so a reciter probed before the manifest carried durations still shows a real scrubber length instead of 0:00. Stays `null` only when peaks are also absent.
 
 ## Audio source resolver
 

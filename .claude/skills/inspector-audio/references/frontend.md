@@ -11,7 +11,7 @@ For VBR-specific port behavior see `vbr.md`.
 | Port | Module | Drives | Kill-switch |
 |---|---|---|---|
 | `segPort` | `tabs/segments/stores/playback.ts` (`new AudioPort()`) | Segments tab | enabled (proxied same-origin URLs) |
-| `dashPort` | `lib/playback/dash-port.ts` | **Dashboard AND Timestamps** (via `BottomPlayer`); supports `adoptElement` gapless swaps; `TimestampsWaveform` reads `dashPort.currentTimeMs()` for karaoke | `disableKillSwitch: true` (some sources are RAW cross-origin `qf_api` links, not proxied) |
+| `dashPort` | `lib/playback/dash-port.ts` | **Dashboard AND Timestamps** (via `BottomPlayer`); supports `adoptElement` gapless swaps; `TimestampsWaveform` reads `dashPort.currentTimeMs()` for karaoke | `disableKillSwitch: true` (some sources are raw cross-origin links, not proxied) |
 | `tsPort` | `tabs/timestamps/stores/playback.ts` | nothing — vestigial; delete or rewire | — |
 | per-panel | `tabs/segments/utils/playback/preview.ts` (`new AudioPort()`) | SavePreview / HistoryPanel, isolated from live `playingSegmentIndex` | enabled |
 
@@ -60,7 +60,7 @@ Subscriber API (each returns an unsubscribe fn, snapshotted before fanout): `onL
 
 ### Cross-origin gotcha (`disableKillSwitch`)
 
-`MediaElementAudioSourceNode` requires CORS to read samples; constructing one against a cross-origin URL without CORS silently mutes (Web Audio spec). **The audio-proxy now streams same-origin with `ACAO: *`** (`routes/audio/proxy.py`), so `crossorigin="anonymous"` elements playing **proxied** URLs route through Web Audio fine — the foot-gun is mostly defused. `disableKillSwitch: true` (skips Web Audio entirely; the audible-tail bug at pause returns) is now needed only for **raw cross-origin URLs not wrapped by the proxy** — which is why `dashPort` keeps it (some dashboard sources are raw `qf_api` Quran.Foundation links served directly, not through the proxy). Wrap CBR by_surah URLs via `wrapCbrSrcIfBySurah` (`source.ts`) and keep the kill-switch.
+`MediaElementAudioSourceNode` requires CORS to read samples; constructing one against a cross-origin URL without CORS silently mutes (Web Audio spec). **The audio-proxy now streams same-origin with `ACAO: *`** (`routes/audio/proxy.py`), so `crossorigin="anonymous"` elements playing **proxied** URLs route through Web Audio fine — the foot-gun is mostly defused. `disableKillSwitch: true` (skips Web Audio entirely; the audible-tail bug at pause returns) is now needed only for **raw cross-origin URLs not wrapped by the proxy**. Wrap CBR by_surah URLs via `wrapCbrSrcIfBySurah` (`source.ts`) and keep the kill-switch.
 
 ## AudioGraph (Web Audio kill-switch)
 

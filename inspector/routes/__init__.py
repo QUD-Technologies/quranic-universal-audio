@@ -19,10 +19,10 @@ def register_blueprints(app):
     from routes.admin.access import access_admin_bp
     from routes.admin.actions import admin_actions_bp
     from routes.admin.activity import public_activity_admin_bp
+    from routes.admin.align import admin_align_bp
     from routes.admin.announcements import admin_announcements_bp
     from routes.admin.catalog import catalog_admin_bp
     from routes.admin.internal import admin_internal_bp
-    from routes.admin.align import admin_align_bp
     from routes.admin.jobs import admin_jobs_bp
     from routes.admin.permissions import admin_permissions_bp
     from routes.admin.releases import admin_releases_bp
@@ -37,13 +37,10 @@ def register_blueprints(app):
     from routes.auth.guides import guides_bp
     from routes.auth.health import health_bp
     from routes.auth.notifications import notifications_bp
-    from routes.bookmarks import bookmarks_bp
     from routes.claims.claims import claims_bp
     from routes.claims.requests import requests_bp
     from routes.public.public import public_bp
     from routes.public.static import static_bp
-    from routes.qf_auth import qf_auth_bp
-    from routes.qf_content import qf_content_bp
     from routes.samples import samples_bp
     from routes.segments.data import seg_data_bp
     from routes.segments.edit import seg_edit_bp
@@ -84,9 +81,6 @@ def register_blueprints(app):
     app.register_blueprint(audio_proxy_bp)
     app.register_blueprint(audio_meta_bp)
     app.register_blueprint(segment_clip_bp)
-    app.register_blueprint(qf_auth_bp)
-    app.register_blueprint(qf_content_bp)
-    app.register_blueprint(bookmarks_bp)
     app.register_blueprint(webhooks_bp)
     app.register_blueprint(static_bp)
 

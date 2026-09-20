@@ -28,10 +28,8 @@
     import { qpcWaqfRenderStyle } from '../../../lib/utils/qpc-waqf-render';
     import {
         deliveryRiwayah,
-        showTranslations,
         tsHoveredElement,
         tsWaveformHoverTime,
-        verseTranslations,
     } from '../stores/display';
     import { loopTarget } from '../stores/playback';
     import {
@@ -45,7 +43,6 @@
     import { focusWaslGroup, loadedVerse } from '../stores/verse';
     import { TS_CLICK_DELAY_MS } from '../utils/constants';
     import { cellTargetFromEl, targetCellKey } from '../utils/report-target';
-    import WordTranslation from './WordTranslation.svelte';
 
     /** A rendered element with a playback span — words and pause gaps only. */
     interface WordEntity {
@@ -359,9 +356,6 @@
                         data-qc-word-id={word.id}
                         title={String(Math.round(((word.end - word.start) * 1000) / 10) * 10) + ' ms'}
                     >
-                        {#if $showTranslations}
-                            <WordTranslation text={$verseTranslations[word.location] ?? ''} />
-                        {/if}
                         <span class="word-text">{word.text}</span>
                     </span>
                     {#if word.boundary}

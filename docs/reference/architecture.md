@@ -10,7 +10,7 @@ HTTP ─▶ routes/<domain>/*          thin Flask blueprints: parse → service 
                 ▼
         services/<domain>/*        business logic, Flask-free, returns plain dicts
                 │                   db/ storage/ audio/ auth/ state/ segments/
-                │                   validation/ activity/ reference/ quran_foundation/
+                │                   validation/ activity/ reference/
                 ▼
    domain/  adapters/  utils/      pure model · JSON↔domain conversion · helpers
 
@@ -38,7 +38,6 @@ Invariants:
 | `validation/` | Registry-backed segment validation + chapter counts (Flask-free). | `registry.py` (`IssueRegistry`, category sets — keep in lockstep with FE `registry.ts`), `classifier.py`, `snapshot_classifier.py`, `detail.py`, `_missing.py`, `_structural.py`; package `__init__.py` exposes `validate_reciter_segments` |
 | `activity/` | Audit-event classification + public activity feed + history queries + stats. The admin notifications rail was retired — admin awareness lives in the Admin dashboard tabs now. | `activity_classification.py` (event → public/hidden), `activity_state.py` (global-tombstone facade), `public_activity.py`, `history_query.py` (edit-history read + split-group/resolved-by-edit indexes), `stats.py`, `search_normalize.py` (mirrors FE `normalizeArabic`) |
 | `reference/` | Static Quran reference payloads + timestamps server + public dashboard mapper. | `quran_refs.py` (DK words + verse word counts, one immutable asset), `timestamps.py` (manifest + per-chapter shard server, gzip LRU — shard schema in [shards.md](shards.md)), `public_state.py` (ReciterRow → six-bucket public taxonomy, strips identity) |
-| `quran_foundation/` | Quran.Foundation API integration (OAuth user APIs + content APIs + bookmarks). | `oauth.py`, `content.py`, `bookmarks.py`, `reciter_map.py`, `session.py` (signed `qf_session` cookie), `config.py` — see [Quran Foundation integration](#quran-foundation-integration) |
 
 ## Routes registry
 
@@ -65,9 +64,6 @@ Blueprints register in `routes/__init__.py::register_blueprints`. Subpackage `__
 | `/api/seg` | `audio_proxy` | `routes/audio/proxy.py` | `/audio-proxy/<reciter>` — bucket-resident audio streamed by `routes/audio/range_file.py` (1 MB reads; NOT `send_file`, whose Range path reads the NFS mount 8 KB at a time → ~150 KB/s); CDN **stream-through** fallback (same-origin 200/206 + ACAO, not a 302) |
 | `/api/audio` | `audio_meta` | `routes/audio/metadata.py` | Audio tab metadata |
 | `/api/seg` | `segment_clip` | `routes/audio/clip.py` | `/segment-clip` — ffmpeg MP3 window clip (VBR-safe seek) |
-| `/api/qf` | `qf_auth` | `routes/qf_auth.py` | Quran.Foundation OAuth2 (pre-prod user APIs) |
-| `/api/qf/content` | `qf_content` | `routes/qf_content.py` | QF Content-API read proxy (word-by-word translations) |
-| `/api/bookmarks` | `bookmarks` | `routes/bookmarks.py` | QF bookmarks proxy (`[]` for anonymous) |
 | `/` + static | (Flask static) | `app.py` | SPA shell `frontend/dist/index.html`; `/api/surah-info` cross-tab route |
 
 `_admin_helpers.py` (package root, not a blueprint) is shared by `admin/` + `claims/` routes.
@@ -135,23 +131,6 @@ All mutable cache vars live in `services/storage/cache.py` (`services.cache`); n
 - **Peaks:** `_PEAKS_RESPONSE_CACHE` (global LRU, 50 entries, serialized JSON bytes), thread-safe with explicit locks.
 
 Invalidation hook: `invalidate_seg_caches(reciter)` runs on every save/undo. The surgical variant `pop_seg_caches_affected_by_segment_edit` preserves append-in-place caches (history batches, split-group index) and immutable ones (pipeline-meta). The chapter-peaks LRU (`_PEAKS_RESPONSE_CACHE`) is **deliberately NOT** evicted on save — peaks track immutable audio bytes, not segment edits; it sheds only via its own 50-entry LRU and an explicit `pop_reciter_peaks_response_cache` wherever a future path rewrites bucket peaks. Add a new cache here with its invalidation tied to the mutation that dirties it.
-
-## Quran Foundation integration
-
-`services/quran_foundation/` integrates the Quran.Foundation (QF) APIs. No standalone doc — this is the reference.
-
-Backend-proxy pattern: per-user OAuth2 tokens stay server-side in a signed `qf_session` cookie; the browser never sees them. Outbound QF calls inject `x-auth-token` + `x-client-id`. Two-environment split (never mix tokens): **User APIs** (bookmarks) use the pre-prod client + `apis-prelive` base; **Content APIs** use the prod client (`client_credentials`, HTTP Basic). All modules Flask-free; only `routes/qf_*` + `routes/bookmarks.py` import Flask.
-
-| File | Role |
-|---|---|
-| `oauth.py` | authorization_code + PKCE helpers (pre-prod); token endpoint requires `client_secret_basic` |
-| `content.py` | Content API (`client_credentials`) — full-surah audio URLs, word-by-word translations |
-| `bookmarks.py` | Bookmarks proxy → QF `/auth/v1/bookmarks` + dev in-memory store; normalizes to `{surah, ayah, key}` |
-| `reciter_map.py` | `(reciter_id, style)` → QF chapter-reciter id for verified reciters |
-| `session.py` | Signed `qf_session` cookie holding the per-user token server-side (itsdangerous) |
-| `config.py` | Env-driven endpoints + credentials (pre-prod OAuth issuer, user-API base, auth method) |
-
-Routes: `routes/qf_auth.py` (`/api/qf` — OAuth2 login/callback + dev-stub login), `routes/qf_content.py` (`/api/qf/content` — read-only word-by-word for the Timestamps Analysis view), `routes/bookmarks.py` (`/api/bookmarks` — returns `[]` for anonymous so the FE silently stays app-local). QF caches (content token, chapter URLs, token cooldown, WBW translations) live in `services/storage/cache.py`.
 
 ## Reference index — which sibling doc per task
 

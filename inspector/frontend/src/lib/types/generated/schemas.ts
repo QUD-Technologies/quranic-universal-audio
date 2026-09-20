@@ -667,8 +667,16 @@ export interface Announcement {
   body?: string | null;
   created_at: string;
 }
+/**
+ * One chapter's playback metadata in the ``surahs`` map.
+ *
+ * ``duration_ms`` is ``None`` only when the manifest carries no duration and
+ * the slim-peaks fallback also cannot provide one. Both keys are always
+ * serialized.
+ */
 export interface AudioSurahEntry {
-  [k: string]: unknown;
+  url: string;
+  duration_ms: number | null;
 }
 /**
  * ``GET /api/audio/surahs/<category>/<source>/<slug>`` success body.

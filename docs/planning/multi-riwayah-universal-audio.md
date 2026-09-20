@@ -30,7 +30,6 @@ All settled. Do not re-litigate.
 | **D6** | The Inspector takes a **real pip dependency on `qua-domain`** installed from the pinned `Hetchy/qua` Git commit, exactly like `qua-aligner-app/src/core/install_sdk.py`. **No bucket export.** WAS: `qua-sdk` is **not** installed. | Owner decision + DRY. `qua-domain` is `dependencies = []`, pure stdlib, `requires-python >=3.11`, ~12 MB. `qua-sdk` needs a Cython DP extension + numpy + a build toolchain on alpine, and its two projection entry points (`project_alignment`, `refresh_target_coverage`) take an SDK `Alignment` object the Inspector never holds — they belong to the offline Katana pipeline. |
 | **D7** | Every coordinate the Inspector shows or edits is the **delivery's own edition coordinate**. Words render in the edition font. The ayah marker is the edition's own marker shape. | Owner decision. Mirrors the aligner: `verse_marker_prefix()` returns U+06DD for Hafs (Digital Khatt needs it) and `""` for the other three (the paired QPC fonts decorate the Arabic-Indic digits directly). |
 | **D8** | WAS: **`@quranic-phonemizer/cells` is NOT changed and NOT re-pinned.** Word-profile rows render in a new Inspector-owned `WordTimedRow.svelte`. | The package renders the *native schema-2 cell wire*; a proxy-timed word row has no cells, sounds, columns, groups, or rule occurrences, and `parse()`/`parseCompact()` throw on a degenerate wire. Per-edition font is already a host `--qc-arabic`/`--qc-connected` token override (`styles/timestamps.css:30-31`); the ayah marker is drawn by the Inspector, not the package. See §12 for the release/re-pin mechanism, kept documented for the day a *native* non-Hafs phonemizer lands (that is a producer schema bump, hence a `cells` major). |
-| **D9** | Word-by-word translations are **reverse-projected server-side**. `GET /api/qf/wbw/<s>/<a>?riwayah=<slug>` maps target words back to source words before the QF lookup and re-keys the result to target coordinates. | Owner decision. Glosses are keyed in Hafs/Uthmani `surah:ayah:word`. Server-side keeps the FE's join key (`TsWord.location`) unchanged. |
 | **D10** | Teleprompter for non-Hafs is word-only animation, edition font, word-level highlight. **No per-edition shaped-glyph fixtures.** | Owner decision. `LineAnimation.svelte:84` already defaults to `EMPTY_SHAPED_GLYPHS` and falls through to the plain-text branch. Zero new rendering code. |
 | **D11** | `auto_split_v1` is produced for non-Hafs. | Owner decision. Beam-30 MFA is wide enough to place a section cut; Auto Split already degrades to plain Split when `refs` is null. |
 | **D12** | `low_confidence_v2.json` and `ts_validation.json` are **not produced** for non-Hafs. Registry rows stay; counts emit 0; accordions hide. | Owner decision. Both are tight-beam MFA probes against Hafs proxy phones — the signal degenerates to "this is not Hafs". |
@@ -622,7 +621,6 @@ Gate on the **shard's own** `_meta.profile`, not the manifest riwayah.
 | Shaped glyphs | `shaped-glyphs.ts` | **no change** — the existing fallback covers it (D10) |
 | Ayah marker | `LineAnimation.svelte:43` `AYAH_END` | edition-derived prefix (D7) |
 | Font | `styles/timestamps.css:30-31` `--qc-connected` | `var(--font-quran, 'DigitalKhatt', ...)` |
-| WBW translations | `stores/display.ts:66`, `services/quran_foundation/content.py:186`, `routes/qf_content.py:35` | server-side reverse projection (D9); cache key `(verse_key, lang, riwayah)` |
 | ts-validation accordion | `TsValidationPanel.svelte` | verify it degrades on an absent sidecar |
 | Proxy-timing badge | Timestamps header | one i18n'd badge: word timings from a Hafs proxy alignment |
 
@@ -842,8 +840,8 @@ with the last carrying `verse_end: 1`.
 
 Expect: the reciter appears in the Timestamps dropdown; the analysis view renders word cells in the
 Qalun font; Letters/Phonemes/Wipe/Tajweed are disabled with explanatory titles; the proxy-timing
-badge shows; the teleprompter animates word-by-word with no shaped SVG; word translations show the
-reverse-projected gloss; the report drop-up offers only `audio` / `timing(word,boundary)` /
+badge shows; the teleprompter animates word-by-word with no shaped SVG; the report drop-up offers
+only `audio` / `timing(word,boundary)` /
 `silence` / `other`.
 
 ### 11.4 Screenshots + regression

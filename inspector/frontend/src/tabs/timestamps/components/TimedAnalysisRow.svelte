@@ -16,10 +16,8 @@
         lettersVisible,
         phonemesVisible,
         wipeActive,
-        showTranslations,
         tsHoveredElement,
         tsWaveformHoverTime,
-        verseTranslations,
     } from '../stores/display';
     import { focusWaslGroup, loadedVerse } from '../stores/verse';
     import { loopTarget } from '../stores/playback';
@@ -46,7 +44,6 @@
         ruleIdsFromEl,
         targetCellKey,
     } from '../utils/report-target';
-    import WordTranslation from './WordTranslation.svelte';
 
     let root: HTMLDivElement;
     let entities: TimedEntity[] = [];
@@ -232,7 +229,6 @@
     $effect(() => {
         void $lettersVisible;
         void $phonemesVisible;
-        void $showTranslations;
         void tick().then(recomputeRowGap);
     });
 
@@ -484,12 +480,6 @@
     });
 </script>
 
-{#snippet addon(word: { location: string })}
-    {#if $showTranslations}
-        <WordTranslation text={$verseTranslations[word.location] ?? ''} />
-    {/if}
-{/snippet}
-
 <div
     class="timed-analysis"
     role="toolbar"
@@ -519,7 +509,6 @@
                 showTooltips={false}
                 hostClasses={hostClasses(item)}
                 keepBoundaryWithNext={keepBoundaryWithNext(item)}
-                wordAddon={addon}
             />
         </div>
     {/each}

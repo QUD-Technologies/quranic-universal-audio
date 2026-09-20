@@ -242,16 +242,6 @@
             const entry = urls[String(surahNum)];
             if (entry) {
                 const url = entry.url;
-                if (entry.via === 'qf_api') {
-                    console.log(
-                        '[qf-audio] ▶ routed via Quran.Foundation API:',
-                        url,
-                        '— overrides our link:',
-                        entry.originUrl,
-                    );
-                } else if (entry.via === 'qf_fallback') {
-                    console.warn('[qf-audio] API unavailable — using our CDN link:', url);
-                }
                 // Per-URL probe (host CORS+Range AND native-seek header check —
                 // see play-url.ts) so a Xing-tagged chapter stays proxied.
                 await probeDirectPlayable(url);
@@ -551,7 +541,7 @@
         const entry = urls[String(surahNum)];
         if (!entry) return;
 
-        const cdnUrl = entry.originUrl ?? entry.url;
+        const cdnUrl = entry.url;
         const filename = `${delivery.slug}-${String(surahNum).padStart(3, '0')}.mp3`;
         const href = cdnUrl.startsWith('/api/')
             ? cdnUrl

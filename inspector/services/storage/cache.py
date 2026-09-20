@@ -527,52 +527,6 @@ def pop_audio_url_cache(slug: str) -> None:
             _audio_url.pop(key)
 
 
-# Quran.Foundation Content API. Token is a single client_credentials grant
-# shared process-wide ({access_token, expires_at}); chapter-URL maps are keyed
-# by the QF chapter-reciter id (stringified). Content is immutable, so the
-# only invalidation is the token's own TTL — no mutation hook needed.
-_qf_content_token: _SingletonCache[dict] = _SingletonCache()
-_qf_chapter_urls: _KeyedCache[dict] = _KeyedCache()
-# Unix ts until which token minting should fast-fail after an upstream failure,
-# so an outage doesn't make every concurrent request hang on a long timeout.
-_qf_token_cooldown: _SingletonCache[float] = _SingletonCache()
-# Word-by-word translations, keyed by "<verse_key>|<language>" (e.g.
-# "2:255|ur"). Content is immutable — no mutation hook, just LRU eviction.
-_qf_wbw: _KeyedCache[dict] = _KeyedCache()
-
-
-def get_qf_content_token() -> dict | None:
-    return _qf_content_token.get()
-
-
-def set_qf_content_token(token: dict) -> None:
-    _qf_content_token.set(token)
-
-
-def get_qf_chapter_urls(qf_reciter_id: str) -> dict | None:
-    return _qf_chapter_urls.get(qf_reciter_id)
-
-
-def set_qf_chapter_urls(qf_reciter_id: str, urls: dict) -> None:
-    _qf_chapter_urls.set(qf_reciter_id, urls)
-
-
-def get_qf_wbw(key: str) -> dict | None:
-    return _qf_wbw.get(key)
-
-
-def set_qf_wbw(key: str, words: dict) -> None:
-    _qf_wbw.set(key, words)
-
-
-def get_qf_token_cooldown() -> float | None:
-    return _qf_token_cooldown.get()
-
-
-def set_qf_token_cooldown(until: float) -> None:
-    _qf_token_cooldown.set(until)
-
-
 # Audio manifest sidecar (catalog/audio_manifest/<slug>.json) + derived
 # URL → chapter-key inverse index. Both populated together by
 # ``services/audio/audio_meta._load_sidecar`` on first read. The inverse

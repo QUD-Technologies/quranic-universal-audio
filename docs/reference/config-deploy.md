@@ -105,16 +105,6 @@ The image bakes the **dev** bucket as default (`INSPECTOR_BUCKET_REPO=hetchyy/qu
 
 > The error strings in `secrets_guard.py` still reference a `scripts.inspector_v2_seed.setup_space` provisioning module that no longer exists — secrets are now set by hand in the Space secrets panel. Treat that hint as stale.
 
-### Quran Foundation (see `architecture.md` → QF integration)
-
-| Var | Read by | Purpose |
-|---|---|---|
-| `QF_PREPROD_CLIENT_ID` / `QF_PREPROD_CLIENT_SECRET` | `services/quran_foundation/config.py` | User-API (bookmarks/collections) pre-prod OAuth client. `client_secret_basic` only. |
-| `QF_OAUTH_REDIRECT_URI` | same | Registered callback; default `http://localhost:5001/api/qf/callback`. Must match the QF client exactly. |
-| `QF_CONTENT_CLIENT_ID` / `QF_CONTENT_CLIENT_SECRET` | same | Content-API server-to-server (`client_credentials`) client. Production endpoints. |
-
-Local QF creds live in `inspector/.env` (gitignored), loaded by `app.py`.
-
 ### Misc tunables (env-overridable constants)
 
 | Var | Default | Purpose |

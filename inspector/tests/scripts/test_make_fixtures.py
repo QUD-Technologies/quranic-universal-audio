@@ -43,7 +43,7 @@ def _seed_source(tmp_path: Path) -> Path:
     c.execute("INSERT INTO users(hf_user_id, login_cache) VALUES ('u-real','realperson')")
     for tbl in ("riwayahs", "styles"):
         c.execute(f"INSERT INTO {tbl}(slug, short, name) VALUES ('hafs','H','Hafs')")
-    c.execute("INSERT INTO sources(slug, name) VALUES ('qf','Quran Foundation')")
+    c.execute("INSERT INTO sources(slug, name) VALUES ('source_a','Source A')")
     c.execute("INSERT INTO channels(slug, short, name) VALUES ('web','W','Web')")
     c.execute("INSERT INTO recording_contexts(slug, name) VALUES ('prayer','Prayer')")
     c.execute("INSERT INTO reciters(reciter_id, name_en) VALUES ('rec1','Reciter One')")
@@ -52,7 +52,7 @@ def _seed_source(tmp_path: Path) -> Path:
         c.execute(
             "INSERT INTO deliveries(slug, reciter_id, riwayah, style, source, channel, "
             "audio_category, chapter_count, added_at, added_by_hf_id) "
-            "VALUES (?, 'rec1','hafs','hafs','qf','web','by_surah',114,'2024-01-01T00:00:00+00:00','u-real')",
+            "VALUES (?, 'rec1','hafs','hafs','source_a','web','by_surah',114,'2024-01-01T00:00:00+00:00','u-real')",
             (slug,),
         )
     # A transition (PII: actor identity) that a state row references.

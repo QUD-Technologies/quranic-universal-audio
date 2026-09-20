@@ -33,9 +33,6 @@ export const showLetters = writable<boolean>(true);
 /** Analysis mode: toggle phoneme row + cross-word bridge visibility. */
 export const showPhonemes = writable<boolean>(true);
 
-/** Analysis mode: toggle the word-by-word translation row (above each word). */
-export const showTranslations = writable<boolean>(false);
-
 /** Analysis-mode highlight style. false = discrete fill (a cell crisply lights
  *  and fades), true = continuous karaoke wipe (the fill tracks the voice across
  *  each cell). Self-persisted here (the boolean toggles above are persisted from
@@ -56,15 +53,6 @@ highlightWipe.subscribe((v) => {
         /* private mode / storage disabled — in-memory only */
     }
 });
-
-/** ISO code of the chosen word-by-word translation language (default English). */
-export const translationLanguage = writable<string>('en');
-
-/** location ("surah:ayah:word") → gloss for the loaded verse's ayah(s).
- *  `{}` when translations are off or none loaded. Populated lazily by
- *  TimestampsTab; rendered statically by TimedAnalysisRow (never per-frame, so
- *  it stays out of the playback-highlight hot path). */
-export const verseTranslations = writable<Record<string, string>>({});
 
 /** Timestamps /api/ts/config — load once, drive CSS variables. null = not loaded yet. */
 export const tsConfig = writable<TsConfigResponse | null>(null);

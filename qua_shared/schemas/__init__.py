@@ -52,13 +52,13 @@ from .bucket.ts_shard import (
     TsNativeProfile,
     TsShardDoc,
     TsShardMeta,
-    TsWordShardDoc,
-    TsWordShardMeta,
-    TsWordShardReading,
     TsShardPart,
     TsShardReading,
     TsShardTiming,
     TsSoundTiming,
+    TsWordShardDoc,
+    TsWordShardMeta,
+    TsWordShardReading,
     TsWordTiming,
 )
 from .bucket.ts_validation import TsValidationDoc, TsValidationMeta, TsValidationVerse
@@ -106,7 +106,6 @@ from .wire.admin_permissions import (
     AdminPermissionGroup,
     AdminPermissionsResponse,
 )
-from .wire.align_runs import AlignRunStatus, AlignStartRequest
 from .wire.admin_requests import (
     AdminRequestCounts,
     AdminRequestRow,
@@ -135,8 +134,9 @@ from .wire.admin_users import (
     AdminVisitorStats,
     VisitorDayStat,
 )
+from .wire.align_runs import AlignRunStatus, AlignStartRequest
 from .wire.announcements import Announcement, AnnouncementAdmin, AnnouncementCreate
-from .wire.audio import AudioSurahEntry, AudioSurahsResponse, AudioVia
+from .wire.audio import AudioSurahEntry, AudioSurahsResponse
 from .wire.intake_requests import (
     IntakeAttestations,
     IntakeSource,
@@ -382,7 +382,6 @@ __all__ = [
     "AudioManifestSidecar",
     "AudioSurahEntry",
     "AudioSurahsResponse",
-    "AudioVia",
     "AuditRecord",
     "CAPABILITIES",
     "CAPABILITIES_BY_ID",

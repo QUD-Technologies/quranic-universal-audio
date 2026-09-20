@@ -265,9 +265,6 @@ A word-profile delivery:
   snapshots resolve through `ts_word_snapshot` (`verse` / `word` / `boundary`
   kinds only) — see [`ts-reports.md`](ts-reports.md);
 - omits filmstrip coverage badges (the mushaf verse index is the Hafs one);
-- gets word-by-word glosses reverse-projected server-side (**D9**) —
-  `GET /api/qf/wbw/<s>/<a>?riwayah=<inspector slug>`, cached per
-  `(verse_key, language, riwayah)`.
 
 ---
 

@@ -10,7 +10,7 @@ Where a reference doc here touches those domains (e.g. the route map in `archite
 
 | Doc | Read when working on |
 |---|---|
-| [architecture.md](architecture.md) | **Start here.** Backend layering, `services/` + `routes/` subpackage map, domain/adapters/utils, caching, app.py boot, Quran Foundation integration. |
+| [architecture.md](architecture.md) | **Start here.** Backend layering, `services/` + `routes/` subpackage map, domain/adapters/utils, caching, app.py boot. |
 | [database.md](database.md) | The SQLite substrate (`inspector.db`) — connection/txn/WAL, repos, migrations, bucket sync + db_seq CAS. Source of truth for state/catalog/access/audit/activity/claims/requests. |
 | [state-machine.md](state-machine.md) | Reciter lifecycle states, flags, transition matrix, events, `services/state/state.py`. |
 | [auth-permissions.md](auth-permissions.md) | HF OAuth identity, roles, permission predicates, edit-lock, CSRF, admin endpoints, audit actor, activity rails. |
