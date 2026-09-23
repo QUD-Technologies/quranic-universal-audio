@@ -415,12 +415,14 @@ kept runs stitched gaplessly (the no-match audio excised) — see
 Two licences, never mixed: the **timing data** (GH release assets, the HF dataset, any future API)
 ships under the custom **QUA Dataset License 1.0** (`LICENSE-DATA`, id `qua-dataset-1.0`, © QUD
 Technologies); the **code** is Apache-2.0 (`LICENSE`). Recitation audio is under neither (see
-`NOTICE.md`). Releases cut before the switch stay CC BY 4.0 — the licence is irrevocable for those copies.
+`NOTICE.md`). GH releases **≤ v3.0.0** and HF revisions whose card declares CC BY 4.0 stay CC BY 4.0 —
+irrevocable for those copies (LICENSE-DATA §18 puts the burden of proof on anyone claiming CC-BY-only provenance).
 
 - **Single source:** [`qua_shared/dataset_license.py`](../../qua_shared/dataset_license.py) owns the id,
   display name, repo filename and URL. The manifest `license` field (`ReleaseManifest.license`), the
   changelog footer (`render_changelog`), and the cut-modal preview (`release_preview`) all read it.
-- **GH release:** `cut_release` reads `LICENSE-DATA` and uploads it as the `LICENSE` asset;
+- **GH release:** `cut_release` reads `LICENSE-DATA` and uploads it as the `LICENSE` asset, and also packs it
+  as `LICENSE` inside every reciter zip (outside `content_hash`, so it never flips `change_kind`);
   `LICENSE-DATA` is a required staged file (`jobs/base.REQUIRED_STATIC_FILES`, cut-job preflight,
   `inspector/Dockerfile` COPY). GitHub has no download gate — acceptance is by download (release-body callout).
 - **HF dataset:** the card template frontmatter is `license: other` / `license_name: qua-dataset-1.0` /

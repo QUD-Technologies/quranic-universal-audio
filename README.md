@@ -96,8 +96,8 @@ To contribute code to the repo directly, fork the repo and see [inspector/README
 
 Qur'anic Universal Audio is a product of [QUD Technologies](https://qud.dev).
 
-- **Timing data** (timestamps, segmentation, alignment, catalog metadata — GitHub releases, Hugging Face dataset, any API): [QUA Dataset License 1.0](LICENSE-DATA). Free to use, including in commercial products, as long as every feature the data touches — directly or through a model trained, fine-tuned, evaluated or benchmarked on it — is free for every user, fully accessible, and in an app with no advertising. No selling the data; derivatives share the same license; credit QUD Technologies.
+- **Timing data** (timestamps, segmentation, alignment, catalog metadata — GitHub releases, Hugging Face dataset, any API): [QUA Dataset License 1.0](LICENSE-DATA). Free to use, including in commercial products, as long as any app or feature using this data, or a model trained, fine-tuned, distilled, evaluated or benchmarked on it (or on such a model's output), must be free for every user and fully accessible — not behind, restricted to, or enhanced in a paid tier — in an app that is itself free and shows no advertising; other, unrelated features may be paid. No selling the data; derivatives share the same license; credit QUD Technologies.
 - **Code**: [Apache License 2.0](LICENSE).
 - **Recitation audio**: remains the property of its reciters and original upstream sources; not relicensed.
 
-Releases published before the QUA Dataset License took effect remain under CC BY 4.0. See [NOTICE](NOTICE.md) for sources and details.
+See [NOTICE](NOTICE.md) for sources and details.

@@ -6,13 +6,14 @@ extra_gated_heading: Accept the QUA Dataset License 1.0 to access this dataset
 extra_gated_prompt: |
   This dataset is distributed under the **QUA Dataset License 1.0** by QUD Technologies. By requesting access you agree to its terms, including:
 
-  - **Free access.** Any app or feature that uses this data, or a model trained, fine-tuned, evaluated or benchmarked on it, must be free for every user: no charge, no paid tier, no partial or gated access. The app itself must be free; other, unrelated features may be paid.
+  - **Free access.** Any app or feature that uses this data, or a model trained, fine-tuned, distilled, evaluated or benchmarked on it (or on such a model's output), must be free for every user: no charge, not behind, restricted to, or enhanced in a paid tier, no partial or gated access. The app itself must be free; other, unrelated features may be paid.
   - **No advertising** anywhere in an app that uses this data or such a model.
   - **No selling** the data or access to it, including through a paid API or to another business.
   - **Share-alike.** Derivatives, including models, may only be distributed under this license.
+  - **Declaration and disclosure.** Published models and datasets must state they used QUA, and you must answer truthfully if QUD Technologies asks whether a model or feature used it.
   - **Attribution** to QUD Technologies - Qur'anic Universal Audio (https://qud.dev).
 
-  Recitation audio is not covered by this license and remains the property of its reciters and sources. Read the full license before accepting.
+  Recitation audio, Qur'an text editions and fonts are not covered by this license and remain under their own terms. Read the full license before accepting.
 extra_gated_fields:
   Name: text
   Organisation (or "individual"): text
@@ -149,12 +150,10 @@ print(catalog[0]["name_en"], catalog[0]["riwayah"])
 
 - Best for quick access to verse audio and timestamps together, ayah-by-ayah playback, and ML research.
 - Also see [GitHub Releases](https://github.com/QUD-Technologies/quranic-universal-audio/releases/latest), a parallel format using JSON files with versioning and checksums, suitable for offline usage.
-- Recitation audio is not relicensed, and remains the property of upstream sources/reciters.
+- Recitation audio, Qur'an text editions and fonts are not relicensed, and remain under their own terms (see NOTICE).
 
 ## License
 
 [QUA Dataset License 1.0](https://github.com/QUD-Technologies/quranic-universal-audio/blob/main/LICENSE-DATA) (`qua-dataset-1.0`), by [QUD Technologies](https://qud.dev).
 
-In short: use it freely, including in commercial products, as long as every feature this data touches (directly, or through a model trained, fine-tuned, evaluated or benchmarked on it) is free for every user, fully accessible, and in an app with no advertising. Don't sell the data. Share derivatives under the same license. Credit QUD Technologies - Qur'anic Universal Audio. The full license text governs.
-
-Data obtained from releases published before this license took effect remains under CC BY 4.0.
+In short: use it freely, including in commercial products, as long as any app or feature using this data, or a model trained, fine-tuned, distilled, evaluated or benchmarked on it (or on such a model's output), must be free for every user and fully accessible - not behind, restricted to, or enhanced in a paid tier - in an app that is itself free and shows no advertising; other, unrelated features may be paid. Don't sell the data. Share derivatives under the same license. Credit QUD Technologies - Qur'anic Universal Audio. The full license text governs.
