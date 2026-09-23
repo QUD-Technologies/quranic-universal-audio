@@ -19,6 +19,7 @@ import hashlib
 import hmac
 import json
 import os
+import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -32,6 +33,17 @@ _PROFILE_ID = "timing.timestamps@v1"
 _SECRET_VERSION = "v1"
 
 DEFAULT_SPACE_URL = "https://hetchyy-qua-batch-timing-prod.hf.space"
+DEFAULT_SPACE_REPO = "hetchyy/qua-batch-timing-prod"
+
+_WAKEABLE_STAGES = {"PAUSED", "SLEEPING"}
+_STARTING_STAGES = {
+    "BUILDING",
+    "APP_STARTING",
+    "RUNNING_BUILDING",
+    "RUNNING_APP_STARTING",
+}
+_WAKE_TIMEOUT_SECONDS = 300
+_WAKE_POLL_SECONDS = 3
 
 
 class TsSpaceError(RuntimeError):
@@ -105,6 +117,74 @@ def space_url() -> str:
     return os.environ.get("INSPECTOR_TS_SPACE_URL", DEFAULT_SPACE_URL).rstrip("/")
 
 
+def space_repo() -> str:
+    """Hub repo backing :func:`space_url`, used only for lifecycle recovery."""
+    return os.environ.get("INSPECTOR_TS_SPACE_REPO", DEFAULT_SPACE_REPO).strip()
+
+
+def _wake_unavailable_space(hf_token: str | None) -> bool:
+    """Wake a sleeping/paused timing Space and wait until it can accept work.
+
+    Returns ``True`` when the caller should retry its POST. A 503 from a Space
+    that Hub already considers RUNNING is left alone: that is an application
+    failure, and factory-restarting it here would hide the real fault.
+    """
+    if not hf_token:
+        return False
+
+    from huggingface_hub import HfApi
+    from huggingface_hub.errors import HfHubHTTPError
+
+    api = HfApi(token=hf_token)
+    repo_id = space_repo()
+    try:
+        runtime = api.space_info(repo_id).runtime
+        stage = str(getattr(runtime, "stage", "") or "").upper()
+        if stage in _WAKEABLE_STAGES:
+            try:
+                api.restart_space(repo_id=repo_id, factory_reboot=False)
+            except HfHubHTTPError:
+                # Another request may have won the wake race. Re-read below;
+                # only a transition/running stage is accepted as recovery.
+                runtime = api.space_info(repo_id).runtime
+                stage = str(getattr(runtime, "stage", "") or "").upper()
+                if stage not in _STARTING_STAGES and stage != "RUNNING":
+                    raise
+        elif stage not in _STARTING_STAGES:
+            return False
+
+        deadline = time.monotonic() + _WAKE_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            runtime = api.space_info(repo_id).runtime
+            stage = str(getattr(runtime, "stage", "") or "").upper()
+            if stage == "RUNNING":
+                return True
+            if stage not in _WAKEABLE_STAGES and stage not in _STARTING_STAGES:
+                raise TsSpaceError(
+                    f"timestamps Space could not wake (Hub runtime stage {stage or 'unknown'})"
+                )
+            time.sleep(_WAKE_POLL_SECONDS)
+    except TsSpaceError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — Hub client has several transport errors
+        raise TsSpaceError(f"timestamps Space wake failed: {exc}") from exc
+
+    raise TsSpaceError(
+        f"timestamps Space did not wake within {_WAKE_TIMEOUT_SECONDS} seconds"
+    )
+
+
+def _post_run(body: dict[str, Any], secret: bytes, hf_token: str | None):
+    """Sign and POST one accept attempt with a fresh timestamp and nonce."""
+    import requests
+
+    raw, headers = _sign_headers(body, secret, hf_token)
+    try:
+        return requests.post(space_url() + _ROUTE, data=raw, headers=headers, timeout=30)
+    except requests.RequestException as exc:
+        raise TsSpaceError(f"timestamps Space unreachable: {exc}") from exc
+
+
 def start_run(
     slug: str,
     *,
@@ -137,14 +217,13 @@ def start_run(
     if riwayah != DEFAULT_SDK_RIWAYAH:
         body["riwayah"] = riwayah
 
-    raw, headers = _sign_headers(body, _secret(), get_token())
-
-    import requests
-
-    try:
-        resp = requests.post(space_url() + _ROUTE, data=raw, headers=headers, timeout=30)
-    except requests.RequestException as exc:
-        raise TsSpaceError(f"timestamps Space unreachable: {exc}") from exc
+    secret = _secret()
+    hf_token = get_token()
+    resp = _post_run(body, secret, hf_token)
+    if resp.status_code == 503 and _wake_unavailable_space(hf_token):
+        # The proxy rejected the first request before the engine saw it. Sign a
+        # new attempt after wake so its timestamp/nonce are fresh.
+        resp = _post_run(body, secret, hf_token)
     if resp.status_code // 100 != 2:
         raise TsSpaceError(f"timestamps Space {resp.status_code}: {resp.text[:300]}")
     try:
