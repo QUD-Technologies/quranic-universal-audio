@@ -57,7 +57,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     import { isSampleMode } from '../../stores/samples';
     import { missingWordsSegKeys } from '../../stores/validation';
     import { deriveRowChips, type RowChip } from '../../utils/samples/chips';
-    import { timingsMatchRef } from '../../utils/samples/word-timing';
+    import { displayWordsForTimings, timingsMatchRef } from '../../utils/samples/word-timing';
     import {
         chapterIndexKey,
         flashSegmentIndices,
@@ -315,6 +315,13 @@ import type { Segment } from '../../../../lib/types/view-models';
     $: reviewWordTimings = $isSampleMode && timingsMatchRef(bodyRef, seg.word_timings)
         ? (seg.word_timings ?? [])
         : [];
+    $: reviewDisplayWords = displayWordsForTimings(
+        reviewWordTimings,
+        bodyText,
+        $quranRefs?.dk_words,
+        $quranRefs?.verse_word_counts,
+        $quranRefs?.verse_marker_prefix ?? '۝',
+    );
     $: confText = (void segStoreTick, seg.matched_ref ? ((seg.confidence ?? 0) * 100).toFixed(1) + '%' : tr($localeStore, m.segments_row_conf_fail_label()));
     $: indexLabel = (showChapter && seg.chapter != null)
         ? `${seg.chapter}:#${seg.index}`
@@ -1159,7 +1166,7 @@ import type { Segment } from '../../../../lib/types/view-models';
             {/if}
         </div>
         <div class="seg-text-body" class:seg-history-changed={changedRef}>
-            {#if reviewWordTimings.length > 0}
+            {#if reviewDisplayWords.length > 0}
                 {#each reviewWordTimings as word, wordIndex (`${word.location}:${word.start_ms}`)}
                     <span
                         class="seg-review-word"
@@ -1167,7 +1174,7 @@ import type { Segment } from '../../../../lib/types/view-models';
                             && $activeWordCursor?.chapter === rowChapter
                             && $activeWordCursor?.index === seg.index
                             && $activeWordCursor?.wordIndex === wordIndex}
-                    >{word.word}</span>
+                    >{reviewDisplayWords[wordIndex]}</span>{#if wordIndex < reviewWordTimings.length - 1}{' '}{/if}
                 {/each}
             {:else}
                 {bodyText}
@@ -1186,7 +1193,6 @@ import type { Segment } from '../../../../lib/types/view-models';
     .seg-chip-warn { background: var(--state-error-bg); border-color: oklch(0.86 0.130 75 / 0.4); color: var(--state-error-fg); }
     .seg-review-word {
         display: inline;
-        padding: 0.08em 0.14em;
         border-radius: 0.25em;
         transition: color var(--t-fast) var(--ease-out-quart), background var(--t-fast) var(--ease-out-quart);
     }

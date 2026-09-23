@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { timingsMatchRef, wordIndexAt } from '../../utils/samples/word-timing';
+import { displayWordsForTimings, timingsMatchRef, wordIndexAt } from '../../utils/samples/word-timing';
 
 const timings = [
     { word: 'one', location: '35:1:1', start_ms: 100, end_ms: 200 },
@@ -20,5 +20,14 @@ describe('sample word timing', () => {
         expect(timingsMatchRef('35:1:1-35:1:2', timings)).toBe(true);
         expect(timingsMatchRef('35:1:1-35:1:3', timings)).toBe(false);
         expect(timingsMatchRef('Basmala', timings)).toBe(false);
+    });
+
+    it('highlights the same Quran text as the ordinary row, including verse markers', () => {
+        const words = { '35:1:1': 'ٱلْحَمْدُ', '35:1:2': 'لِلَّهِ' };
+        const display = 'ٱلْحَمْدُ لِلَّهِ ۝١';
+        expect(displayWordsForTimings(timings, display, words, { '35:1': 2 }, '۝'))
+            .toEqual(['ٱلْحَمْدُ', 'لِلَّهِ ۝١']);
+        expect(displayWordsForTimings(timings, display, { '35:1:1': 'ٱلْحَمْدُ' }, { '35:1': 2 }, '۝'))
+            .toEqual([]);
     });
 });
