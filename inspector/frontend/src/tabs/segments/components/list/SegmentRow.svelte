@@ -57,12 +57,14 @@ import type { Segment } from '../../../../lib/types/view-models';
     import { isSampleMode } from '../../stores/samples';
     import { missingWordsSegKeys } from '../../stores/validation';
     import { deriveRowChips, type RowChip } from '../../utils/samples/chips';
+    import { timingsMatchRef } from '../../utils/samples/word-timing';
     import {
         chapterIndexKey,
         flashSegmentIndices,
         targetSegmentIndex,
     } from '../../stores/navigation';
     import {
+        activeWordCursor,
         isMainAudioPlaying,
         playingSegmentIndex,
         segListElement,
@@ -310,6 +312,9 @@ import type { Segment } from '../../../../lib/types/view-models';
         }
         return _addVerseMarkers(text, bodyRef, $quranRefs?.verse_word_counts) || text;
     })();
+    $: reviewWordTimings = $isSampleMode && timingsMatchRef(bodyRef, seg.word_timings)
+        ? (seg.word_timings ?? [])
+        : [];
     $: confText = (void segStoreTick, seg.matched_ref ? ((seg.confidence ?? 0) * 100).toFixed(1) + '%' : tr($localeStore, m.segments_row_conf_fail_label()));
     $: indexLabel = (showChapter && seg.chapter != null)
         ? `${seg.chapter}:#${seg.index}`
@@ -1153,7 +1158,21 @@ import type { Segment } from '../../../../lib/types/view-models';
                 <div class="seg-text-label">{contextLabel}</div>
             {/if}
         </div>
-        <div class="seg-text-body" class:seg-history-changed={changedRef}>{bodyText}</div>
+        <div class="seg-text-body" class:seg-history-changed={changedRef}>
+            {#if reviewWordTimings.length > 0}
+                {#each reviewWordTimings as word, wordIndex (`${word.location}:${word.start_ms}`)}
+                    <span
+                        class="seg-review-word"
+                        class:active={$isMainAudioPlaying
+                            && $activeWordCursor?.chapter === rowChapter
+                            && $activeWordCursor?.index === seg.index
+                            && $activeWordCursor?.wordIndex === wordIndex}
+                    >{word.word}</span>
+                {/each}
+            {:else}
+                {bodyText}
+            {/if}
+        </div>
     </div>
 </div>
 
@@ -1165,6 +1184,16 @@ import type { Segment } from '../../../../lib/types/view-models';
         font-size: 10.5px; font-family: var(--font-mono); color: var(--text-secondary); white-space: nowrap;
     }
     .seg-chip-warn { background: var(--state-error-bg); border-color: oklch(0.86 0.130 75 / 0.4); color: var(--state-error-fg); }
+    .seg-review-word {
+        display: inline;
+        padding: 0.08em 0.14em;
+        border-radius: 0.25em;
+        transition: color var(--t-fast) var(--ease-out-quart), background var(--t-fast) var(--ease-out-quart);
+    }
+    .seg-review-word.active {
+        color: var(--accent-fg);
+        background: var(--accent);
+    }
 
     /* ---- Flag button (manual "needs a second look") ---- */
     /* A peer of the play/go-to controls. Idle reads as a quiet outline; an

@@ -63,6 +63,8 @@ def get_chapter_data(reciter: str, chapter: int, verse_filter: str | None = None
                 seg_dict["ignored_categories"] = ["_all"]
             if seg.get("is_wasl"):
                 seg_dict["is_wasl"] = True
+            if seg.get("word_timings"):
+                seg_dict["word_timings"] = seg["word_timings"]
             segments.append(seg_dict)
             idx += 1
 

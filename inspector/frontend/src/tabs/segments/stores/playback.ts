@@ -142,6 +142,28 @@ export interface PlayingSegment {
 }
 export const playingSegmentIndex = writable<PlayingSegment | null>(null);
 
+/** Word interval currently sounding inside the active review sample row. */
+export interface ActiveWordCursor {
+    chapter: number;
+    index: number;
+    wordIndex: number;
+}
+export const activeWordCursor = writable<ActiveWordCursor | null>(null);
+
+/** Identity guard keeps the playback rAF from waking Svelte every frame. */
+export function setActiveWordCursor(next: ActiveWordCursor | null): void {
+    activeWordCursor.update((cur) => {
+        if (next == null) return cur == null ? cur : null;
+        if (
+            cur
+            && cur.chapter === next.chapter
+            && cur.index === next.index
+            && cur.wordIndex === next.wordIndex
+        ) return cur;
+        return { ...next };
+    });
+}
+
 /** Identity-guarded setter for `playingSegmentIndex` so the 60fps rAF tick
  *  does not allocate a fresh object when the active pair has not changed.
  *  Svelte's safe_not_equal returns true for any two object literals even

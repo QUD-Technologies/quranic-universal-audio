@@ -14,6 +14,8 @@ matching what the FE payload builders send.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from qua_shared.schemas.wire import seg as wire
@@ -99,6 +101,36 @@ def test_all_model_matches_live_response(installed):
     first = body["segments"][0]
     assert {"segment_uid", "entry_ref", "chapter"} <= _keys(first)
     assert "audio_url" not in first
+
+
+def test_segment_routes_expose_existing_word_timings(flask_client, tmp_reciter_dir):
+    reciter = "word_timing_sample"
+    tmp_reciter_dir.install(reciter, "112-ikhlas")
+    detailed_path = tmp_reciter_dir.root / reciter / "detailed.json"
+    detailed = json.loads(detailed_path.read_text(encoding="utf-8"))
+    first = detailed["entries"][0]["segments"][0]
+    first["word_timings"] = [
+        {
+            "word": "قُلْ",
+            "location": "112:1:1",
+            "start_ms": first["time_start"],
+            "end_ms": first["time_end"],
+        }
+    ]
+    detailed_path.write_text(
+        json.dumps(detailed, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    chapter = flask_client.get(f"/api/seg/data/{reciter}/112")
+    assert chapter.status_code == 200, chapter.get_data(as_text=True)
+    chapter_timing = chapter.get_json()["segments"][0]["word_timings"][0]
+    assert chapter_timing["location"] == "112:1:1"
+
+    all_rows = flask_client.get(f"/api/seg/all/{reciter}")
+    assert all_rows.status_code == 200, all_rows.get_data(as_text=True)
+    all_timing = all_rows.get_json()["segments"][0]["word_timings"][0]
+    assert all_timing["word"] == "قُلْ"
 
 
 def test_validate_model_matches_live_response(installed):
