@@ -11,7 +11,6 @@
     import { get, type Readable } from 'svelte/store';
 
     import { fetchJson } from '../../lib/api';
-    import { listSamples } from '../../lib/api/samples';
     import { release } from '../../lib/api/claims-client';
     import { getReciterTaskStore, type ReciterTask,refreshReciterTask } from '../../lib/api/reciter-task';
     import { localeStore, tr } from '../../lib/i18n/locale-store';
@@ -70,6 +69,7 @@
     import { savePreviewVisible } from './stores/save';
     import { accordionViewActive, valUiOpenCategory } from './stores/validation';
     import { loadChapterData } from './utils/data/chapter-actions';
+    import { clearPerReciterState } from './utils/data/clear-per-reciter-state';
     import { clearSegConfig, loadSegConfig } from './utils/data/config-loader';
     import { reloadCurrentReciter } from './utils/data/reciter-actions';
     import { handleSegmentsKey } from './utils/keyboard';
@@ -88,6 +88,8 @@
         id === 'samples' ? m.segments_subtab_samples() : m.segments_subtab_editor(),
     );
     $: subTabs = visibleSubTabs($canManageSamples);
+    $: showSegmentEditor = $segmentsSubTab === 'editor'
+        || ($segmentsSubTab === 'samples' && $isSampleMode);
     // Snap back if the samples tab disappears under a live capability change.
     $: if (!subTabs.includes($segmentsSubTab)) segmentsSubTab.set('editor');
 
@@ -149,8 +151,13 @@
     // ``_lastBoundReciter`` BEFORE updating the store so this block skips
     // the work they've already done — no double-load.
     let _lastBoundReciter: string | null = null;
+    let lastNormalReciter = '';
     $: if (typeof $selectedReciter === 'string' && $selectedReciter && $selectedReciter !== _lastBoundReciter) {
         _lastBoundReciter = $selectedReciter;
+        if (!isSampleSlug($selectedReciter)) {
+            lastNormalReciter = $selectedReciter;
+            segmentsSubTab.set('editor');
+        }
         _bindTask(isSampleSlug($selectedReciter) ? null : $selectedReciter);
         void onReciterChange($selectedReciter);
     }
@@ -254,22 +261,16 @@
             const rs = await fetchJson<SegReciter[]>('/api/seg/reciters');
             segAllReciters.set(rs);
             const saved = localStorage.getItem(LS_KEYS.SEG_RECITER);
-            let validSaved: string | null = null;
-            if (saved && isSampleSlug(saved)) {
-                // A sample slug survives reload only while it still exists and
-                // the viewer may still see samples.
-                const list = get(canManageSamples) ? await listSamples() : [];
-                samples.set(list);
-                validSaved = list.some((s) => s.slug === saved) ? saved : null;
-            } else {
-                validSaved = saved && rs.some((r) => r.slug === saved) ? saved : null;
-            }
+            // The Editor always restores a normal recitation. A sample is a
+            // temporary selection inside Samples, never the persisted Editor.
+            const validSaved = saved && !isSampleSlug(saved) && rs.some((r) => r.slug === saved) ? saved : null;
             if (!validSaved && saved) {
                 // Drop the stale slug so we don't keep hammering 404 endpoints
                 // every reload. The user picks a fresh reciter from the list.
                 localStorage.removeItem(LS_KEYS.SEG_RECITER);
             }
             if (validSaved) {
+                lastNormalReciter = validSaved;
                 // The catalog FIRST, and awaited. `onReciterChange` resolves
                 // the delivery's edition to pick its refs bundle, and
                 // `deliveryRiwayah` answers Hafs for a slug whose roster has
@@ -289,7 +290,7 @@
                 // _bindTask + onReciterChange imperatively right here).
                 _lastBoundReciter = validSaved;
                 selectedReciter.set(validSaved);
-                _bindTask(isSampleSlug(validSaved) ? null : validSaved);
+                _bindTask(validSaved);
                 await onReciterChange(validSaved);
             }
         } catch (e) { console.error('Error loading seg reciters:', e); }
@@ -336,22 +337,40 @@
         // is set first so the out-of-band reactive subscription skips the
         // work we run imperatively below — no double-load.
         const { slug } = ev.detail;
+        lastNormalReciter = slug;
         _lastBoundReciter = slug || null;
         selectedReciter.set(slug);
         _bindTask(slug || null);
         onReciterChange(slug);
     }
     async function onReciterChange(reciter: string): Promise<void> {
-        if (reciter) localStorage.setItem(LS_KEYS.SEG_RECITER, reciter);
+        if (reciter && !isSampleSlug(reciter)) {
+            lastNormalReciter = reciter;
+            localStorage.setItem(LS_KEYS.SEG_RECITER, reciter);
+        }
         await reloadCurrentReciter();
     }
-    /** Open a sample from the samples list in the editor, straight on its
-     *  one pseudo-chapter. */
+    /** Leaving a sample restores the normal Editor selection. */
+    function leaveSample(tab: SegmentsSubTab): void {
+        if (get(isSampleMode)) {
+            _lastBoundReciter = lastNormalReciter || null;
+            selectedReciter.set(lastNormalReciter);
+            _bindTask(lastNormalReciter || null);
+            if (lastNormalReciter) void onReciterChange(lastNormalReciter);
+            else {
+                selectedChapter.set('');
+                clearPerReciterState();
+            }
+        }
+        segmentsSubTab.set(tab);
+    }
+    /** Open a sample within Samples, straight on its one pseudo-chapter. */
     function openSample(slug: string): void {
+        if (!isSampleSlug(get(selectedReciter))) lastNormalReciter = get(selectedReciter);
         _lastBoundReciter = slug;
         selectedReciter.set(slug);
         _bindTask(null);
-        segmentsSubTab.set('editor');
+        segmentsSubTab.set('samples');
         const chapter = get(samples).find((x) => x.slug === slug)?.pseudo_chapter;
         void onReciterChange(slug).then(() => {
             if (!chapter || get(selectedReciter) !== slug) return;
@@ -503,7 +522,7 @@
                     type="button"
                     class="seg-subtab"
                     class:active={$segmentsSubTab === id}
-                    on:click={() => segmentsSubTab.set(id)}
+                    on:click={() => leaveSample(id)}
                 >
                     {subTabLabel(id)}
                 </button>
@@ -511,11 +530,11 @@
         </nav>
     {/if}
 
-    {#if $segmentsSubTab === 'samples' && $canManageSamples && !$historyVisible && !$savePreviewVisible}
+    {#if $segmentsSubTab === 'samples' && $canManageSamples && !$isSampleMode && !$historyVisible && !$savePreviewVisible}
         <SamplesPanel onOpen={openSample} />
     {/if}
 
-    {#if $segmentsSubTab === 'editor' && !$historyVisible && !$savePreviewVisible}
+    {#if showSegmentEditor && !$historyVisible && !$savePreviewVisible}
         <!-- Persistent entry point to the review guides + shortcuts. Opens the same
              modal the first-edit gate uses, in voluntary `browse` mode — available
              any time, not just when a blocked edit triggers the gate. The cyan
@@ -547,7 +566,7 @@
         {/await}
     {/if}
 
-    {#if $segmentsSubTab === 'editor' && !$historyVisible && !$savePreviewVisible}
+    {#if showSegmentEditor && !$historyVisible && !$savePreviewVisible}
         <!-- The validation accordion is a GLOBAL view — always all chapters,
              never filtered by `selectedChapter`. Chapter-scoped review happens
              through the chapter-cards `<SegmentsList>` below; the accordion
@@ -583,6 +602,7 @@
         {contextRiwayah}
         {contextStyle}
         on:reciterChange={onPickerChange}
+        on:backToSamples={() => leaveSample('samples')}
         on:chapterChange={onChapterChange}
         on:verseJump={onVerseJump}
         on:unclaim={_unclaim}

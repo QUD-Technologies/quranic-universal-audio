@@ -15,3 +15,29 @@ export function timingsMatchRef(ref: string, timings: SegWordTiming[] | null | u
     const [start, end = start] = ref.split('-');
     return timings[0]?.location === start && timings[timings.length - 1]?.location === end;
 }
+
+/** Use the same edition text and verse ornaments as the ordinary segment row.
+ * Historical word-timing text may use a different script; if its coordinates
+ * cannot reproduce the displayed reference exactly, omit word highlights. */
+export function displayWordsForTimings(
+    timings: SegWordTiming[],
+    bodyText: string,
+    dkWords: Record<string, string> | undefined,
+    verseWordCounts: Record<string, number> | undefined,
+    verseMarkerPrefix: string,
+): string[] {
+    if (!dkWords || !verseWordCounts || !timings.length) return [];
+    const digits = '٠١٢٣٤٥٦٧٨٩';
+    const words = timings.map(({ location }) => {
+        const text = dkWords[location];
+        if (!text) return '';
+        const [surah, ayah, index] = location.split(':');
+        if (!surah || !ayah || !index) return '';
+        const isVerseEnd = Number(index) === verseWordCounts[`${surah}:${ayah}`];
+        const marker = isVerseEnd
+            ? `${verseMarkerPrefix}${ayah.replace(/\d/g, (d) => digits[Number(d)] ?? d)}`
+            : '';
+        return marker ? `${text} ${marker}` : text;
+    });
+    return words.every(Boolean) && words.join(' ') === bodyText ? words : [];
+}

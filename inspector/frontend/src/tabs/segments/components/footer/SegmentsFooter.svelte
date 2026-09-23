@@ -42,7 +42,7 @@
     import { getSurahInfo, surahInfoReady } from '../../../../lib/utils/surah-info';
     import { SEGMENTS_SPEEDS } from '../../../../lib/utils/speed-control';
     import { autoSaveEnabled, toggleAutoSave } from '../../stores/autosave';
-    import { activeSample, isSampleMode, segmentsSubTab } from '../../stores/samples';
+    import { activeSample, isSampleMode } from '../../stores/samples';
     import {
         livePlayingVerse,
         pickerDisplayChapter,
@@ -110,6 +110,7 @@
         unclaim: void;
         markReady: void;
         claimed: void;
+        backToSamples: void;
     }>();
 
     let pickerOpen = false;
@@ -592,7 +593,7 @@
                 type="button"
                 class="identity"
                 class:placeholder={!hasReciter}
-                on:click={() => ($isSampleMode ? segmentsSubTab.set('samples') : (pickerOpen = true))}
+                on:click={() => ($isSampleMode ? dispatch('backToSamples') : (pickerOpen = true))}
                 aria-haspopup="dialog"
                 title={identityTitle}
             >
