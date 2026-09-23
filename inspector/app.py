@@ -414,7 +414,7 @@ def _boot_substrate() -> None:
         )
 
         prepare_native_report_map(_db.get_writer())
-        ver = _db.init_db()  # open writer + run migrations (fail-fast)
+        ver = _db.init_db(persist_migrations=True)  # migrate + persist pulled bucket DB
         assert_native_report_schema(_db.get_writer())
         logger.info("db substrate: ready at schema v%s", ver)
     except Exception:  # noqa: BLE001
