@@ -95,6 +95,7 @@ def test_a_paused_space_is_woken_then_the_run_is_retried(monkeypatch):
     posted_nonces: list[str] = []
 
     def fake_post(url, data=None, headers=None, timeout=None):
+        assert headers is not None
         posted_nonces.append(headers["X-Qua-Nonce"])
         return responses.pop(0)
 
