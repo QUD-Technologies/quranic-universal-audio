@@ -1,5 +1,7 @@
 {{ release_title }}
 
+> **License.** This release is distributed under the [QUA Dataset License 1.0](https://github.com/QUD-Technologies/quranic-universal-audio/blob/main/LICENSE-DATA). By downloading it you agree to its terms: any app or feature using this data, or a model trained, fine-tuned, evaluated or benchmarked on it, must be free for every user, fully accessible, and in an app with no advertising; the data may not be sold; derivatives share the same license; credit QUD Technologies - Qur'anic Universal Audio (https://qud.dev).
+
 ## What to download
 
 | Asset | What it gives you |
@@ -15,7 +17,7 @@
 | `DigitalKhattV2.otf` | Matching DigitalKhatt V2 font (SIL Open Font License 1.1 in the font metadata). |
 | `<riwayah>_words.json.gz` | Exact word text of a non-Hafs riwayah in this release (Warsh, Qalun, Shubah), keyed by its own `surah:ayah:word` coordinates; `manifest.json` `editions` names it. |
 | `<riwayah>.ttf` | Matching KFGQPC font for that riwayah's script. |
-| `LICENSE` | CC-BY-4.0 license text. |
+| `LICENSE` | QUA Dataset License 1.0 (`qua-dataset-1.0`) full text. Covers the timing data; recitation audio is not covered. |
 
 The release-level `manifest.json` and `catalog.json` index the whole release; each zip also carries its own `catalog.json` describing just that recitation.
 
@@ -192,7 +194,7 @@ type ReleaseManifest = {
     coverage_ayahs: number;
     change_kind: "added" | "refresh" | "unchanged";
   }>;
-  license: "CC-BY-4.0";
+  license: "qua-dataset-1.0";
 };
 ```
 

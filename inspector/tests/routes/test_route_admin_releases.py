@@ -405,7 +405,7 @@ def test_release_preview_uses_display_names(signed_in_client, monkeypatch):
     assert row["change_kind"] == "added"
 
     # Top-level additions for the modal.
-    assert body["license"] == "CC-BY-4.0"
+    assert body["license"] == "qua-dataset-1.0"
     assert "repo" in body["links"] and "hf_dataset" in body["links"]
     assert body["release_date"]
 

@@ -52,6 +52,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from qua_shared.dataset_license import DATA_LICENSE_FILE, DATA_LICENSE_ID  # noqa: E402
 from qua_shared.digital_khatt import (  # noqa: E402
     DIGITAL_KHATT_FONT_FILENAME,
     DIGITAL_KHATT_SCRIPT_FILENAME,
@@ -636,7 +637,7 @@ def _build_dataset_manifest(
         static_refs={k: FileDigest.model_validate(v) for k, v in static_refs.items()},
         editions={k: ReleaseEdition.model_validate(v) for k, v in editions.items()},
         recitations=recitations,
-        license="CC-BY-4.0",
+        license=DATA_LICENSE_ID,
     )
     return _json_model_bytes(manifest)
 
@@ -1027,7 +1028,7 @@ def _preflight() -> int:
         f"inspector/frontend/public/fonts/{DIGITAL_KHATT_FONT_FILENAME}",
         ".github/config/repo.yml",
         "docs/templates/release_body.md",
-        "LICENSE",
+        DATA_LICENSE_FILE,
         "qua_jobs/shard.py",
         "qua_jobs/check_updates.py",
         "qua_jobs/download_audio.py",
@@ -1439,7 +1440,8 @@ def main() -> int:
 
     # 7. Read license + helpers for upload. DigitalKhatt assets were validated
     # before reciter projection and are uploaded byte-for-byte.
-    license_path = _code_root() / "LICENSE"
+    # Releases carry the DATA licence (repo LICENSE is the Apache-2.0 code licence).
+    license_path = _code_root() / DATA_LICENSE_FILE
     license_bytes = license_path.read_bytes() if license_path.exists() else b""
     shard_py = (_code_root() / "qua_jobs" / "shard.py").read_bytes()
     check_updates_py = (_code_root() / "qua_jobs" / "check_updates.py").read_bytes()

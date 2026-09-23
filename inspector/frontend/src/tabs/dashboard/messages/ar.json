@@ -285,7 +285,7 @@
   "dashboard_submit_attest_distribution_rights": "على حد علمي، لدي إذن القارئ أو حقوق التوزيع لمشاركة هذه التسجيلات علنا.",
   "dashboard_submit_attest_links_verified": "تحققت من أن الروابط تعمل وتشغل السور الصحيحة، وأن البيانات الوصفية دقيقة.",
   "dashboard_submit_attest_playlist_public": "إن كانت هذه قائمة التشغيل الخاصة بي، فأوافق على إبقائها عامة ليستفيد الجميع من الصوت والتوقيتات.",
-  "dashboard_submit_attest_storage_rights": "أمنح Quranic Universal Audio الحق في تنزيل هذا الصوت ومعالجته وتوزيعه وتخزينه بشكل دائم، بموجب رخصة CC By 4.0",
+  "dashboard_submit_attest_storage_rights": "أمنح QUD Technologies، لصالح Quranic Universal Audio، الحق في تنزيل هذا الصوت ومعالجته وتوزيعه وتخزينه بشكل دائم، وفي نشر بيانات التوقيت المستخرجة منه بموجب رخصة QUA Dataset License.",
   "dashboard_submit_auto_claim_hint": "تحمل مطالبة واحدة في كل مرة. يتخطى إن كنت تحمل واحدة بالفعل.",
   "dashboard_submit_auto_claim_label": "مطالبتي تلقائيا بالمراجعة بمجرد انتهاء المحاذاة",
   "dashboard_submit_combo_coverage": "{count}/114",

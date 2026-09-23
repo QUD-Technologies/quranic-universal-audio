@@ -1,12 +1,25 @@
 # NOTICE
 
-Qur'anic Universal Audio combines original work created by this project with third-party material from the sources credited below.
+Qur'anic Universal Audio (QUA) is a product of **QUD Technologies** (https://qud.dev).
+Copyright (c) 2026 QUD Technologies.
 
-## What this project's license covers
+QUA combines original work created by this project with third-party material from the sources credited below. Three layers, three sets of terms:
 
-The [CC BY 4.0](LICENSE) license applies **only** to the project's own contributions: the generated timestamps (verse/word/letter alignment), segmentation, catalog metadata, and the application code.
+| Layer | What it is | Terms |
+|---|---|---|
+| **Timing data** | Verse/word/letter timestamps, segmentation, alignment, pause and silence data, and the catalogs, manifests and metadata distributed with them, in any format and through any channel (GitHub releases, the Hugging Face dataset, any API) | [QUA Dataset License 1.0](LICENSE-DATA) (`qua-dataset-1.0`) |
+| **Code** | The Inspector application, `qua_shared`, `qua_jobs`, scripts and tooling in this repository | [Apache License 2.0](LICENSE) |
+| **Third-party material** | Recitation audio, Qur'an text editions, fonts | Their own terms (below). **Not** relicensed by this project. |
 
-It does **not** apply to the Qur'an recitation recordings. Those recordings remain the property of their respective reciters, producers, and original sources, and are **not** relicensed by this project. They are included for processing, playback, and research, with attribution to their sources.
+## Timing data
+
+The QUA Dataset License is a custom license. In short: the data may be used freely, including in commercial products, provided every feature it touches - directly, or through a model trained, fine-tuned, evaluated or benchmarked on it - is free for every user, fully accessible, and offered in an app with no advertising. The data may not be sold. Derivatives, including models, are distributed under the same license. Credit QUD Technologies - Qur'anic Universal Audio. The [full license text](LICENSE-DATA) governs.
+
+Timing data from releases published before the QUA Dataset License took effect was distributed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); copies obtained from those releases remain under CC BY 4.0. Every release and dataset revision published from then on is under the QUA Dataset License only.
+
+## Recitation audio
+
+The recitation recordings remain the property of their respective reciters, producers, and original sources, and are **not** relicensed by this project. They are included for processing, playback, and research, with attribution to their sources.
 
 ## Audio sources
 

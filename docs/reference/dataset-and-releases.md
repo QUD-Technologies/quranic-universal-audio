@@ -171,7 +171,7 @@ gh:releases/v{X.Y.Z}/
 ├── surah_info.json       # static reference
 ├── digital_khatt_v2_script.json # exact Hafs presentation text
 ├── DigitalKhattV2.otf    # matching OFL-1.1 font
-└── LICENSE               # CC-BY-4.0
+└── LICENSE               # QUA Dataset License 1.0 (repo LICENSE-DATA, uploaded as LICENSE)
 ```
 
 Each `<slug>.zip` contains:
@@ -257,7 +257,7 @@ the other helpers (`base.REQUIRED_ENTRYPOINTS`) and uploaded by the cut.
                  "coverage_ayahs": 6236, "content_hash": "...", "change_kind": "added",
                  "ts_version": "..." }
   },
-  "license": "CC-BY-4.0"
+  "license": "qua-dataset-1.0"
 }
 ```
 
@@ -278,7 +278,8 @@ Format (display names only — never slugs):
   programmatic use.
 - `<details>` **Reciter zip schemas**: verse/word/letter timestamp shapes plus a small example.
 - `<details>` **Catalog and manifest schemas**: release-level `manifest.json` and `catalog.json`.
-- Inline `**License:** CC-BY-4.0` + repository / HF-dataset links.
+- A licence callout under the title (QUA Dataset License 1.0 terms-by-download) and a footer
+  `**License:** [QUA Dataset License 1.0](…/LICENSE-DATA) (`qua-dataset-1.0`)`.
 
 Coverage shows exact **ayahs** at cut time; the DB-only preview shows **surahs** (chapter_count)
 because exact ayah coverage is only computed during the cut. A **Missing** column reports
@@ -408,6 +409,25 @@ word timestamps re-based). Consumers resample at load; filter by codec/SR/channe
 with an **interior no-match gap** is the one exception to "single contiguous slice": its clip is the
 kept runs stitched gaplessly (the no-match audio excised) — see
 [Failed-alignment, no-match & deletes](#failed-alignment-no-match--deletes-at-publish).
+
+## Licensing
+
+Two licences, never mixed: the **timing data** (GH release assets, the HF dataset, any future API)
+ships under the custom **QUA Dataset License 1.0** (`LICENSE-DATA`, id `qua-dataset-1.0`, © QUD
+Technologies); the **code** is Apache-2.0 (`LICENSE`). Recitation audio is under neither (see
+`NOTICE.md`). Releases cut before the switch stay CC BY 4.0 — the licence is irrevocable for those copies.
+
+- **Single source:** [`qua_shared/dataset_license.py`](../../qua_shared/dataset_license.py) owns the id,
+  display name, repo filename and URL. The manifest `license` field (`ReleaseManifest.license`), the
+  changelog footer (`render_changelog`), and the cut-modal preview (`release_preview`) all read it.
+- **GH release:** `cut_release` reads `LICENSE-DATA` and uploads it as the `LICENSE` asset;
+  `LICENSE-DATA` is a required staged file (`jobs/base.REQUIRED_STATIC_FILES`, cut-job preflight,
+  `inspector/Dockerfile` COPY). GitHub has no download gate — acceptance is by download (release-body callout).
+- **HF dataset:** the card template frontmatter is `license: other` / `license_name: qua-dataset-1.0` /
+  `license_link` plus `extra_gated_*` fields — HF shows the terms and records a per-user acceptance
+  before access. The gate only takes effect once gating is also enabled in the dataset repo settings.
+- **Templates** (`release_body.md`, `hf_dataset_card.md`) carry the licence text literally; update
+  them together with `dataset_license.py` on a licence version bump.
 
 ## Dedup semantics — what the canonical projection loses / preserves
 
