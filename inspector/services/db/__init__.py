@@ -42,7 +42,12 @@ def init_db(*, persist_migrations: bool = False) -> int:
         from . import sync
 
         if sync.is_sync_enabled():
-            sync.upload()
+            # A migration changes persisted state without using the normal
+            # service transaction seam. Advance db_seq before upload so the
+            # new container is newer than the snapshot it just pulled; an
+            # equal sequence is correctly rejected by the deploy-overlap CAS.
+            with sync.durable_transaction():
+                pass
     return version
 
 
