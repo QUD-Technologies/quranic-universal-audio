@@ -18,8 +18,8 @@ agree, You may not do any of those things.
 
 1. DEFINITIONS
 
-   "Licensor" means [REGISTERED LEGAL NAME], trading as QUD Technologies
-   ([REGISTERED ADDRESS / REGISTRATION NUMBER]), the owner of the QUA product.
+   "Licensor" means QUD Technologies (https://qud.dev), the owner of the QUA
+   product, and any successor to the QUA product.
 
    "Work" means all timing data distributed by or on behalf of the Licensor as
    part of QUA, in any format and through any channel, now or in the future,
@@ -364,17 +364,16 @@ agree, You may not do any of those things.
 
 20. NOTICES
 
-   Notices to the Licensor must be sent to [NOTICE EMAIL] and are effective on
-   receipt. The Licensor may give notice to You at any contact address You
+   Notices to the Licensor must be sent through the contact details published
+   at https://qud.dev, or by opening an issue in the QUA GitHub repository,
+   and are effective on receipt. The Licensor may give notice to You at any contact address You
    have provided, or that You publish on Your Application, model card or
    repository.
 
 
-21. GOVERNING LAW AND REMEDIES
+21. REMEDIES
 
-   This License is governed by the laws of [JURISDICTION], excluding its
-   conflict-of-laws rules. The courts of [VENUE] have non-exclusive
-   jurisdiction. You acknowledge that a breach of Section 3, 4 or 6 causes
+   You acknowledge that a breach of Section 3, 4 or 6 causes
    harm that damages alone cannot remedy, and that the Licensor is entitled to
    seek injunctive relief in any competent court, in addition to damages and
    an account of all revenue attributable to the breach.
