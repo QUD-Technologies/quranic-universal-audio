@@ -8,6 +8,7 @@ _HEADERS = {"Content-Type": "application/json", "Origin": "http://localhost"}
 
 KNOWN_SEGMENT_FIELDS = {
     "segment_uid",
+    "word_timings",  # optional historical/sample word-level review intervals
     "time_start",
     "time_end",
     "matched_ref",

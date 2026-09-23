@@ -72,6 +72,25 @@ class SegmentFlag(BaseModel):
     follow_ups: list[FlagFollowUp] = Field(default_factory=list)
 
 
+class DetailedWordTiming(BaseModel):
+    """One legacy/review word interval preserved inside ``detailed.json``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    word: str
+    location: str
+    start_ms: int = Field(..., ge=0)
+    end_ms: int = Field(..., ge=0)
+
+    @model_validator(mode="after")
+    def _validate_time_range(self) -> DetailedWordTiming:
+        if self.end_ms < self.start_ms:
+            raise ValueError(
+                f"end_ms ({self.end_ms}) must be >= start_ms ({self.start_ms})"
+            )
+        return self
+
+
 class DetailedSegment(BaseModel):
     """Atomic seg in a chapter's ``segments`` list.
 
@@ -97,6 +116,8 @@ class DetailedSegment(BaseModel):
       - ``segment_uid`` — UUIDv7 stamped by save-flow merge / split / strip
         ops and by the ``/seg/all`` lazy backfill route. Absent on fresh
         extraction output.
+      - ``word_timings`` — optional historical word intervals retained by
+        imported review samples and exposed for playback highlighting.
       - ``ignored_categories`` — per-seg category-level ignore set written
         by the "ignore this issue" accordion action; consulted by
         ``services/validation/classifier.py::is_ignored_for`` to suppress
@@ -124,6 +145,10 @@ class DetailedSegment(BaseModel):
     confidence: float = Field(0.0, ge=0.0, le=1.0)
     wrap_word_ranges: list[list[str]] | None = None
     segment_uid: str | None = None
+    # Optional reviewed/legacy word boundaries. Most production segment files
+    # omit these, but QAB review samples carry them and the Inspector must not
+    # hide them from playback review.
+    word_timings: list[DetailedWordTiming] | None = None
 
     # === Coordinate provenance (multi-riwayah) ===
     # ``matched_ref`` above is the DELIVERY EDITION's coordinate — what the

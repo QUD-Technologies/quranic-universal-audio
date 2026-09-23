@@ -267,6 +267,8 @@ def seg_all(reciter):
                 seg_dict["is_wasl"] = True
             if seg.get("flag"):
                 seg_dict["flag"] = flag_view(seg["flag"], viewer_id, can_see_flagger)
+            if seg.get("word_timings"):
+                seg_dict["word_timings"] = seg["word_timings"]
             segments.append(seg_dict)
 
     pad_left_ms, pad_right_ms, min_silence_floor_ms = resolve_pad(cache.get_seg_meta(reciter))

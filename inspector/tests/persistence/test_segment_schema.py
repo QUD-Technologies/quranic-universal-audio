@@ -120,6 +120,38 @@ def test_wrap_seg_validates():
     assert m.segment_uid is not None
 
 
+def test_word_timings_round_trip():
+    seg = _slim_seg()
+    seg["word_timings"] = [
+        {
+            "word": "بِسْمِ",
+            "location": "1:1:1",
+            "start_ms": 430,
+            "end_ms": 910,
+        }
+    ]
+
+    model = DetailedSegment.model_validate(seg)
+    dumped = model.model_dump(exclude_none=True)
+
+    assert dumped["word_timings"] == seg["word_timings"]
+
+
+def test_inverted_word_timing_fails():
+    seg = _slim_seg()
+    seg["word_timings"] = [
+        {
+            "word": "بِسْمِ",
+            "location": "1:1:1",
+            "start_ms": 910,
+            "end_ms": 430,
+        }
+    ]
+
+    with pytest.raises(ValueError, match="end_ms .* must be >= start_ms"):
+        DetailedSegment.model_validate(seg)
+
+
 def test_time_end_before_time_start_fails():
     """time_end < time_start is corrupt data — must raise."""
     with pytest.raises(ValueError, match="time_end .* must be >= time_start"):

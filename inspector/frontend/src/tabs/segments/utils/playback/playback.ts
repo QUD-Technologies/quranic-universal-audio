@@ -63,6 +63,7 @@ import {
     segmentEndChimeEnabled,
     segPort,
     setAccordionNavCursor,
+    setActiveWordCursor,
     setPlayingSegment,
     setStagedPlayheadWindow,
 } from '../../stores/playback';
@@ -81,6 +82,7 @@ import { nextDisplayedSeg, nextSiblingSeg } from './resolvers';
 import { getRowEntriesFor } from './row-registry';
 import { resolveSegSource } from './source';
 import { warmSeg } from './warmup';
+import { wordIndexAt } from '../samples/word-timing';
 
 // ---------------------------------------------------------------------------
 // Module-local state
@@ -1196,11 +1198,15 @@ export function drawActivePlayhead(timeMs?: number): void {
 
     if (!active) {
         setStagedPlayheadWindow(null);
+        setActiveWordCursor(null);
         return;
     }
 
     const seg = getSegByChapterIndex(active.chapter, active.index);
-    if (!seg) return;
+    if (!seg) {
+        setActiveWordCursor(null);
+        return;
+    }
     const audioUrl = seg.audio_url || allData?.audio_by_chapter?.[String(active.chapter)] || '';
 
     // Compensate the visual playhead for platform output latency: `time` is the
@@ -1210,6 +1216,10 @@ export function drawActivePlayhead(timeMs?: number): void {
     // initial latency window instead of vanishing (drawSegPlayhead skips
     // out-of-range times). Display-only — control paths keep the raw clock.
     const displayT = Math.min(seg.time_end, Math.max(seg.time_start, displayTimeMs(time)));
+    const activeWordIndex = wordIndexAt(displayT, seg.word_timings);
+    setActiveWordCursor(activeWordIndex >= 0
+        ? { chapter: active.chapter, index: active.index, wordIndex: activeWordIndex }
+        : null);
 
     // Draw the playhead on EVERY mounted twin for this (chapter, index) — main
     // list row and any accordion rows showing the same segment. Both need the

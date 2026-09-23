@@ -926,6 +926,8 @@ export interface DetailedEntry {
  *   - ``segment_uid`` — UUIDv7 stamped by save-flow merge / split / strip
  *     ops and by the ``/seg/all`` lazy backfill route. Absent on fresh
  *     extraction output.
+ *   - ``word_timings`` — optional historical word intervals retained by
+ *     imported review samples and exposed for playback highlighting.
  *   - ``ignored_categories`` — per-seg category-level ignore set written
  *     by the "ignore this issue" accordion action; consulted by
  *     ``services/validation/classifier.py::is_ignored_for`` to suppress
@@ -946,12 +948,22 @@ export interface DetailedSegment {
   confidence?: number;
   wrap_word_ranges?: string[][] | null;
   segment_uid?: string | null;
+  word_timings?: DetailedWordTiming[] | null;
   source_ref?: string | null;
   projection_support?: ("full" | "partial") | null;
   ignored_categories?: string[] | null;
   ignored?: boolean | null;
   is_wasl?: boolean;
   flag?: SegmentFlag | null;
+}
+/**
+ * One legacy/review word interval preserved inside ``detailed.json``.
+ */
+export interface DetailedWordTiming {
+  word: string;
+  location: string;
+  start_ms: number;
+  end_ms: number;
 }
 /**
  * A flag on a single segment: a required root comment + reply thread.
@@ -1559,6 +1571,7 @@ export interface SegAllSegment {
   ignored_categories?: string[] | null;
   is_wasl?: boolean | null;
   flag?: SegmentFlagView | null;
+  word_timings?: SegWordTiming[] | null;
 }
 /**
  * A segment's flag thread: a root comment plus follow-up replies.
@@ -1591,6 +1604,15 @@ export interface FlagComment {
   at?: string | null;
   author: FlagAuthor;
   mine: boolean;
+}
+/**
+ * A word interval exposed for sample-review highlighting.
+ */
+export interface SegWordTiming {
+  word: string;
+  location: string;
+  start_ms: number;
+  end_ms: number;
 }
 /**
  * ``GET /api/seg/config`` — display constants + validation vocab.
@@ -1660,6 +1682,7 @@ export interface SegDataSegment {
   audio_url: string;
   ignored_categories?: string[] | null;
   is_wasl?: boolean | null;
+  word_timings?: SegWordTiming[] | null;
 }
 /**
  * Per-chapter summary stats block inside ``GET /api/seg/data``.

@@ -170,6 +170,17 @@ class SegmentFlagView(FlagComment):
     follow_ups: list[FlagComment] = Field(default_factory=list)
 
 
+class SegWordTiming(BaseModel):
+    """A word interval exposed for sample-review highlighting."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    word: str
+    location: Ref
+    start_ms: int
+    end_ms: int
+
+
 class SegDataSegment(BaseModel):
     """A segment row as emitted by ``GET /api/seg/data`` (chapter-scoped).
 
@@ -190,6 +201,7 @@ class SegDataSegment(BaseModel):
     audio_url: str
     ignored_categories: list[str] | None = None
     is_wasl: bool | None = None
+    word_timings: list[SegWordTiming] | None = None
 
 
 class SegAllSegment(BaseModel):
@@ -216,6 +228,7 @@ class SegAllSegment(BaseModel):
     ignored_categories: list[str] | None = None
     is_wasl: bool | None = None
     flag: SegmentFlagView | None = None
+    word_timings: list[SegWordTiming] | None = None
 
 
 class SegmentsChapterSummary(BaseModel):

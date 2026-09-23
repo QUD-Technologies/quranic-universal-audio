@@ -103,6 +103,17 @@ def make_seg(
     if existing_flag:
         result["flag"] = existing_flag
 
+    # Historical review samples may carry word-level boundaries. They are
+    # still valid when a chapter-wide save rebuilds an otherwise untouched
+    # row, but a trim or reference edit invalidates their geometry/content.
+    if (
+        existing.get("word_timings")
+        and s.get("time_start", 0) == existing.get("time_start")
+        and s.get("time_end", 0) == existing.get("time_end")
+        and matched_ref == existing.get("matched_ref")
+    ):
+        result["word_timings"] = existing["word_timings"]
+
     # Coordinate provenance (multi-riwayah) is deliberately NOT carried here.
     # The FE never sends it — the editor works in the delivery edition's
     # coordinates and knows nothing about the Hafs source span — and inheriting
