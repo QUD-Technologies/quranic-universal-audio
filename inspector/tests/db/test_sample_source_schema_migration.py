@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import sqlite3
 
+from services import db
 from services.db import migrate
+from services.db import sync
 
 
 def test_normalizes_legacy_sample_labels_without_touching_concrete_schemas(tmp_path):
@@ -30,3 +32,33 @@ def test_normalizes_legacy_sample_labels_without_touching_concrete_schemas(tmp_p
         "new-bare-alignment": "alignment",
         "wrapped-alignment": "alignment_resource",
     }
+
+
+def test_init_db_uploads_a_new_schema_version(monkeypatch):
+    writer = object()
+    uploads: list[bool] = []
+    monkeypatch.setattr(db, "get_writer", lambda: writer)
+    monkeypatch.setattr(db, "current_version", lambda conn: 31)
+    monkeypatch.setattr(db, "run_migrations", lambda conn: 32)
+    monkeypatch.setattr(db, "_chmod_600", lambda path: None)
+    monkeypatch.setattr(db, "db_path", lambda: "unused.db")
+    monkeypatch.setattr(sync, "is_sync_enabled", lambda: True)
+    monkeypatch.setattr(sync, "upload", lambda: uploads.append(True))
+
+    assert db.init_db(persist_migrations=True) == 32
+    assert uploads == [True]
+
+
+def test_init_db_does_not_upload_without_an_upgrade(monkeypatch):
+    writer = object()
+    uploads: list[bool] = []
+    monkeypatch.setattr(db, "get_writer", lambda: writer)
+    monkeypatch.setattr(db, "current_version", lambda conn: 32)
+    monkeypatch.setattr(db, "run_migrations", lambda conn: 32)
+    monkeypatch.setattr(db, "_chmod_600", lambda path: None)
+    monkeypatch.setattr(db, "db_path", lambda: "unused.db")
+    monkeypatch.setattr(sync, "is_sync_enabled", lambda: True)
+    monkeypatch.setattr(sync, "upload", lambda: uploads.append(True))
+
+    assert db.init_db(persist_migrations=True) == 32
+    assert uploads == []
