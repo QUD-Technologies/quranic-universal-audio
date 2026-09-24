@@ -1113,6 +1113,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     data-hist-time-end={readOnly || staged ? String(seg.time_end) : undefined}
     data-hist-audio-url={(readOnly || staged) && seg.audio_url ? seg.audio_url : undefined}
     data-hist-op-id={opId ?? undefined}
+    style:max-width={wordEditing ? `min(100%, ${wordEditWidth + 24}px)` : undefined}
     bind:this={rowEl}
     on:click={onRowClick}
 >

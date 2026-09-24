@@ -113,7 +113,7 @@
     .word-card.is-locked { border-color: var(--accent); background: var(--panel-2); }
     .word-seek { display: flex; flex-direction: column; align-items: center; width: 100%; padding: 2px 6px; border: 0; background: transparent; color: inherit; cursor: grab; touch-action: none; }
     .word-seek:active { cursor: grabbing; }
-    .word-lock { position: absolute; top: -10px; right: -10px; z-index: 3; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 1px solid var(--border-strong); border-radius: 50%; background: var(--elevated); color: var(--text-secondary); cursor: pointer; }
+    .word-lock { position: absolute; top: -10px; right: -10px; z-index: 3; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 1px solid var(--accent); border-radius: 50%; background: var(--elevated); color: var(--accent); cursor: pointer; }
     .word-lock:hover, .word-lock:focus-visible, .word-lock.is-locked { border-color: var(--accent); background: var(--accent); color: var(--accent-fg); }
     .arabic { font-family: var(--font-quran, 'DigitalKhatt', 'Traditional Arabic', serif); font-size: 1.5rem; line-height: 1.6; white-space: nowrap; }
     .timing { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); direction: ltr; }
