@@ -167,6 +167,10 @@ Cache invalidation (`services/storage/cache.py`): `pop_seg_caches_affected_by_se
 
 `DetailedSegment` (`extra="forbid"`): required `time_start`/`time_end`/`matched_ref`; `qalqala_letter`, `is_boundary_adj`, `confidence`, `wrap_word_ranges`, `segment_uid`, optional historical/sample `word_timings`, `ignored_categories`, `ignored` (legacy wildcard), `is_wasl`, `flag` (`SegmentFlag | None`, see [Flagged issues](#flagged-issues)). Writers emit via `model_dump(exclude_none=True)`. A structural save preserves `word_timings` only when the row's bounds and reference are unchanged; a trim or reference edit drops them as stale. Migration #5 dead fields stripped on read with INFO log: `matched_text`, `phonemes_asr`, `has_repeated_words`, plus snapshot-only `audio_url`/`chapter`/`entry_ref`/`index_at_save`/`display_text`. Unknown keys → WARNING + strip (writer-drift signal). `DetailedEntry` strips legacy `audio`. Both extraction (`.local/extraction/segments/outputs.py`) and Inspector save MUST round-trip through these models.
 
+### Sample word-timing editor
+
+Only main-list sample rows with a word list matching their reference show **Words** beneath the play/flag controls. Opening it expands the waveform above timestamp-aligned Quran text; each start/end line or whole word can be dragged without crossing adjacent words. **Save word timings** sends a single `edit_word_timings` operation through the regular authenticated `/api/seg/save/<sample--slug>/<chapter>` path. The server checks the original boundaries to reject stale edits, validates ordered word bounds inside the segment, writes `detailed.json`, records an inverse patch in `edit_history.jsonl`, and invalidates the segment cache. Pending segment edits must be saved first. The word editor does not change segment boundaries or references.
+
 ## edit_history.jsonl
 
 Append-only JSONL at the reciter's storage root (`<storage>/<slug>/edit_history.jsonl`, routed by `services/storage/data_dir.py`). Schema: `qua_shared/schemas/bucket/edit_history.py`.
