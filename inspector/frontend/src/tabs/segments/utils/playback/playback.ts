@@ -1107,9 +1107,6 @@ export function onSegAudioEnded(): void {
     segAudioBuffering.set(false);
     _segRange?.dispose();
     _segRange = null;
-    _wordTimingRange?.dispose();
-    _wordTimingRange = null;
-    _wordTimingOwner = null;
     _drawLoop.stop();
 }
 
