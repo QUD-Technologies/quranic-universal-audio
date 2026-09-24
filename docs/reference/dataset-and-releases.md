@@ -272,7 +272,8 @@ asset table, change tables, examples, and links.
 
 Format (display names only — never slugs):
 
-- Title `# {date}`. GitHub already shows the tag above the body.
+- Release name (GitHub title) `{version} — {N} Recitations` (`_release_name`, N = the
+  release's recitation count); body title `# {date}`.
 - First visible section: `## What to download` asset table.
 - Short guide sections for audio/timestamp pairing, timestamp levels, recitations, and
   programmatic use.

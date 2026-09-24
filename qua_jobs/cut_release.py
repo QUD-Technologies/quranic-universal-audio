@@ -748,7 +748,15 @@ def _gh_request(
         raise RuntimeError(f"GH API {method} {url} → {e.code}: {msg[:500]}{hint}") from e
 
 
-def _gh_create_release(owner: str, repo: str, version: str, body: str, token: str) -> dict:
+def _release_name(version: str, recitation_count: int) -> str:
+    """GH release title: the version plus the release's recitation count."""
+    noun = "Recitation" if recitation_count == 1 else "Recitations"
+    return f"{version} — {recitation_count} {noun}"
+
+
+def _gh_create_release(
+    owner: str, repo: str, version: str, body: str, token: str, *, name: str | None = None
+) -> dict:
     """Create a draft-less release tag. Returns the release dict (with upload_url)."""
     return _gh_request(
         "POST",
@@ -756,7 +764,7 @@ def _gh_create_release(owner: str, repo: str, version: str, body: str, token: st
         token,
         json_body={
             "tag_name": version,
-            "name": version,
+            "name": name or version,
             "body": body,
             "draft": False,
             "prerelease": False,
@@ -1451,7 +1459,14 @@ def main() -> int:
 
     # 8. Create the GH release + upload all assets.
     log.info("creating GH release %s on %s/%s ...", version, owner, repo)
-    rel = _gh_create_release(owner, repo, version, changelog_md.decode("utf-8"), token=gh_token)
+    rel = _gh_create_release(
+        owner,
+        repo,
+        version,
+        changelog_md.decode("utf-8"),
+        token=gh_token,
+        name=_release_name(version, len(members)),
+    )
     upload_url = rel["upload_url"]
     release_html_url = rel.get("html_url", "")
 
