@@ -68,7 +68,6 @@ from .wire.admin_permissions import (
     AdminPermissionGroup,
     AdminPermissionsResponse,
 )
-from .wire.align_runs import AlignRunStatus, AlignStartRequest
 from .wire.admin_requests import (
     AdminRequestCounts,
     AdminRequestRow,
@@ -97,6 +96,7 @@ from .wire.admin_users import (
     AdminVisitorStats,
     VisitorDayStat,
 )
+from .wire.align_runs import AlignQuota, AlignRunStatus, AlignStartRequest
 from .wire.announcements import Announcement
 from .wire.audio import AudioSurahEntry, AudioSurahsResponse
 from .wire.email_preferences import EmailPreferences, EmailPreferencesSaved
@@ -262,6 +262,7 @@ __all__ = [
     "AdminReleasesSummary",
     "AdminPermissionGroup",
     "AdminPermissionsResponse",
+    "AlignQuota",
     "AlignRunStatus",
     "AlignStartRequest",
     "AdminRequestCounts",

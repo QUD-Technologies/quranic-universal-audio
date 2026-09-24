@@ -44,6 +44,7 @@ from services import state as state_service
 from services.admin import discard as discard_service
 from services.admin import intake as intake_service
 from services.admin import requests as admin_requests_service
+from services.admin.align_pipeline import limits as align_limits
 from services.auth import capabilities as cap_service
 from services.auth import token_auth
 from services.auth.access import NotAuthorized
@@ -269,6 +270,11 @@ def list_requests(user):
         status=status,
         caller_is_owner=permissions.is_owner(user),
         caller_hf_id=user.hf_user_id,
+        align_exempt=(
+            cap_service.can(user, align_limits.EXEMPT_CAPABILITY)
+            if cap_service.can(user, "intake.align")
+            else None
+        ),
     )
     resp = jsonify(payload)
     resp.headers["Cache-Control"] = "no-store"

@@ -402,7 +402,24 @@ export interface AlignRunStatus {
 export interface AdminRequestsResponse {
   rows?: AdminRequestRow[];
   counts?: AdminRequestCounts;
+  align_quota?: AlignQuota | null;
   [k: string]: unknown;
+}
+/**
+ * The shared align budget as the Requests tab renders it.
+ *
+ * Maintainers share one budget: ``gpu_limit`` GPU starts per rolling 24 h and
+ * ``cpu_limit`` concurrent CPU runs. Runs started by a holder of
+ * ``intake.align_unlimited`` (the owner) never count; ``exempt`` tells the
+ * caller they bypass both limits.
+ */
+export interface AlignQuota {
+  gpu_used?: number;
+  gpu_limit?: number;
+  gpu_resets_at?: string | null;
+  cpu_running?: number;
+  cpu_limit?: number;
+  exempt?: boolean;
 }
 /**
  * One claim row (open or closed) for the reviewer-history table.
