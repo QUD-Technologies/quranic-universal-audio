@@ -60,3 +60,23 @@ class AlignRunStatus(BaseModel):
     started_at: str
     updated_at: str
     ended_at: str | None = None
+
+
+class AlignQuota(BaseModel):
+    """The shared align budget as the Requests tab renders it.
+
+    Maintainers share one budget: ``gpu_limit`` GPU starts per rolling 24 h and
+    ``cpu_limit`` concurrent CPU runs. Runs started by a holder of
+    ``intake.align_unlimited`` (the owner) never count; ``exempt`` tells the
+    caller they bypass both limits.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    gpu_used: int = 0
+    gpu_limit: int = 0
+    #: When the oldest counted GPU start ages out of the window (a slot frees).
+    gpu_resets_at: str | None = None
+    cpu_running: int = 0
+    cpu_limit: int = 0
+    exempt: bool = False

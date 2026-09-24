@@ -304,6 +304,16 @@ CAPABILITIES: tuple[Capability, ...] = (
         contributor=False,
         maintainer=True,
     ),
+    _c(
+        "intake.align_unlimited",
+        G_REQUESTS,
+        "Bypass align limits",
+        "Start align runs past the shared budget (2 GPU runs per 24 h, 1 CPU "
+        "run at a time). Runs started with this never count toward the budget. "
+        "Owner only by default.",
+        contributor=False,
+        maintainer=False,
+    ),
     # --- D. Claims & review ---
     _c(
         "claim.acquire",

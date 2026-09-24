@@ -39,6 +39,9 @@ class AlignParams:
     #: Lane the batch STARTS on — ``GPU`` (ZeroGPU, falls back to CPU when the
     #: quota runs out) or ``CPU`` (the Space's CPU worker pool, no quota).
     device: str = DEVICE_GPU
+    #: Started by a holder of ``intake.align_unlimited`` — never counts toward
+    #: the shared budget (``limits.py``). Not sent to the aligner.
+    quota_exempt: bool = False
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), sort_keys=True)

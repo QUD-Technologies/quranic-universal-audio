@@ -49,10 +49,18 @@ _PROPOSED_FIELDS: list[tuple[str, str]] = [
 # ---------------------------------------------------------------------------
 
 
-def list_requests(*, status: str, caller_is_owner: bool, caller_hf_id: str) -> dict:
+def list_requests(
+    *,
+    status: str,
+    caller_is_owner: bool,
+    caller_hf_id: str,
+    align_exempt: bool | None = None,
+) -> dict:
     """Assembled Requests-tab payload (``AdminRequestsResponse`` shape).
 
     ``status`` is a UI facet (``open``/``accepted``/``returned``/``discarded``).
+    ``align_exempt`` is ``None`` when the caller cannot align (no budget in the
+    payload), else whether they bypass the shared align budget.
     Returns a plain dict ready to ``jsonify``.
     """
     db_status = _STATUS_DB.get(status, "pending")
@@ -77,7 +85,7 @@ def list_requests(*, status: str, caller_is_owner: bool, caller_hf_id: str) -> d
         counts[db_key] = sum(
             1 for row in status_base if caller_is_owner or not row.get("_everyayah", False)
         )
-    return {
+    payload: dict = {
         "rows": rows,
         "counts": {
             "open": counts.get("pending", 0),
@@ -86,6 +94,9 @@ def list_requests(*, status: str, caller_is_owner: bool, caller_hf_id: str) -> d
             "discarded": counts.get("discarded", 0),
         },
     }
+    if db_status == "pending" and align_exempt is not None:
+        payload["align_quota"] = _align_quota(exempt=align_exempt)
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +253,16 @@ def _overlay_align_runs(rows: list[dict]) -> None:
         run = active.get(row.get("slug") or "")
         if run is not None:
             row["align"] = run.model_dump(mode="json")
+
+
+def _align_quota(*, exempt: bool) -> dict | None:
+    from services.admin.align_pipeline import limits as align_limits
+
+    try:
+        return align_limits.quota(exempt=exempt).model_dump(mode="json")
+    except Exception as exc:  # noqa: BLE001 — the queue must render without it
+        log.warning("admin requests: align quota failed: %s", exc)
+        return None
 
 
 def _serialize(base_row: dict, *, owner: bool) -> dict:

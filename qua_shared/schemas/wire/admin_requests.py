@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .align_runs import AlignRunStatus
+from .align_runs import AlignQuota, AlignRunStatus
 
 
 class RequestChange(BaseModel):
@@ -89,3 +89,5 @@ class AdminRequestsResponse(BaseModel):
 
     rows: list[AdminRequestRow] = Field(default_factory=list)
     counts: AdminRequestCounts = Field(default_factory=AdminRequestCounts)
+    #: Shared align budget (open facet, ``intake.align`` holders only).
+    align_quota: AlignQuota | None = None

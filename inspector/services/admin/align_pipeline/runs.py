@@ -18,8 +18,8 @@ from services.state import state as state_service
 from services.storage import cache
 from utils.uuid7 import uuid7
 
+from . import limits, progress, stage_acquire, staging
 from . import params as _params
-from . import progress, stage_acquire, staging
 from .params import AlignParams
 
 log = logging.getLogger("inspector")
@@ -46,7 +46,10 @@ def start(
     *,
     model_name: str = _params.MODEL_LARGE,
     device: str = _params.DEVICE_GPU,
+    exempt: bool = False,
 ) -> AlignRunStatus:
+    """``exempt``: the caller holds ``limits.EXEMPT_CAPABILITY`` — skips the shared
+    budget, and the run is stamped so it never counts toward it."""
     missing = _params.missing_config()
     if missing:
         raise AlignRunError(f"align pipeline not configured: {', '.join(missing)} unset", 503)
@@ -69,9 +72,11 @@ def start(
     except UnsupportedRiwayah as exc:
         raise AlignRunError(f"{slug}: {exc}", 400) from exc
 
-    params = AlignParams(model_name=model_name, riwayah=riwayah, device=device)
+    params = AlignParams(model_name=model_name, riwayah=riwayah, device=device, quota_exempt=exempt)
     run_id = uuid7()
+    # Check under the write lock so two concurrent clicks cannot both take the last slot.
     with durable_transaction():
+        _check_limit(limits.check_start, device, exempt=exempt)
         repo_align_runs.insert(
             run_id=run_id,
             slug=slug,
@@ -110,6 +115,7 @@ def retry(slug: str, actor: Actor) -> AlignRunStatus:
             f"{slug}: run is {run['status']}, only a failed run can be retried", 409
         )
     with durable_transaction():
+        _check_limit(limits.check_retry, run)
         repo_align_runs.update(run["run_id"], status="pending", attempt=run["attempt"] + 1)
     cache.invalidate_admin_requests_cache()
     log.info(
@@ -119,6 +125,13 @@ def retry(slug: str, actor: Actor) -> AlignRunStatus:
 
     runner.ensure_worker(repo_align_runs.get(run["run_id"]))
     return _status_required(slug)
+
+
+def _check_limit(check, *args, **kwargs) -> None:
+    try:
+        check(*args, **kwargs)
+    except limits.AlignLimitReached as exc:
+        raise AlignRunError(str(exc), exc.status) from exc
 
 
 def cancel(slug: str, actor: Actor) -> AlignRunStatus:

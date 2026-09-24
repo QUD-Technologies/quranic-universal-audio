@@ -9,12 +9,12 @@ Where it lives:
 
 | Piece | Path |
 |---|---|
-| Service package | `inspector/services/admin/align_pipeline/` — `runs` (start/retry/cancel/status), `runner` (worker threads), `stage_acquire` · `stage_align` · `stage_sidecars` · `stage_assemble`, `adapt` (aligner rows → staged shapes), `aligner_client` (SSE), `staging` (bucket paths), `progress` (in-memory detail + cancel), `params` (knobs + env) |
+| Service package | `inspector/services/admin/align_pipeline/` — `runs` (start/retry/cancel/status), `runner` (worker threads), `stage_acquire` · `stage_align` · `stage_sidecars` · `stage_assemble`, `adapt` (aligner rows → staged shapes), `aligner_client` (SSE), `staging` (bucket paths), `progress` (in-memory detail + cancel), `params` (knobs + env), `limits` (shared GPU/CPU budget) |
 | Durable row | `align_runs` table — `services/db/migrations/0031_align_runs.sql`, `services/db/repo_align_runs.py` |
 | Acquire job | `qua_jobs/acquire_audio.py` (kind `acquire_audio`, shows in the Jobs tab) |
 | Build | `inspector/services/segments/promote_build.py` (shared with `scripts/bucket/promote_run.py`) |
 | Routes | `inspector/routes/admin/align.py` — `POST /api/admin/reciter/<slug>/align`, `GET …/align/status`, `POST …/align/retry`, `POST …/align/cancel` |
-| Capability | `intake.align` (owner + maintainer by default) |
+| Capability | `intake.align` (owner + maintainer by default); `intake.align_unlimited` bypasses the shared budget (owner only by default) |
 | Wire | `qua_shared/schemas/wire/align_runs.py` — `AlignRunStatus`, `AlignStartRequest`; `AdminRequestRow.align` overlay |
 | FE | `tabs/dashboard/components/admin/AlignProgress.svelte`, the Align block in `RequestsCompartment.svelte`, `lib/api/admin-requests.ts` |
 | Aligner side | `qua-aligner-app` — `/api/v1/batches` items by `audio_ref`, `/api/v1/extraction/sidecars`; both gated by `X-Extraction-Secret` |
@@ -47,6 +47,29 @@ persisted in the run's `params_json` and echoed as `AlignRunStatus.device`). `GP
 the default and still falls back to CPU on `gpu_quota_exhausted`; `CPU` starts on the
 Space's CPU worker pool and never touches the ZeroGPU quota. The live lane (after a
 fallback) rides in `detail["device"]`, which the progress card renders.
+
+## Shared budget (`limits.py`)
+
+Every aligner call (and the acquire HF Job) rides the Inspector's own HF token,
+so every GPU run spends the **owner's** ZeroGPU quota whoever clicks Align. All
+maintainers therefore share one budget, checked under the write lock in
+`runs.start` / `runs.retry` and refused with **429**:
+
+- **GPU** — `GPU_RUNS_PER_WINDOW = 2` starts per rolling 24 h (a slot frees 24 h
+  after the oldest counted start). Retrying a GPU run resumes the same start and
+  is free.
+- **CPU** — unlimited per day, but `CPU_CONCURRENT = 1` counted CPU run
+  pending/running at once (a failed run holds no slot; its retry needs one).
+- **Override** — holders of `intake.align_unlimited` (owner only by default; the
+  owner can grant it to maintainers in the Permissions tab) bypass both. Their
+  runs are stamped `quota_exempt` in `params_json` and never count. An owner
+  bearer is always exempt.
+
+Counting reads `params_json.device` (the STARTING lane): a GPU run that fell back
+to CPU still counts as GPU, not as the CPU slot. The Requests payload carries
+`align_quota` (`AlignQuota`: used/limit/next-free per lane + the caller's
+`exempt`) on the open facet for `intake.align` holders; the Align CTA shows the
+counters and disables a spent lane.
 
 Parameters (`params.py`): model `Large` (the same `hetchyy/r7` checkpoint as the
 Katana extraction), `pad_left_ms=100`, `pad_right_ms=100`, `min_silence_floor_ms=50`,

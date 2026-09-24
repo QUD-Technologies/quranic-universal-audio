@@ -134,7 +134,7 @@ from .wire.admin_users import (
     AdminVisitorStats,
     VisitorDayStat,
 )
-from .wire.align_runs import AlignRunStatus, AlignStartRequest
+from .wire.align_runs import AlignQuota, AlignRunStatus, AlignStartRequest
 from .wire.announcements import Announcement, AnnouncementAdmin, AnnouncementCreate
 from .wire.audio import AudioSurahEntry, AudioSurahsResponse
 from .wire.intake_requests import (
@@ -350,6 +350,7 @@ __all__ = [
     "AdminActiveClaim",
     "AdminActivityEvent",
     "AdminClaimEvent",
+    "AlignQuota",
     "AlignRunStatus",
     "AlignStartRequest",
     "AdminRequestCounts",

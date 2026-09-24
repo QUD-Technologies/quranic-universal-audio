@@ -29,8 +29,8 @@ def stub_runs(monkeypatch):
 
     calls: list[tuple] = []
 
-    def _start(slug, actor, *, model_name, device):
-        calls.append(("start", slug, actor.hf_user_id, model_name, device))
+    def _start(slug, actor, *, model_name, device, exempt):
+        calls.append(("start", slug, actor.hf_user_id, model_name, device, exempt))
         return _status(slug=slug)
 
     monkeypatch.setattr(runs, "start", _start)
@@ -61,7 +61,8 @@ def test_maintainer_can_start_and_read_status(signed_in_client, stub_runs):
     )
     assert res.status_code == 202, res.get_json()
     assert res.get_json()["stage"] == "acquire"
-    assert stub_runs == [("start", "rec_x", user["hf_user_id"], "Base", "CPU")]
+    # A maintainer is inside the shared align budget by default.
+    assert stub_runs == [("start", "rec_x", user["hf_user_id"], "Base", "CPU", False)]
 
     res = client.get("/api/admin/reciter/rec_x/align/status")
     assert res.status_code == 200 and res.get_json()["status"] == "running"
@@ -88,7 +89,7 @@ def test_bad_body_and_service_refusal_map_to_errors(signed_in_client, stub_runs,
     )
     assert res.status_code == 400
 
-    def _refuse(slug, actor, *, model_name, device):
+    def _refuse(slug, actor, **_kw):
         raise runs.AlignRunError("busy", 409)
 
     monkeypatch.setattr(runs, "start", _refuse)
@@ -108,6 +109,25 @@ def test_owner_bearer_token_drives_a_run(flask_client, stub_runs, monkeypatch):
         data="{}",
     )
     assert res.status_code == 202 and stub_runs[-1][2] == "u-owner"
+    assert stub_runs[-1][5] is True  # an owner bearer bypasses the shared budget
+
+
+def test_owner_session_is_exempt(signed_in_client, stub_runs):
+    client, _ = signed_in_client(role="owner")
+    res = client.post("/api/admin/reciter/rec_x/align", headers=_HEADERS, data="{}")
+    assert res.status_code == 202 and stub_runs[-1][5] is True
+
+
+def test_limit_refusal_maps_to_429(signed_in_client, stub_runs, monkeypatch):
+    from services.admin.align_pipeline import runs
+
+    def _refuse(slug, actor, **_kw):
+        raise runs.AlignRunError("GPU limit reached", 429)
+
+    monkeypatch.setattr(runs, "start", _refuse)
+    client, _ = signed_in_client(role="maintainer")
+    res = client.post("/api/admin/reciter/rec_x/align", headers=_HEADERS, data="{}")
+    assert res.status_code == 429 and res.get_json() == {"error": "GPU limit reached"}
 
 
 def test_cookie_post_without_origin_is_rejected(signed_in_client, stub_runs):
