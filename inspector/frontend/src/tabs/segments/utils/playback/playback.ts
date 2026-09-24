@@ -116,6 +116,11 @@ let _activeGroupEndMs: number | null = null;
  *  Chapter-mode + autoplay ON plays through the chapter — no range. */
 let _segRange: AudioRange | null = null;
 
+/** Sample word review owns a loop independently of autoplay. An old row's
+ * unmount must not tear down a newer row's preview. */
+let _wordTimingRange: AudioRange | null = null;
+let _wordTimingOwner: string | null = null;
+
 /** Playhead-draw rAF. Replaces the AudioRange-owned tick for the chapter-
  *  continuous path. Under segment-bounded play, AudioRange owns its own
  *  rAF that fires `_onRangeTick` — we keep this rAF off in that case.
@@ -124,6 +129,7 @@ let _segRange: AudioRange | null = null;
  *  so the chapter cursor must keep advancing through it; only 'trim' /
  *  'split' modes hand the canvas off to `_playRange`'s preview rAF. */
 const _drawLoop: AnimationLoop = createAnimationLoop(() => {
+    if (_wordTimingRange) return;
     const m = get(editMode);
     if (m === 'trim' || m === 'split') return;
     const t = segPort.currentTimeMs();
@@ -238,6 +244,54 @@ export function disposeSegPlayback(): void {
     segAudioBuffering.set(false);
     _segRange?.dispose();
     _segRange = null;
+    _wordTimingRange?.dispose();
+    _wordTimingRange = null;
+    _wordTimingOwner = null;
+}
+
+/** Repeat a sample segment or a selected word. All times are file-absolute. */
+export function startWordTimingPreview(
+    seg: Segment, chapter: number, startMs: number, endMs: number, seekMs = startMs,
+): void {
+    if (!segPort.element || !seg.segment_uid || endMs <= startMs) return;
+    cancelChimeGap();
+    _drawLoop.stop();
+    _segRange?.dispose();
+    _segRange = null;
+    _wordTimingRange?.dispose();
+    _wordTimingRange = null;
+    const source = resolveSegSource(seg, chapter);
+    if (source) segPort.setSource(source);
+    _wordTimingOwner = seg.segment_uid;
+    segCurrentIdx.set(seg.index);
+    setPlayingSegment({ chapter, index: seg.index, origin: 'main' });
+    _wordTimingRange = new AudioRange({
+        port: segPort,
+        range: { startMs: Math.max(startMs, Math.min(seekMs, endMs - 1)), endMs },
+        policy: { kind: 'loop' },
+        onTick: (timeMs) => drawActivePlayhead(timeMs),
+        playbackRate: () => get(playbackSpeed),
+    });
+    _wordTimingRange.start();
+    // The initial seek can be inside the range; subsequent repeats begin at its start.
+    _wordTimingRange.setRange({ startMs, endMs });
+    void _fetchPeaksForClick(seg, chapter);
+}
+
+/** A dragged locked word changes its loop without reloading the audio. */
+export function updateWordTimingPreview(ownerUid: string, startMs: number, endMs: number): void {
+    if (_wordTimingOwner !== ownerUid || !_wordTimingRange || endMs <= startMs) return;
+    _wordTimingRange.setRange({ startMs, endMs });
+}
+
+export function stopWordTimingPreview(ownerUid: string): void {
+    if (_wordTimingOwner !== ownerUid) return;
+    _wordTimingRange?.dispose();
+    _wordTimingRange = null;
+    _wordTimingOwner = null;
+    setPlayingSegment(null);
+    segCurrentIdx.set(-1);
+    drawActivePlayhead();
 }
 
 /** Back-compat alias — older call sites import this name. */
@@ -488,6 +542,7 @@ function _segAtOrAfter(timeMs: number): Segment | null {
  */
 export function ensureBoundedRange(): void {
     if (!segPort.element) return;
+    if (_wordTimingRange) return;
     if (get(editMode)) return; // edit-preview owns the port
 
     const active = get(playingSegmentIndex);
@@ -583,6 +638,11 @@ export function playFromSegment(
     // The accordion advance's own resume reaches here with the timer already
     // cleared, so this only ever drops a genuinely stale gap.
     cancelChimeGap();
+    if (_wordTimingRange) {
+        _wordTimingRange.dispose();
+        _wordTimingRange = null;
+        _wordTimingOwner = null;
+    }
     const _playClickAt = performance.now();
     const _trace = (typeof localStorage !== 'undefined'
         && localStorage.getItem('insp_warmup_log') === 'true');
@@ -773,6 +833,15 @@ export function onSegPlayClick(): void {
     // pending resume so it can't restart audio a moment after they paused.
     cancelChimeGap();
 
+    if (_wordTimingRange) {
+        if (segPort.paused) {
+            segPort.uncut();
+            segPort.setPlaybackRate(get(playbackSpeed));
+            segPort.play();
+        } else segPort.pause();
+        return;
+    }
+
     const mode = get(editMode);
     if (mode === 'trim' || mode === 'split') {
         if (getPlayRangeRAF()) {
@@ -875,6 +944,7 @@ function _coldStartEditPreview(mode: 'trim' | 'split'): void {
 // ---------------------------------------------------------------------------
 
 export function onSegTimeUpdate(fileMs?: number): void {
+    if (_wordTimingRange) return;
     // Edit-preview's rAF owns boundary enforcement on the edit canvas.
     if (get(editMode)) return;
     // VBR clip mode plays a one-segment clip from byte 0, so audioEl.src is
@@ -997,7 +1067,7 @@ export function startSegAnimation(): void {
     // Skip the local rAF when a segment-bounded AudioRange is running — its
     // own onTick already calls drawActivePlayhead / updateSegHighlight, and
     // running both would double-draw the playhead and waste a frame budget.
-    if (!_segRange) _drawLoop.start();
+    if (!_segRange && !_wordTimingRange) _drawLoop.start();
 }
 
 export function stopSegAnimation(): void {
@@ -1024,6 +1094,12 @@ export function stopSegAnimation(): void {
 }
 
 export function onSegAudioEnded(): void {
+    // A word-review range may touch the actual end of its source file. The
+    // browser can emit `ended` before the animation-frame boundary check.
+    if (_wordTimingRange) {
+        _wordTimingRange.start();
+        return;
+    }
     // Chapter audio file ended (user let it play through). Clear the active
     // pair, tear down any segment-bounded range, and stop the rAF.
     cancelChimeGap();
@@ -1031,6 +1107,9 @@ export function onSegAudioEnded(): void {
     segAudioBuffering.set(false);
     _segRange?.dispose();
     _segRange = null;
+    _wordTimingRange?.dispose();
+    _wordTimingRange = null;
+    _wordTimingOwner = null;
     _drawLoop.stop();
 }
 

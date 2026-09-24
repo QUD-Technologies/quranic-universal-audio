@@ -94,7 +94,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     import { flagSegment } from '../../utils/edit/flag';
     import { mergeAdjacent } from '../../utils/edit/merge';
     import { beginRefEdit } from '../../utils/edit/reference';
-    import { playFromSegment } from '../../utils/playback/playback';
+    import { playFromSegment, startWordTimingPreview, updateWordTimingPreview, stopWordTimingPreview, onSegPlayClick } from '../../utils/playback/playback';
     import type { PreviewPlaybackContext } from '../../utils/playback/preview';
     import { deregisterRow, registerRow } from '../../utils/playback/row-registry';
     import { wrapCbrSrcIfBySurah } from '../../utils/playback/source';
@@ -327,19 +327,58 @@ import type { Segment } from '../../../../lib/types/view-models';
         $quranRefs?.verse_marker_prefix ?? '۝',
     );
     let wordEditing = false;
+    let wordDraft: { start_ms: number; end_ms: number }[] = [];
+    let wordLockedIndex: number | null = null;
+    let wordSaving = false;
+    let wordError = '';
     $: wordEditWidth = Math.min(8000, Math.max(900, reviewWordTimings.length * 150, (seg.time_end - seg.time_start) * 0.1));
     async function toggleWordEditor(): Promise<void> {
         if (!wordEditing && get(editMode)) return;
-        if (isDirty()) {
+        if (!wordEditing && isDirty()) {
             pushToast({ kind: 'warn', text: tr($localeStore, m.segments_word_edit_pending()) });
             return;
         }
         wordEditing = !wordEditing;
+        wordError = '';
+        wordLockedIndex = null;
+        if (wordEditing) {
+            wordDraft = reviewWordTimings.map(w => ({ start_ms: w.start_ms, end_ms: w.end_ms }));
+            startWordTimingPreview(seg, rowChapter, seg.time_start, seg.time_end);
+        } else {
+            stopWordTimingPreview(seg.segment_uid ?? '');
+        }
         await tick();
         if (canvasEl) {
             canvasEl.setAttribute('data-needs-waveform', '');
             _ensureWaveformObserver().observe(canvasEl);
         }
+    }
+    function onWordDraftChange(boundaries: { start_ms: number; end_ms: number }[], changedIndex: number): void {
+        wordDraft = boundaries;
+        if (wordLockedIndex === changedIndex) {
+            updateWordTimingPreview(seg.segment_uid ?? '', boundaries[changedIndex]!.start_ms, boundaries[changedIndex]!.end_ms);
+        }
+    }
+    function seekWordPreview(timeMs: number): void {
+        wordLockedIndex = null;
+        startWordTimingPreview(seg, rowChapter, seg.time_start, seg.time_end, timeMs);
+    }
+    function toggleWordLock(index: number): void {
+        if (wordLockedIndex === index) {
+            wordLockedIndex = null;
+            startWordTimingPreview(seg, rowChapter, seg.time_start, seg.time_end);
+        } else {
+            wordLockedIndex = index;
+            startWordTimingPreview(seg, rowChapter, wordDraft[index]!.start_ms, wordDraft[index]!.end_ms);
+        }
+    }
+    async function applyWordTimings(): Promise<void> {
+        if (wordSaving) return;
+        wordSaving = true;
+        wordError = '';
+        try { await saveWordTimings(wordDraft); }
+        catch (error) { wordError = error instanceof Error ? error.message : tr($localeStore, m.segments_word_edit_error()); }
+        finally { wordSaving = false; }
     }
     async function saveWordTimings(boundaries: { start_ms: number; end_ms: number }[]): Promise<boolean> {
         if (!seg.segment_uid || isDirty()) throw new Error(tr($localeStore, m.segments_word_edit_pending()));
@@ -360,6 +399,7 @@ import type { Segment } from '../../../../lib/types/view-models';
         refreshSegInStore(seg);
         resetHistoryLoader();
         wordEditing = false;
+        stopWordTimingPreview(seg.segment_uid ?? '');
         await tick();
         if (canvasEl) {
             canvasEl.setAttribute('data-needs-waveform', '');
@@ -613,6 +653,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     }
 
     onDestroy(() => {
+        if (wordEditing) stopWordTimingPreview(seg.segment_uid ?? '');
         // Use the stored prev values rather than the current (potentially
         // shifted) seg.index — otherwise a row that's been reindexed since
         // mount would deregister under the wrong key, leaving a ghost entry.
@@ -967,6 +1008,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     }
 
     function onRowClick(e: MouseEvent): void {
+        if (wordEditing) return;
         if (get(editMode) || readOnly) return;
         const t = e.target as Element;
         if (t.closest('.seg-row-controls') || t.closest('canvas') || t.closest('.seg-text-ref')) return;
@@ -1039,6 +1081,11 @@ import type { Segment } from '../../../../lib/types/view-models';
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup', onUp);
     }
+    function onWordCanvasClick(e: MouseEvent): void {
+        if (!wordEditing || !canvasEl) return;
+        e.stopPropagation();
+        seekWordPreview(_timeFromCanvasEvent(e, canvasEl));
+    }
 </script>
 
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
@@ -1070,6 +1117,12 @@ import type { Segment } from '../../../../lib/types/view-models';
     on:click={onRowClick}
 >
     <div class="seg-left">
+        {#if wordEditing}
+            <div class="word-editor-header">
+                <span class="word-editor-title">{formatRef(seg.matched_ref, $quranRefs?.verse_word_counts)}</span>
+                <span class="word-editor-status">{wordLockedIndex === null ? tr($localeStore, m.segments_word_loop_segment()) : tr($localeStore, m.segments_word_loop_word({ number: String(wordLockedIndex + 1) }))}</span>
+            </div>
+        {/if}
         {#if readOnly && showPlayBtn}
             {#if previewCtx}
                 <button
@@ -1082,6 +1135,7 @@ import type { Segment } from '../../../../lib/types/view-models';
                 <button class="btn btn-sm seg-card-play-btn" title={playButtonTitle}>&#9654;</button>
             {/if}
         {/if}
+        <div class="seg-waveform-viewport" class:word-editing={wordEditing}>
         <div class="seg-waveform-stage" class:word-editing={wordEditing} style:width={wordEditing ? `${wordEditWidth}px` : undefined}>
         <canvas
             bind:this={canvasEl}
@@ -1089,14 +1143,26 @@ import type { Segment } from '../../../../lib/types/view-models';
             height={SEG_ROW_CANVAS_HEIGHT}
             data-needs-waveform
             on:mousedown={onCanvasMousedown}
+            on:click={onWordCanvasClick}
         ></canvas>
         {#if wordEditing}
-            <WordTimingEditor words={reviewWordTimings} labels={reviewDisplayWords}
+            <WordTimingEditor words={wordDraft} labels={reviewDisplayWords}
                 startMs={seg.time_start} endMs={seg.time_end} width={wordEditWidth}
-                onSave={saveWordTimings} onCancel={toggleWordEditor} />
+                lockedIndex={wordLockedIndex} onChange={onWordDraftChange} onSeek={seekWordPreview} onLock={toggleWordLock} />
         {/if}
         </div>
-        {#if isEditingThisRow && $editMode === 'trim' && editSegCanvas}
+        </div>
+        {#if wordEditing}
+            <div class="word-editor-toolbar">
+                <button class="btn btn-sm seg-card-play-btn" type="button" title={playButtonTitle} on:click|stopPropagation={onSegPlayClick}>{playGlyph}</button>
+                <span class="word-editor-hint">{tr($localeStore, m.segments_word_edit_hint())}</span>
+                <div class="word-editor-actions">
+                    <button class="btn btn-sm" type="button" disabled={wordSaving} on:click|stopPropagation={toggleWordEditor}>{tr($localeStore, m.common_action_cancel())}</button>
+                    <button class="btn btn-sm word-editor-save" type="button" disabled={wordSaving} on:click|stopPropagation={applyWordTimings}>{tr($localeStore, wordSaving ? m.segments_word_edit_saving() : m.segments_word_edit_save())}</button>
+                </div>
+            </div>
+            {#if wordError}<div class="word-editor-error" role="alert">{wordError}</div>{/if}
+        {:else if isEditingThisRow && $editMode === 'trim' && editSegCanvas}
             <TrimPanel {seg} canvas={editSegCanvas} />
         {:else if isEditingThisRow && $editMode === 'split' && editSegCanvas}
             <SplitPanel {seg} canvas={editSegCanvas} />
@@ -1194,7 +1260,7 @@ import type { Segment } from '../../../../lib/types/view-models';
         {/if}
     </div>
 
-    <div class="seg-text {confClass}">
+    {#if !wordEditing}<div class="seg-text {confClass}">
         <div class="seg-text-meta">
             <div class="seg-text-header">
                 <span class="seg-text-index">{indexLabel}</span>
@@ -1241,16 +1307,25 @@ import type { Segment } from '../../../../lib/types/view-models';
                 {bodyText}
             {/if}
         </div>
-    </div>
+    </div>{/if}
 </div>
 
 <style>
     :global(.seg-row.word-editing) { display: flex; flex-direction: column; }
-    :global(.seg-row.word-editing .seg-left) { flex: none; width: 100%; overflow-x: auto; }
-    :global(.seg-row.word-editing .seg-text) { flex: none; }
+    :global(.seg-row.word-editing .seg-left) { flex: none; width: 100%; min-width: 0; }
+    .seg-waveform-viewport.word-editing { width: 100%; overflow-x: auto; overflow-y: hidden; }
     .seg-waveform-stage { position: relative; width: 100%; }
-    .seg-waveform-stage.word-editing { height: 168px; flex: none; }
+    .seg-waveform-stage.word-editing { height: 146px; flex: none; }
     .seg-waveform-stage canvas { display: block; }
+    .word-editor-header, .word-editor-toolbar { display: flex; align-items: center; gap: 12px; }
+    .word-editor-header { justify-content: space-between; padding: 2px 8px 8px; }
+    .word-editor-title { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+    .word-editor-status { font-size: 12px; color: var(--accent); }
+    .word-editor-toolbar { padding: 9px 8px 2px; }
+    .word-editor-hint { flex: 1; color: var(--text-muted); font-size: 12px; }
+    .word-editor-actions { display: flex; gap: 8px; margin-left: auto; }
+    .word-editor-save { background: var(--accent); color: var(--accent-fg); }
+    .word-editor-error { padding: 6px 8px; color: var(--state-error-fg); font-size: 12px; }
     .seg-row-play-stack { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
     .seg-word-edit-btn { align-self: stretch; }
     .seg-word-edit-btn.is-open { border-color: var(--accent); color: var(--accent); }
