@@ -1103,6 +1103,7 @@ import type { Segment } from '../../../../lib/types/view-models';
         {:else if !readOnly}
             <div class="seg-row-controls">
                 {#if showPlayBtn || showGotoBtn || !isContext}
+                    <div class="seg-row-play-stack">
                     <div class="seg-row-play-actions">
                         {#if showPlayBtn}
                             <button class="btn btn-sm seg-card-play-btn" title={playButtonTitle} on:click={onPlayClick} on:mouseenter={onPlayHover} on:mouseleave={onPlayLeave}>{playGlyph}</button>
@@ -1135,6 +1136,7 @@ import type { Segment } from '../../../../lib/types/view-models';
                                 {/if}
                             </span>
                         {/if}
+                    </div>
                         {#if $isSampleMode && instanceRole === 'main' && reviewWordTimings.length > 0 && reviewDisplayWords.length === reviewWordTimings.length}
                             <button class="btn btn-sm seg-word-edit-btn" class:is-open={wordEditing} use:editGate
                                 disabled={!!$editMode && !wordEditing}
@@ -1249,6 +1251,8 @@ import type { Segment } from '../../../../lib/types/view-models';
     .seg-waveform-stage { position: relative; width: 100%; }
     .seg-waveform-stage.word-editing { height: 168px; flex: none; }
     .seg-waveform-stage canvas { display: block; }
+    .seg-row-play-stack { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+    .seg-word-edit-btn { align-self: stretch; }
     .seg-word-edit-btn.is-open { border-color: var(--accent); color: var(--accent); }
     .word-edit-hidden { display: none; }
     /* ---- Sample-mode row chips ---- */
