@@ -329,6 +329,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     let wordEditing = false;
     $: wordEditWidth = Math.min(8000, Math.max(900, reviewWordTimings.length * 150, (seg.time_end - seg.time_start) * 0.1));
     async function toggleWordEditor(): Promise<void> {
+        if (!wordEditing && get(editMode)) return;
         if (isDirty()) {
             pushToast({ kind: 'warn', text: tr($localeStore, m.segments_word_edit_pending()) });
             return;
@@ -359,6 +360,11 @@ import type { Segment } from '../../../../lib/types/view-models';
         refreshSegInStore(seg);
         resetHistoryLoader();
         wordEditing = false;
+        await tick();
+        if (canvasEl) {
+            canvasEl.setAttribute('data-needs-waveform', '');
+            _ensureWaveformObserver().observe(canvasEl);
+        }
         pushToast({ kind: 'success', text: tr($localeStore, m.segments_word_edit_saved()) });
         return true;
     }
@@ -1131,6 +1137,7 @@ import type { Segment } from '../../../../lib/types/view-models';
                         {/if}
                         {#if $isSampleMode && instanceRole === 'main' && reviewWordTimings.length > 0 && reviewDisplayWords.length === reviewWordTimings.length}
                             <button class="btn btn-sm seg-word-edit-btn" class:is-open={wordEditing} use:editGate
+                                disabled={!!$editMode && !wordEditing}
                                 on:click|stopPropagation={toggleWordEditor}>{tr($localeStore, wordEditing ? m.segments_word_close_button() : m.segments_word_edit_button())}</button>
                         {/if}
                     </div>
