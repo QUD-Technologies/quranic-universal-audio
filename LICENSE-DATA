@@ -22,8 +22,11 @@ agree, You may not do any of those things.
    product, and any successor to the QUA product.
 
    "Work" means all timing data distributed by or on behalf of the Licensor as
-   part of QUA, in any format and through any channel, now or in the future,
-   including GitHub releases, the Hugging Face dataset, and any API. It
+   part of QUA, including timing data produced by the Licensor's alignment
+   services, such as the Qur'anic Universal Aligner and its API, for any
+   recording submitted to them, in any format and through any channel, now or
+   in the future, including GitHub releases, the Hugging Face dataset, and any
+   API. It
    includes verse, word, letter and animation timestamps; segment, pause and
    silence data; alignment and segmentation data; and the catalogs, manifests
    and metadata distributed with them. It does not include the material listed
@@ -263,11 +266,22 @@ agree, You may not do any of those things.
 
 11. NO SALE OF EXCEPTIONS
 
-   The right to Charge for a Covered Feature, to reserve, restrict or enhance
-   it in a paid edition or tier, to offer it in an Application that displays
-   Advertising, or to sell the Work or a Derivative, is not available for any
-   fee, revenue share or other consideration, and will not be granted.
-   Waivers under Section 10 are given free of charge or not at all.
+   Except as provided in Section 11A, the right to Charge for a Covered
+   Feature, to reserve, restrict or enhance it in a paid edition or tier, to
+   offer it in an Application that displays Advertising, or to sell the Work
+   or a Derivative, is not available for any fee, revenue share or other
+   consideration, and will not be granted. Waivers under Section 10 are given
+   free of charge or not at all.
+
+
+11A. ALIGNER COMMERCIAL LICENSES
+
+   Notwithstanding Section 11, the Licensor may, in a signed written agreement
+   and for a fee, waive Sections 3 and 4 for timing data produced by its
+   alignment services, but only for recordings the licensee owns or is
+   licensed to exploit commercially, and never for any recording published in
+   or by QUA or by the third-party sources listed in the NOTICE file. Such an
+   agreement grants no rights in the Work otherwise.
 
 
 12. MATERIAL NOT COVERED

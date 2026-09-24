@@ -7,13 +7,13 @@ QUA combines original work created by this project with third-party material fro
 
 | Layer | What it is | Terms |
 |---|---|---|
-| **Timing data** | Verse/word/letter timestamps, segmentation, alignment, pause and silence data, and the catalogs, manifests and metadata distributed with them, in any format and through any channel (GitHub releases, the Hugging Face dataset, any API) | [QUA Dataset License 1.0](LICENSE-DATA) (`qua-dataset-1.0`) |
+| **Timing data** | Verse/word/letter timestamps, segmentation, alignment, pause and silence data, and the catalogs, manifests and metadata distributed with them, in any format and through any channel (GitHub releases, the Hugging Face dataset, any API), including the outputs of the Qur'anic Universal Aligner and its API | [QUA Dataset License 1.0](LICENSE-DATA) (`qua-dataset-1.0`) |
 | **Code** | The Inspector application, `qua_shared`, `qua_jobs`, scripts and tooling in this repository | [Apache License 2.0](LICENSE) |
 | **Third-party material** | Recitation audio, Qur'an text editions, fonts, generic reference data (surah names, ayah/word counts) | Their own terms (below). **Not** relicensed by this project. |
 
 ## Timing data
 
-The QUA Dataset License is a custom license. In short: the data may be used freely, including in commercial products, provided any app or feature using this data, or a model trained, fine-tuned, distilled, evaluated or benchmarked on it (or on such a model's output), must be free for every user and fully accessible - not behind, restricted to, or enhanced in a paid tier - in an app that is itself free and shows no advertising; other, unrelated features may be paid. The data may not be sold. Published models and datasets must declare they used QUA. Derivatives, including models, are distributed under the same license. Credit QUD Technologies - Qur'anic Universal Audio. The [full license text](LICENSE-DATA) governs.
+The QUA Dataset License is a custom license. In short: the data may be used freely, including in commercial products. Any app or feature using this data, or a model trained, fine-tuned, distilled, evaluated or benchmarked on it (or on such a model's output), must be free for every user and fully accessible - not behind, restricted to, or enhanced in a paid tier - in an app that is itself free and shows no advertising; other, unrelated features may be paid. The data may not be sold. Published models and datasets must declare they used QUA. Derivatives, including models, are distributed under the same license. Credit QUD Technologies - Qur'anic Universal Audio. The [full license text](LICENSE-DATA) governs.
 
 ## Recitation audio
 
