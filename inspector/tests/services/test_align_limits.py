@@ -59,6 +59,7 @@ def test_gpu_budget_counts_rolling_window_and_skips_exempt(align_env):  # noqa: 
 
     q = limits.quota(exempt=False)
     assert (q.gpu_used, q.gpu_limit) == (2, 2)
+    assert q.gpu_resets_at is not None
     frees = datetime.fromisoformat(q.gpu_resets_at.replace("Z", "+00:00"))
     assert timedelta(hours=3) < frees - datetime.now(UTC) < timedelta(hours=5)
 
@@ -95,7 +96,9 @@ def test_start_refuses_past_budget_and_stamps_exempt_runs(align_env):  # noqa: F
     assert repo_align_runs.active_for_slug(SLUG) is None  # nothing was written
 
     status = runs.start(SLUG, MAINTAINER, device="GPU", exempt=True)
-    params = AlignParams.from_json(repo_align_runs.get(status.run_id)["params_json"])
+    row = repo_align_runs.get(status.run_id)
+    assert row is not None
+    params = AlignParams.from_json(row["params_json"])
     assert params.quota_exempt is True
 
 
