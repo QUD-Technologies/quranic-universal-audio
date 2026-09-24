@@ -3,7 +3,7 @@
 <p align="center">
   <a href="https://aligner.qud.dev/"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Tool-Qur'anic%20Universal%20Aligner-E8C32E" alt="Demo - Qur'anic Universal Aligner"></a>
   <a href="https://audio.qud.dev/"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Website-Qur'anic%20Universal%20Audio-E8C32E" alt="App - Qur'anic Universal Audio"></a>
-  <a href="https://huggingface.co/datasets/hetchyy/quranic-universal-ayahs"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-Qur'anic%20Universal%20Ayahs-E8C32E" alt="Dataset - Qur'anic Universal Ayahs"></a>
+  <a href="https://huggingface.co/datasets/QUD-Technologies/quranic-universal-ayahs"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-Qur'anic%20Universal%20Ayahs-E8C32E" alt="Dataset - Qur'anic Universal Ayahs"></a>
   <!-- stats-badges:start -->
   <br>
   <img src="https://img.shields.io/badge/%F0%9F%94%89%20Catalog-64748b" alt="🔉 Catalog"> <img src="https://img.shields.io/badge/Reciters-1%2C214-d4842a" alt="Reciters: 1,214"> <img src="https://img.shields.io/badge/Riwayat-19-f0ad4e" alt="Riwayat: 19"> <img src="https://img.shields.io/badge/Hours-47%2C500h%2B-d4842a" alt="Hours: 47,500h+">
@@ -57,7 +57,7 @@
 
 Audio, timestamps and metadata ship in two open formats — pick by your use case.
 
-| | [GitHub Releases](https://github.com/QUD-Technologies/quranic-universal-audio/releases) | [Hugging Face Dataset](https://huggingface.co/datasets/hetchyy/quranic-universal-ayahs) |
+| | [GitHub Releases](https://github.com/QUD-Technologies/quranic-universal-audio/releases) | [Hugging Face Dataset](https://huggingface.co/datasets/QUD-Technologies/quranic-universal-ayahs) |
 |---|---|---|
 | **Best for** | Apps, offline use, archives | ML research, analysis, direct audio access |
 | **Shape** | JSON per recitation, in ayah / word / letter tiers | Parquet, one row per ayah |

@@ -46,7 +46,7 @@ def test_first_release_added_only():
         members=[_member("Abdulbasit Abdulsamad"), _member("Saud Al-Shuraim")],
         owner="QUD-Technologies",
         repo="quranic-universal-audio",
-        hf_dataset="hetchyy/quranic-universal-ayahs",
+        hf_dataset="QUD-Technologies/quranic-universal-ayahs",
     )
     # Title first, then the asset section. Tolerant of the template's optional
     # standing intro paragraph between them (present on some release bodies) —

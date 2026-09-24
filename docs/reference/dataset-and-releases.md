@@ -22,7 +22,7 @@ running + historical, in one place: the **Jobs** tab — [admin-dashboard.md](ad
 |---|---|---|---|
 | **Bucket canonical** | `reciters/<slug>/` | Internal (TS tab, the cut/publish jobs, future API) | Zero loss, full reproducibility, single source of truth |
 | **GH release** | `gh:releases/v{X.Y.Z}` → `<slug>.zip` assets | Mobile apps, offline kiosks, archives | One version-pinned, fully-offline snapshot of all reciters |
-| **HF dataset** | `hetchyy/quranic-universal-ayahs` | ML researchers, training, analysis | Parquet-native, queryable, embedded audio |
+| **HF dataset** | `QUD-Technologies/quranic-universal-ayahs` | ML researchers, training, analysis | Parquet-native, queryable, embedded audio |
 
 Every adapter starts from the same bucket inputs. A native v13 chapter stores every recorded
 occasion as connected readings and ordered `parts` (see [shards.md](shards.md) and
