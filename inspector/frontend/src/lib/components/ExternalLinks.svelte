@@ -15,7 +15,7 @@
     const links: Link[] = [
         { key: 'gh', label: 'GitHub', href: 'https://github.com/QUD-Technologies/quranic-universal-audio' },
         { key: 'rel', label: 'Releases', href: 'https://github.com/QUD-Technologies/quranic-universal-audio/releases' },
-        { key: 'hf', label: 'Dataset', href: 'https://huggingface.co/datasets/hetchyy/quranic-universal-ayahs' },
+        { key: 'hf', label: 'Dataset', href: 'https://huggingface.co/datasets/QUD-Technologies/quranic-universal-ayahs' },
         { key: 'discord', label: 'Discord', href: DISCORD_URL },
     ];
 
