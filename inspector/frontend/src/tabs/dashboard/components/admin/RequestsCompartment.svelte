@@ -21,6 +21,7 @@
     import { can } from '../../../../lib/stores/capabilities';
     import { isOwner } from '../../../../lib/stores/current-user';
     import AlignProgress from './AlignProgress.svelte';
+    import IntakePlanPanel from './intake/IntakePlanPanel.svelte';
     import type {
         AdminRequestRow,
         AdminRequestsResponse,
@@ -56,6 +57,8 @@
 
     // Native align pipeline (slug rows): one in-flight call at a time.
     const canAlign = can('intake.align');
+    //: Slugless intake rows: build / review the plan, then mint + align.
+    const canIngest = can('intake.ingest');
     let alignBusyId = $state<string | null>(null);
     //: Lane the next started run is sent to. GPU leases ZeroGPU per chapter and
     //: falls back to CPU when the quota runs out; CPU skips the quota entirely.
@@ -114,6 +117,15 @@
         });
         return () => teardown();
     });
+
+    /** Refetch the active facet (e.g. after an intake was minted into a slug). */
+    async function refresh(): Promise<void> {
+        try {
+            applyResult(await fetchRequests(status));
+        } catch (e) {
+            error = (e as Error).message ?? 'Failed to load requests';
+        }
+    }
 
     function toggle(row: AdminRequestRow): void {
         if (expandedId === row.id) {
@@ -517,13 +529,6 @@
                                     {#if status === 'open'}
                                         {#if $isOwner}
                                             <div class="resolve">
-                                                {#if isIntake(row)}
-                                                    <p class="ingest-note">
-                                                        Ingested offline by the alignment pipeline — aligning
-                                                        this submission is the acceptance; no action needed here.
-                                                        Send back or discard below to reject it.
-                                                    </p>
-                                                {/if}
                                                 <textarea
                                                     bind:value={reason}
                                                     rows="2"
@@ -573,6 +578,15 @@
                                     {/if}
                                 </div>
                             </div>
+                            {#if status === 'open' && isIntake(row) && $canIngest}
+                                <IntakePlanPanel
+                                    requestId={row.id}
+                                    kind={row.kind}
+                                    canAlign={$canAlign}
+                                    {quota}
+                                    onMinted={refresh}
+                                />
+                            {/if}
                         </div>
                     {/if}
                 </li>
@@ -723,16 +737,6 @@
     .ln-reach.none { color: var(--text-faint); font-weight: 400; }
 
     .btn.tiny { padding: 3px 9px; font-size: 10.5px; }
-    .ingest-note {
-        margin: 0 0 var(--s-2);
-        padding: var(--s-2) var(--s-3);
-        background: var(--accent-tint);
-        border: 1px solid var(--border-quiet);
-        border-radius: var(--r-2);
-        font-size: var(--fs-meta);
-        line-height: var(--lh-normal);
-        color: var(--text-secondary);
-    }
 
     .review-side { display: flex; flex-direction: column; gap: var(--s-4); }
     .submitted-by { margin: 0; font-size: var(--fs-meta); color: var(--text-muted); }
