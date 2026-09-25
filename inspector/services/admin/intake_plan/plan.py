@@ -1,4 +1,4 @@
-"""The intake plan lifecycle: enumerate → match → owner review → (mint.py) align.
+"""The intake plan lifecycle: enumerate → owner review → (mint.py) align.
 
 ``payload.plan`` on the request row holds the plan. Enumeration can take a
 minute (a SoundCloud set resolves every track), so ``build`` stamps
@@ -23,13 +23,12 @@ from qua_shared.schemas import (
     PlanEntry,
     PlanOption,
 )
-from qua_shared.schemas.wire.intake_plan import MatchConfidence, PlanHost
+from qua_shared.schemas.wire.intake_plan import PlanHost
 from services.db import _serde, repo_catalog, repo_requests
 from services.db import sync as _sync
 
 from . import enumerate as _enumerate
 from . import identity as _identity
-from . import match as _match
 
 log = logging.getLogger("inspector")
 
@@ -128,11 +127,10 @@ def update(request_id: str, body: IntakePlanUpdate) -> IntakePlanView:
     plan = stored_plan(row)
     if plan is None or plan.status != "ready":
         raise PlanError("build the plan before editing it", 409)
-    edits = {e.key: sorted(set(e.chapters)) for e in body.entries}
+    edits = {e.key: e.include for e in body.entries}
     for entry in plan.entries:
-        if entry.key in edits and edits[entry.key] != entry.chapters:
-            entry.chapters = edits[entry.key]
-            entry.confidence = "manual" if entry.chapters else "none"
+        if entry.key in edits:
+            entry.include = edits[entry.key]
     plan.identity = body.identity
     plan.updated_at = _now()
     _save(request_id, plan)
@@ -157,24 +155,21 @@ def _enumerate_into(request_id: str, created_at: str) -> None:
 
 def _fresh_plan(kind: str, payload: dict, source: IntakeSource, created_at: str) -> IntakePlan:
     listing = _enumerate.enumerate_source(source)
-    matches = _match.match_entries([e.title for e in listing.entries])
     entries: list[PlanEntry] = []
-    for i, (raw, m) in enumerate(zip(listing.entries, matches, strict=True), 1):
-        if listing.host == "links":
-            chapters, confidence = sorted(raw.chapters), "exact"
-        elif raw.unavailable:
-            chapters, confidence = [], "none"
-        else:
-            chapters, confidence = list(m.chapters), m.confidence
+    seen: set[str] = set()
+    for raw in listing.entries:
+        if raw.url in seen:  # a playlist listing the same file twice
+            continue
+        seen.add(raw.url)
         entries.append(
             PlanEntry(
-                key=f"e{i}",
+                key=f"e{len(entries) + 1}",
                 url=raw.url,
                 title=raw.title,
                 index=raw.index,
                 duration_sec=raw.duration_sec,
-                chapters=chapters,
-                confidence=cast(MatchConfidence, confidence),
+                chapters=sorted(raw.chapters),
+                include=not raw.unavailable,
             )
         )
     catalog = repo_catalog.snapshot()
@@ -227,50 +222,61 @@ def to_view(plan: IntakePlan, *, kind: str) -> IntakePlanView:
 def check_entries(plan: IntakePlan) -> tuple[PlanCoverage, list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
-    owner: dict[int, str] = {}
-    duplicates: set[int] = set()
-    combined = 0
-    for e in plan.entries:
-        label = f"#{e.index or e.key} {e.title[:60]}".strip()
-        if not e.chapters:
-            continue
-        if any(not 1 <= c <= LAST_CHAPTER for c in e.chapters):
-            errors.append(f"{label}: chapters must be 1–114.")
-            continue
-        if e.chapters != list(range(e.chapters[0], e.chapters[-1] + 1)):
-            errors.append(f"{label}: one file can only hold consecutive chapters.")
-        if len(e.chapters) > 1:
-            combined += 1
-        for c in e.chapters:
-            if c in owner:
-                duplicates.add(c)
-            owner.setdefault(c, e.key)
-    chapters = sorted(owner)
-    missing = [c for c in range(1, LAST_CHAPTER + 1) if c not in owner]
-    if duplicates:
-        errors.append(
-            "Chapters claimed by more than one entry: " + ", ".join(map(str, sorted(duplicates)))
-        )
-    if not chapters:
-        errors.append("No entry is mapped to a chapter.")
-    elif missing:
-        warnings.append(f"{len(missing)} chapter(s) missing — the delivery will be partial.")
-    low = sum(1 for e in plan.entries if e.confidence == "low" and e.chapters)
-    if low:
-        warnings.append(f"{low} low-confidence match(es) — check them before aligning.")
-    long_files = [e for e in plan.entries if e.chapters and (e.duration_sec or 0) > LONG_FILE_S]
+    included = [e for e in plan.entries if e.include]
+    durations = [e.duration_sec for e in included]
+    coverage = PlanCoverage(
+        files=len(plan.entries),
+        included=len(included),
+        total_duration_sec=(
+            sum(d for d in durations if d is not None)
+            if durations and None not in durations
+            else None
+        ),
+    )
+    if not included:
+        errors.append("Every file is left out — include at least one.")
+    if plan.host == "links":
+        _check_links(included, coverage, errors, warnings)
+    long_files = [e for e in included if (e.duration_sec or 0) > LONG_FILE_S]
     if long_files:
         warnings.append(
             f"{len(long_files)} file(s) longer than {LONG_FILE_S // 3600} h — alignment of "
             "one very long file may fail; prefer per-surah files when the source has them."
         )
-    skipped = sum(1 for e in plan.entries if not e.chapters)
+    skipped = len(plan.entries) - len(included)
     if skipped:
-        warnings.append(f"{skipped} entr(ies) left out of the delivery.")
-    coverage = PlanCoverage(
-        chapters=chapters, missing=missing, duplicates=sorted(duplicates), combined_entries=combined
-    )
+        warnings.append(f"{skipped} file(s) left out of the delivery.")
     return coverage, errors, warnings
+
+
+def _check_links(
+    included: list[PlanEntry], coverage: PlanCoverage, errors: list[str], warnings: list[str]
+) -> None:
+    """Contributor-typed chapters per link: range, one chapter per link each."""
+    owner: dict[int, str] = {}
+    duplicates: set[int] = set()
+    for e in included:
+        label = f"{e.url[:80]}"
+        if any(not 1 <= c <= LAST_CHAPTER for c in e.chapters):
+            errors.append(f"{label}: chapters must be 1–114.")
+            continue
+        if len(e.chapters) > 1:
+            coverage.combined_entries += 1
+        for c in e.chapters:
+            if c in owner:
+                duplicates.add(c)
+            owner.setdefault(c, e.key)
+    coverage.chapters = sorted(owner)
+    coverage.missing = [c for c in range(1, LAST_CHAPTER + 1) if c not in owner]
+    coverage.duplicates = sorted(duplicates)
+    if duplicates:
+        errors.append(
+            "Chapters given to more than one link: " + ", ".join(map(str, sorted(duplicates)))
+        )
+    if owner and coverage.missing:
+        warnings.append(
+            f"{len(coverage.missing)} chapter(s) missing — the delivery will be partial."
+        )
 
 
 def youtube_cookies_configured() -> bool:

@@ -186,6 +186,30 @@ def encode(
         raise RuntimeError("ffmpeg produced an empty mp3")
 
 
+def encode_pieces(pieces: list[tuple[Path, int, int]], dest: Path, channels: int) -> None:
+    """One canonical encode of several ``(src, start_ms, end_ms)`` windows laid
+    end to end — a surah uploaded in parts."""
+    if len(pieces) == 1:
+        src, start, end = pieces[0]
+        encode(src, dest, channels, start_ms=start, end_ms=end)
+        return
+    layout = "mono" if channels == 1 else "stereo"
+    cmd = ["ffmpeg", "-y", "-v", "error"]
+    labels = []
+    for i, (src, start, end) in enumerate(pieces):
+        cmd += ["-ss", f"{start / _MS:.3f}", "-t", f"{(end - start) / _MS:.3f}", "-i", str(src)]
+        labels.append(f"[a{i}]")
+    fmt = f"aformat=sample_fmts=fltp:sample_rates={CANONICAL_SAMPLE_RATE}:channel_layouts={layout}"
+    graph = ";".join(f"[{i}:a]{fmt}[a{i}]" for i in range(len(pieces)))
+    graph += f";{''.join(labels)}concat=n={len(pieces)}:v=0:a=1[out]"
+    cmd += ["-filter_complex", graph, "-map", "[out]", "-c:a", "libmp3lame"]
+    cmd += ["-b:a", CANONICAL_BITRATE, "-ar", CANONICAL_SAMPLE_RATE, "-ac", str(channels)]
+    cmd += ["-f", "mp3", str(dest)]
+    subprocess.run(cmd, check=True, timeout=FFMPEG_TIMEOUT_S)
+    if not dest.is_file() or dest.stat().st_size == 0:
+        raise RuntimeError("ffmpeg produced an empty mp3")
+
+
 def bake_peaks(mp3: Path) -> tuple[bytes, int]:
     """``(slim peaks blob, duration_ms)`` for a canonical chapter mp3."""
     from qua_shared.audio.peaks import compute_audio_peaks, pack_slim

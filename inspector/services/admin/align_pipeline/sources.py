@@ -6,10 +6,12 @@ several chapters), else its ``url``. Chapters sharing a source form one group:
 
 * a group of one is aligned as that chapter (``reciters/<slug>/audio/<ch>.mp3``);
 * a combined group is acquired ONCE into a *source slot*
-  (``reciters/<slug>/audio/<slot>.mp3``, ``slot = 901 + i``), aligned once, then
+  (``reciters/<slug>/audio/<slot>.mp3``, ``slot = 201 + i``), aligned once, then
   split into per-chapter files by ``stage_split``. Slots sit above 114 so they
   never collide with a chapter; the aligner's bucket-reference pattern admits
-  them unchanged, and split deletes them.
+  them unchanged, and split deletes them;
+* a manifest ``sources`` entry (a playlist file) is a *detect* group: a slot with
+  no planned chapters — the aligner's surah detection decides what it holds.
 """
 
 from __future__ import annotations
@@ -35,12 +37,23 @@ def bucket_chapter_url(slug: str, chapter: int) -> str:
 
 
 def groups_for(slug: str) -> list[SourceGroup]:
-    manifest = audio_meta.manifest_chapters(slug)
-    if not manifest:
-        return []
-    return groups_from_manifest(manifest)
+    """A chapter already cut out of a combined file (its ``url`` is its own
+    bucket mp3) is aligned from that mp3 like any single file."""
+    chapters = {
+        key: (
+            {**entry, "source_url": None}
+            if entry.get("url") == bucket_chapter_url(slug, int(key))
+            else entry
+        )
+        for key, entry in audio_meta.manifest_chapters(slug).items()
+    }
+    return groups_from_manifest(chapters, audio_meta.manifest_sources(slug))
 
 
-def chapter_sources(groups: list[SourceGroup]) -> dict[int, str]:
-    """``{chapter: source url}`` — the ``chapter_sources.json`` url per chapter."""
-    return {ch: g.url for g in groups for ch in g.chapters}
+def chapter_sources(slug: str) -> dict[int, str]:
+    """``{chapter: source url}`` — the ``chapter_sources.json`` url per chapter,
+    from the (post-split) manifest: a cut chapter's original file."""
+    return {
+        int(key): entry.get("source_url") or entry["url"]
+        for key, entry in audio_meta.manifest_chapters(slug).items()
+    }

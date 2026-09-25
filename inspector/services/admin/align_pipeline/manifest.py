@@ -7,8 +7,9 @@ the real per-chapter size / duration and the chapter's offset inside its source
 are known — this module writes them back. Fields a CDN probe already filled are
 never overwritten.
 
-It also applies the split's coverage outcome: chapters a combined file turned
-out not to hold are dropped, chapters it held beyond the plan are adopted.
+It also applies the split's outcome: every cut chapter gets a bucket ``url``
+with its original file as ``source_url``, planned chapters nobody held are
+dropped, and the resolved ``sources`` (playlist files) are cleared.
 """
 
 from __future__ import annotations
@@ -66,27 +67,28 @@ def apply_split(
     *,
     cuts: dict[int, dict],
     dropped: list[int],
-    adopted: dict[int, str],
+    clear_sources: bool = False,
 ) -> None:
-    """``cuts``: ``{chapter: {offset_ms, bytes, duration_ms}}`` from the split job;
-    ``adopted``: ``{chapter: source url}`` for chapters found beyond the plan."""
+    """``cuts``: ``{chapter: {source_url, offset_ms, bytes, duration_ms}}`` — every
+    chapter the split made gets a fresh entry pointing at its bucket mp3.
+    ``clear_sources`` empties ``sources`` once their surahs are resolved."""
     from .sources import bucket_chapter_url
 
     doc = _read(slug)
     chapters = doc.setdefault("chapters", {})
     for ch in dropped:
         chapters.pop(str(ch), None)
-    for ch, url in adopted.items():
-        chapters[str(ch)] = {"url": bucket_chapter_url(slug, ch), "source_url": url}
     for ch, cut in cuts.items():
-        entry = chapters.get(str(ch))
-        if entry is None:
-            continue
-        entry["source_offset_ms"] = int(cut["offset_ms"])
-        for field in ("size_bytes", "duration_sec", "bitrate_kbps", "bitrate_mode"):
-            entry.pop(field, None)
+        entry = {
+            "url": bucket_chapter_url(slug, ch),
+            "source_url": cut["source_url"],
+            "source_offset_ms": int(cut["offset_ms"]),
+        }
         _fill(entry, cut)
+        chapters[str(ch)] = entry
     doc["chapters"] = dict(sorted(chapters.items(), key=lambda kv: int(kv[0])))
+    if clear_sources:
+        doc["sources"] = []
     _write(slug, doc)
     sync_delivery(slug)
 

@@ -208,6 +208,8 @@ is never eligible for a public HF dataset split or GitHub release member.
 
 Chapter keys: `"1"`–`"114"` (by_surah) or `"<surah>:<ayah>"` (by_ayah). Per-chapter metric fields nullable until probed. `ChapterEntry` fields: `url` (required), `size_bytes`, `duration_sec`, `bitrate_kbps`, `bitrate_mode` (`cbr`/`vbr` per chapter), and `max_linear_seek_err_ms` (probe verdict evidence).
 
+`sources` (`list[ManifestSource]`, `{url, title}`) holds playlist files whose surahs are not known yet: an online playlist intake mints with `chapters: {}` and every included file here. The align run detects each file's surahs, writes the chapters (bucket `url` + original `source_url` + `source_offset_ms`) and clears `sources`. The key is omitted from the dump when empty, so every other manifest keeps its on-disk shape.
+
 `AudioManifestSidecar` (`qua_shared/schemas/bucket/catalog.py`) is a bucket artefact with pure `extra="forbid"`: any unknown/legacy sidecar field raises `ValidationError` on parse (writer-drift signal), never silently stripped — the same external-file strictness the bucket-validation harness surfaces.
 
 **Checksum** (`_meta.checksum`): `sha256(normalized_urls_sorted.joined_by_newline)` at build time. Normalization: lowercase hostname, strip trailing slashes, drop fragment; query order + path case preserved (CDN-sensitive). Lives only in the sidecar; re-probe jobs compute + compare.
@@ -324,7 +326,7 @@ There is no separate validate-then-rebuild step: the SQLite FKs + `Delivery`/`Re
 
 ### Registering a download-only (yt-dlp) source
 
-YouTube, Google Drive, SoundCloud, archive.org and other yt-dlp hosts all flow through the **online intake** in the Requests tab: plan (enumerate + match + identity) → mint → align ([align-pipeline.md § Online intake](align-pipeline.md#online-intake-plan--mint--align)). Registering one is **data, not code**:
+YouTube, Google Drive, SoundCloud, archive.org and other yt-dlp hosts all flow through the **online intake** in the Requests tab: plan (enumerate + identity; surahs detected from the audio when aligning) → mint → align ([align-pipeline.md § Online intake](align-pipeline.md#online-intake-plan--mint--align)). Registering one is **data, not code**:
 
 1. The catalog needs a `Channel` whose `host_patterns` match the host, with `gh_release_eligible=False` (not a public CDN — its source URLs can't go in a public GH release; the bucket mp3 is the distributed artifact). If none matches, the plan's identity comes back with no channel and the check blocks the mint until the owner picks one.
 2. The per-uploader `source` is proposed by the plan (a new `<uploader>_youtube` source for a YouTube channel, else the host's generic source) and edited in the identity form; minting adds a new one via `vocab_additions` (a `Source` with `name`/`url`/`audio_categories`).

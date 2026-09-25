@@ -64,11 +64,12 @@ def start(
     if delivery.audio_category != "by_surah":
         raise AlignRunError(f"{slug}: only by_surah deliveries are supported", 400)
     try:
-        chapters = [ch for g in sources.groups_for(slug) for ch in g.chapters]
+        groups = sources.groups_for(slug)
     except ValueError as exc:
         raise AlignRunError(f"{slug}: {exc}", 400) from exc
-    if not chapters:
-        raise AlignRunError(f"{slug}: audio manifest lists no chapters", 400)
+    if not groups:
+        raise AlignRunError(f"{slug}: audio manifest lists no chapters or sources", 400)
+    units = sum(g.weight for g in groups)
     try:
         riwayah = resolve_sdk_slug(delivery.riwayah or DEFAULT_RIWAYAH)
     except UnsupportedRiwayah as exc:
@@ -84,15 +85,15 @@ def start(
             slug=slug,
             requested_by=actor.hf_user_id,
             params_json=params.to_json(),
-            chapters_total=len(chapters),
+            chapters_total=units,
         )
     cache.invalidate_admin_requests_cache()
     log.info(
-        "align: %s started run %s for %s (%d chapters, %s lane)",
+        "align: %s started run %s for %s (%d units, %s lane)",
         actor.hf_user_id,
         run_id,
         slug,
-        len(chapters),
+        units,
         device,
     )
     from . import runner

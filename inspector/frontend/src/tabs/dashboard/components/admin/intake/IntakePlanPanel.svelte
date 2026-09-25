@@ -1,8 +1,9 @@
 <script lang="ts">
     /**
      * Owner review of a slugless intake request: enumerate the submitted
-     * source into files, check which chapter(s) each holds and the proposed
-     * catalog identity, save, then Align (mint the slug + start its run).
+     * source into files, choose which to include and check the proposed
+     * catalog identity, save, then Align (mint the slug + start its run —
+     * the aligner detects which surahs each file holds).
      */
     import {
         alignIntake,
@@ -23,10 +24,9 @@
     import {
         cleanIdentity,
         computeCoverage,
-        draftsFrom,
         identityEqual,
-        parseChapters,
-        sameChapters,
+        includesFrom,
+        totalDuration,
     } from './plan-utils';
 
     interface Props {
@@ -46,7 +46,7 @@
     let loading = $state(true);
     /** Bumped on every adopted server view so the identity form re-seeds. */
     let version = $state(0);
-    let drafts = $state<Record<string, string>>({});
+    let includes = $state<Record<string, boolean>>({});
     let identity = $state<PlanIdentity>({});
     let busy = $state<'build' | 'save' | 'align' | null>(null);
     let error = $state<string | null>(null);
@@ -55,7 +55,7 @@
 
     function adopt(view: IntakePlanView | null): void {
         plan = view;
-        drafts = draftsFrom(view?.entries ?? []);
+        includes = includesFrom(view?.entries ?? []);
         identity = { ...(view?.identity ?? {}) };
         version++;
     }
@@ -102,21 +102,18 @@
     });
 
     const entries = $derived(plan?.entries ?? []);
-    const parsed = $derived(entries.map((e) => parseChapters(drafts[e.key] ?? '')));
-    const invalidCount = $derived(parsed.filter((p) => p === null).length);
-    const coverage = $derived(computeCoverage(parsed));
+    const isLinks = $derived(plan?.host === 'links');
+    const included = $derived(entries.filter((e) => includes[e.key]));
+    const totalSec = $derived(totalDuration(included));
+    const coverage = $derived(isLinks ? computeCoverage(included.map((e) => e.chapters ?? [])) : null);
     const dirty = $derived(
         !!plan &&
-            (entries.some((e, i) => {
-                const p = parsed[i];
-                return !p || !sameChapters(p, e.chapters ?? []);
-            }) ||
+            (entries.some((e) => includes[e.key] !== (e.include ?? true)) ||
                 !identityEqual(identity, plan.identity ?? {})),
     );
     const blockingErrors = $derived(plan?.errors ?? []);
 
     const blockedReason = $derived.by<string | null>(() => {
-        if (invalidCount > 0) return 'Fix the highlighted chapter inputs first.';
         if (dirty) return 'Save your edits first — Align uses the saved plan.';
         if (blockingErrors.length > 0) return 'Resolve the errors above before aligning.';
         return null;
@@ -140,13 +137,13 @@
     }
 
     async function save(): Promise<void> {
-        if (busy || !plan || invalidCount > 0) return;
+        if (busy || !plan) return;
         busy = 'save';
         error = null;
         notice = null;
         try {
             const body = {
-                entries: entries.map((e, i) => ({ key: e.key, chapters: parsed[i] ?? [] })),
+                entries: entries.map((e) => ({ key: e.key, include: !!includes[e.key] })),
                 identity: cleanIdentity(identity),
             };
             adopt(await saveIntakePlan(requestId, body));
@@ -187,8 +184,8 @@
     {:else if !plan}
         <div class="row">
             <p class="muted">
-                Lists the playlist / folder / links, matches every file to its surah, and proposes the
-                catalog identity. Nothing is downloaded yet.
+                Lists the playlist / folder / links into files and proposes the catalog identity.
+                Nothing is downloaded yet; surahs are detected from the audio when aligning.
             </p>
             <button class="btn primary" disabled={!!busy} onclick={build}>
                 {busy === 'build' ? 'Starting…' : 'Build plan'}
@@ -207,6 +204,8 @@
         <IntakePlanSummary
             {plan}
             fileCount={entries.length}
+            includedCount={included.length}
+            {totalSec}
             {coverage}
             rebuilding={busy === 'build'}
             disabled={!!busy}
@@ -223,23 +222,21 @@
         {/key}
         <IntakePlanEntries
             {entries}
-            {drafts}
-            duplicates={coverage.duplicates}
+            {includes}
+            showChapters={isLinks}
             disabled={!!busy}
-            onEdit={(key, text) => (drafts[key] = text)}
+            onToggle={(key, on) => (includes[key] = on)}
         />
 
         <div class="foot">
             <span class="save-state">
-                {#if invalidCount > 0}
-                    {invalidCount} invalid chapter input{invalidCount === 1 ? '' : 's'}
-                {:else if dirty}
+                {#if dirty}
                     Unsaved edits
                 {:else}
                     Saved
                 {/if}
             </span>
-            <button class="btn" disabled={!dirty || invalidCount > 0 || !!busy} onclick={save}>
+            <button class="btn" disabled={!dirty || !!busy} onclick={save}>
                 {busy === 'save' ? 'Saving…' : 'Save'}
             </button>
         </div>

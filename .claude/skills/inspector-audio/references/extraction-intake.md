@@ -148,7 +148,8 @@ now runs from the Requests tab (routes `routes/admin/intake_plan.py`, gated by
 `intake.ingest`; `/align` also needs `intake.align`):
 
 - `GET` / `POST` / `PUT /api/admin/intake/<rid>/plan` — build (enumerate the
-  source + match titles → chapters + propose identity, in a background thread),
+  source into files + propose identity, in a background thread; titles are never
+  mapped to chapters — the align run detects each file's surahs),
   read, and save the owner's review of `payload.plan`.
 - `POST /api/admin/intake/<rid>/align` — `intake_plan/mint.py` builds the
   `intake.ingest()` body from the plan, mints, then calls `align_runs.start`.
@@ -185,7 +186,7 @@ write them.
 |---|---|
 | `services/segments/auto_detect.py` | reconciler loop, `SYSTEM_ACTOR`, catch-up firing |
 | `services/admin/intake.py` | slugless submit / probe / resolve / `ingest` (the mint) |
-| `services/admin/intake_plan/` | online plan: enumerate (+ Drive), match, identity, plan lifecycle, mint → align |
+| `services/admin/intake_plan/` | online plan: enumerate (+ Drive), identity, plan lifecycle, mint → align (playlist files minted as manifest `sources`) |
 | `routes/admin/intake_plan.py` | `/api/admin/intake/<rid>/{plan,align}` |
 | `qua_shared/schemas/wire/intake_requests.py` | `IntakeSubmission`, `IntakeSource`, `IntakeAttestations` |
 | `services/db/repo_requests.py` | `requests` table — `submit`, `resolve_by_id` (slug back-fill), `set_payload` |

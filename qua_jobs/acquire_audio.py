@@ -68,12 +68,22 @@ def _worker_count(sources: int) -> int:
     return max(1, min(os.cpu_count() or 1, MAX_WORKERS, sources))
 
 
-def read_groups(slug: str) -> list[SourceGroup]:
+def read_groups(slug: str, run_id: str) -> list[SourceGroup]:
+    """The run's frozen grouping (``groups.json``, written by the Inspector when
+    the run starts) — the slot numbers must match what it aligns and splits.
+    Falls back to grouping the manifest for a standalone run."""
+    frozen = _bucket_root() / "staging" / slug / run_id / "groups.json"
+    if frozen.is_file():
+        raw = json.loads(frozen.read_text(encoding="utf-8"))["groups"]
+        return [
+            SourceGroup(url=g["url"], chapters=tuple(g["chapters"]), slot=g.get("slot"))
+            for g in raw
+        ]
     path = _bucket_root() / "catalog" / "audio_manifest" / f"{slug}.json"
     doc = json.loads(path.read_text(encoding="utf-8"))
-    groups = groups_from_manifest(doc.get("chapters") or {})
+    groups = groups_from_manifest(doc.get("chapters") or {}, doc.get("sources") or [])
     if not groups:
-        raise ValueError(f"{slug}: audio manifest lists no chapters")
+        raise ValueError(f"{slug}: audio manifest lists no chapters or sources")
     return groups
 
 
@@ -88,7 +98,7 @@ def _paths(slug: str, number: int) -> tuple[Path, Path]:
 
 
 def _already_done(slug: str, group: SourceGroup) -> bool:
-    if all(all(p.is_file() for p in _paths(slug, ch)) for ch in group.chapters):
+    if group.chapters and all(all(p.is_file() for p in _paths(slug, ch)) for ch in group.chapters):
         return True  # every chapter persisted (a combined one: already split)
     return group.combined and _paths(slug, group.item)[0].is_file()
 
@@ -123,6 +133,8 @@ def acquire_group(slug: str, group: SourceGroup, channels_override: int | None) 
 def _label(group: SourceGroup) -> str:
     if not group.combined:
         return f"chapter {group.chapters[0]}"
+    if group.detect:
+        return f"slot {group.slot} (surahs detected after aligning)"
     return f"slot {group.slot} (chapters {group.chapters[0]}-{group.chapters[-1]})"
 
 
@@ -172,7 +184,7 @@ def main() -> int:
     channels_env = os.environ.get("CHANNELS", "").strip()
     channels_override = int(channels_env) if channels_env in ("1", "2") else None
 
-    groups = read_groups(slug)
+    groups = read_groups(slug, run_id)
     workers = _worker_count(len(groups))
     combined = sum(1 for g in groups if g.combined)
     log.info(

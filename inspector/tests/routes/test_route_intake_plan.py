@@ -59,7 +59,7 @@ def test_owner_reads_builds_edits_and_aligns(signed_in_client, stub_plan):
     res = client.post("/api/admin/intake/rq_1/plan", headers=_HEADERS)
     assert res.status_code == 202 and res.get_json()["status"] == "ready"
 
-    body = {"entries": [{"key": "e1", "chapters": [1]}], "identity": {"slug": "rec_new"}}
+    body = {"entries": [{"key": "e1", "include": False}], "identity": {"slug": "rec_new"}}
     res = client.put("/api/admin/intake/rq_1/plan", headers=_HEADERS, data=json.dumps(body))
     assert res.status_code == 200
 

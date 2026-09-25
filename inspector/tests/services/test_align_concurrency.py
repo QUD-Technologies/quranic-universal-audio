@@ -13,6 +13,7 @@ from typing import cast
 
 import pytest
 
+from qua_shared.audio.sources import SourceGroup
 from services.admin.align_pipeline import params as align_params
 from services.admin.align_pipeline import progress, stage_align
 from services.admin.align_pipeline.params import AlignParams
@@ -69,7 +70,9 @@ def staged(monkeypatch):
     lock = threading.Lock()
 
     monkeypatch.setattr(stage_align.staging, "staged_chapters", lambda slug, run: [])
+    monkeypatch.setattr(stage_align.staging, "staged_sources", lambda slug, run: [])
     monkeypatch.setattr(stage_align.staging, "chapter_path", lambda slug, run, ch: ch)
+
     def write_json(chapter, doc):
         with lock:
             written[chapter] = doc
@@ -83,7 +86,8 @@ def staged(monkeypatch):
 
 def _run(monkeypatch, client: _StubClient, chapters: list[int]) -> None:
     monkeypatch.setattr(stage_align, "AlignerClient", lambda: client)
-    stage_align.run(SLUG, RUN, AlignParams(), chapters)
+    groups = [SourceGroup(url=f"https://cdn/{ch}.mp3", chapters=(ch,)) for ch in chapters]
+    stage_align.run(SLUG, RUN, AlignParams(), groups)
 
 
 def test_default_pool_rolls_sixteen_chapter_streams(monkeypatch, staged):

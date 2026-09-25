@@ -85,6 +85,13 @@ def manifest_chapters(slug: str) -> dict:
     return _chapters(slug)
 
 
+def manifest_sources(slug: str) -> list[dict]:
+    """The sidecar's ``sources`` — files still awaiting surah detection."""
+    doc = _load_sidecar(slug) or {}
+    sources = doc.get("sources")
+    return sources if isinstance(sources, list) else []
+
+
 def chapter_meta(reciter: str, chapter: int | str) -> dict | None:
     """Return the sidecar entry for ``(reciter, chapter)``, or None."""
     entry = _chapters(reciter).get(str(chapter))

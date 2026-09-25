@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""Cut combined source files into per-chapter mp3s — the align pipeline's split step.
+"""Cut aligned source files into per-chapter mp3s — the align pipeline's split step.
 
 Runs as a CPU HF Job launched by ``services/admin/align_pipeline/stage_split.py``
-once the aligner has placed every chapter inside each combined source. Reads
+once the aligner has placed every surah inside each slot file. Reads
 ``staging/<slug>/<run_id>/split_plan.json``::
 
-    {"slots": {"901": {"chapters": {"1": [start_ms, end_ms], "2": [...]}}}}
+    {"chapters": {"2": [[201, start_ms, end_ms], [202, start_ms, end_ms]], ...},
+     "slots": [201, 202, ...]}
 
-and, for every chapter, encodes that window of ``reciters/<slug>/audio/<slot>.mp3``
-to the canonical ``audio/<ch>.mp3`` and bakes ``peaks/<ch>.json.gz``. Chapter
-times the Inspector publishes are rebased by the same ``start_ms`` it planned, so
-the cut and the timestamps agree by construction.
+Each chapter is one or more *pieces* (a surah uploaded in parts), each a window
+of ``reciters/<slug>/audio/<slot>.mp3``; they are encoded end to end into the
+canonical ``audio/<ch>.mp3`` and its ``peaks/<ch>.json.gz``. The Inspector
+rebases the chapter's timestamps with the same windows, so cut and timings agree
+by construction.
 
-Writes ``staging/<slug>/<run_id>/split.json`` (``cuts`` + ``failures``). The slot
-files are deleted only when every cut succeeded, so a retry can cut again.
+Writes ``staging/<slug>/<run_id>/split.json`` (``cuts`` + ``failures``). Every
+slot file is deleted only when every cut succeeded, so a retry can cut again.
 Idempotent per chapter: an already-persisted chapter is re-measured, not re-cut.
 
 Env: SLUG, RUN_ID (required); INSPECTOR_BUCKET_MOUNT (default ``/data``);
@@ -43,31 +45,28 @@ def _root() -> Path:
     return Path(os.environ.get("INSPECTOR_BUCKET_MOUNT", "/data"))
 
 
-def _cut_one(slug: str, slot: int, chapter: int, window: list[int], channels: int) -> dict:
+def _cut_one(slug: str, chapter: int, pieces: list[list[int]], channels: int) -> dict:
     reciter = _root() / "reciters" / slug
     mp3 = reciter / "audio" / f"{chapter}.mp3"
     peaks = reciter / "peaks" / f"{chapter}.json.gz"
-    start_ms, end_ms = int(window[0]), int(window[1])
     if mp3.is_file() and peaks.is_file():
         return {
-            "slot": slot,
-            "offset_ms": start_ms,
             "bytes": mp3.stat().st_size,
             "duration_ms": audio_io.probe_duration_ms(mp3),
+            "pieces": len(pieces),
             "skipped": True,
         }
-    source = reciter / "audio" / f"{slot}.mp3"
+    windows = [(reciter / "audio" / f"{int(s)}.mp3", int(a), int(b)) for s, a, b in pieces]
     with tempfile.TemporaryDirectory(prefix=f"split_{chapter}_") as tmp:
         encoded = Path(tmp) / f"{chapter}.mp3"
-        audio_io.encode(source, encoded, channels, start_ms=start_ms, end_ms=end_ms)
+        audio_io.encode_pieces(windows, encoded, channels)
         blob, duration_ms = audio_io.bake_peaks(encoded)
         audio_io.atomic_write_bytes(peaks, blob)
         audio_io.atomic_write(mp3, encoded)
         return {
-            "slot": slot,
-            "offset_ms": start_ms,
             "bytes": encoded.stat().st_size,
             "duration_ms": duration_ms,
+            "pieces": len(pieces),
             "skipped": False,
         }
 
@@ -75,29 +74,32 @@ def _cut_one(slug: str, slot: int, chapter: int, window: list[int], channels: in
 def split_all(slug: str, plan: dict, workers: int) -> tuple[dict[str, dict], dict[str, str]]:
     cuts: dict[str, dict] = {}
     failures: dict[str, str] = {}
-    reciter = _root() / "reciters" / slug
+    audio = _root() / "reciters" / slug / "audio"
+    channels_of: dict[int, int] = {}
     jobs = []
-    for slot_key, spec in (plan.get("slots") or {}).items():
-        slot = int(slot_key)
-        source = reciter / "audio" / f"{slot}.mp3"
-        chapters = {int(k): v for k, v in (spec.get("chapters") or {}).items()}
-        pending = [ch for ch in chapters if not (reciter / "audio" / f"{ch}.mp3").is_file()]
-        if pending and not source.is_file():
-            for ch in pending:
-                failures[str(ch)] = f"source slot {slot} is missing from the bucket"
-            continue
-        channels = audio_io.probe_channels(source) if source.is_file() else 1
-        jobs.extend((slot, ch, window, channels) for ch, window in chapters.items())
+    for key, pieces in (plan.get("chapters") or {}).items():
+        chapter = int(key)
+        slots = {int(p[0]) for p in pieces}
+        if not (audio / f"{chapter}.mp3").is_file():
+            missing = sorted(s for s in slots if not (audio / f"{s}.mp3").is_file())
+            if missing:
+                failures[key] = f"source slot {missing[0]} is missing from the bucket"
+                continue
+        for s in slots:
+            if s not in channels_of and (audio / f"{s}.mp3").is_file():
+                channels_of[s] = audio_io.probe_channels(audio / f"{s}.mp3")
+        channels = max((channels_of.get(s, 1) for s in slots), default=1)
+        jobs.append((chapter, pieces, channels))
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="split") as pool:
-        futures = {pool.submit(_cut_one, slug, *job): job for job in jobs}
+        futures = {pool.submit(_cut_one, slug, *job): job[0] for job in jobs}
         for future in as_completed(futures):
-            slot, chapter = futures[future][0], futures[future][1]
+            chapter = futures[future]
             try:
                 cuts[str(chapter)] = future.result()
-                log.info("chapter %d (slot %d): cut", chapter, slot)
+                log.info("chapter %d: cut", chapter)
             except Exception as exc:  # noqa: BLE001 — recorded per chapter
                 failures[str(chapter)] = f"{type(exc).__name__}: {exc}"
-                log.error("chapter %d (slot %d): FAILED %s", chapter, slot, failures[str(chapter)])
+                log.error("chapter %d: FAILED %s", chapter, failures[str(chapter)])
     return cuts, failures
 
 
@@ -110,7 +112,7 @@ def main() -> int:
         return 2
     staging = _root() / "staging" / slug / run_id
     plan = json.loads((staging / "split_plan.json").read_text(encoding="utf-8"))
-    total = sum(len(s.get("chapters") or {}) for s in (plan.get("slots") or {}).values())
+    total = len(plan.get("chapters") or {})
     override = os.environ.get("SPLIT_WORKERS", "").strip()
     workers = int(override) if override.isdigit() and int(override) > 0 else None
     workers = max(1, min(workers or os.cpu_count() or 1, MAX_WORKERS, total or 1))
@@ -124,8 +126,8 @@ def main() -> int:
     if failures:
         log.error("%s: %d chapter(s) failed", slug, len(failures))
         return 1
-    for slot_key in plan.get("slots") or {}:
-        (_root() / "reciters" / slug / "audio" / f"{int(slot_key)}.mp3").unlink(missing_ok=True)
+    for slot in plan.get("slots") or []:
+        (_root() / "reciters" / slug / "audio" / f"{int(slot)}.mp3").unlink(missing_ok=True)
     log.info("%s: %d chapter(s) cut, source slots removed", slug, len(cuts))
     return 0
 

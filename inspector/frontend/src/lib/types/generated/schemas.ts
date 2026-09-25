@@ -1258,7 +1258,7 @@ export interface PlanEntry {
   index?: number | null;
   duration_sec?: number | null;
   chapters?: number[];
-  confidence?: "exact" | "high" | "low" | "manual" | "none";
+  include?: boolean;
 }
 /**
  * The catalog identity the mint writes. Proposed on enumerate, owner-edited.
@@ -1284,7 +1284,7 @@ export interface IntakePlanUpdate {
 }
 export interface PlanEntryEdit {
   key: string;
-  chapters?: number[];
+  include: boolean;
 }
 /**
  * ``GET/POST/PUT /api/admin/intake/<id>/plan`` response: the plan plus the
@@ -1308,6 +1308,9 @@ export interface IntakePlanView {
   source_options?: PlanOption[];
 }
 export interface PlanCoverage {
+  files?: number;
+  included?: number;
+  total_duration_sec?: number | null;
   chapters?: number[];
   missing?: number[];
   duplicates?: number[];
@@ -1319,7 +1322,7 @@ export interface PlanOption {
 }
 /**
  * Normalised audio source. Typed links and dropped CSV/JSON files both feed
- * ``links``; ``playlist`` carries a single URL we enumerate offline (yt-dlp).
+ * ``links``; ``playlist`` carries a single URL the intake plan enumerates (yt-dlp / Drive).
  */
 export interface IntakeSource {
   method: "links" | "playlist";

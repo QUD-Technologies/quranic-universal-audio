@@ -252,9 +252,12 @@ def ingest(request_id: str, payload: dict, actor: Actor) -> dict:
     manifest_in = payload.get("audio_manifest")
     if not isinstance(manifest_in, dict):
         raise IngestBadRequest("missing or malformed 'audio_manifest'")
-    chapters_in = manifest_in.get("chapters")
-    if not isinstance(chapters_in, dict) or not chapters_in:
-        raise IngestBadRequest("'audio_manifest.chapters' must be a non-empty object")
+    chapters_in = manifest_in.get("chapters") or {}
+    sources_in = manifest_in.get("sources") or []
+    if not isinstance(chapters_in, dict) or not isinstance(sources_in, list):
+        raise IngestBadRequest("malformed 'audio_manifest.chapters' / 'sources'")
+    if not chapters_in and not sources_in:
+        raise IngestBadRequest("'audio_manifest' needs chapters or sources")
 
     # Slug collision (409) — check BEFORE opening the txn so the response is a
     # clean 409 instead of a rolled-back IntegrityError.
@@ -280,7 +283,7 @@ def ingest(request_id: str, payload: dict, actor: Actor) -> dict:
     # ever leaves a harmless orphan keyed by a slug with no delivery — overwritten
     # verbatim on retry, never read in the meantime. Also keeps slow bucket I/O
     # out from under the serialized SQLite write lock.
-    manifest = _build_manifest(slug, audio_category, chapters_in)
+    manifest = _build_manifest(slug, audio_category, chapters_in, sources_in)
     get_backend().write_json_atomic(
         storage_paths.audio_manifest_path(slug),
         manifest.model_dump(mode="json", by_alias=True),
@@ -435,9 +438,10 @@ def _build_delivery(
 
 
 def _build_manifest(
-    slug: str, audio_category: AudioCategory, chapters_in: dict
+    slug: str, audio_category: AudioCategory, chapters_in: dict, sources_in: list | None = None
 ) -> AudioManifestSidecar:
-    """Build the audio_manifest sidecar model from the ingest chapter map.
+    """Build the audio_manifest sidecar model from the ingest chapter map (and
+    the source files whose chapters the align run will detect).
 
     The checksum is a stable digest of the sorted ``(key, url)`` pairs so a
     re-ingest of the same chapters produces the same ``_meta.checksum``."""
@@ -476,6 +480,7 @@ def _build_manifest(
             {
                 "slug": slug,
                 "chapters": chapters,
+                "sources": sources_in or [],
                 "_meta": {
                     "checksum": checksum,
                     "chapter_count": len(chapters),

@@ -3,8 +3,9 @@
 One click in **Admin → Requests** takes a delivery from `awaiting_alignment` to
 `awaiting_review` on the Spaces that already exist. No Katana, no laptop, no
 new engines. Replaces the offline `segments-extraction` runbook for by_surah
-deliveries in any supported riwayah, including playlist deliveries whose files
-hold several chapters each (combined files, split after aligning).
+deliveries in any supported riwayah, including playlist deliveries: the
+aligner detects which surahs each playlist file holds (one, several, a juz', or
+part of a long surah) and the run cuts them into chapters. Titles are never read.
 
 Two entry points share the same run:
 
@@ -20,8 +21,8 @@ Where it lives:
 
 | Piece | Path |
 |---|---|
-| Service package | `inspector/services/admin/align_pipeline/` — `runs` (start/retry/cancel/status), `runner` (worker threads), `stage_acquire` · `stage_align` · `stage_split` · `stage_sidecars` · `stage_assemble`, `sources` (manifest → source groups + slots), `partition` (pure split logic), `manifest` (writes acquired size/duration/offset + split coverage back to the audio manifest), `adapt` (aligner rows → staged shapes), `aligner_client` (SSE), `staging` (bucket paths), `progress` (in-memory detail + cancel), `params` (knobs + env), `limits` (shared GPU/CPU budget) |
-| Intake planner | `inspector/services/admin/intake_plan/` — `enumerate` (+ `drive`), `match` (+ `surah_names.json`), `identity`, `plan`, `mint` |
+| Service package | `inspector/services/admin/align_pipeline/` — `runs` (start/retry/cancel/status), `runner` (worker threads), `stage_acquire` · `stage_align` · `stage_split` · `stage_sidecars` · `stage_assemble`, `sources` (manifest → source groups + slots), `partition` (pure cut logic), `resolve` (which file each surah is taken from), `manifest` (writes acquired size/duration/offset + split coverage back to the audio manifest), `adapt` (aligner rows → staged shapes), `aligner_client` (SSE), `staging` (bucket paths), `progress` (in-memory detail + cancel), `params` (knobs + env), `limits` (shared GPU/CPU budget) |
+| Intake planner | `inspector/services/admin/intake_plan/` — `enumerate` (+ `drive`), `identity`, `plan`, `mint` |
 | Durable row | `align_runs` table — `services/db/migrations/0031_align_runs.sql`, `services/db/repo_align_runs.py` |
 | HF jobs | `qua_jobs/acquire_audio.py` (kind `acquire_audio`) and `qua_jobs/split_audio.py` (kind `split_audio`), both shown in the Jobs tab; shared fetch/encode/cut/peaks helpers in `qua_jobs/audio_io.py`; grouping in `qua_shared/audio/sources.py` |
 | Build | `inspector/services/segments/promote_build.py` (shared with `scripts/bucket/promote_run.py`) |
@@ -33,31 +34,40 @@ Where it lives:
 
 ## Stages
 
-The audio manifest is the only input. Chapters are grouped by physical file
-(`qua_shared/audio/sources.py::groups_from_manifest`): a chapter's source is its
-manifest `source_url` when set, else its `url`. A group of one is a **single**
-chapter; a group of several is a **combined** file, given a **source slot**
-`901 + i` (`SLOT_BASE = 901`, `MAX_SLOT = 999`). Slots sit above any chapter
-number, so `audio/<slot>.mp3` never collides and the aligner's bucket-ref pattern
-admits it unchanged. The grouping is frozen per run in
-`staging/<slug>/<run>/groups.json`, because split rewrites the manifest and could
-otherwise renumber slots on resume.
+The audio manifest is the only input. It is grouped by physical file
+(`qua_shared/audio/sources.py::groups_from_manifest`):
+
+- a chapter's source is its manifest `source_url` when set, else its `url`; a
+  group of one is a **single** chapter, a group of several a **combined** file;
+- each manifest `sources` entry (`ManifestSource` — a playlist file minted with
+  no chapters) is a **detect** group: nobody says what it holds.
+
+Combined and detect groups get a **source slot** `201 + i` (`SLOT_BASE = 201`,
+`MAX_SLOT = 999`, so at most 799 slot files per run). Slots sit above any
+chapter number, so `audio/<slot>.mp3` never collides and the aligner's bucket-ref
+pattern (1–3 digits) admits it unchanged. The grouping is frozen per run in
+`staging/<slug>/<run>/groups.json`; the acquire job reads that file too, so slot
+numbers agree everywhere even after split rewrites the manifest. A chapter
+already cut on an earlier run (its `url` is its own bucket mp3) is grouped as a
+plain single, so a realign never needs the original file again.
 
 ```
 acquire   CPU HF Job qua_jobs/acquire_audio.py (sources on a thread pool, one per vCPU)
           single   → reciters/<slug>/{audio/<ch>.mp3, peaks/<ch>.json.gz}
-          combined → reciters/<slug>/audio/<slot>.mp3 (encoded once, no peaks)
+          combined / detect → reciters/<slug>/audio/<slot>.mp3 (encoded once, no peaks)
           + staging/<slug>/<run>/acquire.json; the runner then writes the real
           size / duration back into the manifest (manifest.record_acquired)
 align     per-file loop, aligner Space POST /api/v1/batches (alignment-only) +
           items/<n>/audio/stream with audio_ref=hf://buckets/<repo>/reciters/<slug>/audio/<n>.mp3
-          → staging/<slug>/<run>/chapters/<ch>.json (single) or sources/<slot>.json (combined)
-  split   still inside the `align` DB stage (stage_split): partition each combined
-          file's rows by surah → split_plan.json → CPU HF Job qua_jobs/split_audio.py
-          (kind split_audio) cuts audio/<slot>.mp3 → audio/<ch>.mp3 + peaks and deletes
-          the slot once every cut succeeded → rows rebased onto each cut, staged as
-          chapters/<ch>.json; outcome → split_outcome.json + manifest (drops, adoptions,
-          offsets). From here a combined chapter is indistinguishable from a single one.
+          → staging/<slug>/<run>/chapters/<ch>.json (single) or sources/<slot>.json (slot)
+  split   still inside the `align` DB stage (stage_split): cut every slot file's rows
+          by detected surah (partition.cut_file) → resolve which file each surah comes
+          from (resolve.py) → split_plan.json {chapters: {ch: [[slot,start,end], …]}}
+          → CPU HF Job qua_jobs/split_audio.py (kind split_audio) encodes each chapter's
+          pieces end to end → audio/<ch>.mp3 + peaks, deletes the slots once every cut
+          succeeded → rows rebased onto each cut, staged as chapters/<ch>.json; outcome →
+          split_outcome.json + manifest (chapters written, sources cleared).
+          From here a cut chapter is indistinguishable from a single one.
 sidecars  one reciter-wide POST /api/v1/extraction/sidecars (SSE) — the aligner runs
           qua_timing_batch low_confidence against the phoneme MFA Space and builds
           auto_split from interactive word timings returned by the align stage
@@ -68,7 +78,8 @@ assemble  in-process: adapt → promote_build.build_artifacts (peaks from the ac
           no ffmpeg) → reciters/<slug>/{detailed,segments,pipeline_meta,chapter_sources,
           coverage_report,edit_history*.jsonl,low_confidence_v2,auto_split_v1}.json
           chapter_sources carries each chapter's offset inside its source file;
-          coverage_report lists split drops as missing, mislabelled files as unresolved
+          coverage_report lists split drops as missing; mislabelled files, suspect cuts and
+          files with no recitation as unresolved
           low_confidence_v2 is required staged on Hafs, absent by contract off Hafs
           detailed.json written last; staging deleted
 auto_detect  sees detailed.json → reciter.alignment_completed → awaiting_review
@@ -114,25 +125,41 @@ For each section boundary, the cursor is the midpoint between the preceding
 section's last word end and the following section's first word start, then shifted
 onto the chapter timeline by the segment start.
 
-## Split (combined files + mislabel guard)
+## Split (surah detection, resolution, mislabel guard)
 
-`partition.py` is pure. A combined file's rows are partitioned by the surah of
-`ref_from`. Special rows (Isti'adha / Basmala) attach **forward** to the surah
-they introduce; unmatched rows attach to the surah before them. Each chapter's
+`partition.py` is pure. `cut_file` partitions one slot file's rows by the surah
+of `ref_from`: special rows (Isti'adha / Basmala) attach **forward** to the surah
+they introduce; unmatched rows attach to the surah before them. Each surah's
 window runs from its first row's start to its last row's end, padded by
 `TRIM_PAD_MS = 300`, clamped to the file, and never overlapping a neighbour (a
-collision is cut at the silence midpoint). Coverage is tolerant, not fatal:
+collision is cut at the silence midpoint). Windows are computed over every
+surah in the file, so one later taken from another file still bounds its
+neighbours.
 
-- a planned chapter the file does not hold is **dropped** from the delivery;
-- an unplanned surah the file does hold is **adopted**;
+`resolve.py` (pure) then decides where each surah comes from:
+
+1. a single-chapter file keeps its chapter;
+2. a combined file keeps the chapters the manifest planned for it, when found;
+3. every other surah goes to the file with the most matched recitation
+   (`matched_ms`). A further file adding new ayahs of that surah (at least
+   `PIECE_MIN_NEW_SHARE = 0.8` of its ayahs uncovered) is **stitched** on as
+   another piece, in ayah order — a long surah uploaded in parts. A file that
+   only repeats covered ayahs (a re-upload) is **ignored** for that surah.
+
+Coverage is tolerant, not fatal:
+
+- a planned chapter no file holds is **dropped**; a surah nobody planned is
+  **adopted** (every playlist chapter is adopted);
 - a single-chapter file whose matched speech is at least `MISMATCH_SHARE = 0.6`
-  another surah is **mismatched** (mislabelled in the plan, as in the
-  `mohammed_burhaji_yt` mis-index) and dropped;
-- when the aligner misses a planned chapter inside a combined file (a short
-  surah right before the next, e.g. al-Ikhlāṣ + al-Falaq), its audio usually
-  sits unmatched inside the neighbour's cut. The neighbour is kept — its
-  unmatched segment fails validation until a reviewer fixes it — and flagged
-  **suspect** (≥ `SUSPECT_MIN_MS` = 3 s unmatched) in `unresolved_files`.
+  another surah is **mismatched** (the `mohammed_burhaji_yt` mis-index) and
+  dropped *before* the cut (its mp3 deleted), so another file can provide it;
+- a file with no recitation found is reported (`empty_sources`);
+- when the aligner fails to place a surah (a short one right before the next,
+  e.g. al-Ikhlāṣ + al-Falaq), its audio sits unmatched inside the neighbour's
+  cut. The neighbour is kept — its unmatched segment fails validation until a
+  reviewer fixes it — and flagged **suspect** when it holds ≥
+  `SUSPECT_MIN_MS` = 3 s of unmatched recitation next to a surah missing from
+  inside the delivery's span.
 
 The aligner Space's `bucket_fetch` drops its `HfFileSystem` listing cache before
 every fetch: split writes new chapter mp3s into an `audio/` folder the Space has
@@ -231,25 +258,28 @@ route, all removed. The plan lives on the request row as `payload.plan`.
      yt-dlp's reported count is refused (truncation guard). YouTube oEmbed is the
      title fallback for a single video the bot check refuses.
 
-   `match.py` then maps each title to chapter(s): anchored on a surah keyword, the
-   name beats any number, juz' ranges and two-surah titles are understood, and
-   each entry gets a confidence of `exact` / `high` / `low` / `manual` / `none`.
-   `identity.py` proposes the channel (catalog `host_patterns`), the source (the
-   existing generic source per host, else a new `<uploader>_youtube` source) and
-   the slug per `catalog.md` §3 (`_v2`… on collision). Status ends `ready` or
-   `failed`; an `enumerating` plan older than 15 min reads `failed`.
-2. **Review** (`GET` / `PUT …/plan`). The owner edits entries (edited ones become
-   `manual`) and the identity. The view carries a live check. Errors: chapters
-   outside 1–114, non-consecutive chapters in one file, nothing mapped, identity
-   problems (slug taken or malformed, unknown reciter, missing channel/source), and
-   a YouTube source without `INSPECTOR_YTDLP_COOKIES`. Warnings: missing chapters
-   (partial delivery), low-confidence matches, skipped entries, very long files.
+   Entries are listed once per URL; unavailable videos start excluded. No title
+   is read for chapters. `identity.py` proposes the reciter id (the request's
+   existing reciter, or the English name slugified for a new one), the channel
+   (catalog `host_patterns`), the source (the generic source per host, created on
+   mint when absent, else a new `<uploader>_youtube` source) and the slug per
+   `catalog.md` §3 (`_v2`… on collision). Status ends `ready` or `failed`; an
+   `enumerating` plan older than 15 min reads `failed`.
+2. **Review** (`GET` / `PUT …/plan`). The owner toggles files in or out
+   (`PlanEntryEdit.include` — leave out an intro, a du'a, a talk) and edits the
+   identity. The view carries a live check. Errors: nothing included, identity
+   problems (slug taken or malformed, unknown reciter, missing channel/source), a
+   YouTube source without `INSPECTOR_YTDLP_COOKIES`, and for `links` chapters
+   outside 1–114 or given to two links. Warnings: excluded files, very long
+   files, and for `links` missing chapters.
 3. **Align** (`POST …/intake/<rid>/align`). `mint.mint_and_align` builds the
    `intake.ingest()` body (delivery, reciter, vocab additions, audio manifest),
-   flips the request to `accepted`, then calls `align_runs.start`. A combined
-   entry's chapters each get a unique bucket chapter `url`, with the original file
-   kept as `source_url`. The mint always lands first; a start the pipeline refuses
-   (budget, config) is reported, and the new slug row's Align button retries it.
+   flips the request to `accepted`, then calls `align_runs.start`. Playlist files
+   become the manifest's `sources` (no chapters; `chapter_count` 0 until the
+   split fills it); `links` keep their chapters, a URL shared by several getting
+   unique bucket chapter `url`s with the original as `source_url`. The mint
+   always lands first; a start the pipeline refuses (budget, config) is
+   reported, and the new slug row's Align button retries it.
 
 ## Env (see `config-deploy.md`)
 

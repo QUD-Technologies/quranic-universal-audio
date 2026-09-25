@@ -1,6 +1,7 @@
 /**
- * Pure helpers for the intake plan review panel: chapter-range parsing and
- * formatting, local coverage, durations, and identity dirty-checking.
+ * Pure helpers for the intake plan review panel: chapter-range formatting,
+ * local coverage of included link files, durations, include flags and
+ * identity dirty-checking.
  */
 import type { PlanEntry, PlanIdentity } from '../../../../../lib/types/generated/schemas';
 
@@ -21,13 +22,6 @@ export function toRuns(nums: readonly number[]): [number, number][] {
     return runs;
 }
 
-/** `[1,2,3,7]` → `"1-3,7"` (the editable form the chapters input accepts). */
-export function formatChapters(nums: readonly number[] | null | undefined): string {
-    return toRuns(sortUnique(nums ?? []))
-        .map(([a, b]) => (a === b ? String(a) : `${a}-${b}`))
-        .join(',');
-}
-
 /** `[3,4,5,9]` → `"3–5, 9"` (display form). */
 export function formatRanges(nums: readonly number[]): string {
     return toRuns(sortUnique(nums))
@@ -39,41 +33,6 @@ function sortUnique(nums: readonly number[]): number[] {
     return [...new Set(nums)].sort((a, b) => a - b);
 }
 
-function inRange(n: number): boolean {
-    return Number.isInteger(n) && n >= FIRST_CHAPTER && n <= LAST_CHAPTER;
-}
-
-/**
- * Parse `"1"`, `"1-2"`, `"78-114"`, `"1,2"` (blank = skip → `[]`) into a sorted
- * unique chapter list; `null` when any part is malformed or out of 1..114.
- */
-export function parseChapters(text: string): number[] | null {
-    const trimmed = text.trim();
-    if (!trimmed) return [];
-    const out: number[] = [];
-    for (const raw of trimmed.split(',')) {
-        const part = raw.trim();
-        const range = /^(\d+)\s*[-–]\s*(\d+)$/.exec(part);
-        if (range) {
-            const a = Number(range[1]);
-            const b = Number(range[2]);
-            if (!inRange(a) || !inRange(b) || a > b) return null;
-            for (let n = a; n <= b; n++) out.push(n);
-        } else if (/^\d+$/.test(part) && inRange(Number(part))) {
-            out.push(Number(part));
-        } else {
-            return null;
-        }
-    }
-    return sortUnique(out);
-}
-
-export function sameChapters(a: readonly number[], b: readonly number[]): boolean {
-    const sa = sortUnique(a);
-    const sb = sortUnique(b);
-    return sa.length === sb.length && sa.every((n, i) => n === sb[i]);
-}
-
 export interface LocalCoverage {
     covered: number[];
     missing: number[];
@@ -81,12 +40,15 @@ export interface LocalCoverage {
     combined: number;
 }
 
-/** Coverage of the current (unsaved) edits; invalid rows count as skipped. */
-export function computeCoverage(parsed: readonly (number[] | null)[]): LocalCoverage {
+/**
+ * Chapter coverage of the included files' contributor-typed chapters (host
+ * `links` only — other hosts detect surahs from the audio when aligning).
+ */
+export function computeCoverage(chapterLists: readonly (readonly number[])[]): LocalCoverage {
     const seen = new Map<number, number>();
     let combined = 0;
-    for (const chs of parsed) {
-        if (!chs || chs.length === 0) continue;
+    for (const chs of chapterLists) {
+        if (chs.length === 0) continue;
         if (chs.length > 1) combined++;
         for (const c of chs) seen.set(c, (seen.get(c) ?? 0) + 1);
     }
@@ -151,7 +113,13 @@ export function cleanIdentity(id: PlanIdentity): PlanIdentity {
     };
 }
 
-/** Chapter text per entry key, seeded from the saved plan. */
-export function draftsFrom(entries: readonly PlanEntry[]): Record<string, string> {
-    return Object.fromEntries(entries.map((e) => [e.key, formatChapters(e.chapters)]));
+/** Include flag per entry key, seeded from the saved plan (absent = included). */
+export function includesFrom(entries: readonly PlanEntry[]): Record<string, boolean> {
+    return Object.fromEntries(entries.map((e) => [e.key, e.include ?? true]));
+}
+
+/** Sum of known durations; null when none is known. */
+export function totalDuration(entries: readonly PlanEntry[]): number | null {
+    const known = entries.map((e) => e.duration_sec).filter((d): d is number => Number.isFinite(d));
+    return known.length > 0 ? known.reduce((a, b) => a + b, 0) : null;
 }

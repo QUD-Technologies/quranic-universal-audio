@@ -1,11 +1,16 @@
 """Mint a reviewed intake plan into the catalog and start its align run.
 
-The online replacement for the offline ``ingest_intake.py`` driver: the plan's
-identity + entries become the ``intake.ingest`` body (delivery, reciter, vocab
-additions, audio manifest), the mint flips the request to ``accepted`` and seeds
-the new slug's pending request, and the align pipeline starts on it. A combined
-entry's chapters get a unique bucket ``url`` each and keep the original file as
-``source_url`` — the pipeline acquires that file once and splits it.
+The plan's identity + included files become the ``intake.ingest`` body
+(delivery, reciter, vocab additions, audio manifest), the mint flips the request
+to ``accepted`` and seeds the new slug's pending request, and the align pipeline
+starts on it.
+
+* Playlist files go into the manifest's ``sources`` with no chapters: the run
+  aligns each one, the aligner detects the surahs it holds, and the split writes
+  the chapters.
+* ``links`` keep the contributor's chapters. Links sharing one URL (a combined
+  file) get a unique bucket ``url`` per chapter and keep the original file as
+  ``source_url`` — the pipeline acquires that file once and splits it.
 
 The mint always lands before the run starts. A start the pipeline refuses (the
 shared budget, missing config) is reported in the response; the Align button on
@@ -70,7 +75,7 @@ def ingest_body(plan: IntakePlan, *, kind: str, payload: dict) -> dict:
             "recording_context": edits.get("recording_context"),
             "recording_year": ident.recording_year,
         },
-        "audio_manifest": {"chapters": manifest_chapters(plan, ident.slug)},
+        "audio_manifest": manifest_body(plan, ident.slug),
     }
     if kind == "new_reciter" and repo_catalog.find_reciter(ident.reciter_id) is None:
         body["reciter"] = {
@@ -93,9 +98,16 @@ def ingest_body(plan: IntakePlan, *, kind: str, payload: dict) -> dict:
     return body
 
 
-def manifest_chapters(plan: IntakePlan, slug: str) -> dict[str, dict]:
+def manifest_body(plan: IntakePlan, slug: str) -> dict:
+    included = [e for e in plan.entries if e.include]
+    if plan.host != "links":
+        return {"chapters": {}, "sources": [{"url": e.url, "title": e.title} for e in included]}
+    return {"chapters": _link_chapters(included, slug)}
+
+
+def _link_chapters(entries: list, slug: str) -> dict[str, dict]:
     chapters: dict[str, dict] = {}
-    for entry in plan.entries:
+    for entry in entries:
         if len(entry.chapters) == 1:
             chapters[str(entry.chapters[0])] = {"url": entry.url}
             continue

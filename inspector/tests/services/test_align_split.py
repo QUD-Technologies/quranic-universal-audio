@@ -1,9 +1,11 @@
-"""Combined source files in the align pipeline — grouping, partition, split stage.
+"""Slot files in the align pipeline — grouping, cutting, resolving, split stage.
 
-The partition is exercised against a real aligner result (one file holding
-surahs 109–114, ``tests/fixtures/align/combined_109_114.json``); the split HF
-Job is stubbed with a fake report so the stage's bookkeeping (staged chapters,
-manifest offsets, dropped/adopted chapters) runs against an in-memory bucket.
+Playlist files carry no chapters: the aligner detects which surahs each holds
+and ``resolve`` assigns every surah to a file (stitching one uploaded in parts).
+Cutting is exercised against a real aligner result (one file holding surahs
+109–114, ``tests/fixtures/align/combined_109_114.json``); the split HF Job is
+stubbed with a fake report so the stage's bookkeeping (staged chapters, manifest
+offsets, dropped/adopted chapters) runs against an in-memory bucket.
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from qua_shared.audio.sources import groups_from_manifest, needs_ytdlp
+from qua_shared.audio.sources import SLOT_BASE, groups_from_manifest, needs_ytdlp
 from qua_shared.schemas import (
     AudioCategory,
     Channel,
@@ -25,7 +27,7 @@ from qua_shared.schemas import (
     Style,
     Vocab,
 )
-from services.admin.align_pipeline import partition
+from services.admin.align_pipeline import partition, resolve
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "align" / "combined_109_114.json"
 SLUG = "rec_comb"
@@ -36,30 +38,48 @@ def _rows() -> list[dict]:
     return json.loads(FIXTURE.read_text(encoding="utf-8"))["segments"]
 
 
+def _row(ref_from: str, ref_to: str, t0: float, t1: float, kind: str = "quran") -> dict:
+    return {"kind": kind, "ref_from": ref_from, "ref_to": ref_to, "time_from": t0, "time_to": t1}
+
+
+def _file(item: int, rows: list[dict], planned: tuple[int, ...] = ()) -> resolve.FileCuts:
+    return resolve.FileCuts(
+        item=item, url=f"https://src/{item}", planned=planned, cuts=partition.cut_file(rows, None)
+    )
+
+
+def _write_manifest(backend, chapters: dict, sources: list[dict] | None = None) -> None:
+    backend.write_json_atomic(
+        f"catalog/audio_manifest/{SLUG}.json",
+        {
+            "slug": SLUG,
+            "chapters": chapters,
+            "sources": sources or [],
+            "_meta": {"checksum": "x", "chapter_count": len(chapters), "category": "by_surah"},
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
 # grouping
 # ---------------------------------------------------------------------------
 
 
-def test_groups_split_single_and_combined_sources():
+def test_groups_put_combined_and_undetected_files_in_slots():
     groups = groups_from_manifest(
         {
             "3": {"url": "https://cdn/3.mp3"},
             "1": {"url": "u1", "source_url": DRIVE},
             "2": {"url": "u2", "source_url": DRIVE},
-            "78": {"url": "u78", "source_url": "https://www.youtube.com/watch?v=a"},
-            "79": {"url": "u79", "source_url": "https://www.youtube.com/watch?v=a"},
-        }
+        },
+        [{"url": DRIVE}, {"url": "https://www.youtube.com/watch?v=a"}],
     )
-    assert [(g.chapters, g.slot) for g in groups] == [((1, 2), 901), ((3,), None), ((78, 79), 902)]
-    assert [g.item for g in groups] == [901, 3, 902]
-
-
-def test_groups_refuse_a_non_consecutive_combined_file():
-    with pytest.raises(ValueError, match="non-consecutive"):
-        groups_from_manifest(
-            {"1": {"url": "a", "source_url": "s"}, "3": {"url": "b", "source_url": "s"}}
-        )
+    assert [(g.chapters, g.slot, g.detect) for g in groups] == [
+        ((1, 2), SLOT_BASE, False),
+        ((3,), None, False),
+        ((), SLOT_BASE + 1, True),  # DRIVE is already a chapter source: listed once
+    ]
+    assert [g.weight for g in groups] == [2, 1, 1]
 
 
 @pytest.mark.parametrize(
@@ -77,75 +97,35 @@ def test_needs_ytdlp(url, ytdlp):
 
 
 # ---------------------------------------------------------------------------
-# partition (real aligner output)
+# cutting (real aligner output)
 # ---------------------------------------------------------------------------
 
 
-def test_partition_cuts_every_surah_without_overlap():
-    part = partition.partition(
-        _rows(), planned=(109, 110, 111, 112, 113, 114), claimed_elsewhere=set(), duration_ms=255076
-    )
-    assert sorted(part.cuts) == [109, 110, 111, 112, 113, 114]
-    assert part.missing == [] and part.ignored == []
-    cuts = [part.cuts[c] for c in sorted(part.cuts)]
-    for a, b in zip(cuts, cuts[1:], strict=False):
+def test_cut_file_finds_every_surah_without_overlap():
+    cuts = partition.cut_file(_rows(), 255076)
+    assert sorted(cuts) == [109, 110, 111, 112, 113, 114]
+    ordered = [cuts[c] for c in sorted(cuts)]
+    for a, b in zip(ordered, ordered[1:], strict=False):
         assert a.end_ms <= b.start_ms
-    # Each chapter opens on its own Basmala: specials attach forward.
-    for cut in cuts:
+    for cut in ordered:  # each opens on its own Basmala: specials attach forward
         assert cut.rows[0]["kind"] == "special"
         assert all(partition.row_surah(r) in (None, cut.chapter) for r in cut.rows)
-    # 109 begins after the 4 s lead-in silence, padded by TRIM_PAD_MS.
-    assert part.cuts[109].start_ms == round(4.46 * 1000) - partition.TRIM_PAD_MS
-    assert part.cuts[114].end_ms <= 255076
+    assert cuts[109].start_ms == round(4.46 * 1000) - partition.TRIM_PAD_MS
+    assert cuts[114].end_ms <= 255076
 
 
-def test_partition_reports_missing_ignored_and_adopted():
-    part = partition.partition(
-        _rows(),
-        planned=(108, 109, 110),
-        claimed_elsewhere={111, 112},
-        duration_ms=None,
-    )
-    assert part.missing == [108]
-    assert part.ignored == [111, 112]
-    # 113/114 were planned nowhere: adopted into this file's cuts.
-    assert sorted(part.cuts) == [109, 110, 113, 114]
+def test_ayahs_and_matched_ms_read_the_refs():
+    rows = [_row("2:5:1", "2:7:3", 0, 10), _row("", "", 10, 12), _row("2:8:1", "2:8:4", 12, 15)]
+    assert partition.ayahs(rows) == {5, 6, 7, 8}
+    assert partition.matched_ms(rows) == 13000
+    assert partition.unmatched_ms(rows) == 2000
 
 
 def test_rebase_moves_rows_onto_the_cut_timeline():
-    cut = partition.partition(
-        _rows(), planned=(110,), claimed_elsewhere={109, 111, 112, 113, 114}, duration_ms=None
-    ).cuts[110]
+    cut = partition.cut_file(_rows(), None)[110]
     rebased = partition.rebase(cut.rows, cut.start_ms)
     assert rebased[0]["time_from"] == pytest.approx(cut.rows[0]["time_from"] - cut.start_ms / 1000)
     assert min(r["time_from"] for r in rebased) >= 0
-
-
-def test_unmatched_ms_sums_only_unplaced_recitation():
-    rows = [
-        {"kind": "special", "ref_from": "", "time_from": 0.0, "time_to": 5.0},
-        {"kind": "quran", "ref_from": "", "time_from": 5.5, "time_to": 26.0},
-        {"kind": "quran", "ref_from": "113:3:1", "time_from": 26.0, "time_to": 40.0},
-    ]
-    assert partition.unmatched_ms(rows) == 20500
-
-
-def test_a_cut_holding_a_missed_chapters_audio_is_flagged():
-    from services.admin.align_pipeline import stage_split
-
-    loose = {"kind": "quran", "ref_from": "", "time_from": 5.5, "time_to": 26.0}
-    part = partition.Partition(
-        cuts={113: partition.ChapterCut(113, 0, 40380, rows=[loose])}, missing=[112], ignored=[]
-    )
-    outcome: dict = {}
-    stage_split._flag_suspects(part, outcome)
-    assert outcome == {
-        "suspect": {"113": "holds 20s of unmatched audio; chapter(s) 112 expected in the same file"}
-    }
-    part.missing = []
-    outcome = {}
-    stage_split._flag_suspects(part, outcome)
-    assert outcome == {}
 
 
 def test_dominant_other_surah_flags_a_mislabelled_single_file():
@@ -153,6 +133,59 @@ def test_dominant_other_surah_flags_a_mislabelled_single_file():
     assert partition.dominant_other_surah(94, rows) == 113
     assert partition.dominant_other_surah(113, rows) is None
     assert partition.dominant_other_surah(1, []) is None
+
+
+# ---------------------------------------------------------------------------
+# resolving
+# ---------------------------------------------------------------------------
+
+
+def test_detected_surahs_are_adopted_and_fixed_singles_win():
+    res = resolve.resolve([_file(201, _rows())], fixed={113})
+    assert sorted(res.chapters) == [109, 110, 111, 112, 114]
+    assert res.adopted == [109, 110, 111, 112, 114]
+    assert res.ignored == {201: [113]}
+    assert res.dropped == [] and res.suspect == {}
+
+
+def test_a_reupload_is_ignored_and_the_stronger_copy_kept():
+    rows = _rows()
+    weak = [r for r in rows if partition.row_surah(r) != 111]
+    weak += [r for r in rows if partition.row_surah(r) == 111][:2]
+    weak.sort(key=lambda r: r["time_from"])
+    res = resolve.resolve([_file(201, weak), _file(202, rows)], fixed=set())
+    assert all(len(pieces) == 1 for pieces in res.chapters.values())
+    assert res.chapters[111][0].file.item == 202
+
+
+def test_a_surah_uploaded_in_parts_is_stitched_in_ayah_order():
+    part2 = [_row("2:142:1", "2:200:5", 1.0, 900.0)]
+    part1 = [_row("2:1:1", "2:141:4", 2.0, 1000.0)]
+    repeat = [_row("2:150:1", "2:160:3", 0.0, 60.0)]
+    res = resolve.resolve([_file(201, part2), _file(202, part1), _file(203, repeat)], fixed=set())
+    assert [p.file.item for p in res.chapters[2]] == [202, 201]
+    assert res.ignored == {203: [2]}
+
+
+def test_planned_chapters_missing_everywhere_are_dropped_and_empty_files_reported():
+    res = resolve.resolve(
+        [_file(201, _rows(), planned=(108, 109)), _file(202, [_row("", "", 0, 30)])], fixed=set()
+    )
+    assert res.dropped == [108]
+    assert res.chapters[109][0].file.item == 201
+    assert 110 in res.adopted
+    assert res.empty == ["https://src/202"]
+
+
+def test_a_cut_absorbing_a_missed_surah_is_suspect():
+    # The aligner could not place al-Ikhlas: its recitation comes back unmatched.
+    rows = [r for r in _rows() if partition.row_surah(r) != 112 and r["time_from"] < 150]
+    rows += [_row("", "", 153.06, 173.16)]
+    rows += [r for r in _rows() if r["time_from"] >= 176]
+    res = resolve.resolve([_file(201, rows)], fixed=set())
+    assert 112 not in res.chapters
+    assert set(res.suspect) == {111}
+    assert "chapter 112" in res.suspect[111]
 
 
 # ---------------------------------------------------------------------------
@@ -194,16 +227,10 @@ def split_env(tmp_path, monkeypatch):
         ],
     )
     _seed_state(SLUG, state="awaiting_alignment", reciter_id="rec_comb")
-    chapters = {str(c): {"url": f"https://b/{c}.mp3", "source_url": DRIVE} for c in range(108, 113)}
-    chapters["113"] = {"url": "https://cdn/113.mp3"}
-    chapters["114"] = {"url": "https://cdn/114.mp3"}
-    backend.write_json_atomic(
-        f"catalog/audio_manifest/{SLUG}.json",
-        {
-            "slug": SLUG,
-            "chapters": chapters,
-            "_meta": {"checksum": "x", "chapter_count": 7, "category": "by_surah"},
-        },
+    _write_manifest(
+        backend,
+        {"113": {"url": "https://cdn/113.mp3"}, "114": {"url": "https://cdn/114.mp3"}},
+        sources=[{"url": DRIVE, "title": "whatever the uploader typed"}],
     )
     audio_meta._clear_for_test()
     launched: list[dict] = []
@@ -214,11 +241,13 @@ def split_env(tmp_path, monkeypatch):
         return "job-1"
 
     def fake_wait(kind, slug, run_id, job_id, report_path):
-        plan = launched[-1]["slots"]
         cuts = {
-            ch: {"slot": int(slot), "offset_ms": w[0], "bytes": 1000, "duration_ms": w[1] - w[0]}
-            for slot, spec in plan.items()
-            for ch, w in spec["chapters"].items()
+            ch: {
+                "bytes": 1000,
+                "duration_ms": sum(end - start for _slot, start, end in pieces),
+                "pieces": len(pieces),
+            }
+            for ch, pieces in launched[-1]["chapters"].items()
         }
         return {"cuts": cuts, "failures": {}}
 
@@ -229,42 +258,38 @@ def split_env(tmp_path, monkeypatch):
     _hf_bucket.reset_backend()
 
 
-def test_split_stage_stages_rebased_chapters_and_rewrites_the_manifest(split_env):
+def test_split_stage_detects_surahs_and_rewrites_the_manifest(split_env):
     from services.admin.align_pipeline import sources, stage_split, staging
+    from services.state import catalog as catalog_service
 
     backend, launched = split_env
     run_id = "run-1"
     groups = sources.groups_for(SLUG)
-    combined = next(g for g in groups if g.combined)
+    detect = next(g for g in groups if g.detect)
     doc = json.loads(FIXTURE.read_text(encoding="utf-8"))
-    staging.write_json(staging.source_path(SLUG, run_id, combined.item), doc)
+    staging.write_json(staging.source_path(SLUG, run_id, detect.item), doc)
     # 113's single file really holds 113; 114's file holds 113 too (mislabelled).
     only_113 = {"segments": [r for r in doc["segments"] if partition.row_surah(r) == 113]}
     staging.write_json(staging.chapter_path(SLUG, run_id, 113), only_113)
     staging.write_json(staging.chapter_path(SLUG, run_id, 114), only_113)
     staging.write_json(
-        staging.acquire_path(SLUG, run_id), {"sources": {"901": {"duration_ms": 255076}}}
+        staging.acquire_path(SLUG, run_id), {"sources": {str(detect.item): {"duration_ms": 255076}}}
     )
 
     outcome = stage_split.run(SLUG, run_id, groups)
 
     assert outcome["mismatched"] == {"114": 113}
-    assert sorted(outcome["dropped"]) == [108, 114]  # 108 not in the file; 114 mislabelled
-    assert outcome["ignored"] == {"901": [113]}  # the combined file's 113 belongs to 113's file
-    # 114's own file was wrong, so the combined file's 114 is adopted instead.
-    assert outcome["adopted"] == {"114": DRIVE}
-    assert sorted(launched[-1]["slots"]["901"]["chapters"], key=int) == [
-        "109",
-        "110",
-        "111",
-        "112",
-        "114",
-    ]
+    assert outcome["dropped"] == []  # the mislabelled 114 file is replaced by the playlist file
+    assert outcome["ignored"] == {str(detect.item): [113]}
+    assert sorted(outcome["adopted"], key=int) == ["109", "110", "111", "112", "114"]
+    assert sorted(launched[-1]["chapters"], key=int) == ["109", "110", "111", "112", "114"]
+    assert launched[-1]["slots"] == [detect.item]
 
     manifest = json.loads(backend.read_bytes(f"catalog/audio_manifest/{SLUG}.json"))
     assert sorted(manifest["chapters"], key=int) == ["109", "110", "111", "112", "113", "114"]
-    assert manifest["chapters"]["114"]["source_url"] == DRIVE
+    assert "sources" not in manifest  # resolved: the manifest is back to its usual shape
     entry = manifest["chapters"]["110"]
+    assert entry["url"].endswith(f"/reciters/{SLUG}/audio/110.mp3")
     assert entry["source_url"] == DRIVE and entry["source_offset_ms"] > 0
     assert entry["bitrate_mode"] == "cbr" and entry["size_bytes"] == 1000
     assert manifest["_meta"]["chapter_count"] == 6
@@ -273,14 +298,52 @@ def test_split_stage_stages_rebased_chapters_and_rewrites_the_manifest(split_env
     assert staged is not None
     assert staged["_inspector"]["split_offset_ms"] == entry["source_offset_ms"]
     assert min(r["time_from"] for r in staged["segments"]) >= 0
-
-    from services.state import catalog as catalog_service
-
     delivery = catalog_service.find_delivery(SLUG)
     assert delivery is not None and delivery.chapter_count == 6
     # Idempotent on resume: the recorded outcome short-circuits a second pass.
     assert stage_split.run(SLUG, run_id, groups) == outcome
     assert len(launched) == 1
+
+
+def test_split_stage_stitches_parts_onto_one_timeline(split_env):
+    from services.admin.align_pipeline import sources, stage_split, staging
+    from services.audio import audio_meta
+
+    backend, launched = split_env
+    _write_manifest(backend, {}, sources=[{"url": "https://yt/p1"}, {"url": "https://yt/p2"}])
+    audio_meta._clear_for_test()
+    run_id = "run-parts"
+    groups = sources.groups_for(SLUG)
+    p1 = {"segments": [_row("2:1:1", "2:141:4", 10.0, 1000.0)]}
+    p2 = {"segments": [_row("2:142:1", "2:286:8", 5.0, 800.0)]}
+    staging.write_json(staging.source_path(SLUG, run_id, groups[0].item), p1)
+    staging.write_json(staging.source_path(SLUG, run_id, groups[1].item), p2)
+
+    outcome = stage_split.run(SLUG, run_id, groups)
+
+    assert outcome["stitched"] == {"2": 2}
+    pieces = launched[-1]["chapters"]["2"]
+    assert [p[0] for p in pieces] == [groups[0].item, groups[1].item]
+    staged = staging.read_json(staging.chapter_path(SLUG, run_id, 2))
+    assert staged is not None
+    first_len = (pieces[0][2] - pieces[0][1]) / 1000
+    second = staged["segments"][1]
+    assert second["time_from"] == pytest.approx(first_len + 5.0 - pieces[1][1] / 1000)
+    assert len(staged["_inspector"]["split_pieces"]) == 2
+    manifest = json.loads(backend.read_bytes(f"catalog/audio_manifest/{SLUG}.json"))
+    assert manifest["chapters"]["2"]["source_url"] == "https://yt/p1"
+
+
+def test_a_realign_reads_already_cut_chapters_as_single_files(split_env):
+    from services.admin.align_pipeline import sources
+    from services.audio import audio_meta
+
+    backend, _ = split_env
+    cut_url = sources.bucket_chapter_url(SLUG, 110)
+    _write_manifest(backend, {"110": {"url": cut_url, "source_url": DRIVE, "source_offset_ms": 5}})
+    audio_meta._clear_for_test()
+    [group] = sources.groups_for(SLUG)
+    assert (group.url, group.chapters, group.slot) == (cut_url, (110,), None)
 
 
 def test_runner_freezes_groups_for_the_run(split_env):
@@ -311,6 +374,4 @@ def test_record_acquired_fills_only_unprobed_fields(split_env):
     doc = json.loads(backend.read_bytes(f"catalog/audio_manifest/{SLUG}.json"))
     assert doc["chapters"]["113"]["size_bytes"] == 777
     assert doc["chapters"]["113"]["duration_sec"] == 34
-    assert (
-        "size_bytes" not in doc["chapters"]["114"] or doc["chapters"]["114"]["size_bytes"] is None
-    )
+    assert doc["chapters"]["114"].get("size_bytes") is None

@@ -2,12 +2,13 @@
 chapter, and where to cut. No I/O — ``stage_split`` feeds it the staged aligner
 results and acts on the answer.
 
-A combined file's rows are partitioned by the surah of their ``ref_from``.
+A source file's rows are partitioned by the surah of their ``ref_from``.
 Special rows (Isti'adha / Basmala) belong to the surah they introduce, so they
 attach *forward*; rows the matcher could not place attach to the surah before
 them. Each chapter's window is its first row's start to its last row's end,
 padded by ``TRIM_PAD_MS`` (the Katana split's pad), clamped to the file and
 never overlapping a neighbour — a collision is cut at the silence midpoint.
+Which file a surah is finally taken from is ``resolve.py``'s call.
 
 The same surah test also guards single-chapter files: a file whose matched
 audio is mostly another surah was mislabelled in the plan (the
@@ -31,15 +32,6 @@ class ChapterCut:
     start_ms: int
     end_ms: int
     rows: list[dict] = field(default_factory=list)
-
-
-@dataclass
-class Partition:
-    cuts: dict[int, ChapterCut]
-    #: Planned chapters the file turned out not to hold.
-    missing: list[int]
-    #: Surahs found in the file that the plan put elsewhere (their rows dropped).
-    ignored: list[int]
 
 
 def unmatched_ms(rows: list[dict]) -> int:
@@ -76,27 +68,44 @@ def _assign(rows: list[dict]) -> list[int | None]:
     return [s if s is not None else first for s in out]
 
 
-def partition(
-    rows: list[dict],
-    *,
-    planned: tuple[int, ...],
-    claimed_elsewhere: set[int],
-    duration_ms: int | None,
-) -> Partition:
-    """Split one combined file's rows into chapter cuts.
-
-    ``claimed_elsewhere``: chapters another source file provides — rows of those
-    surahs are ignored here rather than published twice. A surah nobody planned
-    is adopted (the plan under-labelled the file)."""
+def cut_file(rows: list[dict], duration_ms: int | None) -> dict[int, ChapterCut]:
+    """Every surah the aligner found in one file, with its cut window. Windows
+    are computed over all of them, so a surah later assigned to another file
+    still bounds its neighbours' cuts."""
     by_surah: dict[int, list[dict]] = {}
     for row, surah in zip(rows, _assign(rows), strict=True):
         if surah is not None:
             by_surah.setdefault(surah, []).append(row)
-    ignored = sorted(s for s in by_surah if s not in planned and s in claimed_elsewhere)
-    kept = {s: r for s, r in by_surah.items() if s not in ignored}
-    cuts = _windows(kept, duration_ms)
-    missing = [c for c in planned if c not in cuts]
-    return Partition(cuts=cuts, missing=missing, ignored=ignored)
+    return _windows(by_surah, duration_ms)
+
+
+def matched_ms(rows: list[dict]) -> int:
+    """Recitation the aligner placed — how strongly a file holds a surah."""
+    return sum(
+        round((r.get("time_to", 0) - r.get("time_from", 0)) * _MS)
+        for r in rows
+        if r.get("kind") == "quran" and r.get("ref_from")
+    )
+
+
+def ayahs(rows: list[dict]) -> set[int]:
+    """Ayah numbers the rows cover (``ref_from``..``ref_to`` of their surah)."""
+    out: set[int] = set()
+    for r in rows:
+        head = _ref(r.get("ref_from"))
+        if head is None:
+            continue
+        tail = _ref(r.get("ref_to"))
+        last = tail[1] if tail is not None and tail[0] == head[0] else head[1]
+        out.update(range(head[1], max(head[1], last) + 1))
+    return out
+
+
+def _ref(ref: str | None) -> tuple[int, int] | None:
+    parts = (ref or "").split(":")
+    if len(parts) < 2 or not (parts[0].isdigit() and parts[1].isdigit()):
+        return None
+    return int(parts[0]), int(parts[1])
 
 
 def _windows(by_surah: dict[int, list[dict]], duration_ms: int | None) -> dict[int, ChapterCut]:

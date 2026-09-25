@@ -63,7 +63,7 @@ def _already_staged(slug: str, run_id: str, groups: list[SourceGroup]) -> set[in
     for g in groups:
         if g.item in (sources if g.combined else chapters):
             done.add(g.item)
-        elif g.combined and set(g.chapters) <= chapters:
+        elif g.combined and g.chapters and set(g.chapters) <= chapters:
             done.add(g.item)
     return done
 
@@ -144,7 +144,7 @@ def run(slug: str, run_id: str, params: AlignParams, groups: list[SourceGroup]) 
     batch = _Batch(client, params)
     done = _already_staged(slug, run_id, groups)
     pending = [g for g in groups if g.item not in done]
-    tracker = _Tracker(run_id, done, {g.item: len(g.chapters) for g in groups})
+    tracker = _Tracker(run_id, done, {g.item: g.weight for g in groups})
     tracker.publish()
     if not pending:
         return

@@ -135,7 +135,7 @@ def _groups(slug: str, run_id: str) -> list[SourceGroup]:
         ]
     groups = sources.groups_for(slug)
     if not groups:
-        raise ValueError(f"{slug}: audio manifest lists no chapters")
+        raise ValueError(f"{slug}: audio manifest lists no chapters or sources")
     staging.write_json(
         path,
         {"groups": [{"url": g.url, "chapters": list(g.chapters), "slot": g.slot} for g in groups]},
@@ -145,8 +145,8 @@ def _groups(slug: str, run_id: str) -> list[SourceGroup]:
 
 def _chapters(slug: str) -> tuple[list[int], dict[int, str]]:
     """Chapters + their ``chapter_sources`` url, from the (post-split) manifest."""
-    current = sources.groups_for(slug)
-    return sorted(ch for g in current for ch in g.chapters), sources.chapter_sources(current)
+    by_chapter = sources.chapter_sources(slug)
+    return sorted(by_chapter), by_chapter
 
 
 def _acquire(run: dict, groups: list[SourceGroup]) -> None:
@@ -161,7 +161,7 @@ def _acquire(run: dict, groups: list[SourceGroup]) -> None:
         _mark(run_id, acquire_job_id=job_id)
     report = stage_acquire.wait(slug, run_id, job_id)
     manifest.record_acquired(slug, report.get("chapters") or {})
-    progress.set_detail(run_id, chapters_done=sum(len(g.chapters) for g in groups))
+    progress.set_detail(run_id, chapters_done=sum(g.weight for g in groups))
 
 
 def _mark(run_id: str, **fields) -> None:

@@ -1,21 +1,26 @@
 <script lang="ts">
     /**
-     * Headline of a ready intake plan: where the files come from, how much of
-     * the mushaf they cover (live, from the unsaved edits), what is missing,
-     * and the server's blocking errors / advisory warnings for the saved plan.
+     * Headline of a ready intake plan: where the files come from, how many
+     * are included and how long they run (live, from the unsaved edits), for
+     * typed links the chapter coverage, and the server's blocking errors /
+     * advisory warnings for the saved plan.
      */
     import type { IntakePlanView } from '../../../../../lib/types/generated/schemas';
-    import { formatRanges, LAST_CHAPTER, type LocalCoverage } from './plan-utils';
+    import { formatDuration, formatRanges, LAST_CHAPTER, type LocalCoverage } from './plan-utils';
 
     interface Props {
         plan: IntakePlanView;
         fileCount: number;
-        coverage: LocalCoverage;
+        includedCount: number;
+        totalSec: number | null;
+        /** Host `links` only — other hosts detect surahs when aligning. */
+        coverage: LocalCoverage | null;
         rebuilding: boolean;
         disabled: boolean;
         onRebuild: () => void;
     }
-    let { plan, fileCount, coverage, rebuilding, disabled, onRebuild }: Props = $props();
+    let { plan, fileCount, includedCount, totalSec, coverage, rebuilding, disabled, onRebuild }: Props =
+        $props();
 
     const HOST_LABEL: Record<string, string> = {
         links: 'Direct links',
@@ -34,12 +39,20 @@
         <span class="sep">·</span>
         <span>{fileCount} file{fileCount === 1 ? '' : 's'}</span>
         <span class="sep">·</span>
-        <span class:full={coverage.covered.length === LAST_CHAPTER}>
-            {coverage.covered.length}/{LAST_CHAPTER} chapters
-        </span>
-        {#if coverage.combined > 0}
+        <span>{includedCount} included</span>
+        {#if totalSec !== null}
             <span class="sep">·</span>
-            <span>{coverage.combined} combined</span>
+            <span>{formatDuration(totalSec)}</span>
+        {/if}
+        {#if coverage}
+            <span class="sep">·</span>
+            <span class:full={coverage.covered.length === LAST_CHAPTER}>
+                {coverage.covered.length}/{LAST_CHAPTER} chapters
+            </span>
+            {#if coverage.combined > 0}
+                <span class="sep">·</span>
+                <span>{coverage.combined} combined</span>
+            {/if}
         {/if}
         {#if plan.uploader}
             <span class="sep">·</span>
@@ -58,11 +71,15 @@
         <a class="src" href={plan.source_url} target="_blank" rel="noopener noreferrer">{plan.source_url}</a>
     {/if}
 
-    {#if coverage.missing.length > 0}
-        <p class="missing">Missing: <span class="mono">{formatRanges(coverage.missing)}</span></p>
-    {/if}
-    {#if coverage.duplicates.size > 0}
-        <p class="err">Covered twice: <span class="mono">{formatRanges([...coverage.duplicates])}</span></p>
+    {#if coverage}
+        {#if coverage.missing.length > 0}
+            <p class="missing">Missing: <span class="mono">{formatRanges(coverage.missing)}</span></p>
+        {/if}
+        {#if coverage.duplicates.size > 0}
+            <p class="err">Covered twice: <span class="mono">{formatRanges([...coverage.duplicates])}</span></p>
+        {/if}
+    {:else}
+        <p class="missing">Surahs are detected from the audio when aligning — titles are not used.</p>
     {/if}
 
     {#if (plan.errors?.length ?? 0) > 0}

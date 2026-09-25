@@ -132,8 +132,8 @@ def _materialise_sidecars(run_dir: Path, slug: str, run_id: str, riwayah: str | 
 def _write_coverage(run_dir: Path, chapters: list[int], outcome: dict) -> None:
     """``outcome`` is the split stage's record: chapters dropped because their
     file did not hold them (or held another surah) are ``missing``; the
-    mislabelled single files and the cuts holding a missed chapter's unmatched
-    audio are listed as ``unresolved_files``."""
+    mislabelled single files, cuts that likely hold a missed chapter's audio and
+    files with no recitation are listed as ``unresolved_files``."""
     missing = sorted(set(outcome.get("dropped") or []))
     unresolved = [
         f"chapter {ch}: audio is surah {surah}"
@@ -145,6 +145,7 @@ def _write_coverage(run_dir: Path, chapters: list[int], outcome: dict) -> None:
         f"chapter {ch}: {note}"
         for ch, note in sorted((outcome.get("suspect") or {}).items(), key=lambda kv: int(kv[0]))
     ]
+    unresolved += [f"{url}: no recitation detected" for url in outcome.get("empty_sources") or []]
     _dump(
         run_dir / "coverage_report.json",
         {

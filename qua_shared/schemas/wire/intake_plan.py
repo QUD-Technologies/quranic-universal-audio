@@ -3,15 +3,16 @@
 A slugless intake (``existing_reciter_new_combo`` / ``new_reciter``) carries an
 audio *source* — per-chapter links or one playlist URL (YouTube, Google Drive
 folder, SoundCloud set, archive.org item, …). Before it can be minted and
-aligned, the source is **enumerated** into media entries and each entry is
-**matched** to the chapter(s) it holds, by title. The owner reviews that plan in
-the Requests tab, fixes what the matcher could not decide, fills the catalog
-identity (slug, reciter id, channel, source), then clicks Align.
+aligned, the source is **enumerated** into media files. Titles are never
+trusted: which surahs a playlist file holds is decided by the aligner's surah
+detection during the run (one file may hold several surahs, a juz', or part of
+a long surah). The owner reviews the file list in the Requests tab (leaving out
+anything that is not recitation), checks the proposed catalog identity (slug,
+reciter id, channel, source), then clicks Align.
 
 The plan lives on the request row's ``payload.plan`` — it is request state, not
-catalog state, until the mint. One entry may hold several consecutive chapters
-(a *combined* file: ``سورتا الفاتحة والبقرة``, a juz'); the align pipeline
-aligns it once and splits it per chapter.
+catalog state, until the mint. Only ``links`` entries carry chapters: the
+contributor typed them per link.
 """
 
 from __future__ import annotations
@@ -24,10 +25,6 @@ from .align_runs import AlignDevice
 
 PlanHost = Literal["links", "youtube", "drive", "soundcloud", "archive", "other"]
 PlanStatus = Literal["enumerating", "ready", "failed"]
-#: How an entry's chapters were assigned. ``exact``/``high`` come from title
-#: matching; ``low`` needs an owner's eye; ``manual`` is an owner edit; ``none``
-#: means the entry is left out of the delivery (an intro, a du'a, a duplicate).
-MatchConfidence = Literal["exact", "high", "low", "manual", "none"]
 
 
 class PlanEntry(BaseModel):
@@ -41,9 +38,12 @@ class PlanEntry(BaseModel):
     #: 1-based position in the playlist / folder listing (``None`` for links).
     index: int | None = None
     duration_sec: float | None = None
-    #: Ascending, consecutive chapters. Empty = not part of the delivery.
+    #: ``links`` only: the chapters the contributor gave this URL. Playlist
+    #: files have none — the aligner detects what they hold.
     chapters: list[int] = Field(default_factory=list)
-    confidence: MatchConfidence = "none"
+    #: Left out (``False``): not fetched or aligned — an unavailable video, or a
+    #: file the owner excluded.
+    include: bool = True
 
 
 class PlanIdentity(BaseModel):
@@ -67,10 +67,14 @@ class PlanIdentity(BaseModel):
 class PlanCoverage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    files: int = 0
+    included: int = 0
+    total_duration_sec: float | None = None
+    #: ``links`` only (playlist chapters are known after aligning).
     chapters: list[int] = Field(default_factory=list)
     missing: list[int] = Field(default_factory=list)
     duplicates: list[int] = Field(default_factory=list)
-    combined_entries: int = 0
+    combined_entries: int = 0  # links only: URLs holding several chapters
 
 
 class IntakePlan(BaseModel):
@@ -113,7 +117,7 @@ class PlanEntryEdit(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     key: str
-    chapters: list[int] = Field(default_factory=list)
+    include: bool
 
 
 class IntakePlanUpdate(BaseModel):

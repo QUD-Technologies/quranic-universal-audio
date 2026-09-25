@@ -1,10 +1,8 @@
-"""Online intake plan — title matching, enumeration shapes, the plan lifecycle,
-identity proposal/check, and mint → align.
-
-Titles are real ones from the playlists already ingested offline (Drive folders
-with combined + juz' files, YouTube playlists with reciter names that contain
-surah names, English file names whose index is not the surah). yt-dlp and the
-Drive API are never called: ``enumerate_source`` is stubbed at the plan seam.
+"""Online intake plan — enumeration shapes, the plan lifecycle, identity
+proposal/check, and mint → align. Titles are never matched: a playlist's files
+are minted as manifest ``sources`` and the align run detects their surahs.
+yt-dlp and the Drive API are never called: ``enumerate_source`` is stubbed at
+the plan seam.
 """
 
 from __future__ import annotations
@@ -36,7 +34,7 @@ from services import db
 from services import hf_bucket as _hf_bucket
 from services.admin.align_pipeline import runs
 from services.admin.intake_plan import enumerate as enumerate_mod
-from services.admin.intake_plan import identity, match, mint, plan
+from services.admin.intake_plan import identity, mint, plan
 from services.db import _serde, repo_catalog, repo_requests
 from services.storage import storage_paths
 from services.storage.hf_bucket import get_backend
@@ -44,75 +42,6 @@ from services.storage.hf_bucket import get_backend
 OWNER = Actor(hf_user_id="u-owner", login_at_time="owner", role=Role.OWNER)
 REQUESTER = Actor(hf_user_id="u-c", login_at_time="contrib", role=Role.CONTRIBUTOR)
 PLAYLIST = "https://drive.google.com/drive/folders/1RKoDakVUXItSvj3bxiNC7JXBw8BzNCSg"
-
-
-# ---------------------------------------------------------------------------
-# match
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("title", "chapters", "confidence"),
-    [
-        ("المصحف المرتل للقارئ بدر التركي | سورة الفاتحة", (1,), "exact"),
-        # The reciter's name holds a surah name (محمد = 47): reading stops at كاملة.
-        ("سورة الفاتحة كاملة للشيخ أ. د.محمد برهجي من مسجد رسول الله ﷺ", (1,), "exact"),
-        # A file index that is not the surah: the name wins.
-        ("07 سورة الأنفال - الشيخ محمد أيوب.mp3", (8,), "high"),
-        ("01 سورتا الفاتحة والبقرة - الشيخ محمد أيوب.mp3", (1, 2), "high"),
-        ("المصحف المرتل - سورة الفاتحة وسورة البقرة - فضيلة الشيخ", (1, 2), "high"),
-        ("٠٣ | سورة آل عمران | رمضان ١٤٤٧ هـ", (3,), "exact"),
-        ("034سورة سبأ برواية حفص عن عاصم", (34,), "exact"),
-        ("سورة محمد صلى الله عليه وسلم | رمضان", (47,), "exact"),
-        ("Surah An-Nas || Dr. Ayman Swaid || Systematic Recitation", (114,), "exact"),
-        ("1- Surah Al-Fathihah|سورة الفاتحة ||Shaikh Ahmad Naseem", (1,), "exact"),
-        ("Al-Muhanna Quran 22 Al-Muminun.mp3", (23,), "high"),
-        ("Al-Muhanna Quran 01 Al-Fatihah Al-Baqarah.mp3", (1, 2), "high"),
-        ("002 - البقرة.mp3", (2,), "high"),
-        ("031.mp3", (31,), "high"),
-        # A prayer name is not a surah name without a keyword.
-        ("هذا يوم لا ينطقون || الشيخ محمد عبادة || روائع صلاة الفجر", (), "none"),
-        ("مصحف المدينة النبوية المرتل - الشيخ محمد أيوب.jpg", (), "none"),
-    ],
-)
-def test_match_title(title, chapters, confidence):
-    got = match.match_title(title)
-    assert (got.chapters, got.confidence) == (chapters, confidence)
-
-
-def test_juz_entries_run_to_the_next_entry_and_are_low_confidence():
-    titles = [
-        "45 جزء الأحقاف - الشيخ محمد أيوب.mp3",
-        "46 جزء الذاريات - الشيخ محمد أيوب.mp3",
-        "47 جزء قد سمع - الشيخ محمد أيوب.mp3",
-        "48 جزء تبارك - الشيخ محمد أيوب.mp3",
-        "49 جزء عم - الشيخ محمد أيوب.mp3",
-    ]
-    got = match.match_entries(titles)
-    assert [(m.chapters[0], m.chapters[-1]) for m in got] == [
-        (46, 50),
-        (51, 57),
-        (58, 66),
-        (67, 77),
-        (78, 114),
-    ]
-    assert {m.confidence for m in got} == {"low"}
-
-
-def test_a_named_claim_beats_a_file_number():
-    got = match.match_entries(
-        ["1419 - 01 - Introduction", "1419 - 02 - al-Faatiha", "1419 - 34 - al-Kaafirun & an-Nasr"]
-    )
-    assert [(m.chapters, m.confidence) for m in got] == [
-        ((), "none"),
-        ((1,), "high"),
-        ((109, 110), "high"),
-    ]
-
-
-def test_duplicate_claims_are_lowered():
-    got = match.match_entries(["سورة الفلق", "سورة الفلق (إعادة)", "سورة الناس"])
-    assert [m.confidence for m in got] == ["low", "low", "exact"]
 
 
 # ---------------------------------------------------------------------------
@@ -264,20 +193,31 @@ def _listing() -> enumerate_mod.Listing:
     )
 
 
-def test_build_proposes_identity_and_flags_the_partial_delivery(intake_env, monkeypatch):
-    monkeypatch.setattr(plan._enumerate, "enumerate_source", lambda _src: _listing())
+def test_build_lists_files_and_proposes_identity_without_reading_titles(intake_env, monkeypatch):
+    listing = _listing()
+    listing.entries.append(enumerate_mod.RawEntry(url=listing.entries[0].url, title="dup", index=4))
+    listing.entries.append(
+        enumerate_mod.RawEntry(url="https://x/dead", title="", index=5, unavailable=True)
+    )
+    monkeypatch.setattr(plan._enumerate, "enumerate_source", lambda _src: listing)
     rid = _submit()
     view = plan.build(rid)
     assert view.status == "enumerating"
 
     view = plan.get(rid)
     assert view is not None and view.status == "ready"
-    assert [e.chapters for e in view.entries] == [[1, 2], [3], []]
+    # The duplicate URL is listed once; nothing carries chapters.
+    assert [(e.key, e.chapters, e.include) for e in view.entries] == [
+        ("e1", [], True),
+        ("e2", [], True),
+        ("e3", [], True),
+        ("e4", [], False),
+    ]
     assert view.identity.channel == "drive" and view.identity.source == "google_drive"
     assert view.identity.slug == "mohammed_ayyub_drive"
-    assert view.coverage.chapters == [1, 2, 3] and view.coverage.combined_entries == 1
+    assert (view.coverage.files, view.coverage.included) == (4, 3)
     assert view.errors == []
-    assert any("111 chapter(s) missing" in w for w in view.warnings)
+    assert "1 file(s) left out of the delivery." in view.warnings
     assert {o.slug for o in view.channel_options} == {"drive", "youtube"}
 
 
@@ -294,28 +234,56 @@ def test_enumeration_failure_is_shown_on_the_plan(intake_env, monkeypatch):
     )
 
 
-def test_update_marks_edits_manual_and_rechecks(intake_env, monkeypatch):
+def test_update_toggles_files_and_refuses_an_empty_delivery(intake_env, monkeypatch):
     monkeypatch.setattr(plan._enumerate, "enumerate_source", lambda _src: _listing())
     rid = _submit()
     plan.build(rid)
     current = plan.get(rid)
     assert current is not None
-    body = IntakePlanUpdate(
-        entries=[PlanEntryEdit(key="e2", chapters=[2, 3])],
-        identity=current.identity,
+    view = plan.update(
+        rid,
+        IntakePlanUpdate(
+            entries=[PlanEntryEdit(key="e3", include=False)], identity=current.identity
+        ),
     )
-    view = plan.update(rid, body)
-    assert view.entries[1].confidence == "manual"
-    assert view.coverage.duplicates == [2]
-    assert any("more than one entry" in e for e in view.errors)
+    assert [e.include for e in view.entries] == [True, True, False]
+    assert view.errors == []
+    view = plan.update(
+        rid,
+        IntakePlanUpdate(
+            entries=[PlanEntryEdit(key=k, include=False) for k in ("e1", "e2")],
+            identity=current.identity,
+        ),
+    )
+    assert any("include at least one" in e for e in view.errors)
 
 
-def test_plan_check_rejects_gapped_chapters_and_youtube_without_cookies(intake_env):
+def test_links_keep_contributor_chapters_and_flag_duplicates(intake_env):
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    p = IntakePlan(
+        status="ready",
+        host="links",
+        entries=[
+            PlanEntry(key="e1", url="https://c/a.mp3", chapters=[1, 2]),
+            PlanEntry(key="e2", url="https://c/b.mp3", chapters=[2]),
+        ],
+        identity=PlanIdentity(
+            slug="x_drive", reciter_id="mohammed_ayyub", channel="drive", source="google_drive"
+        ),
+        created_at=now,
+        updated_at=now,
+    )
+    view = plan.to_view(p, kind="existing_reciter_new_combo")
+    assert view.coverage.chapters == [1, 2] and view.coverage.duplicates == [2]
+    assert any("more than one link" in e for e in view.errors)
+
+
+def test_youtube_without_cookies_is_refused(intake_env):
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     p = IntakePlan(
         status="ready",
         host="youtube",
-        entries=[PlanEntry(key="e1", url="u", title="t", chapters=[1, 3], confidence="manual")],
+        entries=[PlanEntry(key="e1", url="https://www.youtube.com/watch?v=a", title="t")],
         identity=PlanIdentity(
             slug="x_yt", reciter_id="mohammed_ayyub", channel="youtube", source="google_drive"
         ),
@@ -323,7 +291,6 @@ def test_plan_check_rejects_gapped_chapters_and_youtube_without_cookies(intake_e
         updated_at=now,
     )
     view = plan.to_view(p, kind="existing_reciter_new_combo")
-    assert any("consecutive" in e for e in view.errors)
     assert any("INSPECTOR_YTDLP_COOKIES" in e for e in view.errors)
 
 
@@ -399,13 +366,20 @@ def test_generic_hosts_propose_their_source_and_bare_hosts_match_wildcards():
     assert ident.slug == "abc_archive"
 
 
-def test_mint_writes_combined_manifest_and_starts_the_run(intake_env, monkeypatch):
-
+def test_mint_writes_playlist_files_as_sources_and_starts_the_run(intake_env, monkeypatch):
     monkeypatch.setattr(plan._enumerate, "enumerate_source", lambda _src: _listing())
     started: list[str] = []
     monkeypatch.setattr(runs, "start", lambda slug, actor, **kw: started.append(slug))
     rid = _submit()
     plan.build(rid)
+    current = plan.get(rid)
+    assert current is not None
+    plan.update(
+        rid,
+        IntakePlanUpdate(
+            entries=[PlanEntryEdit(key="e3", include=False)], identity=current.identity
+        ),
+    )
 
     result = mint.mint_and_align(rid, OWNER, device="CPU", exempt=True)
 
@@ -413,16 +387,13 @@ def test_mint_writes_combined_manifest_and_starts_the_run(intake_env, monkeypatc
     assert started == ["mohammed_ayyub_drive"]
     manifest = get_backend().read_json(storage_paths.audio_manifest_path(result.slug))
     assert isinstance(manifest, dict)
-    ch1, ch3 = manifest["chapters"]["1"], manifest["chapters"]["3"]
-    assert ch1["source_url"] == "https://drive.google.com/file/d/AAAAAAAAAAAA/view"
-    assert ch1["url"].endswith(f"/reciters/{result.slug}/audio/1.mp3")
-    assert ch3 == {
-        **ch3,
-        "url": "https://drive.google.com/file/d/BBBBBBBBBBBB/view",
-        "source_url": None,
-    }
+    assert manifest["chapters"] == {}
+    assert [s["url"] for s in manifest["sources"]] == [
+        "https://drive.google.com/file/d/AAAAAAAAAAAA/view",
+        "https://drive.google.com/file/d/BBBBBBBBBBBB/view",
+    ]
     delivery = repo_catalog.find_delivery(result.slug)
-    assert delivery is not None and delivery.source_url == PLAYLIST and delivery.chapter_count == 3
+    assert delivery is not None and delivery.source_url == PLAYLIST and delivery.chapter_count == 0
     row = repo_requests.get_by_id(rid)
     assert (row["status"], row["slug"]) == ("accepted", result.slug)
     with pytest.raises(plan.PlanError):
