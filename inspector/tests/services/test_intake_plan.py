@@ -86,6 +86,59 @@ class _FakeYtDlp:
     YoutubeDL = _FakeYDL
 
 
+class _FlakyYDL(_FakeYDL):
+    """Drops the connection twice, then lists; records the options it got."""
+
+    calls = 0
+    seen_opts: dict = {}
+
+    def extract_info(self, url, download=False):
+        type(self).calls += 1
+        type(self).seen_opts = self.opts
+        if type(self).calls <= 2:
+            raise RuntimeError(
+                "ERROR: [youtube:tab] PL: Unable to download API page: "
+                "[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol"
+            )
+        return {"entries": [{"title": "t", "url": "https://www.youtube.com/watch?v=a"}]}
+
+
+class _FlakyYtDlp:
+    YoutubeDL = _FlakyYDL
+
+
+def test_ytdlp_listing_retries_a_dropped_connection_with_cookies(monkeypatch):
+    monkeypatch.setattr(enumerate_mod, "_ytdlp", lambda: _FlakyYtDlp)
+    monkeypatch.setattr(enumerate_mod, "_RETRY_SLEEP_S", 0)
+    monkeypatch.setenv("INSPECTOR_YTDLP_COOKIES", "# Netscape HTTP Cookie File")
+    _FlakyYDL.calls = 0
+    listing = enumerate_mod.enumerate_source(
+        IntakeSource(method="playlist", playlist_url="https://www.youtube.com/playlist?list=PL")
+    )
+    assert _FlakyYDL.calls == 3
+    assert [e.url for e in listing.entries] == ["https://www.youtube.com/watch?v=a"]
+    assert _FlakyYDL.seen_opts["cookiefile"].endswith(".txt")
+
+
+def test_ytdlp_listing_does_not_retry_a_permanent_error(monkeypatch):
+    class _Gone(_FakeYDL):
+        calls = 0
+
+        def extract_info(self, url, download=False):
+            type(self).calls += 1
+            raise RuntimeError("ERROR: This playlist does not exist")
+
+    class _GoneYtDlp:
+        YoutubeDL = _Gone
+
+    monkeypatch.setattr(enumerate_mod, "_ytdlp", lambda: _GoneYtDlp)
+    with pytest.raises(enumerate_mod.EnumerationError, match="does not exist"):
+        enumerate_mod.enumerate_source(
+            IntakeSource(method="playlist", playlist_url="https://www.youtube.com/playlist?list=PL")
+        )
+    assert _Gone.calls == 1
+
+
 def test_ytdlp_listing_prefers_file_urls_and_refuses_truncation(monkeypatch):
     monkeypatch.setattr(enumerate_mod, "_ytdlp", lambda: _FakeYtDlp)
     _FakeYDL.info = {
