@@ -307,7 +307,15 @@ passes the cookies / proxy secrets below when set. **Downloads** are refused ("S
 signed-in session. A run with any yt-dlp source installs `yt-dlp[default] deno`
 in the job and passes the Space secrets `INSPECTOR_YTDLP_COOKIES` (a Netscape
 cookies.txt export) and `INSPECTOR_YTDLP_PROXY` (optional) as the job secrets
-`YTDLP_COOKIES` / `YTDLP_PROXY`. `INSPECTOR_GOOGLE_API_KEY` (optional) overrides
+`YTDLP_COOKIES` / `YTDLP_PROXY`. HF Jobs egress from AWS (AS14618): without a
+session YouTube refuses every player client (`tv`, `tv_simply`, `android_vr`,
+`ios`, `mweb`, `web_safari`, `web_embedded`, probed 2026-09). The job repairs a
+cookies file whose tabs became spaces (`audio_io.normalize_cookies`), keeps at
+most `YTDLP_WORKERS = 2` yt-dlp fetches in flight with `--sleep-requests 1`,
+and after the first bot-check refusal (`BotCheckError`) fails the remaining
+yt-dlp sources without a request. The error keeps yt-dlp's cookie warnings:
+"no longer valid" means YouTube rotated the session after export — export
+from a private window and close it without signing out. `INSPECTOR_GOOGLE_API_KEY` (optional) overrides
 the scraped Drive listing key. The app itself needs `yt-dlp` (in
 `inspector/requirements.txt`) for listing only.
 

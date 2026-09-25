@@ -36,7 +36,17 @@ YTDLP_FORMAT = "bestaudio/best"
 _DRIVE_DOWNLOAD = "https://drive.usercontent.google.com/download?id={id}&export=download&confirm=t"
 _MS = 1000
 
+#: Seconds between yt-dlp's HTTP requests — a burst from one account on a
+#: datacenter IP is what trips YouTube's bot check.
+YTDLP_SLEEP_REQUESTS_S = "1"
+_BOT_CHECK = ("confirm you", "not a bot")
+_COOKIE_FIELDS = 7
+
 _cookie_file: str | None = None
+
+
+class BotCheckError(RuntimeError):
+    """YouTube refused the session — every further YouTube fetch will too."""
 
 
 def atomic_write(dest: Path, src: Path) -> None:
@@ -91,7 +101,8 @@ def _ytdlp(url: str, dest: Path) -> Path:
     template = str(dest.with_suffix("")) + ".%(ext)s"
     cmd = ["yt-dlp", "-f", YTDLP_FORMAT, "--no-playlist", "--no-progress"]
     cmd += ["--retries", "5", "--fragment-retries", "5", "--retry-sleep", "5"]
-    cmd += ["--socket-timeout", "30", "--force-overwrites", "-o", template]
+    cmd += ["--socket-timeout", "30", "--sleep-requests", YTDLP_SLEEP_REQUESTS_S]
+    cmd += ["--force-overwrites", "-o", template]
     cookies = _cookies_path()
     if cookies:
         cmd += ["--cookies", cookies]
@@ -102,18 +113,48 @@ def _ytdlp(url: str, dest: Path) -> Path:
         [*cmd, url], capture_output=True, text=True, timeout=FFMPEG_TIMEOUT_S, check=False
     )
     if proc.returncode != 0:
-        tail = " ".join((proc.stderr or proc.stdout or "").strip().splitlines()[-2:])
-        if "confirm you" in tail and "not a bot" in tail:
-            tail = (
-                "YouTube refused the download (bot check) — set or refresh the "
-                "INSPECTOR_YTDLP_COOKIES secret on the Space"
-            )
-        raise RuntimeError(f"yt-dlp failed: {tail[:400]}")
+        _raise_ytdlp_failure(proc.stderr or proc.stdout or "", bool(cookies))
     written = sorted(dest.parent.glob(dest.with_suffix("").name + ".*"))
     written = [p for p in written if p.suffix not in (".part", ".ytdl")]
     if not written:
         raise RuntimeError("yt-dlp reported success but wrote no file")
     return written[0]
+
+
+def _raise_ytdlp_failure(output: str, had_cookies: bool) -> None:
+    lines = [ln.strip() for ln in output.strip().splitlines() if ln.strip()]
+    errors = [ln for ln in lines if ln.startswith("ERROR")]
+    error = errors[-1] if errors else (lines[-1] if lines else "no output")
+    if not all(marker in error for marker in _BOT_CHECK):
+        raise RuntimeError(f"yt-dlp failed: {error[:400]}")
+    # yt-dlp says why a cookie file did not sign it in ("no longer valid" =
+    # YouTube rotated the session after export) — keep those lines.
+    notes = [ln[:200] for ln in lines if ln.startswith("WARNING") and "cookie" in ln.lower()]
+    if not had_cookies:
+        hint = "no YTDLP_COOKIES secret reached the job"
+    elif notes:
+        hint = "the cookies were rejected: " + " | ".join(notes[:2])
+    else:
+        hint = (
+            "the cookies were sent but YouTube still wants a sign-in — export them "
+            "again from a private window, then close it without signing out"
+        )
+    raise BotCheckError(f"YouTube refused the download (bot check): {hint}")
+
+
+def normalize_cookies(text: str) -> str:
+    """A cookies.txt whose tabs became spaces (pasted through a web form) is
+    rebuilt with tabs; yt-dlp silently skips rows that are not tab-separated."""
+    out = []
+    for line in text.strip().splitlines():
+        row = line.strip()
+        if row and not row.startswith("#") and "\t" not in row:
+            fields = row.split()
+            if len(fields) >= _COOKIE_FIELDS:
+                last = _COOKIE_FIELDS - 1
+                row = "\t".join([*fields[:last], " ".join(fields[last:])])
+        out.append(row)
+    return "\n".join(out) + "\n"
 
 
 def _cookies_path() -> str | None:
@@ -126,7 +167,7 @@ def _cookies_path() -> str | None:
         return None
     fd, path = tempfile.mkstemp(prefix="ytdlp_cookies_", suffix=".txt")
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        fh.write(text if text.endswith("\n") else text + "\n")
+        fh.write(normalize_cookies(text))
     _cookie_file = path
     return path
 

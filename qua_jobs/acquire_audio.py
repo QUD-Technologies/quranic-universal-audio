@@ -14,6 +14,8 @@ groups its chapters by source file (``qua_shared.audio.sources``):
 
 Sources run concurrently on a thread pool (one worker per vCPU, ``ACQUIRE_WORKERS``
 overrides, 8 max); every step releases the GIL (socket waits, ffmpeg subprocesses).
+yt-dlp fetches are capped at ``YTDLP_WORKERS`` at once, and after YouTube's first
+bot-check refusal the remaining yt-dlp sources fail fast with the same reason.
 Idempotent: a chapter whose mp3 + peaks exist, or a slot whose mp3 exists (or
 whose chapters were already split), is skipped. Writes the report
 ``staging/<slug>/<run_id>/acquire.json`` and exits non-zero when any source failed.
@@ -42,7 +44,11 @@ from pathlib import Path
 sys.path.insert(0, os.environ.get("PYTHONPATH", "/aux/code"))
 
 from qua_jobs import audio_io  # noqa: E402
-from qua_shared.audio.sources import SourceGroup, groups_from_manifest  # noqa: E402
+from qua_shared.audio.sources import (  # noqa: E402
+    SourceGroup,
+    groups_from_manifest,
+    needs_ytdlp,
+)
 
 log = logging.getLogger("acquire_audio")
 
@@ -50,7 +56,27 @@ log = logging.getLogger("acquire_audio")
 #: holds a raw + an encoded copy of its file in the job's ephemeral disk.
 MAX_WORKERS = 8
 
+#: yt-dlp fetches in flight at once: one account hammering YouTube from a
+#: datacenter IP is what trips its bot check.
+YTDLP_WORKERS = 2
+
 _log_lock = threading.Lock()
+_ytdlp_gate = threading.Semaphore(YTDLP_WORKERS)
+#: The first bot-check refusal; later yt-dlp sources fail fast with it.
+_bot_blocked: list[str] = []
+
+
+def _fetch(url: str, dest: Path) -> Path:
+    if not needs_ytdlp(url):
+        return audio_io.fetch(url, dest)
+    with _ytdlp_gate:
+        if _bot_blocked:
+            raise audio_io.BotCheckError(f"skipped — {_bot_blocked[0]}")
+        try:
+            return audio_io.fetch(url, dest)
+        except audio_io.BotCheckError as exc:
+            _bot_blocked.append(str(exc))
+            raise
 
 
 def _bucket_root() -> Path:
@@ -111,7 +137,7 @@ def acquire_group(slug: str, group: SourceGroup, channels_override: int | None) 
         return {"url": group.url, "skipped": True}
     with tempfile.TemporaryDirectory(prefix=f"acq_{group.item}_") as tmp:
         work = Path(tmp)
-        raw = audio_io.fetch(group.url, work / "src.bin")
+        raw = _fetch(group.url, work / "src.bin")
         channels = channels_override or audio_io.probe_channels(raw)
         encoded = work / f"{group.item}.mp3"
         audio_io.encode(raw, encoded, channels)
