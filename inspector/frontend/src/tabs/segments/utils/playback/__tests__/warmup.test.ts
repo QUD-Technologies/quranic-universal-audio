@@ -8,11 +8,17 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { mp3Head } from '../../../../../lib/playback/__tests__/mp3-fixtures';
+import { _resetPlayUrlForTest } from '../../../../../lib/playback/play-url';
+import { shadowPrewarm } from '../../../../../lib/playback/shadow-audio';
+
 import type { SegAllResponse } from '../../../../../lib/types/generated/schemas';
 import type { Segment } from '../../../../../lib/types/view-models';
 import { segAllData } from '../../../stores/chapter';
 import { chapterCbrKbps } from '../../../stores/chapter-meta';
-import { _resetWarmedRecentlyForTest, warmChapterStart, warmSeg } from '../warmup';
+import { _resetWarmedRecentlyForTest, warmChapterStart, warmSeg, warmSegChapter } from '../warmup';
+
+vi.mock('../../../../../lib/playback/shadow-audio', () => ({ shadowPrewarm: vi.fn() }));
 
 function makeSeg(overrides: Partial<Segment> = {}): Segment {
     return {
@@ -221,5 +227,35 @@ describe('warmChapterStart', () => {
         warmChapterStart('r', '', 1);
         warmChapterStart('r', 'http://x/ch1.mp3', null);
         expect(fetchMock).not.toHaveBeenCalled();
+    });
+});
+
+describe('warmSegChapter', () => {
+    const CDN = 'https://cdn.example.com/ch1.mp3';
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+
+    beforeEach(() => {
+        _resetPlayUrlForTest();
+        vi.mocked(shadowPrewarm).mockClear();
+    });
+
+    it('direct CDN: probes, shadow-warms the chapter, Range-warms the CDN itself', async () => {
+        fetchMock.mockImplementation(() =>
+            Promise.resolve(new Response(mp3Head({ tag: 'Info' }) as BodyInit, { status: 206 })));
+        warmSegChapter(makeSeg({ audio_url: CDN }), 'r');
+        await flush(); await flush();
+        expect(shadowPrewarm).toHaveBeenCalledWith(CDN);
+        const urls = fetchMock.mock.calls.map((c) => c[0] as string);
+        expect(urls).toEqual([CDN, CDN]); // probe, then the 64 KB warm — never the proxy
+    });
+
+    it('proxied: no whole-chapter shadow warm, only the 64 KB Range via the proxy', async () => {
+        fetchMock.mockImplementation(() => Promise.resolve(new Response(null, { status: 403 })));
+        warmSegChapter(makeSeg({ audio_url: CDN }), 'r');
+        await flush(); await flush();
+        expect(shadowPrewarm).not.toHaveBeenCalled();
+        const last = fetchMock.mock.calls.at(-1) as [string, RequestInit & { headers: Record<string, string> }];
+        expect(last[0]).toMatch(/^\/api\/seg\/audio-proxy\/r\?url=/);
+        expect(last[1].headers.Range).toBe('bytes=0-65535');
     });
 });

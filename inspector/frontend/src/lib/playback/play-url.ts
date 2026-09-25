@@ -73,6 +73,13 @@ export function isDirectPlayable(url: string): boolean {
     return _urlDirect.get(url) === true;
 }
 
+/** True when `url` is a cross-origin CDN URL with no verdict yet — i.e. a
+ *  sync `playUrl` right now would fall back to the proxy only because nobody
+ *  has probed it. Same-origin / non-http URLs never need a probe. */
+export function needsDirectProbe(url: string): boolean {
+    return _crossOriginHost(url) !== null && !_urlDirect.has(url);
+}
+
 async function _sniff(url: string, host: string): Promise<boolean> {
     const res = await fetch(url, {
         mode: 'cors',

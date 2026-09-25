@@ -99,8 +99,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     import { playFromSegment, startWordTimingPreview, updateWordTimingPreview, stopWordTimingPreview, onSegPlayClick } from '../../utils/playback/playback';
     import type { PreviewPlaybackContext } from '../../utils/playback/preview';
     import { deregisterRow, registerRow } from '../../utils/playback/row-registry';
-    import { wrapCbrSrcIfBySurah } from '../../utils/playback/source';
-    import { warmSeg } from '../../utils/playback/warmup';
+    import { warmSeg, warmSegChapter } from '../../utils/playback/warmup';
     import { getConfClass } from '../../utils/validation/conf-class';
     import { _ensureWaveformObserver } from '../../utils/waveform/utils';
     import { resetHistoryLoader } from '../../utils/history/loader';
@@ -703,13 +702,11 @@ import type { Segment } from '../../../../lib/types/view-models';
     }
 
     // Hover-warm — fires ~80 ms after the cursor enters the play button.
-    // Two warmups in parallel:
-    //   1. `shadowPrewarm(cbrSrc)` fills the browser HTTP cache for the
-    //      chapter MP3 on a hidden <audio>. Covers cross-chapter clicks
-    //      that the panel-level next-card prediction missed (user jumped
-    //      to a non-sequential card or played a row in a different
-    //      chapter from the main list). When user clicks play, the
-    //      primary <audio>'s el.load() hits the warm cache → fast canplay.
+    // Warms via `warmSegChapter` (CBR):
+    //   1. Probes the CDN so a cross-chapter click (a card the panel-level
+    //      next-card prediction missed, or another chapter's row) plays
+    //      direct rather than through the audio-proxy; a direct chapter also
+    //      gets a hidden-<audio> HTTP-cache warm → fast canplay on click.
     //   2. `warmSeg(seg)` fetches a 64 KB Range around the seg's byte
     //      offset. Primes the server-side OS page cache for the mid-file
     //      seek the audio element will issue when it seeks to seg.time_start.
@@ -724,19 +721,15 @@ import type { Segment } from '../../../../lib/types/view-models';
             _hoverWarmTimer = null;
             const reciter = get(selectedReciter);
             if (!reciter) return;
-            // Server-side byte-Range warmup at seg's byte offset.
-            warmSeg(seg, reciter);
-            // Browser HTTP cache warmup for the chapter MP3 (cross-chapter
-            // jumps). Skip VBR — clip URL is per-seg and shadow can't
-            // precache that.
             const audioUrl = seg.audio_url
                 ?? get(segAllData)?.audio_by_chapter?.[String(seg.chapter ?? rowChapter)]
                 ?? '';
             const ch = seg.chapter ?? rowChapter;
             const isVbr = ch != null && ($segAllData?.reciter_vbr_chapters ?? []).includes(ch as number);
-            if (audioUrl && !isVbr) {
-                shadowPrewarm(wrapCbrSrcIfBySurah(audioUrl, reciter));
-            }
+            // VBR plays per-seg clips, so only the byte-Range warm applies.
+            // CBR probes the CDN first (so the click plays direct), then warms.
+            if (isVbr || !audioUrl) warmSeg(seg, reciter);
+            else warmSegChapter(seg, reciter, audioUrl);
         }, 80);
     }
     function onPlayLeave(): void {
