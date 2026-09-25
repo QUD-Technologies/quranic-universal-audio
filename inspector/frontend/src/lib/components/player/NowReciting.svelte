@@ -135,7 +135,7 @@
     $effect(() => {
         const u = units;
         const sorted = sortedIntervals;
-        if (!u.length) {
+        if (!u.length || !live) {
             recitationAyahAt.set(null);
             return;
         }
@@ -167,6 +167,16 @@
     const playing = $derived($playerContext.isPlaying);
     const shown = $derived(isPublished && units.length > 0);
 
+    // `slug:chapter` the loaded `units` belong to. The shared player switches
+    // chapter (and may already be playing it) before this component's load
+    // lands; until then the previous chapter's units must not be read against
+    // the new chapter's clock — that lit a wrong ayah of the OLD surah. While
+    // stale, the line + filmstrip hold their last frame (like the Timestamps
+    // analysis does mid-swap) and resume once the new units arrive.
+    let loadedKey = $state('');
+    const live = $derived(loadedKey === `${reciterSlug}:${surahNum}`);
+    const animating = $derived(playing && live);
+
     const getTimeMs = (): number => {
         if (!dashPort.window && !playing) return $playerContext.positionMs;
         return dashPort.currentTimeMs();
@@ -188,10 +198,15 @@
         ensureDashCovering(ms);
         dashPort.seek(ms);
         dashPort.play();
-        if (!playing) {
-            section?.refresh();
-            filmstrip?.refresh();
-        }
+        if (!playing) refreshDisplays();
+    }
+
+    /** Re-sync the line + filmstrip to the playhead while no rAF drives them.
+     *  No-op while the units are stale (mid chapter swap). */
+    function refreshDisplays(): void {
+        if (!live) return;
+        section?.refresh();
+        filmstrip?.refresh();
     }
 
     // Speculative prewarm on filmstrip ayah-cell hover. The hovered ayah is in
@@ -202,46 +217,40 @@
         void dashPort.prewarm();
     }
 
+    function clearRecitation(): void {
+        units = [];
+        ayahs = [];
+        coverage = undefined;
+        shapedGlyphs = undefined;
+        activeCell = null;
+        loadedKey = '';
+        recitationAyahs.set([]);
+    }
+
     // Load chapter recitation when the published reciter / surah changes.
     $effect(() => {
         if (!isPublished || !reciterSlug || !surahNum) {
-            units = [];
-            ayahs = [];
-            coverage = undefined;
-            shapedGlyphs = undefined;
-            activeCell = null;
-            recitationAyahs.set([]);
+            clearRecitation();
             return;
         }
         const slug = reciterSlug;
         const chapter = surahNum;
         const controller = new AbortController();
-        void Promise.all([
-            loadChapterRecitation(slug, chapter, controller.signal),
-            // Shaped geometry is a teleprompter enhancement. A missing static
-            // asset must not suppress the independently loaded filmstrip/cell
-            // timeline; LineAnimation retains its native-text fallback.
-            loadShapedGlyphs(chapter, controller.signal).catch(() => undefined),
-        ])
-            .then(async ([res, glyphs]) => {
+        // Shaped geometry is a teleprompter enhancement: fetched in parallel,
+        // applied whenever it lands, and never allowed to hold back the units
+        // (a large chapter's fixture is >1 MB) or suppress them when missing —
+        // LineAnimation retains its native-text fallback.
+        const glyphsReady = loadShapedGlyphs(chapter, controller.signal).catch(() => undefined);
+        void loadChapterRecitation(slug, chapter, controller.signal)
+            .then(async (res) => {
                 if (controller.signal.aborted) return;
-                // Shaped outlines are DigitalKhatt geometry keyed on the HAFS
-                // word text, and another edition's words collide with it on
-                // every string the two spell identically — 8 of surah 112's 15
-                // Warsh words. Keeping them would draw those words as Hafs
-                // outlines (LineAnimation takes the SVG branch before any
-                // granularity check), bypassing `config.fontFamily` and mixing
-                // two typefaces inside one verse. The fetch itself still runs
-                // in parallel with the recitation, because the delivery's
-                // edition is not known until that response lands.
-                shapedGlyphs =
-                    (res?.riwayah ?? DEFAULT_SDK_RIWAYAH) === DEFAULT_SDK_RIWAYAH
-                        ? glyphs
-                        : undefined;
+                const edition = res?.riwayah ?? DEFAULT_SDK_RIWAYAH;
+                shapedGlyphs = undefined; // the previous chapter's geometry
                 units = res?.units ?? [];
                 ayahs = res?.ayahs ?? [];
                 coverage = res?.coverage;
-                riwayah = res?.riwayah ?? DEFAULT_SDK_RIWAYAH;
+                riwayah = edition;
+                loadedKey = `${slug}:${chapter}`;
                 ensureEditionFont(editionSlug);
                 activeCell = null;
                 recitationAyahs.set(ayahs);
@@ -249,16 +258,19 @@
                 if (controller.signal.aborted) return;
                 section?.refresh();
                 filmstrip?.showFirstAyah();
+                // Shaped outlines are DigitalKhatt geometry keyed on the HAFS
+                // word text, and another edition's words collide with it on
+                // every string the two spell identically — 8 of surah 112's 15
+                // Warsh words. Keeping them would draw those words as Hafs
+                // outlines (LineAnimation takes the SVG branch before any
+                // granularity check), bypassing `config.fontFamily` and mixing
+                // two typefaces inside one verse.
+                if (edition !== DEFAULT_SDK_RIWAYAH) return;
+                const glyphs = await glyphsReady;
+                if (!controller.signal.aborted) shapedGlyphs = glyphs;
             })
             .catch(() => {
-                if (!controller.signal.aborted) {
-                    units = [];
-                    ayahs = [];
-                    coverage = undefined;
-                    shapedGlyphs = undefined;
-                    activeCell = null;
-                    recitationAyahs.set([]);
-                }
+                if (!controller.signal.aborted) clearRecitation();
             });
         return () => controller.abort();
     });
@@ -277,10 +289,7 @@
     let wasScrubbing = false;
     $effect(() => {
         const scrubbing = $progressScrubMs != null;
-        if (wasScrubbing && !scrubbing && !playing) {
-            section?.refresh();
-            filmstrip?.refresh();
-        }
+        if (wasScrubbing && !scrubbing && !playing) refreshDisplays();
         wasScrubbing = scrubbing;
     });
 
@@ -380,7 +389,7 @@
                 {units}
                 {config}
                 {getTimeMs}
-                {playing}
+                playing={animating}
                 {shapedGlyphs}
                 omitSilentHighlights={$recitationSilentOmit}
                 ayahMarker={verseMarkerPrefix(riwayah)}
@@ -420,7 +429,7 @@
                         model={filmstripModel}
                         durationMs={$playerContext.durationMs}
                         {getTimeMs}
-                        {playing}
+                        playing={animating}
                         {config}
                         hoverMs={$progressHoverMs}
                         scrubMs={$progressScrubMs}

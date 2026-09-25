@@ -217,6 +217,7 @@
         void config.fontFamily;
         void config.granularity;
         void config.showAyahMarker;
+        void shapedGlyphs; // may land after the units (outlines vs native text)
         pageCount = null;
         // Snap (no fade) across this re-page so a granularity switch doesn't
         // flash every word lit; re-enabled once the sweep below settles.
@@ -243,6 +244,7 @@
     $effect(() => {
         void structure; // re-run when the page content changes
         void omitSilentHighlights; // policy toggles re-sweep without re-paging
+        void shapedGlyphs; // late glyphs replace the word spans → re-index them
         if (!rootEl) return;
         wordCache = indexCache(rootEl, '.ra-word');
         charCache = config.granularity === 'char' ? indexCache(rootEl, '.ra-char') : null;
