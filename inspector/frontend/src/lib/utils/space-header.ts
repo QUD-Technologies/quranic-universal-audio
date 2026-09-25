@@ -29,14 +29,11 @@ const SPACE_ENDPOINT = '/api/public/space';
 /** Element id the package gives the pill it injects. */
 const HEADER_ID = 'huggingface-space-header';
 
-/** Breathing room between the pill and whatever we shift out from under it. */
-const GAP_PX = 12;
+/** Breathing room between the pill and the controls stacked under it. */
+const GAP_PX = 8;
 
-/** Don't shove the controls so far left they leave the viewport. */
-const MIN_LEFT_PX = 8;
-
-/** Keep the pill off the very edge when the header row sits unusually high. */
-const MIN_TOP_PX = 8;
+/** Keep the pill off the viewport's top/right edge. */
+const MIN_EDGE_PX = 8;
 
 /** Element id of the stylesheet that repaints the pill in our palette. */
 const THEME_STYLE_ID = 'space-header-theme';
@@ -182,11 +179,9 @@ function waitForHeader(): Promise<HTMLElement | null> {
  *
  * The Dashboard adds `padding-inline-end: var(--gutter)` to `.auth-controls`
  * so the cluster lines up with the right rail. That padding is inside the
- * box, so measuring the box put the last button a whole gutter further from
- * the pill on the Dashboard than on every other tab. Measuring the children
- * keeps the visible gap identical across tabs.
- *
- * Taking the max rather than the last child keeps it direction-agnostic.
+ * box, so measuring the box would misalign the pill by a gutter on the
+ * Dashboard only. Taking the max rather than the last child keeps it
+ * direction-agnostic.
  */
 function visibleRightEdge(container: HTMLElement): number {
   const edges = [...container.children].map((child) => child.getBoundingClientRect().right);
@@ -194,29 +189,15 @@ function visibleRightEdge(container: HTMLElement): number {
 }
 
 /**
- * Line the pill up with the app's own top-right cluster and clear their overlap.
+ * Stack the pill above the app's own top-right cluster.
  *
- * The pill is `position: fixed` in the corner at a height the package picked,
- * which leaves it a few pixels above our header row — close enough to look
- * like a mistake rather than a separate surface. We centre it on the row
- * instead, and only then reserve the width it covers.
+ * The pill is `position: fixed` in the corner; the controls sit underneath it
+ * rather than beside it. The pill's right edge is lined up with the cluster's
+ * drawn right edge, and the header row gets a top margin that clears the pill.
  *
- * Room is made with padding on the header, not a margin on the cluster. The
- * row is `grid-template-columns: 1fr auto 1fr`, and `1fr` is
- * `minmax(auto, 1fr)`: a margin counts toward the item's outer size, so it
- * grew the end track and the cluster slid left by *less* than the margin, a
- * feedback loop that needed a second pass to converge. The header's own width
- * comes from its parent, so padding shrinks the grid's content box without
- * changing anything we just measured — `justify-self: end` then lands the
- * cluster exactly at the new content edge, in one pass.
- *
- * All vertical maths happens in "page at rest" coordinates: the pill is fixed
- * (so its viewport box already is that), while the header row scrolls, so its
- * box is lifted back by `scrollY`. Without that the alignment would drift as
- * soon as the reader scrolled.
- *
- * When the row is too narrow to absorb the reservation (phones), the controls
- * drop below the pill instead of being crushed.
+ * Vertical maths happens in "page at rest" coordinates: the pill is fixed (so
+ * its viewport box already is that), while the header row scrolls, so its box
+ * is lifted back by `scrollY`.
  */
 function placeHeader(): void {
   const pill = document.getElementById(HEADER_ID);
@@ -224,61 +205,17 @@ function placeHeader(): void {
   const row = bar?.closest<HTMLElement>('header');
   if (!pill || !bar || !row) return;
 
-  const tabs = row.querySelector<HTMLElement>('.tab-bar');
-
   // Clear last pass before measuring, or each run compounds the previous one.
-  // Safe to own outright: the header carries no padding of its own (the
-  // rail-aligned insets live on its children), and nothing else transforms
-  // the tab bar.
-  row.style.paddingRight = '';
   row.style.marginTop = '';
-  if (tabs) tabs.style.transform = '';
 
-  const barBox = bar.getBoundingClientRect();
-  const barTop = barBox.top + window.scrollY;
-  const barBottom = barBox.bottom + window.scrollY;
-  const barContentRight = visibleRightEdge(bar);
+  const barTop = bar.getBoundingClientRect().top + window.scrollY;
+  const right = Math.max(MIN_EDGE_PX, Math.round(document.documentElement.clientWidth - visibleRightEdge(bar)));
+  pill.style.top = `${MIN_EDGE_PX}px`;
+  pill.style.right = `${right}px`;
 
-  // Centre the pill on the row before measuring the overlap, so the
-  // reservation is computed against where the pill actually ends up.
-  const pillHeight = pill.getBoundingClientRect().height;
-  const top = Math.max(MIN_TOP_PX, Math.round((barTop + barBottom - pillHeight) / 2));
-  pill.style.top = `${top}px`;
-
-  const pillBox = pill.getBoundingClientRect();
-  const overlaps =
-    barContentRight > pillBox.left &&
-    barBox.left < pillBox.right &&
-    barTop < pillBox.bottom &&
-    barBottom > pillBox.top;
-  if (!overlaps) return;
-
-  const reserve = Math.ceil(barContentRight - pillBox.left + GAP_PX);
-  if (barBox.left - reserve >= MIN_LEFT_PX) {
-    row.style.paddingRight = `${reserve}px`;
-    recentreTabs(tabs, reserve, pillBox.left);
-  } else {
-    row.style.marginTop = `${Math.ceil(pillBox.bottom + GAP_PX - barTop)}px`;
-  }
-}
-
-/**
- * Undo the sideways drift the reservation gives the centred tab bar.
- *
- * Padding shrinks the grid's content box from the right, so its midpoint — and
- * with it the `justify-self: center` tab bar — moves left by half the
- * reservation. The tabs are centred on the page, not on whatever room is left
- * beside the pill, so shift them back. A transform keeps this purely visual:
- * it cannot feed back into the measurements the reservation was derived from.
- *
- * Clamped so the correction never slides the tabs under the pill on a width
- * where the two would otherwise meet.
- */
-function recentreTabs(tabs: HTMLElement | null, reserve: number, pillLeft: number): void {
-  if (!tabs) return;
-  const box = tabs.getBoundingClientRect();
-  const shift = Math.min(Math.round(reserve / 2), Math.floor(pillLeft - GAP_PX - box.right));
-  if (shift > 0) tabs.style.transform = `translateX(${shift}px)`;
+  const pillBottom = pill.getBoundingClientRect().bottom;
+  const push = Math.ceil(pillBottom + GAP_PX - barTop);
+  if (push > 0) row.style.marginTop = `${push}px`;
 }
 
 /**
@@ -323,8 +260,7 @@ export async function installSpaceHeader(): Promise<void> {
     window.addEventListener('load', placeHeader, { once: true });
   }
 
-  // Re-measure on viewport changes — the shift depends on both rects, and the
-  // header row reflows (and can switch to the stacked branch) as width changes.
+  // Re-measure on viewport changes — the pill tracks the cluster's right edge.
   window.addEventListener('resize', placeHeader, { passive: true });
 
   // The pill keeps changing size after insertion, and none of it fires a

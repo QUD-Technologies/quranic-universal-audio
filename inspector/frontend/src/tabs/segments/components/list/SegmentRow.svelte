@@ -28,6 +28,8 @@
     import { fetchJsonOrNull } from '../../../../lib/api';
     import { localeStore, tr } from '../../../../lib/i18n/locale-store';
     import * as m from '../../../../lib/paraglide/messages';
+    import { shadowPrewarm } from '../../../../lib/playback/shadow-audio';
+    import { displayTimeMs } from '../../../../lib/playback/audio-graph';
     import { quranRefs } from '../../../../lib/refs/quran-refs';
     import { currentUser } from '../../../../lib/stores/current-user';
     import { pushToast } from '../../../../lib/stores/toast';
@@ -328,12 +330,20 @@ import type { Segment } from '../../../../lib/types/view-models';
     let wordEditing = false;
     let wordDraft: { start_ms: number; end_ms: number }[] = [];
     let wordLockedIndex: number | null = null;
+    let wordActiveIndex = -1;
     let wordSaving = false;
     let wordError = '';
     let wordHasChanges = false;
     $: wordHasChanges = wordDraft.some((word, index) =>
         word.start_ms !== reviewWordTimings[index]?.start_ms || word.end_ms !== reviewWordTimings[index]?.end_ms);
     $: wordEditWidth = Math.min(8000, Math.max(900, reviewWordTimings.length * 150, (seg.time_end - seg.time_start) * 0.1));
+    function onWordPreviewTick(audibleTimeMs: number): void {
+        // The preview follows the editable boundaries, not the saved row timings.
+        audibleTimeMs = Math.max(seg.time_start, Math.min(audibleTimeMs, seg.time_end));
+        wordActiveIndex = wordDraft.findIndex((word, index) =>
+            audibleTimeMs >= word.start_ms
+            && (audibleTimeMs < word.end_ms || (index === wordDraft.length - 1 && audibleTimeMs === word.end_ms)));
+    }
     async function toggleWordEditor(): Promise<void> {
         if (!wordEditing && get(editMode)) return;
         if (!wordEditing && isDirty()) {
@@ -343,9 +353,11 @@ import type { Segment } from '../../../../lib/types/view-models';
         wordEditing = !wordEditing;
         wordError = '';
         wordLockedIndex = null;
+        wordActiveIndex = -1;
         if (wordEditing) {
             wordDraft = contiguousWordDraft(reviewWordTimings);
-            startWordTimingPreview(seg, rowChapter, seg.time_start, seg.time_end);
+            onWordPreviewTick(seg.time_start);
+            startWordTimingPreview(seg, rowChapter, seg.time_start, seg.time_end, seg.time_start, onWordPreviewTick);
         } else {
             stopWordTimingPreview(seg.segment_uid ?? '');
         }
@@ -358,6 +370,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     function onWordDraftChange(boundaries: { start_ms: number; end_ms: number }[]): void {
         const previousLocked = wordLockedIndex === null ? null : wordDraft[wordLockedIndex];
         wordDraft = boundaries;
+        onWordPreviewTick(displayTimeMs(segPort.currentTimeMs()));
         if (wordLockedIndex !== null) {
             const locked = boundaries[wordLockedIndex]!;
             if (!previousLocked || previousLocked.start_ms !== locked.start_ms || previousLocked.end_ms !== locked.end_ms) {
@@ -367,15 +380,15 @@ import type { Segment } from '../../../../lib/types/view-models';
     }
     function seekWordPreview(timeMs: number): void {
         wordLockedIndex = null;
-        startWordTimingPreview(seg, rowChapter, seg.time_start, seg.time_end, timeMs);
+        startWordTimingPreview(seg, rowChapter, seg.time_start, seg.time_end, timeMs, onWordPreviewTick);
     }
     function toggleWordLock(index: number): void {
         if (wordLockedIndex === index) {
             wordLockedIndex = null;
-            startWordTimingPreview(seg, rowChapter, seg.time_start, seg.time_end);
+            startWordTimingPreview(seg, rowChapter, seg.time_start, seg.time_end, seg.time_start, onWordPreviewTick);
         } else {
             wordLockedIndex = index;
-            startWordTimingPreview(seg, rowChapter, wordDraft[index]!.start_ms, wordDraft[index]!.end_ms);
+            startWordTimingPreview(seg, rowChapter, wordDraft[index]!.start_ms, wordDraft[index]!.end_ms, wordDraft[index]!.start_ms, onWordPreviewTick);
         }
     }
     async function applyWordTimings(): Promise<void> {
@@ -1149,7 +1162,8 @@ import type { Segment } from '../../../../lib/types/view-models';
         {#if wordEditing}
             <WordTimingEditor words={wordDraft} labels={reviewDisplayWords}
                 startMs={seg.time_start} endMs={seg.time_end} width={wordEditWidth}
-                lockedIndex={wordLockedIndex} onChange={onWordDraftChange} onSeek={seekWordPreview} onLock={toggleWordLock} />
+                lockedIndex={wordLockedIndex} activeIndex={wordLockedIndex === null && isPlaying && $isMainAudioPlaying ? wordActiveIndex : null}
+                onChange={onWordDraftChange} onSeek={seekWordPreview} onLock={toggleWordLock} />
         {/if}
         </div>
         </div>
