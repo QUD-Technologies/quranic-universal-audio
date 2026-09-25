@@ -6,8 +6,7 @@
 - ``POST /api/admin/reciter/<slug>/align/cancel``   stop a run
 
 Gated by the ``intake.align`` capability (owner + maintainer by default) through
-the resolver. Two credentials are accepted, the same pair as the intake ingest
-route: the ``inspector_session`` cookie (dashboard; POSTs must be same-origin)
+the resolver. Two credentials are accepted (the intake-plan routes share them): the ``inspector_session`` cookie (dashboard; POSTs must be same-origin)
 or an ``Authorization: Bearer <HF token>`` of an owner (server-to-server — an
 operator script driving a run; a bearer cannot be CSRF'd so no origin check).
 Refusals come back as ``{"error": …}`` with the service's status (404 unknown
@@ -40,13 +39,16 @@ CAPABILITY = "intake.align"
 
 def _authorize(*, mutating: bool) -> tuple[Actor | None, tuple | None]:
     """``(actor, None)`` for a caller holding ``intake.align``, else ``(None, (resp, status))``."""
-    actor, _exempt, err = _authorize_with_exemption(mutating=mutating)
+    actor, _exempt, err = authorize_with_exemption(mutating=mutating)
     return actor, err
 
 
-def _authorize_with_exemption(*, mutating: bool) -> tuple[Actor | None, bool, tuple | None]:
+def authorize_with_exemption(
+    *, mutating: bool, capabilities: tuple[str, ...] = (CAPABILITY,)
+) -> tuple[Actor | None, bool, tuple | None]:
     """``_authorize`` plus whether the caller bypasses the shared align budget
-    (an owner bearer always does; a session user when they hold the capability)."""
+    (an owner bearer always does; a session user when they hold the capability).
+    Every capability in ``capabilities`` is required."""
     token = token_auth.bearer_token_from_header(request.headers.get("Authorization"))
     if token is not None:
         try:
@@ -59,7 +61,7 @@ def _authorize_with_exemption(*, mutating: bool) -> tuple[Actor | None, bool, tu
     user = auth_service.current_user()
     if user is None:
         return None, False, (jsonify({"error": "authentication required"}), 401)
-    if not cap_service.can(user, CAPABILITY):
+    if not all(cap_service.can(user, cap) for cap in capabilities):
         return None, False, (jsonify({"error": "insufficient permission for this action"}), 403)
     if mutating:
         origin = request.headers.get("Origin") or request.headers.get("Referer") or ""
@@ -75,7 +77,7 @@ def _status_payload(status):
 
 @admin_align_bp.route("/reciter/<slug>/align", methods=["POST"])
 def start_align(slug: str):
-    actor, exempt, err = _authorize_with_exemption(mutating=True)
+    actor, exempt, err = authorize_with_exemption(mutating=True)
     if err is not None:
         return err
     assert actor is not None

@@ -148,6 +148,12 @@ def finalise_indices(events: list[dict], removed: list[int]) -> None:
             )
 
 
+def source_offset(result: dict) -> int:
+    """Where the chapter starts inside its source file: the split stage's cut
+    offset for a chapter of a combined file, else 0."""
+    return int((result.get("_inspector") or {}).get("split_offset_ms") or 0)
+
+
 def adapt_chapter(
     chapter: int, result: dict, *, source_url: str, riwayah: str
 ) -> tuple[dict, list[dict], bool]:
@@ -165,7 +171,7 @@ def adapt_chapter(
         "chapter": chapter,
         "entries": [{"ref": str(chapter), "segments": [_segment(r, riwayah) for r in kept]}],
         "source_url": source_url,
-        "source_offset_ms": 0,
+        "source_offset_ms": source_offset(result),
         "trim_span_ms": None,
         "riwayah": riwayah,
     }

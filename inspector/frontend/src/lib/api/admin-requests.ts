@@ -10,6 +10,9 @@
 import type {
     AdminRequestsResponse,
     AlignRunStatus,
+    IntakeAlignResponse,
+    IntakePlanUpdate,
+    IntakePlanView,
     ProbeResponse,
 } from '../types/generated/schemas';
 
@@ -28,13 +31,17 @@ export async function fetchRequests(
 
 // ---- Intake (slugless new-combo / new-reciter) owner actions ----------------
 //
-// No accept action: a submission is directly ingest-actionable (aligning it via
-// the offline pipeline is the acceptance). Owners can still probe / return /
-// discard a pending submission.
+// No accept action: a submission is planned + aligned right here (minting it
+// IS the acceptance — see "Online intake plan" below). Owners can still probe /
+// return / discard a pending submission.
 
-async function _post(url: string, body?: unknown): Promise<Record<string, unknown>> {
+async function _post(
+    url: string,
+    body?: unknown,
+    method: 'POST' | 'PUT' = 'POST',
+): Promise<Record<string, unknown>> {
     const res = await fetch(url, {
-        method: 'POST',
+        method,
         headers: _JSON,
         body: body === undefined ? undefined : JSON.stringify(body),
     });
@@ -93,4 +100,38 @@ export async function retryAlign(slug: string): Promise<AlignRunStatus> {
 export async function cancelAlign(slug: string): Promise<AlignRunStatus> {
     const json = await _post(`/api/admin/reciter/${encodeURIComponent(slug)}/align/cancel`);
     return json as unknown as AlignRunStatus;
+}
+
+// ---- Online intake plan (slugless rows) --------------------------------------
+//
+// Enumerate the submission's playlist / Drive folder / links, review which file
+// holds which chapter + the catalog identity, then mint + align in one click.
+
+/** The stored plan with its live check, or ``null`` before one is built. */
+export async function fetchIntakePlan(
+    id: string,
+    signal?: AbortSignal,
+): Promise<IntakePlanView | null> {
+    const res = await fetch(`/api/admin/intake/${encodeURIComponent(id)}/plan`, { signal });
+    const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!res.ok) throw new Error((json.error as string) ?? `HTTP ${res.status}`);
+    return 'status' in json ? (json as unknown as IntakePlanView) : null;
+}
+
+/** (Re)enumerate the source; the plan comes back ``enumerating`` — poll it. */
+export async function buildIntakePlan(id: string): Promise<IntakePlanView> {
+    const json = await _post(`/api/admin/intake/${encodeURIComponent(id)}/plan`);
+    return json as unknown as IntakePlanView;
+}
+
+/** Save the owner's chapter + identity review. */
+export async function saveIntakePlan(id: string, body: IntakePlanUpdate): Promise<IntakePlanView> {
+    const json = await _post(`/api/admin/intake/${encodeURIComponent(id)}/plan`, body, 'PUT');
+    return json as unknown as IntakePlanView;
+}
+
+/** Mint the reviewed plan into the catalog and start its align run. */
+export async function alignIntake(id: string, device: AlignDevice): Promise<IntakeAlignResponse> {
+    const json = await _post(`/api/admin/intake/${encodeURIComponent(id)}/align`, { device });
+    return json as unknown as IntakeAlignResponse;
 }

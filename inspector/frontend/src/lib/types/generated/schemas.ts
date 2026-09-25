@@ -1200,6 +1200,22 @@ export interface ErrorEnvelope {
   code?: string | null;
 }
 /**
+ * Body of ``POST /api/admin/intake/<id>/align``.
+ */
+export interface IntakeAlignRequest {
+  device?: "GPU" | "CPU";
+}
+/**
+ * The mint always lands before the run starts; a refused start (budget,
+ * config) is reported, not raised — Align on the new slug row retries it.
+ */
+export interface IntakeAlignResponse {
+  slug: string;
+  state?: string | null;
+  align_started?: boolean;
+  align_error?: string | null;
+}
+/**
  * Contributor confirmations recorded with the submission (audit trail).
  *
  * The first three are always required to submit — gated client-side and
@@ -1218,8 +1234,95 @@ export interface IntakeAttestations {
   [k: string]: unknown;
 }
 /**
+ * ``payload.plan`` of an intake request row.
+ */
+export interface IntakePlan {
+  status: "enumerating" | "ready" | "failed";
+  error?: string | null;
+  host?: "links" | "youtube" | "drive" | "soundcloud" | "archive" | "other";
+  source_url?: string | null;
+  uploader?: string | null;
+  uploader_url?: string | null;
+  entries?: PlanEntry[];
+  identity?: PlanIdentity;
+  created_at: string;
+  updated_at: string;
+}
+/**
+ * One fetchable media file of the source and the chapters it holds.
+ */
+export interface PlanEntry {
+  key: string;
+  url: string;
+  title?: string;
+  index?: number | null;
+  duration_sec?: number | null;
+  chapters?: number[];
+  include?: boolean;
+}
+/**
+ * The catalog identity the mint writes. Proposed on enumerate, owner-edited.
+ */
+export interface PlanIdentity {
+  slug?: string;
+  reciter_id?: string;
+  name_en?: string | null;
+  name_ar?: string | null;
+  country?: string | null;
+  channel?: string;
+  source?: string;
+  new_source_name?: string | null;
+  new_source_url?: string | null;
+  recording_year?: number | null;
+}
+/**
+ * Body of ``PUT /api/admin/intake/<id>/plan`` — the owner's review.
+ */
+export interface IntakePlanUpdate {
+  entries?: PlanEntryEdit[];
+  identity: PlanIdentity;
+}
+export interface PlanEntryEdit {
+  key: string;
+  include: boolean;
+}
+/**
+ * ``GET/POST/PUT /api/admin/intake/<id>/plan`` response: the plan plus the
+ * live check the Align button gates on and the catalog vocab to pick from.
+ */
+export interface IntakePlanView {
+  status: "enumerating" | "ready" | "failed";
+  error?: string | null;
+  host?: "links" | "youtube" | "drive" | "soundcloud" | "archive" | "other";
+  source_url?: string | null;
+  uploader?: string | null;
+  uploader_url?: string | null;
+  entries?: PlanEntry[];
+  identity?: PlanIdentity;
+  created_at: string;
+  updated_at: string;
+  coverage?: PlanCoverage;
+  errors?: string[];
+  warnings?: string[];
+  channel_options?: PlanOption[];
+  source_options?: PlanOption[];
+}
+export interface PlanCoverage {
+  files?: number;
+  included?: number;
+  total_duration_sec?: number | null;
+  chapters?: number[];
+  missing?: number[];
+  duplicates?: number[];
+  combined_entries?: number;
+}
+export interface PlanOption {
+  slug: string;
+  label: string;
+}
+/**
  * Normalised audio source. Typed links and dropped CSV/JSON files both feed
- * ``links``; ``playlist`` carries a single URL we enumerate offline (yt-dlp).
+ * ``links``; ``playlist`` carries a single URL the intake plan enumerates (yt-dlp / Drive).
  */
 export interface IntakeSource {
   method: "links" | "playlist";
@@ -1311,7 +1414,14 @@ export interface JobMember {
 export interface JobRecord {
   schema_version?: number;
   job_id: string;
-  kind?: "timestamps" | "hf_publish" | "hf_publish_batch" | "cut_release" | "refresh_catalog" | "acquire_audio";
+  kind?:
+    | "timestamps"
+    | "hf_publish"
+    | "hf_publish_batch"
+    | "cut_release"
+    | "refresh_catalog"
+    | "acquire_audio"
+    | "split_audio";
   slug?: string | null;
   status?: string;
   started_at?: string | null;

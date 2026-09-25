@@ -17,7 +17,7 @@ paths:
 - After ANY edit to `qua_shared/schemas/*.py`, run `python scripts/codegen/regen_fe_types.py` and commit `inspector/frontend/src/lib/types/generated/schemas.ts`. CI's `schema-codegen-check` enforces this with `git diff --exit-code`.
 - `qua_shared/schemas/fe_types.py` is the slim FE-facing re-export bridge — when a new schema is referenced by the FE, add it to `fe_types.py` BEFORE regen.
 - Bucket artefacts (`DetailedSegment`, `EditHistoryBatch`, `PeaksRecord`, `AudioManifestSidecar`, …) are pure `ConfigDict(extra="forbid")`: an unknown/legacy field MUST raise `ValidationError`, not be stripped. Round-trip fixtures are clean — no stray keys.
-- `ConfigDict(extra="allow")` survives only on the documented forward-compat exceptions (`ts_validation`, `playlist_map`, `ts_shard`'s `_meta`, `automation`); there consumers must NOT strip unknown fields, so their round-trip tests include a forward-compat fixture that carries an extra field through unchanged.
+- `ConfigDict(extra="allow")` survives only on the documented forward-compat exceptions (`ts_validation`, `ts_shard`'s `_meta`, `automation`); there consumers must NOT strip unknown fields, so their round-trip tests include a forward-compat fixture that carries an extra field through unchanged.
 - BE↔FE constant parity (codes, blocking-count keys, registry order) needs an explicit parity test. Hand-rolled mirrors drift silently.
 
 ## Anti-patterns

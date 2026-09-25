@@ -25,6 +25,7 @@ ALL_KINDS = (
     "cut_release",
     "refresh_catalog",
     "acquire_audio",
+    "split_audio",
 )
 
 

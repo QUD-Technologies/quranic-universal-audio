@@ -6,26 +6,19 @@ edit-request flow) — but resolution funnels through the same ``repo_requests``
 core (``resolve`` / ``resolve_by_id``).
 
 **There is no separate owner "accept" step.** A submission lands ``pending`` and
-is immediately ingest-actionable: the owner's decision to *align* it (running the
-offline ingest pipeline over the row) IS the acceptance. A delivery requires valid
-``source`` / ``channel`` vocab FKs, plus codec/bitrate/duration — all of which
-are *probed from the actual audio* and only become known (and valid) once that
-pipeline fetches it. For a ``new_reciter`` the canonical ``reciter_id`` (the one
-genuinely human decision — a curated slug) is supplied by the operator at ingest
-time (``ingest_intake.py --reciter-id``), not stamped up front.
-
-The offline pipeline reads slugless intake requests (``pending`` or already
-``accepted`` but slug-less), fetches + probes the audio, creates the reciter +
-delivery (with correct source/channel/slug), seeds alignment, and back-fills
-``requests.slug`` — flipping the row to ``accepted`` at that point (so
-``accepted`` now means *ingested*). Local alignment + ingest stay offline. An
-owner can still ``resolve`` (send back / discard) a pending submission they don't
-want.
+is immediately ingest-actionable: the owner's decision to *align* it IS the
+acceptance. From the Requests tab the owner builds an intake plan
+(``services/admin/intake_plan`` — enumerate the source, match files to chapters,
+propose the catalog identity), reviews it, and clicks Align:
+``intake_plan.mint.mint_and_align`` calls :func:`ingest` to create the reciter +
+delivery + manifest and back-fill ``requests.slug`` (flipping the row to
+``accepted`` — ``accepted`` means *ingested*), then starts the align run that
+fetches, probes and aligns the audio. An owner can still ``resolve`` (send back /
+discard) a pending submission they don't want.
 """
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from datetime import UTC, datetime
 
@@ -188,16 +181,16 @@ def _append_dedup_warning(sub: IntakeSubmission, validation: IntakeValidation) -
                 return
 
 
-# ---- Ingest (owner / offline pipeline) --------------------------------------
+# ---- Ingest (owner, via the intake plan) ------------------------------------
 
 
 def ingest(request_id: str, payload: dict, actor: Actor) -> dict:
     """Mint the catalog delivery for an accepted slugless intake and seed it
     into the alignment queue, in ONE durable transaction.
 
-    Called server-to-server by the offline extraction/ingest pipeline once it
-    has fetched + probed the contributor audio and uploaded ``reciters/<slug>/``
-    content to the bucket. Steps (all atomic):
+    Called in-process by ``intake_plan.mint`` before the align run fetches the
+    audio (the run's acquire step then writes the probed audio rollup back onto
+    the manifest + delivery). Steps (all atomic):
 
     1. Validate the request row is a slugless intake kind, ``slug IS NULL``, and
        not-yet-ingested (``status`` in ``pending`` / ``accepted``). There is no
@@ -259,9 +252,12 @@ def ingest(request_id: str, payload: dict, actor: Actor) -> dict:
     manifest_in = payload.get("audio_manifest")
     if not isinstance(manifest_in, dict):
         raise IngestBadRequest("missing or malformed 'audio_manifest'")
-    chapters_in = manifest_in.get("chapters")
-    if not isinstance(chapters_in, dict) or not chapters_in:
-        raise IngestBadRequest("'audio_manifest.chapters' must be a non-empty object")
+    chapters_in = manifest_in.get("chapters") or {}
+    sources_in = manifest_in.get("sources") or []
+    if not isinstance(chapters_in, dict) or not isinstance(sources_in, list):
+        raise IngestBadRequest("malformed 'audio_manifest.chapters' / 'sources'")
+    if not chapters_in and not sources_in:
+        raise IngestBadRequest("'audio_manifest' needs chapters or sources")
 
     # Slug collision (409) — check BEFORE opening the txn so the response is a
     # clean 409 instead of a rolled-back IntegrityError.
@@ -287,7 +283,7 @@ def ingest(request_id: str, payload: dict, actor: Actor) -> dict:
     # ever leaves a harmless orphan keyed by a slug with no delivery — overwritten
     # verbatim on retry, never read in the meantime. Also keeps slow bucket I/O
     # out from under the serialized SQLite write lock.
-    manifest = _build_manifest(slug, audio_category, chapters_in)
+    manifest = _build_manifest(slug, audio_category, chapters_in, sources_in)
     get_backend().write_json_atomic(
         storage_paths.audio_manifest_path(slug),
         manifest.model_dump(mode="json", by_alias=True),
@@ -409,10 +405,9 @@ def _build_delivery(
     is derived from the manifest; ``added_*`` are stamped server-side.
 
     The audio rollup (``bitrate_mode`` / ``bitrate_kbps_nominal`` /
-    ``sample_rate_hz`` / ``total_duration_sec``) is optional — the offline
-    pipeline sends it when it can probe the audio (e.g. the post-align reprobe of
-    a YouTube delivery's persisted mp3s); absent, the Delivery defaults stand
-    (``unknown`` / null)."""
+    ``sample_rate_hz`` / ``total_duration_sec``) is optional — the online mint
+    sends none (the audio is not fetched yet) and the align run's manifest sync
+    fills it; absent, the Delivery defaults stand (``unknown`` / null)."""
     # Only override the audio-rollup defaults the body actually carries — passing
     # bitrate_mode=None would fail the enum, and None kbps/rate/duration are the
     # model defaults anyway.
@@ -443,9 +438,10 @@ def _build_delivery(
 
 
 def _build_manifest(
-    slug: str, audio_category: AudioCategory, chapters_in: dict
+    slug: str, audio_category: AudioCategory, chapters_in: dict, sources_in: list | None = None
 ) -> AudioManifestSidecar:
-    """Build the audio_manifest sidecar model from the ingest chapter map.
+    """Build the audio_manifest sidecar model from the ingest chapter map (and
+    the source files whose chapters the align run will detect).
 
     The checksum is a stable digest of the sorted ``(key, url)`` pairs so a
     re-ingest of the same chapters produces the same ``_meta.checksum``."""
@@ -476,13 +472,15 @@ def _build_manifest(
                 else None
             ),
         }
-    digest_src = "".join(f"{k}={chapters[k]['url']};" for k in sorted(chapters)).encode("utf-8")
-    checksum = hashlib.sha256(digest_src).hexdigest()[:16]
+    from services.audio.audio_meta import manifest_checksum
+
+    checksum = manifest_checksum(chapters)
     try:
         return AudioManifestSidecar.model_validate(
             {
                 "slug": slug,
                 "chapters": chapters,
+                "sources": sources_in or [],
                 "_meta": {
                     "checksum": checksum,
                     "chapter_count": len(chapters),

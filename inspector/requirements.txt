@@ -33,3 +33,8 @@ requests>=2.31
 # the owner's timezone (e.g. Australia/Sydney). The alpine runtime image has no
 # system tz database, so zoneinfo needs this wheel.
 tzdata
+# Online intake: enumerates YouTube / SoundCloud / archive.org playlists into
+# plan entries (services/admin/intake_plan/enumerate.py). Listing only — the
+# acquire HF Job installs its own copy to download. Kept current: YouTube
+# breaks old releases.
+yt-dlp>=2026.8.19

@@ -100,6 +100,18 @@ from .wire.align_runs import AlignQuota, AlignRunStatus, AlignStartRequest
 from .wire.announcements import Announcement
 from .wire.audio import AudioSurahEntry, AudioSurahsResponse
 from .wire.email_preferences import EmailPreferences, EmailPreferencesSaved
+from .wire.intake_plan import (
+    IntakeAlignRequest,
+    IntakeAlignResponse,
+    IntakePlan,
+    IntakePlanUpdate,
+    IntakePlanView,
+    PlanCoverage,
+    PlanEntry,
+    PlanEntryEdit,
+    PlanIdentity,
+    PlanOption,
+)
 from .wire.intake_requests import (
     IntakeAttestations,
     IntakeSource,
@@ -265,6 +277,16 @@ __all__ = [
     "AlignQuota",
     "AlignRunStatus",
     "AlignStartRequest",
+    "IntakeAlignRequest",
+    "IntakeAlignResponse",
+    "IntakePlan",
+    "IntakePlanUpdate",
+    "IntakePlanView",
+    "PlanCoverage",
+    "PlanEntry",
+    "PlanEntryEdit",
+    "PlanIdentity",
+    "PlanOption",
     "AdminRequestCounts",
     "AdminRequestEvent",
     "AdminRequestRow",

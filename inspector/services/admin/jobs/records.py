@@ -26,7 +26,7 @@ log = logging.getLogger("inspector")
 
 #: Per-slug kinds live under ``reciters/<slug>/jobs/<kind>/``; global kinds under
 #: ``jobs/_global/<kind>/``. Used to enumerate the store in ``list_all``.
-PER_SLUG_KINDS = ("timestamps", "hf_publish", "acquire_audio")
+PER_SLUG_KINDS = ("timestamps", "hf_publish", "acquire_audio", "split_audio")
 GLOBAL_KINDS = ("hf_publish_batch", "cut_release", "refresh_catalog")
 
 _SUCCESS = ("succeeded", "completed")

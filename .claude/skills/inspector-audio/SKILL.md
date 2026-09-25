@@ -7,26 +7,26 @@ description: Inspector audio subsystem — everything between bytes-on-disk and 
 
 Audio subsystem skill. Standalone — references below split by layer so the skill can grow new branches (per-codec, per-feature, per-platform) without bloating one doc.
 
-Spans two arcs: the **runtime** path (bytes-on-disk → `<audio>`) and the **upstream handoff** (contributor source links → a reviewable `reciters/<slug>/` folder). The offline pipeline writes the bucket content; `auto_detect` reconciles it into the lifecycle. See `references/extraction-intake.md`.
+Spans two arcs: the **runtime** path (bytes-on-disk → `<audio>`) and the **upstream handoff** (contributor source links → a reviewable `reciters/<slug>/` folder). The native align pipeline (Requests-tab Align, incl. online playlist intake) or offline Katana extraction writes the bucket content; `auto_detect` reconciles it into the lifecycle. See `references/extraction-intake.md`.
 
 ## Two corrections to hold (the docs used to lie about both)
 
 1. **The CDN tier is a same-origin 200/206 stream, not a 302.** `audio_source.resolve` is three tiers — local Path → in-mem bytes → CDN — and the CDN tier is served by `_stream_cdn` same-origin with `Access-Control-Allow-Origin: *`. The old 302 was removed because it silenced `<audio crossorigin>` + the Web Audio kill-switch. There is **no disk-cache tier**.
-2. **No prefetch worker, no GC sweeper, `_done.json` not read at runtime.** Bucket audio + peaks are written once, offline, by Katana extraction and only **read** at runtime. Nothing warms the bucket, nothing GCs it. The reconciler keys on the DB state row (`AWAITING_ALIGNMENT`), not the sentinel. "Audio missing on the bucket" is an extraction/upload problem.
+2. **No prefetch worker, no GC sweeper, `_done.json` not read at runtime.** Bucket audio + peaks are written once — by the align pipeline's `acquire_audio` / `split_audio` HF jobs or by Katana extraction — and only **read** by the serving path. Nothing warms the bucket, nothing GCs it. The reconciler keys on the DB state row (`AWAITING_ALIGNMENT`), not the sentinel. "Audio missing on the bucket" is an extraction/upload problem.
 
 ## Topology
 
 ```
 [upstream]  intake/edit request (DB requests row)
               ALIGN  = delivery_states.state == 'awaiting_alignment'
-              INGEST = requests status='accepted' AND slug IS NULL  ─► POST /api/admin/intake/<rid>/ingest
-                       (mints reciter+delivery+slug, seeds AWAITING_ALIGNMENT, → ALIGN)   [extraction-intake.md]
+              INTAKE = requests status='pending' AND slug IS NULL  ─► Requests tab: /api/admin/intake/<rid>/plan → /align
+                       (plan → mint reciter+delivery+slug, seed AWAITING_ALIGNMENT → align run)   [extraction-intake.md]
         │
         ▼
 chapter URL (CDN, in catalog/audio_manifest/<slug>.json)
         │
         ▼
-[offline]  Katana extraction (audio_persist.py + upload_to_bucket.py)  — SOLE writer
+[writers]  align pipeline HF jobs (acquire_audio / split_audio) or Katana extraction (audio_persist.py + upload_to_bucket.py)
                                    ──►  bucket: reciters/<slug>/audio/<ch>.mp3      (Xing TOC injected if VBR)
                                    ──►  bucket: reciters/<slug>/peaks/<ch>.json.gz  (slim int8, schema v3)
                                    ──►  bucket: reciters/<slug>/audio/_done.json    (written last; offline audit only — NOT read at runtime)
@@ -69,7 +69,7 @@ VBR routing fork is **per-chapter**, not per-reciter. Decided by `audio_meta.is_
 
 | Reference | When to read | Key files |
 |---|---|---|
-| `references/extraction-intake.md` | The upstream handoff: offline pipeline writes `reciters/<slug>/` + audio-manifest sidecar, `auto_detect` fires `reciter.alignment_completed` → AWAITING_REVIEW, the three request kinds, ALIGN / INGEST queues, the `POST /api/admin/intake/<rid>/ingest` mint contract | `services/segments/auto_detect.py`, `services/admin/intake.py`, `services/db/repo_requests.py`, `services/state/catalog.py`, `qua_shared/schemas/{intake_requests,catalog,state}.py`, `routes/claims/requests.py` |
+| `references/extraction-intake.md` | The upstream handoff: align pipeline / Katana write `reciters/<slug>/` + audio-manifest sidecar, `auto_detect` fires `reciter.alignment_completed` → AWAITING_REVIEW, the three request kinds, ALIGN / INTAKE queues, the online intake plan → mint → align flow and the `intake.ingest()` mint | `services/segments/auto_detect.py`, `services/admin/intake.py`, `services/admin/intake_plan/`, `routes/admin/intake_plan.py`, `services/db/repo_requests.py`, `services/state/catalog.py`, `qua_shared/schemas/{intake_requests,intake_plan,catalog,state}.py` |
 | `references/backend.md` | Proxy/clip/metadata routes, the 3-tier audio-source resolver (no disk cache), manifest sidecar + reverse index, storage paths, MIME, config tunables, the `/api/audio/surahs` route, `chapter_bitrate_kbps_for_reciter` | `routes/audio/{proxy,clip,metadata}.py`, `services/audio/{audio_source,audio_meta,audio_fetch}.py`, `services/storage/storage_paths.py`, `config.py` |
 | `references/prefetch.md` | Bucket audio + peaks read-only at runtime: sole offline writer (Katana), read primitives, what's gone (removed prefetch worker + GC sweeper), and the FE-side warmups that replaced the deleted prefetch util | `services/audio/audio_fetch.py`, `routes/audio/proxy.py`, `routes/segments/peaks.py` |
 | `references/peaks.md` | Slim int8 v3 envelope, `pack_slim`/`unpack_slim_envelope`, route fan-out + LRU response cache (NOT evicted on save), shared `b64ToInt8` decoder, `peaks-view.ts` shape adapter, history-peaks (now int8), backfill/audit | `services/audio/{peaks,peaks_slim,op_peaks,peaks_history}.py`, `routes/segments/peaks.py`, `lib/utils/{peaks-view,peaks-decode}.ts` |

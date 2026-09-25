@@ -35,9 +35,8 @@ import logging
 from flask import Blueprint, jsonify, request
 from pydantic import ValidationError
 
-from qua_shared.schemas import Actor, IntakeSubmission
+from qua_shared.schemas import IntakeSubmission
 from routes._admin_helpers import actor_for, validate_reason
-from services import auth as auth_service
 from services import pending_requests as pending_requests_service
 from services import permissions
 from services import state as state_service
@@ -46,8 +45,6 @@ from services.admin import intake as intake_service
 from services.admin import requests as admin_requests_service
 from services.admin.align_pipeline import limits as align_limits
 from services.auth import capabilities as cap_service
-from services.auth import token_auth
-from services.auth.access import NotAuthorized
 from utils.decorators import require_capability, require_same_origin
 
 requests_bp = Blueprint("requests", __name__, url_prefix="/api")
@@ -282,90 +279,12 @@ def list_requests(user):
 
 
 # ---------------------------------------------------------------------------
-# Owner: intake probe / resolve / ingest (slugless new-combo / new-reciter)
+# Owner: intake probe / resolve (slugless new-combo / new-reciter)
 #
 # There is no accept step — a submission lands ``pending`` and is directly
-# ingestable (aligning it IS the acceptance). Ingest flips it to ``accepted``
-# when it back-fills the slug.
+# alignable from the Requests tab (``routes/admin/intake_plan.py``): minting it
+# flips it to ``accepted`` when it back-fills the slug.
 # ---------------------------------------------------------------------------
-
-
-def _resolve_owner_actor() -> tuple[Actor | None, tuple | None]:
-    """Authorize an owner via EITHER an ``Authorization: Bearer <HF_TOKEN>``
-    header (server-to-server) OR the ``inspector_session`` owner cookie.
-
-    Returns ``(actor, None)`` for an authorized owner, or ``(None, (resp,
-    status))`` for the error response. Fail closed: any whoami error rejects.
-
-    Bearer takes precedence (the offline pipeline always sends it). Missing both
-    creds → 401; an authenticated non-owner → 403.
-    """
-    token = token_auth.bearer_token_from_header(request.headers.get("Authorization"))
-    if token is not None:
-        try:
-            actor = token_auth.resolve_owner_from_token(token)
-        except token_auth.TokenAuthError:
-            return None, (jsonify({"error": "invalid bearer token"}), 401)
-        except token_auth.NotOwner:
-            return None, (jsonify({"error": "owner role required"}), 403)
-        return actor, None
-
-    user = auth_service.current_user()
-    if user is None:
-        return None, (jsonify({"error": "authentication required"}), 401)
-    if not permissions.is_owner(user):
-        return None, (jsonify({"error": "owner role required"}), 403)
-    return actor_for(user), None
-
-
-@requests_bp.route("/admin/intake/<rid>/ingest", methods=["POST"])
-def ingest_intake(rid: str):
-    """Mint the catalog delivery for an accepted slugless intake + seed it into
-    the alignment queue. Server-to-server (offline ingest pipeline) via a bearer
-    HF token, or owner cookie from the dashboard.
-
-    Bearer path is exempt from ``@require_same_origin`` (no browser, no CSRF
-    surface); the cookie path enforces same-origin inline.
-    """
-    actor, err = _resolve_owner_actor()
-    if err is not None:
-        return err
-    if actor is None:
-        return jsonify({"error": "authentication required"}), 401
-
-    # CSRF defense for the cookie path only (a bearer token can't be CSRF'd —
-    # the browser never auto-attaches an Authorization header cross-site).
-    used_bearer = (
-        token_auth.bearer_token_from_header(request.headers.get("Authorization")) is not None
-    )
-    if not used_bearer:
-        from urllib.parse import urlparse
-
-        origin = request.headers.get("Origin") or request.headers.get("Referer") or ""
-        p = urlparse(origin)
-        if not (origin and p.scheme == request.scheme and p.netloc == request.host):
-            return jsonify({"error": "cross-origin request rejected"}), 403
-
-    body = request.get_json(silent=True) or {}
-    try:
-        result = intake_service.ingest(rid, body, actor=actor)
-    except intake_service.NotIntakeRequest:
-        return jsonify({"error": "unknown intake request"}), 404
-    except intake_service.IngestSlugCollision as e:
-        return jsonify({"error": str(e)}), 409
-    except intake_service.IngestVocabMissing as e:
-        return jsonify({"error": str(e)}), 422
-    except intake_service.IngestBadRequest as e:
-        return jsonify({"error": str(e)}), 400
-    except NotAuthorized as e:
-        return jsonify({"error": str(e)}), 403
-    except state_service.NotAuthorizedForTransition as e:
-        return jsonify({"error": str(e)}), 403
-    except state_service.InvalidTransition as e:
-        return jsonify({"error": str(e)}), 400
-    except intake_service.IngestError as e:
-        return jsonify({"error": str(e)}), 400
-    return jsonify(result)
 
 
 @requests_bp.route("/admin/requests/<rid>/probe", methods=["POST"])

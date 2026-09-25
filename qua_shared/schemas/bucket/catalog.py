@@ -19,7 +19,15 @@ from datetime import datetime
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from ..config.state import SLUG_RE
 
@@ -323,6 +331,18 @@ class ChapterEntry(BaseModel):
     source_offset_ms: int | None = Field(default=None, ge=0)
 
 
+class ManifestSource(BaseModel):
+    """A source file whose chapters are not known yet (a playlist entry).
+
+    The align pipeline acquires it, lets the aligner detect which surahs it
+    holds, splits it into ``chapters`` and then drops it from ``sources``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(..., min_length=1)
+    title: str | None = None
+
+
 class AudioManifestSidecar(BaseModel):
     """Schema for ``<bucket>/catalog/audio_manifest/<slug>.json``.
 
@@ -342,6 +362,17 @@ class AudioManifestSidecar(BaseModel):
     slug: str
     meta: SidecarMeta = Field(alias="_meta")
     chapters: dict[str, ChapterEntry] = Field(default_factory=dict)
+    #: Files still awaiting surah detection (see :class:`ManifestSource`).
+    sources: list[ManifestSource] = Field(default_factory=list)
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_sources(self, handler: SerializerFunctionWrapHandler) -> dict:
+        # Only a playlist delivery awaiting its first align has sources; every
+        # other manifest keeps its exact on-disk shape.
+        data = handler(self)
+        if not self.sources:
+            data.pop("sources", None)
+        return data
 
     @field_validator("slug")
     @classmethod

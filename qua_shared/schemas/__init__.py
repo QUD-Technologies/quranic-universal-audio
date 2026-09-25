@@ -15,6 +15,7 @@ from .bucket.catalog import (
     Channel,
     ChapterEntry,
     Delivery,
+    ManifestSource,
     ReciterCatalog,
     ReciterEntry,
     RecordingContext,
@@ -33,7 +34,6 @@ from .bucket.edit_history import (
 from .bucket.jobs import JobKind, JobMember, JobRecord, JobsListResponse, JobStatus
 from .bucket.peaks_history import PeaksRecord, parse_peaks_record
 from .bucket.pipeline_meta import PipelineMeta
-from .bucket.playlist_map import MatchConfidence, PlaylistChapterEntry, PlaylistChapterMap
 from .bucket.segment import (
     DetailedDocument,
     DetailedEntry,
@@ -137,6 +137,18 @@ from .wire.admin_users import (
 from .wire.align_runs import AlignQuota, AlignRunStatus, AlignStartRequest
 from .wire.announcements import Announcement, AnnouncementAdmin, AnnouncementCreate
 from .wire.audio import AudioSurahEntry, AudioSurahsResponse
+from .wire.intake_plan import (
+    IntakeAlignRequest,
+    IntakeAlignResponse,
+    IntakePlan,
+    IntakePlanUpdate,
+    IntakePlanView,
+    PlanCoverage,
+    PlanEntry,
+    PlanEntryEdit,
+    PlanIdentity,
+    PlanOption,
+)
 from .wire.intake_requests import (
     IntakeAttestations,
     IntakeSource,
@@ -392,6 +404,7 @@ __all__ = [
     "TIERS",
     "Channel",
     "ChapterEntry",
+    "ManifestSource",
     "Delivery",
     "DetailedDocument",
     "DetailedEntry",
@@ -419,12 +432,19 @@ __all__ = [
     "MarkReadyChecklist",
     "MarkReadyRequest",
     "MarkReadySubmission",
-    "MatchConfidence",
+    "IntakeAlignRequest",
+    "IntakeAlignResponse",
+    "IntakePlan",
+    "IntakePlanUpdate",
+    "IntakePlanView",
+    "PlanCoverage",
+    "PlanEntry",
+    "PlanEntryEdit",
+    "PlanIdentity",
+    "PlanOption",
     "Member",
     "OkAck",
     "PeaksRecord",
-    "PlaylistChapterEntry",
-    "PlaylistChapterMap",
     "PendingRequest",
     "PendingRequestsFile",
     "PipelineMeta",

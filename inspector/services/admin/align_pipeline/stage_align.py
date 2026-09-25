@@ -1,8 +1,10 @@
 """Stage 2 — align every chapter on the aligner Space, staging each raw result.
 
-One alignment-only batch, one streamed item per chapter by bucket reference
-(``hf://buckets/<repo>/reciters/<slug>/audio/<ch>.mp3``). Chapters already staged
-are skipped, so a resumed or retried run only pays for what is left. Transient
+One alignment-only batch, one streamed item per source file by bucket reference
+(``hf://buckets/<repo>/reciters/<slug>/audio/<n>.mp3`` — a chapter, or a combined
+file's source slot, whose result stages under ``sources/`` for the split stage).
+The aligner anchors each file itself, so a combined file comes back with every
+surah it holds. Items already staged are skipped, so a resumed or retried run only pays for what is left. Transient
 transport failures retry the chapter; a ``batch_not_found`` (the Space restarted,
 or its in-memory registry expired) recreates the batch; a ZeroGPU quota refusal
 flips the rest of the run to the CPU lane.
@@ -27,6 +29,7 @@ from . import params as _params
 from . import progress, staging
 from .aligner_client import AlignerClient, AlignerError
 from .params import AlignParams
+from .sources import SourceGroup
 
 log = logging.getLogger("inspector")
 
@@ -41,8 +44,28 @@ class AlignStageError(RuntimeError):
     pass
 
 
-def audio_ref(slug: str, chapter: int) -> str:
-    return f"hf://buckets/{resolve_bucket_repo()}/reciters/{slug}/audio/{chapter}.mp3"
+def audio_ref(slug: str, number: int) -> str:
+    return f"hf://buckets/{resolve_bucket_repo()}/reciters/{slug}/audio/{number}.mp3"
+
+
+def _staged_path(slug: str, run_id: str, group: SourceGroup) -> str:
+    if group.combined:
+        return staging.source_path(slug, run_id, group.item)
+    return staging.chapter_path(slug, run_id, group.item)
+
+
+def _already_staged(slug: str, run_id: str, groups: list[SourceGroup]) -> set[int]:
+    """Items done: a staged single chapter, a staged source, or a combined
+    group every chapter of which is already staged (split ran)."""
+    chapters = set(staging.staged_chapters(slug, run_id))
+    sources = set(staging.staged_sources(slug, run_id))
+    done = set()
+    for g in groups:
+        if g.item in (sources if g.combined else chapters):
+            done.add(g.item)
+        elif g.combined and g.chapters and set(g.chapters) <= chapters:
+            done.add(g.item)
+    return done
 
 
 class _Batch:
@@ -73,11 +96,14 @@ class _Batch:
 
 
 class _Tracker:
-    """Staged-chapter bookkeeping + the in-flight view the status route renders."""
+    """Staged-item bookkeeping + the in-flight view the status route renders.
 
-    def __init__(self, run_id: str, done: set[int]):
+    Progress counts chapters: a combined item is worth every chapter it holds."""
+
+    def __init__(self, run_id: str, done: set[int], weights: dict[int, int]):
         self.run_id = run_id
         self.done = done
+        self.weights = weights
         self._active: dict[int, str] = {}
         self._lock = threading.Lock()
 
@@ -103,7 +129,7 @@ class _Tracker:
             active = sorted(self._active)
             head = active[0] if active else None
             fields = {
-                "chapters_done": len(self.done),
+                "chapters_done": sum(self.weights.get(i, 1) for i in self.done),
                 "chapter": head,
                 "in_flight": len(active),
                 "aligner_stage": self._active.get(head) if head is not None else None,
@@ -113,12 +139,12 @@ class _Tracker:
         progress.set_detail(self.run_id, **fields)
 
 
-def run(slug: str, run_id: str, params: AlignParams, chapters: list[int]) -> None:
+def run(slug: str, run_id: str, params: AlignParams, groups: list[SourceGroup]) -> None:
     client = AlignerClient()
     batch = _Batch(client, params)
-    done = set(staging.staged_chapters(slug, run_id))
-    pending = [chapter for chapter in chapters if chapter not in done]
-    tracker = _Tracker(run_id, done)
+    done = _already_staged(slug, run_id, groups)
+    pending = [g for g in groups if g.item not in done]
+    tracker = _Tracker(run_id, done, {g.item: g.weight for g in groups})
     tracker.publish()
     if not pending:
         return
@@ -130,21 +156,20 @@ def run(slug: str, run_id: str, params: AlignParams, chapters: list[int]) -> Non
     workers = _params.align_concurrency(len(pending))
     client.widen_pool(workers)
     log.info(
-        "align %s: %d chapter(s) left on %d rolling HTTP worker(s)",
+        "align %s: %d file(s) left on %d rolling HTTP worker(s)",
         run_id,
         len(pending),
         workers,
     )
     if workers == 1:
-        for chapter in pending:
+        for group in pending:
             progress.check_cancel(run_id)
-            _stage_chapter(batch, tracker, slug, run_id, chapter)
+            _stage_item(batch, tracker, slug, run_id, group)
         return
 
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="align") as pool:
         futures = [
-            pool.submit(_stage_chapter, batch, tracker, slug, run_id, chapter)
-            for chapter in pending
+            pool.submit(_stage_item, batch, tracker, slug, run_id, group) for group in pending
         ]
         remaining = set(futures)
         while remaining:
@@ -163,19 +188,23 @@ def run(slug: str, run_id: str, params: AlignParams, chapters: list[int]) -> Non
             progress.check_cancel(run_id)
 
 
-def _stage_chapter(batch: _Batch, tracker: _Tracker, slug: str, run_id: str, chapter: int) -> None:
+def _stage_item(
+    batch: _Batch, tracker: _Tracker, slug: str, run_id: str, group: SourceGroup
+) -> None:
     progress.check_cancel(run_id)
-    tracker.enter(chapter)
-    result = _align_chapter(batch, tracker, slug, run_id, chapter)
+    item = group.item
+    tracker.enter(item)
+    result = _align_chapter(batch, tracker, slug, run_id, item)
     result["_inspector"] = {
         "auto_split_timing_source": _params.AUTO_SPLIT_TIMING_SOURCE,
     }
-    staging.write_json(staging.chapter_path(slug, run_id, chapter), result)
-    tracker.finish(chapter, result.get("device"))
+    staging.write_json(_staged_path(slug, run_id, group), result)
+    tracker.finish(item, result.get("device"))
     log.info(
-        "align %s: chapter %d staged (%d segs, %s)",
+        "align %s: %s %d staged (%d segs, %s)",
         run_id,
-        chapter,
+        "source" if group.combined else "chapter",
+        item,
         len(result.get("segments") or []),
         result.get("device"),
     )

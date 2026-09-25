@@ -11,14 +11,13 @@ import logging
 
 from qua_shared.riwayat import DEFAULT_RIWAYAH, UnsupportedRiwayah, resolve_sdk_slug
 from qua_shared.schemas import Actor, AlignRunStatus, ReciterState
-from services.audio import audio_meta
 from services.db import repo_align_runs, repo_catalog
 from services.db.sync import durable_transaction
 from services.state import state as state_service
 from services.storage import cache
 from utils.uuid7 import uuid7
 
-from . import limits, progress, stage_acquire, staging
+from . import limits, progress, sources, stage_acquire, staging
 from . import params as _params
 from .params import AlignParams
 
@@ -62,11 +61,15 @@ def start(
     if row is None or row.state not in STARTABLE_STATES:
         state = row.state.value if row else "none"
         raise AlignRunError(f"{slug}: state {state} is not awaiting alignment", 409)
-    chapters = audio_meta.chapter_numbers(slug)
-    if not chapters:
-        raise AlignRunError(f"{slug}: audio manifest lists no chapters", 400)
     if delivery.audio_category != "by_surah":
         raise AlignRunError(f"{slug}: only by_surah deliveries are supported", 400)
+    try:
+        groups = sources.groups_for(slug)
+    except ValueError as exc:
+        raise AlignRunError(f"{slug}: {exc}", 400) from exc
+    if not groups:
+        raise AlignRunError(f"{slug}: audio manifest lists no chapters or sources", 400)
+    units = sum(g.weight for g in groups)
     try:
         riwayah = resolve_sdk_slug(delivery.riwayah or DEFAULT_RIWAYAH)
     except UnsupportedRiwayah as exc:
@@ -82,15 +85,15 @@ def start(
             slug=slug,
             requested_by=actor.hf_user_id,
             params_json=params.to_json(),
-            chapters_total=len(chapters),
+            chapters_total=units,
         )
     cache.invalidate_admin_requests_cache()
     log.info(
-        "align: %s started run %s for %s (%d chapters, %s lane)",
+        "align: %s started run %s for %s (%d units, %s lane)",
         actor.hf_user_id,
         run_id,
         slug,
-        len(chapters),
+        units,
         device,
     )
     from . import runner
@@ -141,6 +144,9 @@ def cancel(slug: str, actor: Actor) -> AlignRunStatus:
     progress.request_cancel(run["run_id"])
     if run["stage"] == "acquire" and run.get("acquire_job_id"):
         stage_acquire.cancel(run["acquire_job_id"])
+    split_job = staging.read_json(staging.run_file(slug, run["run_id"], staging.SPLIT_JOB_FILE))
+    if run["stage"] == "align" and split_job and split_job.get("job_id"):
+        stage_acquire.cancel(split_job["job_id"])
     from . import runner
 
     if run["status"] == "failed" or not runner.is_alive(run["run_id"]):
