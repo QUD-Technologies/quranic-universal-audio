@@ -47,8 +47,7 @@ def payloads_for(
         candidates[str(ch)] = candidate
         kept_rows = [row for row in docs[ch].get("segments", []) if not adapt.is_special(row)]
         timings[str(ch)] = [
-            row.get("words") if isinstance(row.get("words"), list) else None
-            for row in kept_rows
+            row.get("words") if isinstance(row.get("words"), list) else None for row in kept_rows
         ]
     current = all(
         (docs[ch].get("_inspector") or {}).get("auto_split_timing_source")
@@ -75,9 +74,7 @@ def run(
     if staging.read_json(staging.sidecar_path(slug, run_id, AUTO_SPLIT_FILE)) is not None:
         log.info("align %s: sidecars already staged, skipped", run_id)
         return
-    candidates, auto_split_timings = payloads_for(
-        slug, run_id, chapters, sources, params.riwayah
-    )
+    candidates, auto_split_timings = payloads_for(slug, run_id, chapters, sources, params.riwayah)
     body = {
         "slug": slug,
         "riwayah": params.riwayah,

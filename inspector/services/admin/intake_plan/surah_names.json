@@ -1,0 +1,431 @@
+{
+  "_doc": "Title vocabulary for intake_plan/match.py. Every string is normalised at load by match.normalize(), so spelling variants of hamza/alef/taa-marbuta need not be listed. 'surah_keywords' introduce a surah name; 'juz_keywords' a juz' grouping named by its first surah; 'range_words' turn two names into an inclusive range; 'ar_aliases'/'en_aliases' are alternative surah names beyond data/surah_info.json; 'juz_aliases' are juz' names that are not surah names. 'loose_blockers' are words that turn a following surah name into something else (صلاة الفجر is the dawn prayer, ليلة القدر a night) when a title carries no surah keyword.",
+  "surah_keywords": [
+    "سورة",
+    "سوره",
+    "سورت",
+    "سورتا",
+    "سورتي",
+    "surah",
+    "surat",
+    "sura",
+    "soorah",
+    "suratul",
+    "surahs"
+  ],
+  "juz_keywords": [
+    "جزء",
+    "الجزء",
+    "juz",
+    "juzz",
+    "para",
+    "parah"
+  ],
+  "range_words": [
+    "الى",
+    "إلى",
+    "حتى",
+    "to",
+    "till",
+    "until"
+  ],
+  "joiners": [
+    "و",
+    "and",
+    "&",
+    "سورة",
+    "سوره",
+    "surah",
+    "sura",
+    "surat"
+  ],
+  "loose_blockers": [
+    "صلاة",
+    "ليلة",
+    "يوم",
+    "prayer",
+    "night",
+    "salat",
+    "salah"
+  ],
+  "ar_aliases": {
+    "9": [
+      "براءة"
+    ],
+    "17": [
+      "بني إسرائيل",
+      "الإسرا"
+    ],
+    "20": [
+      "طه"
+    ],
+    "23": [
+      "المؤمنين"
+    ],
+    "36": [
+      "ياسين",
+      "يس"
+    ],
+    "38": [
+      "ص"
+    ],
+    "40": [
+      "المؤمن"
+    ],
+    "41": [
+      "حم السجدة"
+    ],
+    "47": [
+      "القتال"
+    ],
+    "50": [
+      "ق"
+    ],
+    "68": [
+      "ن"
+    ],
+    "76": [
+      "الدهر",
+      "هل أتى"
+    ],
+    "67": [
+      "تبارك"
+    ],
+    "78": [
+      "عم",
+      "عم يتساءلون"
+    ],
+    "94": [
+      "الانشراح",
+      "ألم نشرح"
+    ],
+    "96": [
+      "اقرأ"
+    ],
+    "98": [
+      "لم يكن"
+    ],
+    "99": [
+      "الزلزال"
+    ],
+    "106": [
+      "لإيلاف"
+    ],
+    "107": [
+      "أرأيت"
+    ],
+    "111": [
+      "تبت",
+      "اللهب"
+    ],
+    "112": [
+      "التوحيد"
+    ]
+  },
+  "en_aliases": {
+    "1": [
+      "fatiha",
+      "fatihah",
+      "fathiha",
+      "opening"
+    ],
+    "2": [
+      "baqarah",
+      "baqara",
+      "cow"
+    ],
+    "3": [
+      "al imran",
+      "ali imran",
+      "aal imran",
+      "aali imran",
+      "aal e imran",
+      "ale imran",
+      "imran"
+    ],
+    "4": [
+      "nisa",
+      "nisaa",
+      "women"
+    ],
+    "5": [
+      "maidah",
+      "maeda"
+    ],
+    "6": [
+      "anam",
+      "anaam"
+    ],
+    "7": [
+      "araf",
+      "a raf"
+    ],
+    "9": [
+      "tawbah",
+      "taubah",
+      "tauba",
+      "bara ah"
+    ],
+    "13": [
+      "rad",
+      "raad"
+    ],
+    "17": [
+      "isra",
+      "bani israil"
+    ],
+    "20": [
+      "taha",
+      "ta ha"
+    ],
+    "23": [
+      "muminun",
+      "mu minun",
+      "muminoon"
+    ],
+    "24": [
+      "nur"
+    ],
+    "29": [
+      "ankabut"
+    ],
+    "30": [
+      "rum"
+    ],
+    "36": [
+      "yasin",
+      "ya sin",
+      "yaseen"
+    ],
+    "37": [
+      "saffat"
+    ],
+    "38": [
+      "sad",
+      "saad"
+    ],
+    "40": [
+      "ghafir",
+      "mumin"
+    ],
+    "41": [
+      "fussilat",
+      "ha mim sajdah"
+    ],
+    "42": [
+      "shura"
+    ],
+    "44": [
+      "dukhan"
+    ],
+    "45": [
+      "jathiyah",
+      "jathiya"
+    ],
+    "49": [
+      "hujurat"
+    ],
+    "50": [
+      "qaf"
+    ],
+    "51": [
+      "dhariyat",
+      "zariyat",
+      "dhariyaat"
+    ],
+    "52": [
+      "tur",
+      "toor"
+    ],
+    "55": [
+      "rahman"
+    ],
+    "56": [
+      "waqiah",
+      "waqia",
+      "waqi ah"
+    ],
+    "58": [
+      "mujadilah",
+      "mujadila"
+    ],
+    "60": [
+      "mumtahanah",
+      "mumtahina"
+    ],
+    "62": [
+      "jumuah",
+      "jumua",
+      "jumah"
+    ],
+    "63": [
+      "munafiqun"
+    ],
+    "64": [
+      "taghabun"
+    ],
+    "65": [
+      "talaq"
+    ],
+    "68": [
+      "qalam",
+      "nun"
+    ],
+    "69": [
+      "haqqah",
+      "haqqa"
+    ],
+    "70": [
+      "maarij",
+      "ma arij"
+    ],
+    "71": [
+      "nuh"
+    ],
+    "74": [
+      "muddaththir",
+      "muddathir"
+    ],
+    "75": [
+      "qiyamah",
+      "qiyama"
+    ],
+    "76": [
+      "insan",
+      "dahr"
+    ],
+    "77": [
+      "mursalat"
+    ],
+    "78": [
+      "naba",
+      "nabaa"
+    ],
+    "79": [
+      "naziat",
+      "nazi at"
+    ],
+    "82": [
+      "infitar"
+    ],
+    "83": [
+      "mutaffifin",
+      "tatfif"
+    ],
+    "84": [
+      "inshiqaq"
+    ],
+    "85": [
+      "buruj"
+    ],
+    "86": [
+      "tariq"
+    ],
+    "87": [
+      "ala",
+      "a la"
+    ],
+    "88": [
+      "ghashiyah",
+      "ghashiya"
+    ],
+    "91": [
+      "shams"
+    ],
+    "92": [
+      "layl",
+      "lail"
+    ],
+    "93": [
+      "duha",
+      "dhuha"
+    ],
+    "94": [
+      "sharh",
+      "inshirah"
+    ],
+    "95": [
+      "tin",
+      "teen"
+    ],
+    "96": [
+      "alaq",
+      "iqra"
+    ],
+    "98": [
+      "bayyinah",
+      "bayyina"
+    ],
+    "99": [
+      "zalzalah",
+      "zilzal",
+      "zalzala"
+    ],
+    "100": [
+      "adiyat",
+      "aadiyat"
+    ],
+    "101": [
+      "qariah",
+      "qaria"
+    ],
+    "102": [
+      "takathur"
+    ],
+    "103": [
+      "asr"
+    ],
+    "104": [
+      "humazah"
+    ],
+    "106": [
+      "quraysh",
+      "quraish"
+    ],
+    "107": [
+      "maun",
+      "ma un"
+    ],
+    "108": [
+      "kawthar",
+      "kauthar",
+      "kausar"
+    ],
+    "109": [
+      "kafirun",
+      "kafiroon"
+    ],
+    "111": [
+      "masad",
+      "lahab"
+    ],
+    "112": [
+      "ikhlas"
+    ],
+    "114": [
+      "nas",
+      "naas"
+    ]
+  },
+  "juz_aliases": {
+    "58": [
+      "قد سمع",
+      "qad sami"
+    ],
+    "67": [
+      "الملك",
+      "تبارك",
+      "tabarak",
+      "mulk"
+    ],
+    "78": [
+      "عم",
+      "amma"
+    ]
+  },
+  "juz_first_surah": {
+    "28": 58,
+    "29": 67,
+    "30": 78
+  }
+}

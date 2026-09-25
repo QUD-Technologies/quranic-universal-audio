@@ -65,7 +65,7 @@ class SourceLink(BaseModel):
 
 class IntakeSource(BaseModel):
     """Normalised audio source. Typed links and dropped CSV/JSON files both feed
-    ``links``; ``playlist`` carries a single URL we enumerate offline (yt-dlp)."""
+    ``links``; ``playlist`` carries a single URL the intake plan enumerates (yt-dlp / Drive)."""
 
     model_config = ConfigDict(extra="allow")
 

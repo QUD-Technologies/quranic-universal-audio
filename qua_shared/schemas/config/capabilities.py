@@ -295,6 +295,16 @@ CAPABILITIES: tuple[Capability, ...] = (
         maintainer=False,
     ),
     _c(
+        "intake.ingest",
+        G_REQUESTS,
+        "Plan and mint an intake",
+        "Enumerate a submission's playlist / Drive folder / links, review which "
+        "file holds which chapter, set the catalog identity, and mint the "
+        "delivery (the Align on an intake row). Owner only by default.",
+        contributor=False,
+        maintainer=False,
+    ),
+    _c(
         "intake.align",
         G_REQUESTS,
         "Run the align pipeline",

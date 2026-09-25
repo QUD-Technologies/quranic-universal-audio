@@ -29,6 +29,7 @@ JobKind = Literal[
     "cut_release",
     "refresh_catalog",
     "acquire_audio",
+    "split_audio",
 ]
 
 #: Terminal vs in-flight statuses, normalized to a small vocabulary the FE

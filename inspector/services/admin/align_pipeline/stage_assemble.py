@@ -68,7 +68,8 @@ def run(
         run_dir = Path(tmp)
         deleted_basmala = _materialise(run_dir, docs, chapters, sources, params.riwayah)
         _materialise_sidecars(run_dir, slug, run_id, params.riwayah)
-        _write_coverage(run_dir, chapters)
+        outcome = staging.read_json(staging.run_file(slug, run_id, staging.SPLIT_OUTCOME_FILE))
+        _write_coverage(run_dir, chapters, outcome or {})
         manifest = _manifest(slug, run_id, params, chapters, deleted_basmala, started_at)
         built = promote_build.build_artifacts(
             run_dir, manifest, slug, peaks_blobs=_peaks_blobs(slug, chapters)
@@ -100,7 +101,10 @@ def _materialise(run_dir, docs, chapters, sources, riwayah) -> list[int]:
     _dump(run_dir / "events.json", events)
     _dump(
         run_dir / "chapter_sources.json",
-        {str(ch): {"url": sources[ch], "offset_ms": 0} for ch in chapters},
+        {
+            str(ch): {"url": sources[ch], "offset_ms": adapt.source_offset(docs[ch])}
+            for ch in chapters
+        },
     )
     return deleted_basmala
 
@@ -125,18 +129,28 @@ def _materialise_sidecars(run_dir: Path, slug: str, run_id: str, riwayah: str | 
         _dump(run_dir / "sidecars" / name, doc)
 
 
-def _write_coverage(run_dir: Path, chapters: list[int]) -> None:
+def _write_coverage(run_dir: Path, chapters: list[int], outcome: dict) -> None:
+    """``outcome`` is the split stage's record: chapters dropped because their
+    file did not hold them (or held another surah) are ``missing``; the
+    mislabelled single files are listed as ``unresolved_files``."""
+    missing = sorted(set(outcome.get("dropped") or []))
+    unresolved = [
+        f"chapter {ch}: audio is surah {surah}"
+        for ch, surah in sorted(
+            (outcome.get("mismatched") or {}).items(), key=lambda kv: int(kv[0])
+        )
+    ]
     _dump(
         run_dir / "coverage_report.json",
         {
             "created_at": _now(),
-            "clean": bool(chapters),
+            "clean": bool(chapters) and not missing,
             "discovered_count": len(chapters),
             "discovered": list(chapters),
-            "missing": [],
+            "missing": missing,
             "duplicates": {},
             "anchor_failures": [],
-            "unresolved_files": [],
+            "unresolved_files": unresolved,
         },
     )
 
