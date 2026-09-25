@@ -8,8 +8,10 @@
   a direct media URL) — yt-dlp's flat extraction. yt-dlp is imported lazily so
   the app boots without it; enumeration then fails with a clear message.
 
-YouTube *listing* works from Hugging Face infrastructure; YouTube *downloads*
-need cookies (see ``qua_jobs/acquire_audio.py``). A playlist that yt-dlp reports
+YouTube *listing* mostly works from Hugging Face infrastructure but its
+connections get dropped (SSL EOF), so listing is retried and uses the
+``INSPECTOR_YTDLP_COOKIES`` / ``INSPECTOR_YTDLP_PROXY`` secrets when set;
+YouTube *downloads* need the cookies (see ``qua_jobs/acquire_audio.py``). A playlist that yt-dlp reports
 as longer than what it returned (an old yt-dlp, a region lock) is refused rather
 than silently planning a 100-of-114 mushaf.
 """
@@ -17,6 +19,9 @@ than silently planning a 100-of-114 mushaf.
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
@@ -32,7 +37,24 @@ log = logging.getLogger("inspector")
 #: Hosts whose flat listing omits titles, so each entry is resolved on its own.
 _RESOLVE_TITLE_HOSTS = ("soundcloud",)
 _RESOLVE_WORKERS = 8
-_UNAVAILABLE_TITLES = ("[deleted video]", "[private video]", "[unavailable video]")
+#: Listing retries on a dropped connection, with a linear back-off.
+_LIST_ATTEMPTS = 4
+_RETRY_SLEEP_S = 3
+_YTDLP_RETRIES = 5
+_SOCKET_TIMEOUT_S = 30
+_TRANSIENT_MARKERS = (
+    "ssl",
+    "eof occurred",
+    "connection reset",
+    "connection aborted",
+    "remote end closed",
+    "timed out",
+    "temporarily unavailable",
+    "http error 5",
+    "unable to download api page",
+)
+_cookie_path: str | None = None
+_UNAVAILABLE_TITLES =("[deleted video]", "[private video]", "[unavailable video]")
 _HOSTS = (
     ("youtube", ("youtube.com", "youtu.be", "youtube-nocookie.com")),
     ("drive", ("drive.google.com", "docs.google.com")),
@@ -122,17 +144,64 @@ def _ytdlp() -> Any:
     return yt_dlp
 
 
-def _from_ytdlp(url: str, host: str) -> Listing:
-    yt_dlp = _ytdlp()
-    opts = {
+def _base_opts() -> dict[str, Any]:
+    """Options every extraction shares: yt-dlp's own retries, plus the Space's
+    YouTube cookies / proxy secrets when set (HF IPs get throttled without)."""
+    opts: dict[str, Any] = {
         "quiet": True,
         "no_warnings": True,
-        "extract_flat": "in_playlist",
         "skip_download": True,
+        "socket_timeout": _SOCKET_TIMEOUT_S,
+        "retries": _YTDLP_RETRIES,
+        "extractor_retries": _YTDLP_RETRIES,
     }
+    cookies = _cookies_file()
+    if cookies:
+        opts["cookiefile"] = cookies
+    proxy = (os.environ.get("INSPECTOR_YTDLP_PROXY") or "").strip()
+    if proxy:
+        opts["proxy"] = proxy
+    return opts
+
+
+def _cookies_file() -> str | None:
+    """The cookies secret written to a temp file once (yt-dlp reads a path)."""
+    global _cookie_path
+    text = (os.environ.get("INSPECTOR_YTDLP_COOKIES") or "").strip()
+    if not text:
+        return None
+    if _cookie_path is None or not os.path.exists(_cookie_path):
+        fd, path = tempfile.mkstemp(prefix="intake_cookies_", suffix=".txt")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text + "\n")
+        _cookie_path = path
+    return _cookie_path
+
+
+def _is_transient(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(marker in text for marker in _TRANSIENT_MARKERS)
+
+
+def _extract(url: str, opts: dict[str, Any]) -> dict:
+    """``extract_info`` retried on dropped connections (SSL EOF, resets) —
+    yt-dlp's own ``extractor_retries`` does not cover every such failure."""
+    yt_dlp = _ytdlp()
+    for attempt in range(1, _LIST_ATTEMPTS + 1):
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                return ydl.extract_info(url, download=False) or {}
+        except Exception as exc:  # noqa: BLE001 — yt-dlp raises its own DownloadError tree
+            if attempt == _LIST_ATTEMPTS or not _is_transient(exc):
+                raise
+            log.warning("intake enumerate: %s attempt %d failed: %s", url, attempt, _short(exc))
+            time.sleep(_RETRY_SLEEP_S * attempt)
+    raise AssertionError("unreachable")
+
+
+def _from_ytdlp(url: str, host: str) -> Listing:
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=False) or {}
+        info = _extract(url, {**_base_opts(), "extract_flat": "in_playlist"})
     except Exception as exc:  # noqa: BLE001 — yt-dlp raises its own DownloadError tree
         if host == "youtube":
             return _single_youtube_fallback(url, exc)
@@ -182,14 +251,13 @@ def _entry(e: dict, index: int, *, fallback_url: str | None = None) -> RawEntry:
 
 def _resolve_titles(entries: list[RawEntry]) -> list[RawEntry]:
     """Full extraction per entry for hosts whose flat listing has no titles."""
-    yt_dlp = _ytdlp()
+    opts = _base_opts()
 
     def one(entry: RawEntry) -> RawEntry:
         if not entry.unavailable:
             return entry
         try:
-            with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True}) as y:
-                info = y.extract_info(entry.url, download=False) or {}
+            info = _extract(entry.url, opts)
         except Exception as exc:  # noqa: BLE001
             log.warning("intake enumerate: %s unresolved: %s", entry.url, _short(exc))
             return entry

@@ -300,8 +300,10 @@ and pip-installs the kind's deps at launch; there is no prebuilt image Space.
 
 Source fetching (`qua_jobs/audio_io.py`): Drive files download through
 `drive.usercontent.google.com` (`confirm=t`), direct media URLs by plain HTTP,
-everything else through yt-dlp. YouTube **listing** works from Hugging Face, but
-**downloads** are refused ("Sign in to confirm you're not a bot") without a
+everything else through yt-dlp. YouTube **listing** mostly works from Hugging
+Face but its connections get dropped (`SSL: UNEXPECTED_EOF_WHILE_READING`), so
+`enumerate._extract` retries network failures (4 attempts, linear back-off) and
+passes the cookies / proxy secrets below when set. **Downloads** are refused ("Sign in to confirm you're not a bot") without a
 signed-in session. A run with any yt-dlp source installs `yt-dlp[default] deno`
 in the job and passes the Space secrets `INSPECTOR_YTDLP_COOKIES` (a Netscape
 cookies.txt export) and `INSPECTOR_YTDLP_PROXY` (optional) as the job secrets
