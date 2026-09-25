@@ -121,6 +121,33 @@ def test_rebase_moves_rows_onto_the_cut_timeline():
     assert min(r["time_from"] for r in rebased) >= 0
 
 
+def test_unmatched_ms_sums_only_unplaced_recitation():
+    rows = [
+        {"kind": "special", "ref_from": "", "time_from": 0.0, "time_to": 5.0},
+        {"kind": "quran", "ref_from": "", "time_from": 5.5, "time_to": 26.0},
+        {"kind": "quran", "ref_from": "113:3:1", "time_from": 26.0, "time_to": 40.0},
+    ]
+    assert partition.unmatched_ms(rows) == 20500
+
+
+def test_a_cut_holding_a_missed_chapters_audio_is_flagged():
+    from services.admin.align_pipeline import stage_split
+
+    loose = {"kind": "quran", "ref_from": "", "time_from": 5.5, "time_to": 26.0}
+    part = partition.Partition(
+        cuts={113: partition.ChapterCut(113, 0, 40380, rows=[loose])}, missing=[112], ignored=[]
+    )
+    outcome: dict = {}
+    stage_split._flag_suspects(part, outcome)
+    assert outcome == {
+        "suspect": {"113": "holds 20s of unmatched audio; chapter(s) 112 expected in the same file"}
+    }
+    part.missing = []
+    outcome = {}
+    stage_split._flag_suspects(part, outcome)
+    assert outcome == {}
+
+
 def test_dominant_other_surah_flags_a_mislabelled_single_file():
     rows = [r for r in _rows() if partition.row_surah(r) == 113]
     assert partition.dominant_other_surah(94, rows) == 113

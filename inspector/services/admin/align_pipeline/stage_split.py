@@ -30,6 +30,8 @@ log = logging.getLogger("inspector")
 
 KIND = "split_audio"
 _ENTRYPOINT = "python /aux/code/qua_jobs/split_audio.py"
+#: Unmatched recitation inside a cut worth flagging when its file lost a chapter.
+SUSPECT_MIN_MS = 3000
 
 
 def run(slug: str, run_id: str, groups: list[SourceGroup]) -> dict:
@@ -52,6 +54,22 @@ def run(slug: str, run_id: str, groups: list[SourceGroup]) -> dict:
 # ---------------------------------------------------------------------------
 # Single-chapter files
 # ---------------------------------------------------------------------------
+
+
+def _flag_suspects(part: partition.Partition, outcome: dict) -> None:
+    """A planned chapter the aligner missed usually sits, unmatched, inside a
+    neighbour's cut (a short surah before the next one). Keep the neighbour —
+    its unmatched segment fails validation until a reviewer fixes it — but say
+    so in the coverage report."""
+    if not part.missing:
+        return
+    for ch, cut in part.cuts.items():
+        loose = partition.unmatched_ms(cut.rows)
+        if loose >= SUSPECT_MIN_MS:
+            outcome.setdefault("suspect", {})[str(ch)] = (
+                f"holds {loose / 1000:.0f}s of unmatched audio; chapter(s) "
+                f"{', '.join(map(str, part.missing))} expected in the same file"
+            )
 
 
 def _guard_singles(slug: str, run_id: str, groups: list[SourceGroup], outcome: dict) -> None:
@@ -100,6 +118,7 @@ def _split_combined(
         )
         for ch in part.missing:
             outcome["dropped"].append(ch)
+        _flag_suspects(part, outcome)
         for ch in part.cuts:
             if ch not in g.chapters:
                 outcome["adopted"][str(ch)] = g.url

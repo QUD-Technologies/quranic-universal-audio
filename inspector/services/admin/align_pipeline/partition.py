@@ -42,6 +42,15 @@ class Partition:
     ignored: list[int]
 
 
+def unmatched_ms(rows: list[dict]) -> int:
+    """Recitation the aligner could not place (a ``quran`` row with no ref)."""
+    return sum(
+        round((r.get("time_to", 0) - r.get("time_from", 0)) * 1000)
+        for r in rows
+        if r.get("kind") == "quran" and not r.get("ref_from")
+    )
+
+
 def row_surah(row: dict) -> int | None:
     ref = row.get("ref_from") or ""
     head = ref.split(":", 1)[0]

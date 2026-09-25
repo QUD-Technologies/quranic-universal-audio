@@ -127,7 +127,16 @@ collision is cut at the silence midpoint). Coverage is tolerant, not fatal:
 - an unplanned surah the file does hold is **adopted**;
 - a single-chapter file whose matched speech is at least `MISMATCH_SHARE = 0.6`
   another surah is **mismatched** (mislabelled in the plan, as in the
-  `mohammed_burhaji_yt` mis-index) and dropped.
+  `mohammed_burhaji_yt` mis-index) and dropped;
+- when the aligner misses a planned chapter inside a combined file (a short
+  surah right before the next, e.g. al-Ikhlāṣ + al-Falaq), its audio usually
+  sits unmatched inside the neighbour's cut. The neighbour is kept — its
+  unmatched segment fails validation until a reviewer fixes it — and flagged
+  **suspect** (≥ `SUSPECT_MIN_MS` = 3 s unmatched) in `unresolved_files`.
+
+The aligner Space's `bucket_fetch` drops its `HfFileSystem` listing cache before
+every fetch: split writes new chapter mp3s into an `audio/` folder the Space has
+already listed, and a stale listing reads as `audio_fetch_failed` in sidecars.
 
 Every decision lands in `split_outcome.json`, the manifest, and
 `coverage_report.json`. Split is idempotent: an existing outcome skips it, and
