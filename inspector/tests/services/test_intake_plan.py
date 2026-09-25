@@ -24,10 +24,10 @@ from qua_shared.schemas import (
     PlanIdentity,
     ReciterCatalog,
     ReciterEntry,
-    SourceLink,
     Riwayah,
     Role,
     Source,
+    SourceLink,
     Style,
     Vocab,
 )
@@ -289,7 +289,9 @@ def test_enumeration_failure_is_shown_on_the_plan(intake_env, monkeypatch):
     rid = _submit()
     plan.build(rid)
     view = plan.get(rid)
-    assert view is not None and view.status == "failed" and view.error == "could not list the folder"
+    assert (
+        view is not None and view.status == "failed" and view.error == "could not list the folder"
+    )
 
 
 def test_update_marks_edits_manual_and_rechecks(intake_env, monkeypatch):
