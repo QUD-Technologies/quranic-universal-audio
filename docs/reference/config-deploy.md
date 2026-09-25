@@ -79,7 +79,10 @@ The image bakes the **dev** bucket as default (`INSPECTOR_BUCKET_REPO=hetchyy/qu
 | `INSPECTOR_ALIGNER_URL` | `https://hetchyy-quranic-universal-aligner-dev.hf.space` | Aligner Space the align stage + sidecars call (`/api/v1`). |
 | `INSPECTOR_ALIGN_KEEP_STAGING` | off | `1` keeps `staging/<slug>/<run>/` after assemble (debugging). |
 | `INSPECTOR_ACQUIRE_JOB_FLAVOR` / `INSPECTOR_ACQUIRE_JOB_TIMEOUT` | `cpu-upgrade` / `6h` | The acquire HF Job's hardware + wall clock. |
-| `INSPECTOR_ALIGN_CONCURRENCY` | every pending chapter (what the batch advertises) | Narrows the align stage's fan-out for debugging; there is no cap by default. |
+| `INSPECTOR_ALIGN_CONCURRENCY` | 16 (`params.ALIGN_WORKERS`, capped at the pending file count) | Overrides the align stage's rolling HTTP transport pool for debugging; aligner-side admission is independent. |
+| `INSPECTOR_YTDLP_COOKIES` | Space secret (optional; required for YouTube downloads) | Netscape `cookies.txt` export of a signed-in YouTube session. Passed to the acquire HF Job as the job secret `YTDLP_COOKIES` when a run has a yt-dlp source. YouTube refuses downloads from Hugging Face IPs without it ("Sign in to confirm you're not a bot"); listing works regardless. The intake plan check errors on a YouTube source while it is unset. |
+| `INSPECTOR_YTDLP_PROXY` | unset | Optional proxy URL handed to yt-dlp in the acquire job (job secret `YTDLP_PROXY`). |
+| `INSPECTOR_GOOGLE_API_KEY` | unset | Optional Google API key tried first for Drive folder listing (`services/admin/intake_plan/drive.py`); by default the key embedded in the public folder page is scraped. |
 | `ACQUIRE_WORKERS` (job env) | one per vCPU, max 8 | Chapters the acquire job fetches + encodes at once. |
 | `INSPECTOR_PUBLIC_BASE_URL` | empty | Public https root the daemon threads into job completion webhooks (no `request.url_root` in a thread). Required for automated GH cuts — the cut job is webhook-only. Set as a Space variable per environment. |
 | `INSPECTOR_TS_STALE_RUN_HOURS` | `6` | How long a `running` timestamps run-log record may sit before the single-flight guard treats it as dead (a Space restart mid-run never stamps it terminal). |

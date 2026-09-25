@@ -42,8 +42,13 @@ The authoritative writer path, in `.local/extraction/`:
 **Invariant: record DECODED duration, never bitrate-estimated.** `format.duration` (and a naive
 `size·8/bitrate`) lie on VBR. The pipeline reads duration from the decoded frame count (or the
 Xing frame-count header), which is why extracted reciters don't emit phantom-tail durations.
-Download-only (YouTube) sources can't be HTTP-frame-probed, so the canonical 192k CBR encode is
-produced first and the row+sidecar come from a **post-align reprobe** of those bytes.
+Download-only (YouTube / Drive / SoundCloud) sources can't be HTTP-frame-probed. They now arrive
+through the **online intake** (Requests-tab plan → mint → align; `align-pipeline.md`): the mint
+writes a URL-only manifest, the align pipeline's acquire job produces the canonical 192k CBR encode,
+and `services/admin/align_pipeline/manifest.py` fills the per-chapter `size_bytes` /
+`duration_sec` / `bitrate_*` (and, after a split, `source_offset_ms`) from those bytes, then
+rolls `chapter_count` / `total_duration_sec` / `bitrate_mode` / `sample_rate_hz` up to the row
+for fields still unknown. Probed fields are never overwritten.
 
 ## Serving (in-app reads — depth in the `inspector-audio` skill)
 
