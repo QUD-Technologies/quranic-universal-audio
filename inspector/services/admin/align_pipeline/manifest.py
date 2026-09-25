@@ -29,7 +29,10 @@ _PIPELINE_ACTOR = Actor(hf_user_id="SYSTEM_ACTOR", login_at_time="align_pipeline
 
 
 def _read(slug: str) -> dict:
-    return get_backend().read_json(storage_paths.audio_manifest_path(slug))
+    doc = get_backend().read_json(storage_paths.audio_manifest_path(slug))
+    if not isinstance(doc, dict):
+        raise ValueError(f"{slug}: audio manifest is not a JSON object")
+    return doc
 
 
 def _write(slug: str, doc: dict) -> None:

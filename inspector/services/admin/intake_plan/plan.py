@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import threading
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 from qua_shared.schemas import (
     IntakePlan,
@@ -22,6 +23,7 @@ from qua_shared.schemas import (
     PlanEntry,
     PlanOption,
 )
+from qua_shared.schemas.wire.intake_plan import MatchConfidence, PlanHost
 from services.db import _serde, repo_catalog, repo_requests
 from services.db import sync as _sync
 
@@ -172,7 +174,7 @@ def _fresh_plan(kind: str, payload: dict, source: IntakeSource, created_at: str)
                 index=raw.index,
                 duration_sec=raw.duration_sec,
                 chapters=chapters,
-                confidence=confidence,
+                confidence=cast(MatchConfidence, confidence),
             )
         )
     catalog = repo_catalog.snapshot()
@@ -188,7 +190,7 @@ def _fresh_plan(kind: str, payload: dict, source: IntakeSource, created_at: str)
     )
     return IntakePlan(
         status="ready",
-        host=listing.host,
+        host=cast(PlanHost, listing.host),
         source_url=listing.source_url,
         uploader=listing.uploader,
         uploader_url=listing.uploader_url,

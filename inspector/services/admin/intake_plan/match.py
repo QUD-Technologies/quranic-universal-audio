@@ -286,13 +286,14 @@ def match_title(title: str) -> Match:
             if found:
                 candidates.append(_chapters_from(found, is_range))
     if candidates:
-        first = candidates[0]
+        first: tuple[int, ...] = candidates[0]
         agree = all(c == first for c in candidates)
         if not agree:
             return Match(first, "low")
         if len(first) > 1:
             return Match(first, "high")
-        return Match(first, "exact" if number in (None, first[0]) else "high")
+        exact = number is None or (number,) == first
+        return Match(first, "exact" if exact else "high")
     juz = _juz_match(toks)
     if juz is not None:
         return juz

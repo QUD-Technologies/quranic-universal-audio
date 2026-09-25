@@ -88,7 +88,7 @@ def _split_combined(
     plan: dict[str, dict] = {}
     staged_rows: dict[int, tuple[dict, list[dict], int]] = {}
     for g in combined:
-        doc = staging.read_json(staging.source_path(slug, run_id, g.slot))
+        doc = staging.read_json(staging.source_path(slug, run_id, g.item))
         if doc is None:
             raise FileNotFoundError(f"staged source {g.slot} missing for {slug}/{run_id}")
         others = singles | {c for o in combined if o is not g for c in o.chapters}
@@ -96,7 +96,7 @@ def _split_combined(
             doc.get("segments") or [],
             planned=g.chapters,
             claimed_elsewhere=others,
-            duration_ms=durations.get(g.slot),
+            duration_ms=durations.get(g.item),
         )
         for ch in part.missing:
             outcome["dropped"].append(ch)

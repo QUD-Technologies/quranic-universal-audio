@@ -24,6 +24,7 @@ from qua_shared.schemas import (
     PlanIdentity,
     ReciterCatalog,
     ReciterEntry,
+    SourceLink,
     Riwayah,
     Role,
     Source,
@@ -124,9 +125,9 @@ def test_links_sharing_a_url_become_one_combined_entry():
         IntakeSource(
             method="links",
             links=[
-                {"chapter": 2, "url": "cdn.x/b.mp3"},
-                {"chapter": 1, "url": "cdn.x/b.mp3"},
-                {"chapter": 3, "url": "cdn.x/c.mp3"},
+                SourceLink(chapter=2, url="cdn.x/b.mp3"),
+                SourceLink(chapter=1, url="cdn.x/b.mp3"),
+                SourceLink(chapter=3, url="cdn.x/c.mp3"),
             ],
         )
     )
@@ -288,7 +289,7 @@ def test_enumeration_failure_is_shown_on_the_plan(intake_env, monkeypatch):
     rid = _submit()
     plan.build(rid)
     view = plan.get(rid)
-    assert view.status == "failed" and view.error == "could not list the folder"
+    assert view is not None and view.status == "failed" and view.error == "could not list the folder"
 
 
 def test_update_marks_edits_manual_and_rechecks(intake_env, monkeypatch):
@@ -296,6 +297,7 @@ def test_update_marks_edits_manual_and_rechecks(intake_env, monkeypatch):
     rid = _submit()
     plan.build(rid)
     current = plan.get(rid)
+    assert current is not None
     body = IntakePlanUpdate(
         entries=[PlanEntryEdit(key="e2", chapters=[2, 3])],
         identity=current.identity,
@@ -408,6 +410,7 @@ def test_mint_writes_combined_manifest_and_starts_the_run(intake_env, monkeypatc
     assert result.slug == "mohammed_ayyub_drive" and result.align_started is True
     assert started == ["mohammed_ayyub_drive"]
     manifest = get_backend().read_json(storage_paths.audio_manifest_path(result.slug))
+    assert isinstance(manifest, dict)
     ch1, ch3 = manifest["chapters"]["1"], manifest["chapters"]["3"]
     assert ch1["source_url"] == "https://drive.google.com/file/d/AAAAAAAAAAAA/view"
     assert ch1["url"].endswith(f"/reciters/{result.slug}/audio/1.mp3")
@@ -417,7 +420,7 @@ def test_mint_writes_combined_manifest_and_starts_the_run(intake_env, monkeypatc
         "source_url": None,
     }
     delivery = repo_catalog.find_delivery(result.slug)
-    assert delivery.source_url == PLAYLIST and delivery.chapter_count == 3
+    assert delivery is not None and delivery.source_url == PLAYLIST and delivery.chapter_count == 3
     row = repo_requests.get_by_id(rid)
     assert (row["status"], row["slug"]) == ("accepted", result.slug)
     with pytest.raises(plan.PlanError):
@@ -444,6 +447,7 @@ def test_mint_refuses_a_plan_with_errors(intake_env, monkeypatch):
     rid = _submit()
     plan.build(rid)
     stored = plan.stored_plan(repo_requests.get_by_id(rid))
+    assert stored is not None
     stored.identity.channel = ""
     payload = _serde.json_loads(repo_requests.get_by_id(rid)["payload"])
     payload["plan"] = stored.model_dump(mode="json")

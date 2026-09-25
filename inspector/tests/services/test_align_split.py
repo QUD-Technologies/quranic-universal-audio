@@ -210,7 +210,7 @@ def test_split_stage_stages_rebased_chapters_and_rewrites_the_manifest(split_env
     groups = sources.groups_for(SLUG)
     combined = next(g for g in groups if g.combined)
     doc = json.loads(FIXTURE.read_text(encoding="utf-8"))
-    staging.write_json(staging.source_path(SLUG, run_id, combined.slot), doc)
+    staging.write_json(staging.source_path(SLUG, run_id, combined.item), doc)
     # 113's single file really holds 113; 114's file holds 113 too (mislabelled).
     only_113 = {"segments": [r for r in doc["segments"] if partition.row_surah(r) == 113]}
     staging.write_json(staging.chapter_path(SLUG, run_id, 113), only_113)
@@ -243,12 +243,14 @@ def test_split_stage_stages_rebased_chapters_and_rewrites_the_manifest(split_env
     assert manifest["_meta"]["chapter_count"] == 6
 
     staged = staging.read_json(staging.chapter_path(SLUG, run_id, 110))
+    assert staged is not None
     assert staged["_inspector"]["split_offset_ms"] == entry["source_offset_ms"]
     assert min(r["time_from"] for r in staged["segments"]) >= 0
 
     from services.state import catalog as catalog_service
 
-    assert catalog_service.find_delivery(SLUG).chapter_count == 6
+    delivery = catalog_service.find_delivery(SLUG)
+    assert delivery is not None and delivery.chapter_count == 6
     # Idempotent on resume: the recorded outcome short-circuits a second pass.
     assert stage_split.run(SLUG, run_id, groups) == outcome
     assert len(launched) == 1

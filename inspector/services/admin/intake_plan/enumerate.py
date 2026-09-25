@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from typing import Any
 from urllib.parse import urlparse
 
 from qua_shared.audio.sources import needs_ytdlp
@@ -113,7 +114,7 @@ def _from_drive(url: str) -> Listing:
     return Listing(host="drive", entries=entries, source_url=url)
 
 
-def _ytdlp():
+def _ytdlp() -> Any:
     try:
         import yt_dlp
     except ImportError as exc:  # pragma: no cover — the image installs it
