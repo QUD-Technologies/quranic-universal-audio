@@ -54,7 +54,7 @@ _TRANSIENT_MARKERS = (
     "unable to download api page",
 )
 _cookie_path: str | None = None
-_UNAVAILABLE_TITLES =("[deleted video]", "[private video]", "[unavailable video]")
+_UNAVAILABLE_TITLES = ("[deleted video]", "[private video]", "[unavailable video]")
 _HOSTS = (
     ("youtube", ("youtube.com", "youtu.be", "youtube-nocookie.com")),
     ("drive", ("drive.google.com", "docs.google.com")),
