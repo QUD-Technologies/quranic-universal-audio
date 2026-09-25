@@ -252,6 +252,7 @@ export function disposeSegPlayback(): void {
 /** Repeat a sample segment or a selected word. All times are file-absolute. */
 export function startWordTimingPreview(
     seg: Segment, chapter: number, startMs: number, endMs: number, seekMs = startMs,
+    onPreviewTick?: (audibleTimeMs: number) => void,
 ): void {
     if (!segPort.element || !seg.segment_uid || endMs <= startMs) return;
     cancelChimeGap();
@@ -269,7 +270,10 @@ export function startWordTimingPreview(
         port: segPort,
         range: { startMs: Math.max(startMs, Math.min(seekMs, endMs - 1)), endMs },
         policy: { kind: 'loop' },
-        onTick: (timeMs) => drawActivePlayhead(timeMs),
+        onTick: (timeMs) => {
+            drawActivePlayhead(timeMs);
+            onPreviewTick?.(displayTimeMs(timeMs));
+        },
         playbackRate: () => get(playbackSpeed),
     });
     _wordTimingRange.start();
