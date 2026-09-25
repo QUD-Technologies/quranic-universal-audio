@@ -282,6 +282,8 @@ export function startWordTimingPreview(
 export function updateWordTimingPreview(ownerUid: string, startMs: number, endMs: number): void {
     if (_wordTimingOwner !== ownerUid || !_wordTimingRange || endMs <= startMs) return;
     _wordTimingRange.setRange({ startMs, endMs });
+    const currentMs = segPort.currentTimeMs();
+    if (currentMs < startMs || currentMs >= endMs) segPort.seek(startMs);
 }
 
 export function stopWordTimingPreview(ownerUid: string): void {

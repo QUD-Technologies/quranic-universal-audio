@@ -2,25 +2,24 @@
     import { onDestroy, untrack } from 'svelte';
     import { localeStore, tr } from '../../../../lib/i18n/locale-store';
     import * as m from '../../../../lib/paraglide/messages';
+    import { contiguousWordDraft, moveWordBlock, moveWordBoundary, type WordBounds } from '../../utils/samples/word-timing-draft';
 
-    type Boundary = { start_ms: number; end_ms: number };
-    type DragKind = 'start' | 'end' | 'word';
+    type DragKind = 'boundary' | 'word';
 
     let { words, labels, startMs, endMs, width, lockedIndex, onChange, onSeek, onLock }: {
-        words: Boundary[];
+        words: WordBounds[];
         labels: string[];
         startMs: number;
         endMs: number;
         width: number;
         lockedIndex: number | null;
-        onChange: (_boundaries: Boundary[], _changedIndex: number) => void;
+        onChange: (_boundaries: WordBounds[]) => void;
         onSeek: (_timeMs: number) => void;
         onLock: (_index: number) => void;
     } = $props();
 
-    let draft = $state<Boundary[]>(untrack(() => words.map(w => ({ start_ms: w.start_ms, end_ms: w.end_ms }))));
-    let drag: { index: number; kind: DragKind; atX: number; original: Boundary } | null = null;
-    const minWordMs = 20;
+    let draft = $state<WordBounds[]>(untrack(() => contiguousWordDraft(words)));
+    let drag: { index: number; kind: DragKind; atX: number; original: WordBounds[] } | null = null;
     let duration = $derived(Math.max(1, endMs - startMs));
     const x = (ms: number) => ((ms - startMs) / duration) * width;
 
@@ -38,7 +37,7 @@
     function beginDrag(event: PointerEvent, index: number, kind: DragKind) {
         event.preventDefault();
         event.stopPropagation();
-        drag = { index, kind, atX: event.clientX, original: { ...draft[index]! } };
+        drag = { index, kind, atX: event.clientX, original: draft.map(word => ({ ...word })) };
         window.addEventListener('pointermove', moveDrag);
         window.addEventListener('pointerup', stopDrag);
         window.addEventListener('pointercancel', stopDrag);
@@ -48,34 +47,32 @@
         if (!drag) return;
         const { index, kind, atX, original } = drag;
         const delta = Math.round((event.clientX - atX) * duration / width);
-        const previousEnd = index ? draft[index - 1]!.end_ms : startMs;
-        const nextStart = index + 1 < draft.length ? draft[index + 1]!.start_ms : endMs;
-        let start = original.start_ms;
-        let end = original.end_ms;
-        if (kind === 'start') start = Math.max(previousEnd, Math.min(end - minWordMs, start + delta));
-        if (kind === 'end') end = Math.min(nextStart, Math.max(start + minWordMs, end + delta));
-        if (kind === 'word') {
-            const offset = Math.max(previousEnd - start, Math.min(nextStart - end, delta));
-            start += offset;
-            end += offset;
-        }
-        if (start === draft[index]!.start_ms && end === draft[index]!.end_ms) return;
-        draft[index] = { start_ms: start, end_ms: end };
-        onChange(draft.map(w => ({ ...w })), index);
+        const next = kind === 'word'
+            ? moveWordBlock(original, index, delta, startMs, endMs)
+            : moveWordBoundary(original, index,
+                (index === original.length ? original[index - 1]!.end_ms : original[index]!.start_ms) + delta,
+                startMs, endMs);
+        if (next.every((word, i) => word.start_ms === draft[i]!.start_ms && word.end_ms === draft[i]!.end_ms)) return;
+        draft = next;
+        onChange(next);
     }
 </script>
 
 <div class="word-timing-overlay" style:width={`${width}px`}>
+    {#if draft.length}
+        <button class="word-boundary outer" type="button" style:left={`${x(draft[0]!.start_ms)}px`}
+            aria-label={tr($localeStore, m.segments_word_edit_start_label({ number: '1', word: labels[0] ?? '' }))}
+            onpointerdown={(e) => beginDrag(e, 0, 'boundary')}></button>
+    {/if}
     {#each draft as word, i}
         {@const left = x(word.start_ms)}
         {@const right = x(word.end_ms)}
         <div class="word-range" class:is-locked={lockedIndex === i} style:left={`${left}px`} style:width={`${Math.max(2, right - left)}px`} aria-hidden="true"></div>
-        <button class="word-boundary start" type="button" style:left={`${left}px`}
-            aria-label={tr($localeStore, m.segments_word_edit_start_label({ number: String(i + 1), word: labels[i] ?? '' }))}
-            onpointerdown={(e) => beginDrag(e, i, 'start')}></button>
-        <button class="word-boundary end" type="button" style:left={`${right}px`}
-            aria-label={tr($localeStore, m.segments_word_edit_end_label({ number: String(i + 1), word: labels[i] ?? '' }))}
-            onpointerdown={(e) => beginDrag(e, i, 'end')}></button>
+        <button class="word-boundary" class:outer={i === draft.length - 1} type="button" style:left={`${right}px`}
+            aria-label={i === draft.length - 1
+                ? tr($localeStore, m.segments_word_edit_end_label({ number: String(i + 1), word: labels[i] ?? '' }))
+                : tr($localeStore, m.segments_word_shared_boundary_label({ left: labels[i] ?? '', right: labels[i + 1] ?? '' }))}
+            onpointerdown={(e) => beginDrag(e, i + 1, 'boundary')}></button>
         <div class="word-card" class:is-locked={lockedIndex === i} style:left={`${(left + right) / 2}px`} dir="rtl">
             <button class="word-lock" class:is-locked={lockedIndex === i} type="button"
                 aria-pressed={lockedIndex === i}
@@ -107,7 +104,7 @@
     .word-range.is-locked { opacity: 0.25; }
     .word-boundary { position: absolute; top: 0; width: 14px; height: 68px; padding: 0; border: 0; background: transparent; transform: translateX(-50%); cursor: ew-resize; pointer-events: auto; touch-action: none; z-index: 2; }
     .word-boundary::before { content: ''; display: block; position: absolute; inset: 0 6px; background: var(--accent); box-shadow: 0 0 0 1px var(--panel); }
-    .word-boundary.end::before { background: var(--state-warn-fg); }
+    .word-boundary.outer::before { opacity: 0.65; }
     .word-boundary:hover::before, .word-boundary:focus-visible::before { inset-inline: 5px; }
     .word-card { position: absolute; top: 77px; transform: translateX(-50%); width: max-content; min-width: 76px; max-width: 180px; border: 1px solid var(--border-default); border-radius: var(--r-2); background: var(--panel); color: var(--text-primary); pointer-events: auto; }
     .word-card.is-locked { border-color: var(--accent); background: var(--panel-2); }

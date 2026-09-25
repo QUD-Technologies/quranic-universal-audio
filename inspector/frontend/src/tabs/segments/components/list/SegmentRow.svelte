@@ -60,6 +60,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     import { missingWordsSegKeys } from '../../stores/validation';
     import { deriveRowChips, type RowChip } from '../../utils/samples/chips';
     import { displayWordsForTimings, timingsMatchRef } from '../../utils/samples/word-timing';
+    import { contiguousWordDraft } from '../../utils/samples/word-timing-draft';
     import {
         chapterIndexKey,
         flashSegmentIndices,
@@ -331,6 +332,9 @@ import type { Segment } from '../../../../lib/types/view-models';
     let wordLockedIndex: number | null = null;
     let wordSaving = false;
     let wordError = '';
+    let wordHasChanges = false;
+    $: wordHasChanges = wordDraft.some((word, index) =>
+        word.start_ms !== reviewWordTimings[index]?.start_ms || word.end_ms !== reviewWordTimings[index]?.end_ms);
     $: wordEditWidth = Math.min(8000, Math.max(900, reviewWordTimings.length * 150, (seg.time_end - seg.time_start) * 0.1));
     async function toggleWordEditor(): Promise<void> {
         if (!wordEditing && get(editMode)) return;
@@ -342,7 +346,7 @@ import type { Segment } from '../../../../lib/types/view-models';
         wordError = '';
         wordLockedIndex = null;
         if (wordEditing) {
-            wordDraft = reviewWordTimings.map(w => ({ start_ms: w.start_ms, end_ms: w.end_ms }));
+            wordDraft = contiguousWordDraft(reviewWordTimings);
             startWordTimingPreview(seg, rowChapter, seg.time_start, seg.time_end);
         } else {
             stopWordTimingPreview(seg.segment_uid ?? '');
@@ -353,10 +357,14 @@ import type { Segment } from '../../../../lib/types/view-models';
             _ensureWaveformObserver().observe(canvasEl);
         }
     }
-    function onWordDraftChange(boundaries: { start_ms: number; end_ms: number }[], changedIndex: number): void {
+    function onWordDraftChange(boundaries: { start_ms: number; end_ms: number }[]): void {
+        const previousLocked = wordLockedIndex === null ? null : wordDraft[wordLockedIndex];
         wordDraft = boundaries;
-        if (wordLockedIndex === changedIndex) {
-            updateWordTimingPreview(seg.segment_uid ?? '', boundaries[changedIndex]!.start_ms, boundaries[changedIndex]!.end_ms);
+        if (wordLockedIndex !== null) {
+            const locked = boundaries[wordLockedIndex]!;
+            if (!previousLocked || previousLocked.start_ms !== locked.start_ms || previousLocked.end_ms !== locked.end_ms) {
+                updateWordTimingPreview(seg.segment_uid ?? '', locked.start_ms, locked.end_ms);
+            }
         }
     }
     function seekWordPreview(timeMs: number): void {
@@ -1159,7 +1167,7 @@ import type { Segment } from '../../../../lib/types/view-models';
                 <span class="word-editor-hint">{tr($localeStore, m.segments_word_edit_hint())}</span>
                 <div class="word-editor-actions">
                     <button class="btn btn-sm" type="button" disabled={wordSaving} on:click|stopPropagation={toggleWordEditor}>{tr($localeStore, m.common_action_cancel())}</button>
-                    <button class="btn btn-sm word-editor-save" type="button" disabled={wordSaving} on:click|stopPropagation={applyWordTimings}>{tr($localeStore, wordSaving ? m.segments_word_edit_saving() : m.segments_word_edit_save())}</button>
+                    <button class="btn btn-sm word-editor-save" type="button" disabled={wordSaving || !wordHasChanges} on:click|stopPropagation={applyWordTimings}>{tr($localeStore, wordSaving ? m.segments_word_edit_saving() : m.segments_word_edit_save())}</button>
                 </div>
             </div>
             {#if wordError}<div class="word-editor-error" role="alert">{wordError}</div>{/if}
