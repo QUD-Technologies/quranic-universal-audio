@@ -177,6 +177,20 @@ def test_planned_chapters_missing_everywhere_are_dropped_and_empty_files_reporte
     assert res.empty == ["https://src/202"]
 
 
+def test_excerpts_of_other_surahs_are_fragments_not_chapters():
+    # A CD intro montage: short excerpts of 78 and 80, then a full al-Kawthar.
+    montage = [
+        _row("78:40:1", "78:40:10", 1.0, 20.0),
+        _row("80:34:1", "80:36:2", 22.0, 40.0),
+        _row("108:1:1", "108:3:6", 45.0, 60.0),
+    ]
+    res = resolve.resolve([_file(201, montage)], fixed=set(), ayah_counts={78: 40, 80: 42, 108: 3})
+    assert sorted(res.chapters) == [108]
+    assert sorted(res.fragments) == [78, 80]
+    assert "only 1 of 40 ayahs" in res.fragments[78]
+    assert res.ignored == {201: [78, 80]}
+
+
 def test_a_cut_absorbing_a_missed_surah_is_suspect():
     # The aligner could not place al-Ikhlas: its recitation comes back unmatched.
     rows = [r for r in _rows() if partition.row_surah(r) != 112 and r["time_from"] < 150]

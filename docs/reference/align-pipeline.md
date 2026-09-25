@@ -154,6 +154,11 @@ Coverage is tolerant, not fatal:
   another surah is **mismatched** (the `mohammed_burhaji_yt` mis-index) and
   dropped *before* the cut (its mp3 deleted), so another file can provide it;
 - a file with no recitation found is reported (`empty_sources`);
+- an unplanned surah whose pieces cover under `MIN_SURAH_COVERAGE = 0.5` of its
+  ayahs is a **fragment**, not a chapter: a CD intro montage or trailer holds
+  short excerpts of many surahs (seen live: the Afasy Juz ʿAmma CD's intro held
+  excerpts of 78, 79, 80, 82, 92, 93). Fragments are listed in
+  `unresolved_files`;
 - when the aligner fails to place a surah (a short one right before the next,
   e.g. al-Ikhlāṣ + al-Falaq), its audio sits unmatched inside the neighbour's
   cut. The neighbour is kept — its unmatched segment fails validation until a

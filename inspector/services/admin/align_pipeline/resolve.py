@@ -12,7 +12,10 @@ assigned:
    long surah uploaded in parts — is stitched on as another *piece*, in ayah
    order; one that only repeats covered ayahs (a re-upload) is ignored.
 
-A planned chapter nobody provides is dropped; a surah nobody planned is adopted.
+A surah nobody planned is adopted only if its pieces cover at least
+``MIN_SURAH_COVERAGE`` of its ayahs — an intro montage or a trailer holds short
+excerpts of many surahs, and an excerpt is not a chapter (reported as a
+*fragment*). A planned chapter nobody provides is dropped.
 A cut holding a lot of unmatched recitation next to a surah missing from the
 middle of the delivery is flagged: the aligner likely failed to place that surah
 (a short surah just before another) and its audio sits inside this cut.
@@ -26,6 +29,8 @@ from .partition import ChapterCut, ayahs, matched_ms, unmatched_ms
 
 #: A further file joins a surah as a piece only if this share of its ayahs is new.
 PIECE_MIN_NEW_SHARE = 0.8
+#: Share of a surah's ayahs an unplanned chapter must cover to be adopted.
+MIN_SURAH_COVERAGE = 0.5
 SUSPECT_MIN_MS = 3000
 
 
@@ -53,10 +58,15 @@ class Resolution:
     ignored: dict[int, list[int]] = field(default_factory=dict)
     #: URLs of files the aligner found no recitation in.
     empty: list[str] = field(default_factory=list)
+    #: Unplanned surahs found only as excerpts → why they were not adopted.
+    fragments: dict[int, str] = field(default_factory=dict)
     suspect: dict[int, str] = field(default_factory=dict)
 
 
-def resolve(files: list[FileCuts], fixed: set[int]) -> Resolution:
+def resolve(
+    files: list[FileCuts], fixed: set[int], ayah_counts: dict[int, int] | None = None
+) -> Resolution:
+    """``ayah_counts``: surah → number of ayahs; without it no coverage guard."""
     out = Resolution()
     planned = {ch for f in files for ch in f.planned}
     for f in files:
@@ -69,7 +79,12 @@ def resolve(files: list[FileCuts], fixed: set[int]) -> Resolution:
             if ch not in fixed and ch not in out.chapters:
                 candidates.setdefault(ch, []).append(Piece(f, cut))
     for ch, pieces in candidates.items():
-        out.chapters[ch] = _stitch(pieces)
+        chosen = _stitch(pieces)
+        short = _too_short(ch, chosen, ayah_counts) if ch not in planned else None
+        if short:
+            out.fragments[ch] = short
+        else:
+            out.chapters[ch] = chosen
     out.chapters = dict(sorted(out.chapters.items()))
     out.dropped = sorted(ch for ch in planned if ch not in out.chapters)
     out.adopted = sorted(ch for ch in out.chapters if ch not in planned)
@@ -96,6 +111,17 @@ def _stitch(pieces: list[Piece]) -> list[Piece]:
             chosen.append(piece)
             covered |= own
     return sorted(chosen, key=lambda p: min(ayahs(p.cut.rows), default=0))
+
+
+def _too_short(ch: int, pieces: list[Piece], ayah_counts: dict[int, int] | None) -> str | None:
+    total = (ayah_counts or {}).get(ch)
+    if not total:
+        return None
+    covered = set().union(*(ayahs(p.cut.rows) for p in pieces))
+    if len(covered) >= MIN_SURAH_COVERAGE * total:
+        return None
+    where = ", ".join(sorted({p.file.url.rsplit("/", 1)[-1] for p in pieces}))
+    return f"only {len(covered)} of {total} ayahs found (in {where}) — an excerpt, not adopted"
 
 
 def _suspects(chapters: dict[int, list[Piece]], fixed: set[int]) -> dict[int, str]:

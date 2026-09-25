@@ -47,6 +47,7 @@ def run(slug: str, run_id: str, groups: list[SourceGroup]) -> dict:
         "ignored": {},
         "suspect": {},
         "empty_sources": [],
+        "fragments": {},
         "stitched": {},
     }
     _guard_singles(slug, run_id, groups, outcome)
@@ -105,7 +106,7 @@ def _split_slots(
         docs[g.item] = doc
         cuts = partition.cut_file(doc.get("segments") or [], durations.get(g.item))
         files.append(resolve.FileCuts(item=g.item, url=g.url, planned=g.chapters, cuts=cuts))
-    res = resolve.resolve(files, fixed)
+    res = resolve.resolve(files, fixed, _ayah_counts())
     _record(res, outcome)
     plan = {
         "chapters": {
@@ -124,12 +125,19 @@ def _split_slots(
     manifest.apply_split(slug, cuts=cuts, dropped=outcome["dropped"], clear_sources=True)
 
 
+def _ayah_counts() -> dict[int, int]:
+    from services.storage.data_loader import load_surah_info_lite
+
+    return {int(n): int(info["num_verses"]) for n, info in load_surah_info_lite().items()}
+
+
 def _record(res: resolve.Resolution, outcome: dict) -> None:
     outcome["dropped"] = sorted((set(outcome["dropped"]) | set(res.dropped)) - set(res.chapters))
     outcome["adopted"] = {str(ch): res.chapters[ch][0].file.url for ch in res.adopted}
     outcome["ignored"] = {str(item): chs for item, chs in res.ignored.items()}
     outcome["suspect"] = {str(ch): note for ch, note in res.suspect.items()}
     outcome["empty_sources"] = list(res.empty)
+    outcome["fragments"] = {str(ch): note for ch, note in res.fragments.items()}
     outcome["stitched"] = {
         str(ch): len(pieces) for ch, pieces in res.chapters.items() if len(pieces) > 1
     }

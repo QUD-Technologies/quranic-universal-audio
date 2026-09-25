@@ -146,6 +146,10 @@ def _write_coverage(run_dir: Path, chapters: list[int], outcome: dict) -> None:
         for ch, note in sorted((outcome.get("suspect") or {}).items(), key=lambda kv: int(kv[0]))
     ]
     unresolved += [f"{url}: no recitation detected" for url in outcome.get("empty_sources") or []]
+    unresolved += [
+        f"surah {ch}: {note}"
+        for ch, note in sorted((outcome.get("fragments") or {}).items(), key=lambda kv: int(kv[0]))
+    ]
     _dump(
         run_dir / "coverage_report.json",
         {
