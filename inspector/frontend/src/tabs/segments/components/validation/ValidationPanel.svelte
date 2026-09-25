@@ -31,7 +31,6 @@
 
     import { localeStore, tr } from '../../../../lib/i18n/locale-store';
     import * as m from '../../../../lib/paraglide/messages';
-    import { shadowPrewarm } from '../../../../lib/playback/shadow-audio';
     import { can } from '../../../../lib/stores/capabilities';
     import { currentUser, isOwner } from '../../../../lib/stores/current-user';
     import type { SegValAnyItem, SegValLowConfidenceItem, SegValQalqalaItem, SegValidateResponse } from '../../../../lib/types/generated/schemas';
@@ -59,8 +58,7 @@
         VAL_VIRTUALIZE_THRESHOLD,
         VIRT_BUFFER_ROWS,
     } from '../../utils/constants';
-    import { wrapCbrSrcIfBySurah } from '../../utils/playback/source';
-    import { warmSeg } from '../../utils/playback/warmup';
+    import { warmSeg, warmSegChapter } from '../../utils/playback/warmup';
     import {
         BOUNDARY_STATES,
         type BoundaryCtx,
@@ -718,12 +716,11 @@
         _cardOwnerByChIdx = m;
     }
 
-    // Resolve a card's lead seg to the audio-proxy-wrapped URL that the
-    // primary `<audio>` element will later load. The shadow element fetches
-    // this URL so the browser HTTP cache is warm by the time the user clicks
-    // play. For VBR chapters the seg-clip URL is per-segment and the shadow
-    // can't pre-cache that — fall back to the byte-Range warmup, which still
-    // primes the server-side ffmpeg read.
+    // Warm a card's lead seg before the user clicks it. CBR goes through
+    // `warmSegChapter`: probe the CDN (so the click plays direct, not via the
+    // audio-proxy) and warm the chapter off the Space. For VBR chapters the
+    // seg-clip URL is per-segment and can't be pre-cached — fall back to the
+    // byte-Range warmup, which still primes the server-side ffmpeg read.
     function _warmAccordionLead(lead: ReturnType<typeof resolveCardLeadSeg>): void {
         if (!lead) return;
         const reciter = $selectedReciter;
@@ -739,8 +736,7 @@
             warmSeg(lead, reciter);
             return;
         }
-        const wrapped = wrapCbrSrcIfBySurah(audioUrl, reciter);
-        shadowPrewarm(wrapped);
+        warmSegChapter(lead, reciter, audioUrl);
     }
 
     /**
@@ -780,18 +776,20 @@
         _fetchPeaks(reciter, Array.from(wanted).sort((a, b) => a - b));
     }
 
-    // Card-0 warmup on category open / re-pin. Fires once per (category, item-0).
-    let _lastCard0Key: string | null = null;
+    // Card-0 warmup — once per category OPEN. Deliberately not keyed on item-0:
+    // every autosave's validation refresh drops the card just fixed, so an
+    // item-0 key re-fired a chapter warm + peaks prefetch right as the user
+    // clicked the next card, competing with that play.
+    let _lastCard0Cat: string | null = null;
     $: {
         const kind = openCategory;
         const first = displayedItems[0];
-        const key = kind && first ? `${kind}|${(first as { chapter?: number }).chapter ?? ''}|${(first as { seg_index?: number; verse_key?: string }).seg_index ?? (first as { verse_key?: string }).verse_key ?? ''}` : null;
-        if (key && first && kind && key !== _lastCard0Key) {
-            _lastCard0Key = key;
+        if (!kind) {
+            _lastCard0Cat = null;
+        } else if (first && kind !== _lastCard0Cat) {
+            _lastCard0Cat = kind;
             _warmAccordionLead(resolveCardLeadSeg(first, kind));
             _prefetchAccordionPeaks();
-        } else if (!key) {
-            _lastCard0Key = null;
         }
     }
 

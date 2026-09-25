@@ -35,7 +35,9 @@
 import { get } from 'svelte/store';
 
 import { displayTimeMs } from '../../../../lib/playback/audio-graph';
+import type { AudioSource } from '../../../../lib/playback/audio-port';
 import { AudioRange } from '../../../../lib/playback/audio-range';
+import { needsDirectProbe, probeDirectPlayable } from '../../../../lib/playback/play-url';
 import type { Segment } from '../../../../lib/types/view-models';
 import { type AnimationLoop,createAnimationLoop } from '../../../../lib/utils/animation';
 import { audioSrcMatches } from '../../../../lib/utils/audio';
@@ -120,6 +122,44 @@ let _segRange: AudioRange | null = null;
  * unmount must not tear down a newer row's preview. */
 let _wordTimingRange: AudioRange | null = null;
 let _wordTimingOwner: string | null = null;
+
+/** Bumped by every play / toggle / teardown so a play parked on a CDN probe
+ *  (see `_deferUntilProbed`) only resumes if nothing newer happened. */
+let _playToken = 0;
+let _probePending = false;
+
+/** Drop a play still waiting on its CDN probe. */
+function _cancelPendingProbePlay(): void {
+    _playToken++;
+    if (!_probePending) return;
+    _probePending = false;
+    segAudioBuffering.set(false);
+}
+
+/**
+ * Park a play whose chapter URL has never been probed for direct CDN play.
+ *
+ * Only the selected chapter is probed on load, so a cross-chapter row (an
+ * accordion card from another surah) would otherwise resolve to the Space's
+ * audio-proxy — putting the clip on the single-worker Space and the one HTTP/2
+ * connection that autosave's save + validate also use. The probe is one 64 KB
+ * CORS Range fetch (cached per URL, short-circuited per failed host), so
+ * waiting for it is far cheaper than a proxied chapter stream.
+ *
+ * @returns true when the play was deferred; `replay` runs once the verdict is in.
+ */
+function _deferUntilProbed(source: AudioSource | null, replay: () => void): boolean {
+    if (!source || source.vbr || !needsDirectProbe(source.audioUrl)) return false;
+    const token = _playToken;
+    _probePending = true;
+    segAudioBuffering.set(true);
+    void probeDirectPlayable(source.audioUrl).then(() => {
+        if (token !== _playToken) return;
+        _probePending = false;
+        replay();
+    });
+    return true;
+}
 
 /** Playhead-draw rAF. Replaces the AudioRange-owned tick for the chapter-
  *  continuous path. Under segment-bounded play, AudioRange owns its own
@@ -239,6 +279,7 @@ export function resetHighlightRefs(): void {
  *  Called explicitly on edit-mode entry, per-reciter clear, and chapter
  *  swap. */
 export function disposeSegPlayback(): void {
+    _cancelPendingProbePlay();
     cancelChimeGap();
     _drawLoop.stop();
     segAudioBuffering.set(false);
@@ -640,6 +681,7 @@ export function playFromSegment(
     // The accordion advance's own resume reaches here with the timer already
     // cleared, so this only ever drops a genuinely stale gap.
     cancelChimeGap();
+    _cancelPendingProbePlay();
     if (_wordTimingRange) {
         _wordTimingRange.dispose();
         _wordTimingRange = null;
@@ -677,6 +719,10 @@ export function playFromSegment(
     // disambiguates same-index rows in other chapters.
     const resolvedChapter = chapter ?? seg.chapter ?? 0;
     const isAccordionPlay = opts?.isAccordionPlay ?? false;
+    const segSource = resolveSegSource(seg, resolvedChapter);
+    if (_deferUntilProbed(segSource, () => playFromSegment(segIndex, chapterOverride, seekToMs, opts))) {
+        return;
+    }
 
     // Raise the buffering flag the instant a play is committed: the button
     // flips to "pause" and the playhead jumps to seg.time_start now, but the
@@ -692,7 +738,6 @@ export function playFromSegment(
     // no-op for the active chapter; for cross-chapter rows it invalidates
     // `_window` so the next `loadCovering` issues a fresh swap against
     // the row's chapter URL.
-    const segSource = resolveSegSource(seg, resolvedChapter);
     if (segSource) segPort.setSource(segSource);
 
     const piece = opts?.piece ?? null;
@@ -834,6 +879,7 @@ export function onSegPlayClick(): void {
     // A click during the chime's gap is the user taking over — drop the
     // pending resume so it can't restart audio a moment after they paused.
     cancelChimeGap();
+    _cancelPendingProbePlay();
 
     if (_wordTimingRange) {
         if (segPort.paused) {

@@ -13,6 +13,7 @@ import { MP3_SNIFF_BYTES } from '../mp3-header';
 import {
     _resetPlayUrlForTest,
     isDirectPlayable,
+    needsDirectProbe,
     playUrl,
     probeDirectPlayable,
     proxyPlayUrl,
@@ -144,5 +145,24 @@ describe('resolvePlayUrl', () => {
     it('probes then returns the proxy on failure', async () => {
         respond(403);
         await expect(resolvePlayUrl('husary', CDN)).resolves.toBe(PROXIED);
+    });
+});
+
+describe('needsDirectProbe', () => {
+    it('is true for an unprobed CDN URL and false once either verdict is cached', async () => {
+        expect(needsDirectProbe(CDN)).toBe(true);
+        await probeDirectPlayable(CDN);
+        expect(needsDirectProbe(CDN)).toBe(false);
+
+        respond(403);
+        expect(needsDirectProbe(CDN_SIBLING)).toBe(true);
+        await probeDirectPlayable(CDN_SIBLING);
+        expect(needsDirectProbe(CDN_SIBLING)).toBe(false);
+    });
+
+    it('is false for URLs that never probe', () => {
+        expect(needsDirectProbe('/api/seg/clip/x')).toBe(false);
+        expect(needsDirectProbe('qua-sample://abc/1')).toBe(false);
+        expect(needsDirectProbe('')).toBe(false);
     });
 });
