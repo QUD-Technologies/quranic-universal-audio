@@ -14,17 +14,17 @@ canonical ``audio/<ch>.mp3`` and its ``peaks/<ch>.json.gz``. The Inspector
 rebases the chapter's timestamps with the same windows, so cut and timings agree
 by construction.
 
-Each slot file is copied off the bucket mount (size-checked, retried) before
-it is cut: under load the mount can fail a read mid-file and ffmpeg then writes
-a truncated chapter with exit 0. Every cut's length is checked against the plan.
+Files move through ``bucket_io`` (the Hub HTTP API on HF, never the bucket
+mount: reads off the mount hung and failed mid-file while the job wrote to it,
+and ffmpeg wrote truncated chapters with exit 0). Every cut's length is checked
+against the plan. Every chapter is cut on every run, so a stale or truncated
+chapter from an earlier run is overwritten.
 
 Writes ``staging/<slug>/<run_id>/split.json`` (``cuts`` + ``failures``). Every
 slot file is deleted only when every cut succeeded, so a retry can cut again.
-Idempotent per chapter: an already-persisted chapter of the planned length is
-re-measured, not re-cut; one of the wrong length is cut again.
 
-Env: SLUG, RUN_ID (required); INSPECTOR_BUCKET_MOUNT (default ``/data``);
-SPLIT_WORKERS (default one per vCPU, 8 max).
+Env: SLUG, RUN_ID (required); BUCKET_REPO (HTTP access; unset = files under
+INSPECTOR_BUCKET_MOUNT); SPLIT_WORKERS (default one per vCPU, 8 max).
 """
 
 from __future__ import annotations
@@ -32,16 +32,14 @@ from __future__ import annotations
 import json
 import logging
 import os
-import shutil
 import sys
 import tempfile
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 sys.path.insert(0, os.environ.get("PYTHONPATH", "/aux/code"))
 
-from qua_jobs import audio_io  # noqa: E402
+from qua_jobs import audio_io, bucket_io  # noqa: E402
 
 log = logging.getLogger("split_audio")
 
@@ -49,12 +47,10 @@ MAX_WORKERS = 8
 #: A cut whose length is off the plan by more than this is refused (encoder
 #: padding and frame rounding stay well under it; a truncated read does not).
 LENGTH_TOLERANCE_MS = 1500
-COPY_ATTEMPTS = 4
-COPY_RETRY_SLEEP_S = 5
 
 
-def _root() -> Path:
-    return Path(os.environ.get("INSPECTOR_BUCKET_MOUNT", "/data"))
+def _audio(slug: str, number: int) -> str:
+    return f"reciters/{slug}/audio/{number}.mp3"
 
 
 def _expected_ms(pieces: list[list[int]]) -> int:
@@ -69,53 +65,23 @@ def _check_length(chapter: int, duration_ms: int, expected_ms: int) -> None:
         )
 
 
-def _local_copy(src: Path, dest: Path) -> Path:
-    """Copy a slot file off the bucket mount before cutting it. Under load the
-    mount can fail a read mid-file, and ffmpeg then ends the input early and
-    still exits 0 — so the copy is size-checked and retried."""
-    expected = src.stat().st_size
-    for attempt in range(1, COPY_ATTEMPTS + 1):
-        try:
-            shutil.copyfile(src, dest)
-            if dest.stat().st_size == expected:
-                return dest
-            log.warning("%s: copied %d of %d bytes", src.name, dest.stat().st_size, expected)
-        except OSError as exc:
-            log.warning("%s: copy attempt %d failed: %s", src.name, attempt, exc)
-        time.sleep(COPY_RETRY_SLEEP_S * attempt)
-    raise RuntimeError(f"could not read {src.name} off the bucket mount")
-
-
-def _cut_one(slug: str, chapter: int, pieces: list[list[int]], channels: int) -> dict:
-    reciter = _root() / "reciters" / slug
-    mp3 = reciter / "audio" / f"{chapter}.mp3"
-    peaks = reciter / "peaks" / f"{chapter}.json.gz"
-    expected_ms = _expected_ms(pieces)
-    if mp3.is_file() and peaks.is_file():
-        duration_ms = audio_io.probe_duration_ms(mp3)
-        if duration_ms is not None and abs(duration_ms - expected_ms) <= LENGTH_TOLERANCE_MS:
-            return {
-                "bytes": mp3.stat().st_size,
-                "duration_ms": duration_ms,
-                "pieces": len(pieces),
-                "skipped": True,
-            }
-        log.warning("chapter %d: persisted cut has the wrong length, cutting again", chapter)
+def _cut_one(slug: str, chapter: int, pieces: list[list[int]]) -> dict:
     with tempfile.TemporaryDirectory(prefix=f"split_{chapter}_") as tmp:
         work = Path(tmp)
         local: dict[int, Path] = {}
         for slot in sorted({int(p[0]) for p in pieces}):
-            src = reciter / "audio" / f"{slot}.mp3"
-            local[slot] = _local_copy(src, work / f"src_{slot}.mp3")
+            try:
+                local[slot] = bucket_io.fetch(_audio(slug, slot), work / f"src_{slot}.mp3")
+            except bucket_io.MissingFile:
+                raise RuntimeError(f"source slot {slot} is missing from the bucket") from None
+        channels = max(audio_io.probe_channels(p) for p in local.values())
         windows = [(local[int(s)], int(a), int(b)) for s, a, b in pieces]
         encoded = work / f"{chapter}.mp3"
         audio_io.encode_pieces(windows, encoded, channels)
         blob, duration_ms = audio_io.bake_peaks(encoded)
-        _check_length(chapter, duration_ms, expected_ms)
-        audio_io.atomic_write_bytes(peaks, blob)
-        audio_io.atomic_write(mp3, encoded)
-        if mp3.stat().st_size != encoded.stat().st_size:
-            raise RuntimeError(f"chapter {chapter}: the bucket copy is incomplete")
+        _check_length(chapter, duration_ms, _expected_ms(pieces))
+        bucket_io.put_bytes(blob, f"reciters/{slug}/peaks/{chapter}.json.gz", work / "peaks.gz")
+        bucket_io.put(encoded, _audio(slug, chapter))
         return {
             "bytes": encoded.stat().st_size,
             "duration_ms": duration_ms,
@@ -127,29 +93,14 @@ def _cut_one(slug: str, chapter: int, pieces: list[list[int]], channels: int) ->
 def split_all(slug: str, plan: dict, workers: int) -> tuple[dict[str, dict], dict[str, str]]:
     cuts: dict[str, dict] = {}
     failures: dict[str, str] = {}
-    audio = _root() / "reciters" / slug / "audio"
-    channels_of: dict[int, int] = {}
-    jobs = []
-    for key, pieces in (plan.get("chapters") or {}).items():
-        chapter = int(key)
-        slots = {int(p[0]) for p in pieces}
-        if not (audio / f"{chapter}.mp3").is_file():
-            missing = sorted(s for s in slots if not (audio / f"{s}.mp3").is_file())
-            if missing:
-                failures[key] = f"source slot {missing[0]} is missing from the bucket"
-                continue
-        for s in slots:
-            if s not in channels_of and (audio / f"{s}.mp3").is_file():
-                channels_of[s] = audio_io.probe_channels(audio / f"{s}.mp3")
-        channels = max((channels_of.get(s, 1) for s in slots), default=1)
-        jobs.append((chapter, pieces, channels))
+    jobs = [(int(key), pieces) for key, pieces in (plan.get("chapters") or {}).items()]
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="split") as pool:
         futures = {pool.submit(_cut_one, slug, *job): job[0] for job in jobs}
         for future in as_completed(futures):
             chapter = futures[future]
             try:
                 cuts[str(chapter)] = future.result()
-                log.info("chapter %d: cut", chapter)
+                log.info("chapter %d: cut (%d ms)", chapter, cuts[str(chapter)]["duration_ms"])
             except Exception as exc:  # noqa: BLE001 — recorded per chapter
                 failures[str(chapter)] = f"{type(exc).__name__}: {exc}"
                 log.error("chapter %d: FAILED %s", chapter, failures[str(chapter)])
@@ -163,24 +114,31 @@ def main() -> int:
     if not slug or not run_id:
         log.error("SLUG and RUN_ID are required")
         return 2
-    staging = _root() / "staging" / slug / run_id
-    plan = json.loads((staging / "split_plan.json").read_text(encoding="utf-8"))
-    total = len(plan.get("chapters") or {})
-    override = os.environ.get("SPLIT_WORKERS", "").strip()
-    workers = int(override) if override.isdigit() and int(override) > 0 else None
-    workers = max(1, min(workers or os.cpu_count() or 1, MAX_WORKERS, total or 1))
-    log.info("%s: cutting %d chapter(s) on %d worker(s) (run %s)", slug, total, workers, run_id)
+    staging = f"staging/{slug}/{run_id}"
+    with tempfile.TemporaryDirectory(prefix="split_") as tmp:
+        work = Path(tmp)
+        plan_path = bucket_io.fetch(f"{staging}/split_plan.json", work / "split_plan.json")
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        total = len(plan.get("chapters") or {})
+        override = os.environ.get("SPLIT_WORKERS", "").strip()
+        workers = int(override) if override.isdigit() and int(override) > 0 else None
+        workers = max(1, min(workers or os.cpu_count() or 1, MAX_WORKERS, total or 1))
+        log.info("%s: cutting %d chapter(s) on %d worker(s) (run %s)", slug, total, workers, run_id)
 
-    cuts, failures = split_all(slug, plan, workers)
-    report = {"cuts": dict(sorted(cuts.items(), key=lambda kv: int(kv[0]))), "failures": failures}
-    audio_io.atomic_write_bytes(
-        staging / "split.json", json.dumps(report, ensure_ascii=False, indent=1).encode("utf-8")
-    )
+        cuts, failures = split_all(slug, plan, workers)
+        report = {
+            "cuts": dict(sorted(cuts.items(), key=lambda kv: int(kv[0]))),
+            "failures": failures,
+        }
+        bucket_io.put_bytes(
+            json.dumps(report, ensure_ascii=False, indent=1).encode("utf-8"),
+            f"{staging}/split.json",
+            work / "split.json",
+        )
     if failures:
         log.error("%s: %d chapter(s) failed", slug, len(failures))
         return 1
-    for slot in plan.get("slots") or []:
-        (_root() / "reciters" / slug / "audio" / f"{int(slot)}.mp3").unlink(missing_ok=True)
+    bucket_io.delete([_audio(slug, int(slot)) for slot in plan.get("slots") or []])
     log.info("%s: %d chapter(s) cut, source slots removed", slug, len(cuts))
     return 0
 

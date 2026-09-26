@@ -120,7 +120,7 @@ def test_split_reports_a_missing_slot_and_keeps_going(mount):
 
     assert split_audio.main() == 1
     report = json.loads((root / "staging" / SLUG / "run-1" / "split.json").read_text("utf-8"))
-    assert report["failures"] == {"5": "source slot 202 is missing from the bucket"}
+    assert report["failures"] == {"5": "RuntimeError: source slot 202 is missing from the bucket"}
 
 
 def test_split_stitches_pieces_into_one_chapter(mount):

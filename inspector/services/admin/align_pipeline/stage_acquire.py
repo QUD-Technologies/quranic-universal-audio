@@ -87,6 +87,8 @@ def launch_job(
         "SLUG": slug,
         "RUN_ID": run_id,
         "INSPECTOR_BUCKET_MOUNT": "/data",
+        # Jobs that read what they write (split_audio) use the HTTP API, not the mount.
+        "BUCKET_REPO": resolve_bucket_repo(),
         "PYTHONPATH": "/aux/code",
         **(env or {}),
     }
