@@ -22,6 +22,8 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -31,6 +33,8 @@ CANONICAL_BITRATE = "192k"
 CANONICAL_SAMPLE_RATE = "44100"
 USER_AGENT = "Mozilla/5.0 (quranic-universal-audio acquire)"
 HTTP_TIMEOUT_S = 120
+HTTP_ATTEMPTS = 4
+HTTP_RETRY_SLEEP_S = 5
 FFMPEG_TIMEOUT_S = 3 * 3600
 YTDLP_FORMAT = "bestaudio/best"
 _DRIVE_DOWNLOAD = "https://drive.usercontent.google.com/download?id={id}&export=download&confirm=t"
@@ -83,6 +87,22 @@ def fetch(url: str, dest: Path) -> Path:
 
 
 def _http_get(url: str, dest: Path, *, refuse_html: bool) -> None:
+    """GET with retries on a server error or a dropped connection (archive.org
+    and Drive answer the odd 5xx under load); a 4xx fails at once."""
+    for attempt in range(1, HTTP_ATTEMPTS + 1):
+        try:
+            _http_get_once(url, dest, refuse_html=refuse_html)
+            return
+        except urllib.error.HTTPError as exc:
+            if exc.code < 500 or attempt == HTTP_ATTEMPTS:
+                raise
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            if attempt == HTTP_ATTEMPTS:
+                raise
+        time.sleep(HTTP_RETRY_SLEEP_S * attempt)
+
+
+def _http_get_once(url: str, dest: Path, *, refuse_html: bool) -> None:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_S) as resp:
         ctype = (resp.headers.get("Content-Type") or "").lower()

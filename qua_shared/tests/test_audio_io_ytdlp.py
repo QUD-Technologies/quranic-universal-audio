@@ -1,9 +1,10 @@
-"""yt-dlp failure handling in the acquire job: the real reason survives, a
+"""Fetch failure handling in the acquire job: the real yt-dlp reason survives, a
 bot-check refusal stops the other YouTube fetches, and a cookies file whose
-tabs became spaces is repaired."""
+tabs became spaces is repaired, and a plain GET retries server errors."""
 
 from __future__ import annotations
 
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -59,3 +60,36 @@ def test_after_a_bot_check_later_youtube_fetches_fail_without_a_request(monkeypa
         with pytest.raises(audio_io.BotCheckError):
             acquire_audio._fetch(f"https://www.youtube.com/watch?v={vid}", Path("x"))
     assert calls == ["https://www.youtube.com/watch?v=a"]
+
+
+def _http_error(code: int) -> urllib.error.HTTPError:
+    return urllib.error.HTTPError("https://archive.org/x.mp3", code, "err", None, None)  # type: ignore[arg-type]
+
+
+def test_http_get_retries_a_server_error_then_succeeds(monkeypatch, tmp_path):
+    calls: list[int] = []
+
+    def flaky(url, dest, *, refuse_html):
+        calls.append(1)
+        if len(calls) < 3:
+            raise _http_error(500)
+        dest.write_bytes(b"ok")
+
+    monkeypatch.setattr(audio_io, "_http_get_once", flaky)
+    monkeypatch.setattr(audio_io, "HTTP_RETRY_SLEEP_S", 0)
+    audio_io._http_get("https://archive.org/x.mp3", tmp_path / "a", refuse_html=False)
+    assert len(calls) == 3
+    assert (tmp_path / "a").read_bytes() == b"ok"
+
+
+def test_http_get_fails_a_client_error_at_once(monkeypatch, tmp_path):
+    calls: list[int] = []
+
+    def gone(url, dest, *, refuse_html):
+        calls.append(1)
+        raise _http_error(404)
+
+    monkeypatch.setattr(audio_io, "_http_get_once", gone)
+    with pytest.raises(urllib.error.HTTPError):
+        audio_io._http_get("https://archive.org/x.mp3", tmp_path / "a", refuse_html=False)
+    assert len(calls) == 1
