@@ -19,7 +19,7 @@
     import type { FlagAuthor, FlagComment, SegmentFlagView } from '../../../../lib/types/generated/schemas';
 import type { Segment } from '../../../../lib/types/view-models';
     import { relativeTime } from '../../../../lib/utils/relative-time';
-    import { segAllData } from '../../stores/chapter';
+    import { getAdjacentSegments, segAllData } from '../../stores/chapter';
     import { flagSegment } from '../../utils/edit/flag';
     import SegmentRow from '../list/SegmentRow.svelte';
 
@@ -53,8 +53,24 @@ import type { Segment } from '../../../../lib/types/view-models';
             editLink: m.segments_row_flag_edit_link(),
             replyPlaceholder: m.segments_row_flag_reply_placeholder(),
             reply: m.segments_row_flag_reply_button(),
+            ctxPrev: m.segments_validation_context_label_previous(),
+            ctxNext: m.segments_validation_context_label_next(),
+            ctxToggle: showContext
+                ? m.segments_validation_hide_context_button()
+                : m.segments_validation_show_context_button(),
         };
     });
+
+    // ---- Context (prev / next neighbours), same shape as GenericIssueCard ----
+    let showContext = $state(false);
+    const adjacent = $derived.by(() => {
+        void $segAllData;
+        if (!showContext || seg.chapter == null) return { prev: null, next: null };
+        return getAdjacentSegments(seg.chapter, seg.index);
+    });
+    const siblings = $derived<Segment[]>(
+        [adjacent.prev, seg, adjacent.next].filter((s): s is Segment => s != null),
+    );
 
     const author = $derived<FlagAuthor>({
         role: $currentUser.role,
@@ -113,7 +129,41 @@ import type { Segment } from '../../../../lib/types/view-models';
 </script>
 
 <div class="flagged-card" data-flag-uid={seg.segment_uid}>
-    <SegmentRow {seg} instanceRole="accordion" />
+    {#if adjacent.prev}
+        <SegmentRow
+            seg={adjacent.prev}
+            isContext={true}
+            contextLabel={L.ctxPrev}
+            showPlayBtn={true}
+            showChapter={true}
+            accordionSiblings={siblings}
+        />
+    {/if}
+    <SegmentRow
+        {seg}
+        instanceRole="accordion"
+        showGotoBtn={true}
+        showPlayBtn={true}
+        showChapter={true}
+        accordionSiblings={siblings}
+        onCardToggleContext={() => (showContext = !showContext)}
+    />
+    {#if adjacent.next}
+        <SegmentRow
+            seg={adjacent.next}
+            isContext={true}
+            contextLabel={L.ctxNext}
+            showPlayBtn={true}
+            showChapter={true}
+            accordionSiblings={siblings}
+        />
+    {/if}
+    <div class="val-card-actions">
+        <button
+            class="val-action-btn val-action-btn-muted val-ctx-toggle-btn"
+            onclick={() => (showContext = !showContext)}
+        >{L.ctxToggle}</button>
+    </div>
 
     {#if flag}
         {@const rootName = authorName(flag.author)}
