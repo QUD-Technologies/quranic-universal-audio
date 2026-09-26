@@ -7,8 +7,10 @@ import type { Segment } from '../../../../lib/types/view-models';
 import type { AutoSplitMap } from '../../stores/auto-split';
 import {
     buildStagedChildren,
+    HIDDEN_PAUSE_KINDS,
     isStagedSegment,
     resolveStagedSplit,
+    waqfOnlySplit,
 } from '../../utils/validation/staged-split';
 
 const seg = (o: Partial<Segment> = {}): Segment => ({
@@ -51,6 +53,17 @@ describe('resolveStagedSplit', () => {
     it('is null for a repetition / hidden_pause entry', () => {
         expect(resolveStagedSplit(seg(), map({ kind: 'repetition' }))).toBeNull();
         expect(resolveStagedSplit(seg(), map({ kind: 'hidden_pause' }))).toBeNull();
+    });
+
+    it('stages a hidden_pause entry inside one verse when asked for that kind', () => {
+        const inVerse = seg({ matched_ref: '2:1:1-2:1:9' });
+        const entry = map({ kind: 'hidden_pause', refs: ['2:1:1-2:1:4', '2:1:5-2:1:9'] });
+        expect(resolveStagedSplit(inVerse, entry, HIDDEN_PAUSE_KINDS)).toEqual({
+            cursors: [3000],
+            refs: ['2:1:1-2:1:4', '2:1:5-2:1:9'],
+        });
+        expect(resolveStagedSplit(inVerse, entry)).toBeNull();
+        expect(resolveStagedSplit(seg(), map(), HIDDEN_PAUSE_KINDS)).toBeNull();
     });
 
     it('is null when refs length does not match cursors + 1', () => {
@@ -102,5 +115,26 @@ describe('buildStagedChildren', () => {
     it('inherits ignored_categories so an ignore before commit carries over', () => {
         const kids = buildStagedChildren(seg(), staged, ['k1', 'k2']);
         expect(kids.every((k) => k.ignored_categories?.includes('low_confidence'))).toBe(true);
+    });
+});
+
+describe('waqfOnlySplit', () => {
+    const staged = { cursors: [2000, 3500], refs: ['2:1:1-2:1:4', '2:1:5-2:1:8', '2:1:9-2:1:12'] };
+
+    it('cuts only the boundaries picked WAQF or left unanswered', () => {
+        expect(waqfOnlySplit(staged, [false, false])).toEqual(staged);
+        expect(waqfOnlySplit(staged, [])).toEqual(staged);
+        expect(waqfOnlySplit(staged, [true, false])).toEqual({
+            cursors: [3500],
+            refs: ['2:1:1-2:1:8', '2:1:9-2:1:12'],
+        });
+        expect(waqfOnlySplit(staged, [false, true])).toEqual({
+            cursors: [2000],
+            refs: ['2:1:1-2:1:4', '2:1:5-2:1:12'],
+        });
+    });
+
+    it('is null when every boundary is WASL', () => {
+        expect(waqfOnlySplit(staged, [true, true])).toBeNull();
     });
 });

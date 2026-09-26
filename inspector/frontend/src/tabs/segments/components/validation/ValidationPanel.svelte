@@ -93,7 +93,7 @@
     // each Auto Split click is a zero-network O(1) lookup instead of a per-click
     // round trip. Fire-and-forget + deduped (stores/auto-split.ts); the
     // reciter-scoped map is dropped on switch by clearPerReciterState.
-    $: if ((openCategory === 'cross_verse' || openCategory === 'repetitions') && $selectedReciter) {
+    $: if ((openCategory === 'cross_verse' || openCategory === 'repetitions' || openCategory === 'hidden_pause') && $selectedReciter) {
         void ensureAutoSplitMap($selectedReciter);
     }
 

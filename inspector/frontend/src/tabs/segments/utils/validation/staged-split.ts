@@ -1,10 +1,13 @@
 /**
  * Staged split — pure helpers that turn a sidecar auto-split entry into the
- * N display pieces a cross-verse card renders BEFORE the split is dispatched.
+ * N display pieces a card renders BEFORE the split is dispatched.
  *
  * `resolveStagedSplit` is the eligibility gate: anything short of a clean,
- * in-range, cross_verse sidecar entry answers `null`, and the card falls back
- * to the classic single row with its Auto Split / Split button.
+ * in-range sidecar entry of an accepted kind answers `null`, and the card
+ * falls back to the classic single row with its Auto Split / Split button.
+ * A cross-verse card stages `cross_verse` entries; a hidden-pause card stages
+ * `hidden_pause` entries, where a WASL pick means "no pause here" and only
+ * the boundaries picked WAQF are cut (`waqfOnlySplit`).
  *
  * `buildStagedChildren` slices the parent exactly as `_reduceSplit` would
  * (piece 0 keeps the parent uid + index; later pieces take the memoised
@@ -25,19 +28,28 @@ export interface StagedSplit {
     refs: string[];
 }
 
+export type StagedKind = 'cross_verse' | 'hidden_pause';
+export const CROSS_VERSE_KINDS: readonly StagedKind[] = ['cross_verse'];
+export const HIDDEN_PAUSE_KINDS: readonly StagedKind[] = ['hidden_pause'];
+
 export type StagedSegment = Segment & { _staged: true };
 
 export function isStagedSegment(seg: Segment): seg is StagedSegment {
     return (seg as { _staged?: boolean })._staged === true;
 }
 
-/** Sidecar entry usable as a pre-applied split for `seg`, else `null`. */
-export function resolveStagedSplit(seg: Segment | null, map: AutoSplitMap | null): StagedSplit | null {
+/** Sidecar entry of one of `kinds` usable as a pre-applied split for `seg`, else `null`. */
+export function resolveStagedSplit(
+    seg: Segment | null,
+    map: AutoSplitMap | null,
+    kinds: readonly StagedKind[] = CROSS_VERSE_KINDS,
+): StagedSplit | null {
     if (!seg || !map) return null;
     const uid = seg.segment_uid;
-    if (!uid || !isCrossVerse(seg.matched_ref)) return null;
+    if (!uid) return null;
     const entry = map[uid];
-    if (!entry || entry.kind !== 'cross_verse') return null;
+    if (!entry || !(kinds as readonly string[]).includes(entry.kind)) return null;
+    if (entry.kind === 'cross_verse' && !isCrossVerse(seg.matched_ref)) return null;
     const { cursors, refs } = entry;
     if (!Array.isArray(cursors) || !Array.isArray(refs)) return null;
     if (cursors.length < 1 || refs.length !== cursors.length + 1) return null;
@@ -48,6 +60,33 @@ export function resolveStagedSplit(seg: Segment | null, map: AutoSplitMap | null
     }
     if (refs.some((r) => typeof r !== 'string' || !r)) return null;
     return { cursors: cursors.slice(), refs: refs.slice() };
+}
+
+function joinRefs(a: string, b: string): string {
+    return `${a.split('-')[0]}-${b.split('-').pop()}`;
+}
+
+/**
+ * The split a hidden-pause card commits: only the boundaries picked WAQF
+ * (`false`, or unanswered) are cut; a WASL pick merges its two pieces back
+ * into one ref. `null` when no boundary is cut.
+ */
+export function waqfOnlySplit(staged: StagedSplit, picks: readonly StagedPick[]): StagedSplit | null {
+    const cursors: number[] = [];
+    const refs: string[] = [];
+    let open = staged.refs[0]!;
+    for (let i = 0; i < staged.cursors.length; i++) {
+        const next = staged.refs[i + 1]!;
+        if (picks[i] === true) {
+            open = joinRefs(open, next);
+            continue;
+        }
+        cursors.push(staged.cursors[i]!);
+        refs.push(open);
+        open = next;
+    }
+    refs.push(open);
+    return cursors.length ? { cursors, refs } : null;
 }
 
 /**

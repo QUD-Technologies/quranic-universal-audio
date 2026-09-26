@@ -233,7 +233,7 @@ _REGISTRY: dict[str, IssueDefinition] = {
         persists_ignore=True,
         scope="per_segment",
         display_title="Hidden Pause (review)",
-        description="Re-segmentation found a pause inside this segment. Auto Split places the proposed cut; ignore if there is no pause.",
+        description="An offline pass heard a pause inside this segment. The card shows the pieces with a WASL / WAQF picker (1 / 2): WAQF splits at the cursor, WASL records that there is no pause and ignores the item.",
     ),
     "false_split": IssueDefinition(
         kind="false_split",

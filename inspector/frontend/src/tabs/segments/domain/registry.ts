@@ -232,7 +232,7 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         persistsIgnore: true,
         scope: 'per_segment',
         displayTitle: 'Hidden Pause (review)',
-        description: 'Re-segmentation found a pause inside this segment. Auto Split places the proposed cut; ignore if there is no pause.',
+        description: 'An offline pass heard a pause inside this segment. The card shows the pieces with a WASL / WAQF picker (1 / 2): WAQF splits at the cursor, WASL records that there is no pause and ignores the item.',
         sorts: [{ kind: 'score', default: true }, { kind: 'quran_order' }],
     },
     false_split: {

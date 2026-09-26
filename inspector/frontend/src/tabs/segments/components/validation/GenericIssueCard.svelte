@@ -42,6 +42,9 @@
         buildStagedChildren,
         isStagedSegment,
         resolveStagedSplit,
+        waqfOnlySplit,
+        CROSS_VERSE_KINDS,
+        HIDDEN_PAUSE_KINDS,
     } from '../../utils/validation/staged-split';
     import SegmentRow from '../list/SegmentRow.svelte';
     import BoundaryEvidence from './BoundaryEvidence.svelte';
@@ -171,21 +174,25 @@
     }
     $: groupMembers = _splitGroupMemoResult;
 
-    // ---- Staged pre-split (cross-verse with a sidecar auto-split entry) ----
+    // ---- Staged pre-split (a sidecar entry names the cut) ----
     //
-    // No split has touched the seg yet, but the offline aligner already knows
-    // the cut: render the pieces up front with a WASL/WAQF picker on every
-    // boundary. Nothing is dispatched until all boundaries are labelled — the
-    // last pick commits ONE `split` op carrying `wasls[]`, after which the
-    // real pieces take over via `groupMembers` and the pickers switch to the
-    // default (pending-split amend) path on their own.
-    $: if (resolvedSeg && isCrossVerseSeg(resolvedSeg) && $selectedReciter) {
+    // No split has touched the seg yet, but an offline pass already knows the
+    // cut: render the pieces up front with a WASL/WAQF picker on every
+    // boundary. Nothing is dispatched until all boundaries are labelled. On a
+    // cross-verse card the last pick commits ONE `split` op carrying `wasls[]`,
+    // after which the real pieces take over via `groupMembers` and the pickers
+    // switch to the default (pending-split amend) path on their own. On a
+    // hidden-pause card WASL means "no pause here": only the boundaries picked
+    // WAQF are cut, and a card with no cut is ignored instead.
+    $: isHiddenPauseCard = category === 'hidden_pause';
+    $: stagedKinds = isHiddenPauseCard ? HIDDEN_PAUSE_KINDS : CROSS_VERSE_KINDS;
+    $: if (resolvedSeg && (isHiddenPauseCard || isCrossVerseSeg(resolvedSeg)) && $selectedReciter) {
         void ensureAutoSplitMap($selectedReciter);
     }
     // `getSplitGroupMembers` always returns at least the root itself, so
     // "no split has touched the seg" is a group of ≤1.
     $: staged = groupMembers.length <= 1
-        ? resolveStagedSplit(resolvedSeg, $autoSplitMap)
+        ? resolveStagedSplit(resolvedSeg, $autoSplitMap, stagedKinds)
         : null;
     $: stagedUid = staged && resolvedSeg?.segment_uid ? resolvedSeg.segment_uid : null;
     $: stagedPicks = stagedUid ? ($stagedWaslPicks[stagedUid] ?? []) : [];
@@ -256,24 +263,32 @@
         return waslCommitForPiece(i, members.map((mem) => mem.segment_uid), commits);
     }
 
-    /** Dispatch the staged split. Unanswered boundaries commit as WAQF but
-     *  stay flagged pending, so their pickers keep asking and amend the
-     *  same op in place (the post-split path). */
+    /** Dispatch the staged split. On a cross-verse card unanswered boundaries
+     *  commit as WAQF but stay flagged pending, so their pickers keep asking
+     *  and amend the same op in place (the post-split path). On a hidden-pause
+     *  card only the WAQF boundaries are cut; all WASL ignores the item. */
     function materializeStaged(): void {
         if (!staged || !stagedUid || !resolvedSeg) return;
-        const n = staged.cursors.length;
         const picks = get(stagedWaslPicks)[stagedUid] ?? [];
-        const wasls = Array.from({ length: n }, (_, i) => picks[i] === true);
+        const cut = isHiddenPauseCard ? waqfOnlySplit(staged, picks) : staged;
+        if (!cut) {
+            clearStagedPicks(stagedUid);
+            handleIgnore();
+            return;
+        }
+        const n = cut.cursors.length;
+        const wasls = Array.from({ length: n }, (_, i) => !isHiddenPauseCard && picks[i] === true);
         const uids = stagedChildUidsFor(stagedUid, n);
         try {
-            const commit = commitSplit(resolvedSeg, staged.cursors, {
-                refs: staged.refs,
+            const commit = commitSplit(resolvedSeg, cut.cursors, {
+                refs: cut.refs,
                 wasls,
                 newUids: uids,
                 contextCategory: category,
             });
             if (!commit) return;
             finalizeSplit(commit);
+            if (isHiddenPauseCard) return;
             for (let i = 0; i < n; i++) {
                 if (picks[i] !== undefined) continue;
                 const left = commit.pieces[i]?.segment_uid;
