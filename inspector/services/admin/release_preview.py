@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from qua_shared.config_loader import repo_config
+from qua_shared.dataset_license import DATA_LICENSE_ID
 from qua_shared.release_changelog import render_changelog
 from qua_shared.schemas import AdminReleasePreviewResponse
 from services.db import get_conn, repo_releases
@@ -110,7 +111,7 @@ def build_release_preview() -> AdminReleasePreviewResponse:
             "added": added,
             "refreshed": refreshed,
             "release_date": release_date,
-            "license": "CC-BY-4.0",
+            "license": DATA_LICENSE_ID,
             "links": {
                 "repo": f"https://github.com/{owner}/{repo}" if owner and repo else "",
                 "hf_dataset": (
