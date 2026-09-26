@@ -12,13 +12,14 @@ extension::
 
     {"cursors": list[int] | None,        # absolute ms cuts (N-1 entries)
      "refs":    list[str] | None,        # N per-section refs
-     "kind":    "cross_verse" | "repetition" | "hidden_pause" | None,
+     "kind":    "cross_verse" | "repetition" | "missed_waqf" | "hidden_pause" | None,
      "source":  "sidecar" | "miss"}
 
-``hidden_pause_v1.json`` entries that carry per-section ``refs`` are merged
-into the map with ``kind="hidden_pause"`` (an ``auto_split_v1`` entry for the
-same uid wins); entries without refs are omitted so the row falls back to
-plain Split.
+``missed_waqf_v1.json`` and ``hidden_pause_v1.json`` entries that carry
+per-section ``refs`` are merged into the map with ``kind="missed_waqf"`` /
+``kind="hidden_pause"``. Precedence per uid: ``auto_split_v1``, then
+``missed_waqf``, then ``hidden_pause``; entries without refs are omitted so
+the row falls back to plain Split.
 
 When the sidecar has no entry for ``segment_uid`` (offline alignment
 failed, or this is a post-edit descendant the offline pass never saw) the
@@ -32,7 +33,12 @@ from __future__ import annotations
 
 import logging
 
-from services.storage.data_loader import load_auto_split, load_detailed, load_hidden_pause
+from services.storage.data_loader import (
+    load_auto_split,
+    load_detailed,
+    load_hidden_pause,
+    load_missed_waqf,
+)
 from utils.references import chapter_from_ref
 
 logger = logging.getLogger(__name__)
@@ -66,14 +72,16 @@ def _find_segment_kind(reciter: str, chapter: int, segment_uid: str) -> str | No
 
 
 def _merged_by_uid(reciter: str) -> dict[str, dict]:
-    """``auto_split_v1`` entries plus ``hidden_pause_v1`` entries that have refs."""
+    """``auto_split_v1`` entries plus the ``missed_waqf_v1`` and
+    ``hidden_pause_v1`` entries that have refs, first source winning per uid."""
     by_uid, _meta = load_auto_split(reciter)
-    hidden, _hmeta = load_hidden_pause(reciter)
     merged = dict(by_uid)
-    for uid, hit in hidden.items():
-        if uid in merged or not isinstance(hit, dict) or not hit.get("refs"):
-            continue
-        merged[uid] = {"cursors": hit.get("cursors"), "refs": hit["refs"], "kind": "hidden_pause"}
+    for kind, loader in (("missed_waqf", load_missed_waqf), ("hidden_pause", load_hidden_pause)):
+        sidecar, _smeta = loader(reciter)
+        for uid, hit in sidecar.items():
+            if uid in merged or not isinstance(hit, dict) or not hit.get("refs"):
+                continue
+            merged[uid] = {"cursors": hit.get("cursors"), "refs": hit["refs"], "kind": kind}
     return merged
 
 

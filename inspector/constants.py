@@ -10,6 +10,7 @@ VALIDATION_CATEGORIES = (
     "low_confidence",
     "low_confidence_v2",
     "hidden_pause",
+    "missed_waqf",
     "false_split",
     "unmarked_wasl",
     "boundary_adj",

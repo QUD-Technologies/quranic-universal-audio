@@ -46,6 +46,7 @@ export type SegValAnyItem =
   | SegValLowConfidenceItem
   | SegValLowConfidenceV2Item
   | SegValHiddenPauseItem
+  | SegValMissedWaqfItem
   | SegValFalseSplitItem
   | SegValUnmarkedWaslItem
   | SegValBoundaryAdjItem
@@ -2047,7 +2048,7 @@ export interface SegValHiddenPauseItem {
   boundary: SegValHiddenPauseBoundary;
 }
 /**
- * Sidecar payload on a ``hidden_pause`` item. ``refs`` is ``null`` when
+ * Sidecar payload on a ``hidden_pause`` / ``missed_waqf`` item. ``refs`` is ``null`` when
  * the offline pass could not assign per-section refs (Auto Split falls back
  * to plain Split). ``score`` = agreeing axes × 1000 + min(gap_ms, 999).
  */
@@ -2058,7 +2059,8 @@ export interface SegValHiddenPauseBoundary {
   cuts?: SegValHiddenPauseCut[];
 }
 /**
- * One proposed cut inside a segment (``hidden_pause_v1`` sidecar).
+ * One proposed cut inside a segment (``hidden_pause_v1`` /
+ * ``missed_waqf_v1`` sidecars).
  *
  * ``axes`` names the offline arms that agree on the cut (``trio`` = collar
  * boundary head, ``lite`` = lite student, ...). ``evidence`` is the
@@ -2075,6 +2077,25 @@ export interface SegValHiddenPauseCut {
   evidence?: {
     [k: string]: unknown;
   };
+}
+/**
+ * ``missed_waqf`` — an offline phoneme + silence detector heard the
+ * reciter stop inside this segment, which was not cut there. Review-only
+ * (owner / maintainer capability).
+ *
+ * ``resolved`` marks an item already labelled — split from the card (edit
+ * history carries the split) or ignored (every cut WASL). The accordion keeps
+ * it so the labels stay reviewable; resolved items are excluded from
+ * ``category_counts``. ``segment_uid`` is the split ROOT uid.
+ */
+export interface SegValMissedWaqfItem {
+  ref: string;
+  chapter: number;
+  seg_index: number;
+  segment_uid?: string | null;
+  classified_issues?: string[];
+  boundary: SegValHiddenPauseBoundary;
+  resolved?: boolean;
 }
 /**
  * ``false_split`` — offline re-segmentation heard continuous speech
@@ -2221,9 +2242,10 @@ export interface SegValBasmalaAminItem {
  * (additive alias). ``category_counts`` mirrors the per-category lengths in
  * registry-declared order. ``split_group_index`` maps a root segment uid to
  * its transitive split-descendant uids. ``low_confidence_v2_meta`` /
- * ``hidden_pause_meta`` / ``false_split_meta`` / ``unmarked_wasl_meta`` are
- * present only when the sidecar carried a ``_meta`` block. ``hidden_pause``
- * / ``false_split`` / ``unmarked_wasl`` (and their metas) are omitted for
+ * ``hidden_pause_meta`` / ``missed_waqf_meta`` / ``false_split_meta`` /
+ * ``unmarked_wasl_meta`` are present only when the sidecar carried a
+ * ``_meta`` block. ``hidden_pause`` / ``missed_waqf`` / ``false_split`` /
+ * ``unmarked_wasl`` (and their metas) are omitted for
  * viewers without ``segments.view_boundary_review``. Each item carries a
  * ``classified_issues`` field.
  */
@@ -2236,6 +2258,7 @@ export interface SegValidateResponse {
   low_confidence?: SegValLowConfidenceItem[];
   low_confidence_v2?: SegValLowConfidenceV2Item[];
   hidden_pause?: SegValHiddenPauseItem[] | null;
+  missed_waqf?: SegValMissedWaqfItem[] | null;
   false_split?: SegValFalseSplitItem[] | null;
   unmarked_wasl?: SegValUnmarkedWaslItem[] | null;
   boundary_adj?: SegValBoundaryAdjItem[];
@@ -2254,6 +2277,7 @@ export interface SegValidateResponse {
   };
   low_confidence_v2_meta?: SegValProbeMeta | null;
   hidden_pause_meta?: SegValBoundaryMeta | null;
+  missed_waqf_meta?: SegValBoundaryMeta | null;
   false_split_meta?: SegValBoundaryMeta | null;
   unmarked_wasl_meta?: SegValBoundaryMeta | null;
 }
@@ -2285,7 +2309,8 @@ export interface SegValProbeMeta {
   [k: string]: unknown;
 }
 /**
- * ``hidden_pause_meta`` / ``false_split_meta`` / ``unmarked_wasl_meta`` —
+ * ``hidden_pause_meta`` / ``missed_waqf_meta`` / ``false_split_meta`` /
+ * ``unmarked_wasl_meta`` —
  * provenance of the offline boundary-review sidecars (arms, segment counts,
  * by-axes tallies). Open shape: the ``_meta`` block is passed through
  * verbatim.

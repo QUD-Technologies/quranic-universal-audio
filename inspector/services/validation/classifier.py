@@ -225,6 +225,7 @@ def classify_flags(
     canonical: dict | None,
     probe_failed_uids: set | None = None,
     hidden_pause_uids: Container[str] | None = None,
+    missed_waqf_uids: Container[str] | None = None,
     false_split_uids: Container[str] | None = None,
     unmarked_wasl_uids: Container[str] | None = None,
     riwayah: str = DEFAULT_SDK_RIWAYAH,
@@ -234,7 +235,7 @@ def classify_flags(
     Keys:
       - ``failed``, ``audio_bleeding``, ``repetitions``, ``low_confidence``,
         ``low_confidence_detail``, ``low_confidence_v2``, ``hidden_pause``,
-        ``false_split``, ``unmarked_wasl``, ``cross_verse``, ``boundary_adj``,
+        ``missed_waqf``, ``false_split``, ``unmarked_wasl``, ``cross_verse``, ``boundary_adj``,
         ``muqattaat``, ``qalqala``: bool.
       - ``qalqala_letter``: ``str | None`` — populated when ``qalqala`` fires.
       - ``end_of_verse``: bool — reserved (callers pass ``word_counts`` to
@@ -245,7 +246,8 @@ def classify_flags(
     signal). Pass ``None`` to skip the v2 check; pass an empty set when
     the sidecar exists but listed no failures.
 
-    ``hidden_pause_uids`` / ``false_split_uids`` / ``unmarked_wasl_uids`` are
+    ``hidden_pause_uids`` / ``missed_waqf_uids`` / ``false_split_uids`` /
+    ``unmarked_wasl_uids`` are
     the uid sets (or by-uid maps) from the offline boundary-review sidecars; a
     segment flags when its uid is present and the category is not suppressed.
     """
@@ -257,6 +259,7 @@ def classify_flags(
         "low_confidence_detail": False,
         "low_confidence_v2": False,
         "hidden_pause": False,
+        "missed_waqf": False,
         "false_split": False,
         "unmarked_wasl": False,
         "cross_verse": False,
@@ -307,6 +310,8 @@ def classify_flags(
     seg_uid = seg.get("segment_uid", "")
     if seg_uid and hidden_pause_uids and seg_uid in hidden_pause_uids:
         result["hidden_pause"] = not is_suppressed_for(seg, "hidden_pause")
+    if seg_uid and missed_waqf_uids and seg_uid in missed_waqf_uids:
+        result["missed_waqf"] = not is_suppressed_for(seg, "missed_waqf")
     if seg_uid and false_split_uids and seg_uid in false_split_uids:
         result["false_split"] = not is_suppressed_for(seg, "false_split")
     if seg_uid and unmarked_wasl_uids and seg_uid in unmarked_wasl_uids:
@@ -378,6 +383,7 @@ def classify_segment(
     detail: bool = False,
     probe_failed_uids: set | None = None,
     hidden_pause_uids: Container[str] | None = None,
+    missed_waqf_uids: Container[str] | None = None,
     false_split_uids: Container[str] | None = None,
     unmarked_wasl_uids: Container[str] | None = None,
     riwayah: str = DEFAULT_SDK_RIWAYAH,
@@ -429,6 +435,7 @@ def classify_segment(
         canonical,
         probe_failed_uids=probe_failed_uids,
         hidden_pause_uids=hidden_pause_uids,
+        missed_waqf_uids=missed_waqf_uids,
         false_split_uids=false_split_uids,
         unmarked_wasl_uids=unmarked_wasl_uids,
         riwayah=riwayah,
@@ -451,6 +458,7 @@ def classify_segment_full(
     detail: bool = False,
     probe_failed_uids: set | None = None,
     hidden_pause_uids: Container[str] | None = None,
+    missed_waqf_uids: Container[str] | None = None,
     false_split_uids: Container[str] | None = None,
     unmarked_wasl_uids: Container[str] | None = None,
     riwayah: str = DEFAULT_SDK_RIWAYAH,
@@ -508,6 +516,7 @@ def classify_segment_full(
         canonical,
         probe_failed_uids=probe_failed_uids,
         hidden_pause_uids=hidden_pause_uids,
+        missed_waqf_uids=missed_waqf_uids,
         false_split_uids=false_split_uids,
         unmarked_wasl_uids=unmarked_wasl_uids,
         riwayah=riwayah,
@@ -529,6 +538,7 @@ def classify_entry(
     detail: bool = False,
     probe_failed_uids: set | None = None,
     hidden_pause_uids: Container[str] | None = None,
+    missed_waqf_uids: Container[str] | None = None,
     false_split_uids: Container[str] | None = None,
     unmarked_wasl_uids: Container[str] | None = None,
     riwayah: str = DEFAULT_SDK_RIWAYAH,
@@ -556,6 +566,7 @@ def classify_entry(
             detail=detail,
             probe_failed_uids=probe_failed_uids,
             hidden_pause_uids=hidden_pause_uids,
+            missed_waqf_uids=missed_waqf_uids,
             false_split_uids=false_split_uids,
             unmarked_wasl_uids=unmarked_wasl_uids,
             riwayah=riwayah,

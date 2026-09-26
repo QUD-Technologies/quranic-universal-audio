@@ -129,6 +129,7 @@ def test_resolves_by_edit_set_contains_only_soft_categories():
     because it's keyed against a frozen probe sidecar that confidence doesn't
     affect. ``basmala_amin`` is included because any edit from the card signals
     "I dealt with it" — revalidation must not re-raise the flag for that uid.
+    ``missed_waqf`` is included so a split from its card resolves the root.
     """
     assert RESOLVES_BY_EDIT_CATEGORIES == frozenset(
         {
@@ -137,6 +138,7 @@ def test_resolves_by_edit_set_contains_only_soft_categories():
             "repetitions",
             "low_confidence_v2",
             "basmala_amin",
+            "missed_waqf",
         }
     )
 

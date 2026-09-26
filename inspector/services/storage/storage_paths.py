@@ -182,6 +182,13 @@ def hidden_pause_path(slug: str) -> str:
     return reciter_file(slug, "hidden_pause_v1.json")
 
 
+def missed_waqf_path(slug: str) -> str:
+    """Boundary-review sidecar — per-seg cursors where an offline phoneme +
+    silence detector heard the reciter stop inside the segment. Keyed by
+    ``segment_uid``; read by ``services/data_loader.load_missed_waqf``."""
+    return reciter_file(slug, "missed_waqf_v1.json")
+
+
 def false_split_path(slug: str) -> str:
     """Boundary-review sidecar — per-seg evidence that offline re-segmentation
     heard continuous speech across the segment's end. Keyed by ``segment_uid``;
@@ -259,6 +266,7 @@ PER_RECITER_FILES: tuple[str, ...] = (
     "ts_validation.json",
     "auto_split_v1.json",
     "hidden_pause_v1.json",
+    "missed_waqf_v1.json",
     "false_split_v1.json",
     "unmarked_wasl_v1.json",
     "pipeline_meta.json",

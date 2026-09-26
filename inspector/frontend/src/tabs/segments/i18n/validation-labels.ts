@@ -21,6 +21,7 @@ export const VALIDATION_TITLE: Readonly<Record<string, () => string>> = Object.f
     audio_bleeding: m.segments_validation_audio_bleeding_title,
     boundary_adj: m.segments_validation_boundary_adj_title,
     cross_verse: m.segments_validation_cross_verse_title,
+    missed_waqf: m.segments_validation_missed_waqf_title,
     qalqala: m.segments_validation_qalqala_title,
     muqattaat: m.segments_validation_muqattaat_title,
     basmala_amin: m.segments_validation_basmala_amin_title,

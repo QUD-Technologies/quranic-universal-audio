@@ -1,15 +1,21 @@
 /**
- * Staged cross-verse split — eligibility gate + display-piece builder.
+ * Staged split (cross-verse, missed-waqf) — eligibility gate, per-card
+ * source, display-piece builder and the WAQF-only commit.
  */
 import { describe, expect, it } from 'vitest';
 
+import type { SegValAnyItem } from '../../../../lib/types/generated/schemas';
 import type { Segment } from '../../../../lib/types/view-models';
 import type { AutoSplitMap } from '../../stores/auto-split';
 import {
     buildStagedChildren,
-    HIDDEN_PAUSE_KINDS,
     isStagedSegment,
+    itemCursorCount,
+    MISSED_WAQF_KINDS,
     resolveStagedSplit,
+    stagedCommit,
+    stagedPickKey,
+    stagedSplitFor,
     waqfOnlySplit,
 } from '../../utils/validation/staged-split';
 
@@ -50,20 +56,21 @@ describe('resolveStagedSplit', () => {
         expect(resolveStagedSplit(seg({ matched_ref: '2:1:1-2:1:7' }), map())).toBeNull();
     });
 
-    it('is null for a repetition / hidden_pause entry', () => {
+    it('is null for a repetition / hidden_pause / missed_waqf entry', () => {
         expect(resolveStagedSplit(seg(), map({ kind: 'repetition' }))).toBeNull();
         expect(resolveStagedSplit(seg(), map({ kind: 'hidden_pause' }))).toBeNull();
+        expect(resolveStagedSplit(seg(), map({ kind: 'missed_waqf' }))).toBeNull();
     });
 
-    it('stages a hidden_pause entry inside one verse when asked for that kind', () => {
+    it('stages a missed_waqf entry inside one verse when asked for that kind', () => {
         const inVerse = seg({ matched_ref: '2:1:1-2:1:9' });
-        const entry = map({ kind: 'hidden_pause', refs: ['2:1:1-2:1:4', '2:1:5-2:1:9'] });
-        expect(resolveStagedSplit(inVerse, entry, HIDDEN_PAUSE_KINDS)).toEqual({
+        const entry = map({ kind: 'missed_waqf', refs: ['2:1:1-2:1:4', '2:1:5-2:1:9'] });
+        expect(resolveStagedSplit(inVerse, entry, MISSED_WAQF_KINDS)).toEqual({
             cursors: [3000],
             refs: ['2:1:1-2:1:4', '2:1:5-2:1:9'],
         });
         expect(resolveStagedSplit(inVerse, entry)).toBeNull();
-        expect(resolveStagedSplit(seg(), map(), HIDDEN_PAUSE_KINDS)).toBeNull();
+        expect(resolveStagedSplit(seg(), map(), MISSED_WAQF_KINDS)).toBeNull();
     });
 
     it('is null when refs length does not match cursors + 1', () => {
@@ -77,6 +84,40 @@ describe('resolveStagedSplit', () => {
             cursors: [3000, 2000],
             refs: ['a', 'b', 'c'],
         }))).toBeNull();
+    });
+});
+
+describe('stagedSplitFor', () => {
+    const inVerse = seg({ matched_ref: '2:1:1-2:1:9' });
+    const mwItem = (boundary: Record<string, unknown>): SegValAnyItem =>
+        ({ chapter: 2, seg_index: 4, segment_uid: 'root', boundary }) as unknown as SegValAnyItem;
+
+    it('stages a missed-waqf card from its own item boundary, ignoring the map', () => {
+        const item = mwItem({ cursors: [2000, 4000], refs: ['2:1:1-2:1:2', '2:1:3-2:1:6', '2:1:7-2:1:9'] });
+        const crossVerseMap = map();
+        expect(stagedSplitFor('missed_waqf', inVerse, item, crossVerseMap)).toEqual({
+            cursors: [2000, 4000],
+            refs: ['2:1:1-2:1:2', '2:1:3-2:1:6', '2:1:7-2:1:9'],
+        });
+        expect(itemCursorCount(item)).toBe(2);
+    });
+
+    it('does not stage a missed-waqf item without refs', () => {
+        const item = mwItem({ cursors: [2000], refs: null });
+        expect(stagedSplitFor('missed_waqf', inVerse, item, null)).toBeNull();
+        expect(itemCursorCount(item)).toBe(1);
+    });
+
+    it('stages a cross-verse card from the map entry', () => {
+        expect(stagedSplitFor('cross_verse', seg(), null, map())).toEqual({
+            cursors: [3000],
+            refs: ['2:1:1-2:1:4', '2:2:1-2:2:5'],
+        });
+    });
+
+    it('keys session picks per category so one seg can sit in both accordions', () => {
+        expect(stagedPickKey('cross_verse', 'root')).toBe('root');
+        expect(stagedPickKey('missed_waqf', 'root')).toBe('missed_waqf:root');
     });
 });
 
@@ -136,5 +177,39 @@ describe('waqfOnlySplit', () => {
 
     it('is null when every boundary is WASL', () => {
         expect(waqfOnlySplit(staged, [true, true])).toBeNull();
+    });
+});
+
+describe('stagedCommit', () => {
+    const staged = { cursors: [2000, 3500], refs: ['2:1:1-2:1:4', '2:1:5-2:1:8', '2:1:9-2:1:12'] };
+
+    it('missed-waqf: all WASL ignores the item instead of splitting', () => {
+        expect(stagedCommit('missed_waqf', staged, [true, true])).toEqual({ kind: 'ignore' });
+    });
+
+    it('missed-waqf: mixed picks split at the WAQF cursors only, none marked wasl', () => {
+        expect(stagedCommit('missed_waqf', staged, [true, false])).toEqual({
+            kind: 'split',
+            split: { cursors: [3500], refs: ['2:1:1-2:1:8', '2:1:9-2:1:12'] },
+            wasls: [false],
+        });
+        expect(stagedCommit('missed_waqf', staged, [false, false])).toEqual({
+            kind: 'split',
+            split: staged,
+            wasls: [false, false],
+        });
+    });
+
+    it('cross-verse: cuts every boundary and carries the picks as is_wasl', () => {
+        expect(stagedCommit('cross_verse', staged, [true, false])).toEqual({
+            kind: 'split',
+            split: staged,
+            wasls: [true, false],
+        });
+        expect(stagedCommit('cross_verse', staged, [true, true])).toEqual({
+            kind: 'split',
+            split: staged,
+            wasls: [true, true],
+        });
     });
 });

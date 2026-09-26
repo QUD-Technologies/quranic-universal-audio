@@ -500,7 +500,8 @@ class SegValLowConfidenceV2Item(BaseModel):
 
 
 class SegValHiddenPauseCut(BaseModel):
-    """One proposed cut inside a segment (``hidden_pause_v1`` sidecar).
+    """One proposed cut inside a segment (``hidden_pause_v1`` /
+    ``missed_waqf_v1`` sidecars).
 
     ``axes`` names the offline arms that agree on the cut (``trio`` = collar
     boundary head, ``lite`` = lite student, ...). ``evidence`` is the
@@ -519,7 +520,7 @@ class SegValHiddenPauseCut(BaseModel):
 
 
 class SegValHiddenPauseBoundary(BaseModel):
-    """Sidecar payload on a ``hidden_pause`` item. ``refs`` is ``null`` when
+    """Sidecar payload on a ``hidden_pause`` / ``missed_waqf`` item. ``refs`` is ``null`` when
     the offline pass could not assign per-section refs (Auto Split falls back
     to plain Split). ``score`` = agreeing axes × 1000 + min(gap_ms, 999)."""
 
@@ -543,6 +544,28 @@ class SegValHiddenPauseItem(BaseModel):
     segment_uid: str | None = None
     classified_issues: list[str] = Field(default_factory=list)
     boundary: SegValHiddenPauseBoundary
+
+
+class SegValMissedWaqfItem(BaseModel):
+    """``missed_waqf`` — an offline phoneme + silence detector heard the
+    reciter stop inside this segment, which was not cut there. Review-only
+    (owner / maintainer capability).
+
+    ``resolved`` marks an item already labelled — split from the card (edit
+    history carries the split) or ignored (every cut WASL). The accordion keeps
+    it so the labels stay reviewable; resolved items are excluded from
+    ``category_counts``. ``segment_uid`` is the split ROOT uid.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    ref: Ref
+    chapter: int
+    seg_index: int
+    segment_uid: str | None = None
+    classified_issues: list[str] = Field(default_factory=list)
+    boundary: SegValHiddenPauseBoundary
+    resolved: bool = False
 
 
 class SegValFalseSplitBoundary(BaseModel):
@@ -717,6 +740,7 @@ SegValAnyItemUnion = (
     | SegValLowConfidenceItem
     | SegValLowConfidenceV2Item
     | SegValHiddenPauseItem
+    | SegValMissedWaqfItem
     | SegValFalseSplitItem
     | SegValUnmarkedWaslItem
     | SegValBoundaryAdjItem
@@ -746,7 +770,8 @@ class SegValProbeMeta(BaseModel):
 
 
 class SegValBoundaryMeta(BaseModel):
-    """``hidden_pause_meta`` / ``false_split_meta`` / ``unmarked_wasl_meta`` —
+    """``hidden_pause_meta`` / ``missed_waqf_meta`` / ``false_split_meta`` /
+    ``unmarked_wasl_meta`` —
     provenance of the offline boundary-review sidecars (arms, segment counts,
     by-axes tallies). Open shape: the ``_meta`` block is passed through
     verbatim."""
@@ -782,9 +807,10 @@ class SegValidateResponse(BaseModel):
     (additive alias). ``category_counts`` mirrors the per-category lengths in
     registry-declared order. ``split_group_index`` maps a root segment uid to
     its transitive split-descendant uids. ``low_confidence_v2_meta`` /
-    ``hidden_pause_meta`` / ``false_split_meta`` / ``unmarked_wasl_meta`` are
-    present only when the sidecar carried a ``_meta`` block. ``hidden_pause``
-    / ``false_split`` / ``unmarked_wasl`` (and their metas) are omitted for
+    ``hidden_pause_meta`` / ``missed_waqf_meta`` / ``false_split_meta`` /
+    ``unmarked_wasl_meta`` are present only when the sidecar carried a
+    ``_meta`` block. ``hidden_pause`` / ``missed_waqf`` / ``false_split`` /
+    ``unmarked_wasl`` (and their metas) are omitted for
     viewers without ``segments.view_boundary_review``. Each item carries a
     ``classified_issues`` field.
     """
@@ -799,6 +825,7 @@ class SegValidateResponse(BaseModel):
     low_confidence: list[SegValLowConfidenceItem] = Field(default_factory=list)
     low_confidence_v2: list[SegValLowConfidenceV2Item] = Field(default_factory=list)
     hidden_pause: list[SegValHiddenPauseItem] | None = None
+    missed_waqf: list[SegValMissedWaqfItem] | None = None
     false_split: list[SegValFalseSplitItem] | None = None
     unmarked_wasl: list[SegValUnmarkedWaslItem] | None = None
     boundary_adj: list[SegValBoundaryAdjItem] = Field(default_factory=list)
@@ -813,6 +840,7 @@ class SegValidateResponse(BaseModel):
     split_group_index: dict[str, list[str]] = Field(default_factory=dict)
     low_confidence_v2_meta: SegValProbeMeta | None = None
     hidden_pause_meta: SegValBoundaryMeta | None = None
+    missed_waqf_meta: SegValBoundaryMeta | None = None
     false_split_meta: SegValBoundaryMeta | None = None
     unmarked_wasl_meta: SegValBoundaryMeta | None = None
 

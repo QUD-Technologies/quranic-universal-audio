@@ -366,6 +366,7 @@
   "segments_validation_basmala_amin_title": "البسملة + آمين",
   "segments_validation_sort_score_label": "الدرجة",
   "segments_validation_hidden_pause_title": "وقفة مخفية (مراجعة)",
+  "segments_validation_missed_waqf_title": "وقف فائت (مراجعة)",
   "segments_validation_false_split_title": "تقسيم خاطئ (مراجعة)",
   "segments_validation_unmarked_wasl_title": "وصل غير موسوم (مراجعة)",
   "segments_boundary_cut_at": "قطع {time}",

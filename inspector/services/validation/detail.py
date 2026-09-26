@@ -132,7 +132,8 @@ def _cut_payload(cut: dict) -> dict:
 
 
 def hidden_pause_boundary(entry: dict) -> dict:
-    """Project a ``hidden_pause_v1`` by-uid entry to the wire ``boundary`` shape."""
+    """Project a ``hidden_pause_v1`` / ``missed_waqf_v1`` by-uid entry to the
+    wire ``boundary`` shape."""
     refs = entry.get("refs")
     return {
         "cursors": [int(c) for c in (entry.get("cursors") or [])],
@@ -167,6 +168,7 @@ def _build_detail_lists(
     probe_failed_uids: set | None = None,
     deleted_basmala_chapters: set[int] | None = None,
     hidden_pause_map: dict[str, dict] | None = None,
+    missed_waqf_map: dict[str, dict] | None = None,
     false_split_map: dict[str, dict] | None = None,
     unmarked_wasl_map: dict[str, dict] | None = None,
     riwayah: str = DEFAULT_SDK_RIWAYAH,
@@ -175,14 +177,16 @@ def _build_detail_lists(
 
     Returns a dict with keys:
       chapter_seg_idx, verse_segments,
-      failed, low_confidence, low_confidence_v2, hidden_pause, false_split,
-      unmarked_wasl, boundary_adj, cross_verse, audio_bleeding, repetitions,
+      failed, low_confidence, low_confidence_v2, hidden_pause, missed_waqf,
+      false_split, unmarked_wasl, boundary_adj, cross_verse, audio_bleeding, repetitions,
       muqattaat, qalqala, basmala_amin.
 
-    ``hidden_pause_map`` / ``false_split_map`` / ``unmarked_wasl_map`` are the
-    ``by_uid`` maps of the offline boundary-review sidecars; each flagged item
-    carries the sidecar payload under ``boundary`` so the card can render the
-    evidence.
+    ``hidden_pause_map`` / ``missed_waqf_map`` / ``false_split_map`` /
+    ``unmarked_wasl_map`` are the ``by_uid`` maps of the offline boundary-review
+    sidecars; each flagged item carries the sidecar payload under ``boundary``
+    so the card can render the evidence. A live ``missed_waqf`` seg whose flag
+    is suppressed (ignored = every cut WASL, or split from the card) is still
+    emitted, with ``resolved: True``, so its labels stay reviewable.
 
     ``probe_failed_uids`` is the set of segment UIDs flagged by the
     extraction-time MFA tight-beam probe; pass ``None`` (or omit) when
@@ -208,6 +212,7 @@ def _build_detail_lists(
     low_confidence: list[dict] = []
     low_confidence_v2: list[dict] = []
     hidden_pause: list[dict] = []
+    missed_waqf: list[dict] = []
     false_split: list[dict] = []
     unmarked_wasl: list[dict] = []
     boundary_adj: list[dict] = []
@@ -376,6 +381,7 @@ def _build_detail_lists(
                 canonical,
                 probe_failed_uids=probe_failed_uids,
                 hidden_pause_uids=hidden_pause_map,
+                missed_waqf_uids=missed_waqf_map,
                 false_split_uids=false_split_map,
                 unmarked_wasl_uids=unmarked_wasl_map,
                 riwayah=riwayah,
@@ -464,6 +470,20 @@ def _build_detail_lists(
                         "boundary": hidden_pause_boundary((hidden_pause_map or {})[str(seg_uid)]),
                     }
                 )
+
+            missed_waqf_entry = (missed_waqf_map or {}).get(str(seg_uid)) if seg_uid else None
+            if missed_waqf_entry is not None:
+                item = {
+                    "ref": matched_ref,
+                    "chapter": chapter,
+                    "seg_index": i,
+                    "segment_uid": seg_uid,
+                    "classified_issues": classified,
+                    "boundary": hidden_pause_boundary(missed_waqf_entry),
+                }
+                if not flags["missed_waqf"]:
+                    item["resolved"] = True
+                missed_waqf.append(item)
 
             if flags["false_split"]:
                 false_split.append(
@@ -651,6 +671,7 @@ def _build_detail_lists(
         "low_confidence": low_confidence,
         "low_confidence_v2": low_confidence_v2,
         "hidden_pause": hidden_pause,
+        "missed_waqf": missed_waqf,
         "false_split": false_split,
         "unmarked_wasl": unmarked_wasl,
         "boundary_adj": boundary_adj,

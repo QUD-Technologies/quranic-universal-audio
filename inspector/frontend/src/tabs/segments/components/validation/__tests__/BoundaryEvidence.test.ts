@@ -95,6 +95,32 @@ describe('BoundaryEvidence', () => {
         expect(container.querySelectorAll('.bx-axis')).toHaveLength(0);
     });
 
+    it('renders one line per missed-waqf cut with its own score', () => {
+        const cut = hiddenPauseItem.boundary.cuts[0]!;
+        const item = {
+            ...hiddenPauseItem,
+            classified_issues: ['missed_waqf'],
+            boundary: {
+                ...hiddenPauseItem.boundary,
+                cursors: [123456, 130000],
+                score: 1300,
+                cuts: [
+                    { ...cut, axes: ['phoneme'], score: 1300 },
+                    { ...cut, cursor_ms: 130000, axes: ['phoneme'], gap_ms: 180, score: 1180, word: 'قال' },
+                ],
+            },
+        };
+        const { container, getByText } = render(BoundaryEvidence, {
+            category: 'missed_waqf',
+            item: item as any,
+        });
+        expect(container.querySelectorAll('.bx-cursor')).toHaveLength(2);
+        expect(getByText('cut 2:03.456')).toBeTruthy();
+        expect(getByText('cut 2:10.000')).toBeTruthy();
+        expect(getByText('قال')).toBeTruthy();
+        expect(getByText('score 1180')).toBeTruthy();
+    });
+
     it('renders false-split evidence with the merge-target note and wasl chip', () => {
         const { getByText, queryByText } = render(BoundaryEvidence, {
             category: 'false_split',

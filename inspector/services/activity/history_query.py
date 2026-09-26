@@ -32,6 +32,10 @@ logger = logging.getLogger(__name__)
 # confidence bump to 1.0 clears v1 but has no effect on v2 — without
 # resolved-by-edit handling the v2 card would re-appear on every revalidate
 # after the user edited it.
+#
+# ``missed_waqf`` is included: a split from its card keeps the root uid (piece
+# 0), which is still in the sidecar; the edit resolves it, and the validator
+# lists it as a ``resolved`` item rather than an open one.
 RESOLVES_BY_EDIT_CATEGORIES: frozenset[str] = frozenset(
     {
         "boundary_adj",
@@ -39,6 +43,7 @@ RESOLVES_BY_EDIT_CATEGORIES: frozenset[str] = frozenset(
         "repetitions",
         "low_confidence_v2",
         "basmala_amin",
+        "missed_waqf",
     }
 )
 

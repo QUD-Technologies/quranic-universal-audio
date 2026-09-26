@@ -1,4 +1,5 @@
-"""Boundary-review categories (``hidden_pause`` / ``false_split`` / ``unmarked_wasl``).
+"""Boundary-review categories (``hidden_pause`` / ``missed_waqf`` / ``false_split`` /
+``unmarked_wasl``).
 
 Covers the classifier flags, the detail-list items (with the sidecar
 ``boundary`` payload round-tripping through ``SegValidateResponse``), and the
@@ -33,6 +34,45 @@ HIDDEN_ENTRY = {
             "verse_end": False,
             "evidence": {"trio": {"end_ms": 1480, "next_start_ms": 1930, "gap_ms": 450}},
         }
+    ],
+}
+MISSED_ENTRY = {
+    "kind": "missed_waqf",
+    "chapter": 1,
+    "cursors": [1200, 2400],
+    "refs": ["1:1:1-1:1:1", "1:1:2-1:1:3", "1:1:4-1:1:4"],
+    "score": 1300,
+    "cuts": [
+        {
+            "cursor_ms": 1200,
+            "axes": ["phoneme"],
+            "gap_ms": 300,
+            "score": 1300,
+            "word": "بسم",
+            "final_class": "nasal",
+            "verse_end": False,
+            "evidence": {
+                "phoneme": {
+                    "gain": 4.2,
+                    "gain_pos": 3,
+                    "separability": 0.8,
+                    "silence_ms": 300,
+                    "dip_db": 14.0,
+                    "after_ref": "1:1:1",
+                    "next_ref": "1:1:2",
+                }
+            },
+        },
+        {
+            "cursor_ms": 2400,
+            "axes": ["phoneme"],
+            "gap_ms": 180,
+            "score": 1180,
+            "word": "الرحمن",
+            "final_class": "nasal",
+            "verse_end": False,
+            "evidence": {"phoneme": {"silence_ms": 180}},
+        },
     ],
 }
 FALSE_ENTRY = {
@@ -273,3 +313,80 @@ def test_validate_reciter_segments_gate(monkeypatch, tmp_reciter_dir):
     assert gated["category_counts"]["false_split"] == 0
     assert gated["category_counts"]["unmarked_wasl"] == 0
     assert gated["category_counts"]["cross_verse"] == full["category_counts"]["cross_verse"]
+
+
+def test_missed_waqf_flag_fires_on_uid_and_is_suppressible():
+    assert _flags(_seg("u1", "1:1:1-1:1:4"))["missed_waqf"] is False
+    assert _flags(_seg("u1", "1:1:1-1:1:4"), missed_waqf_uids={"u1"})["missed_waqf"] is True
+    ignored = _seg("u1", "1:1:1-1:1:4", ignored_categories=["missed_waqf"])
+    assert _flags(ignored, missed_waqf_uids={"u1"})["missed_waqf"] is False
+    edited = _seg("u1", "1:1:1-1:1:4", _resolved_by_edit=["missed_waqf"])
+    assert _flags(edited, missed_waqf_uids={"u1"})["missed_waqf"] is False
+
+
+def test_missed_waqf_items_carry_boundary_and_validate():
+    entries = [{"ref": "1", "segments": [_seg("u1", "1:1:1-1:1:4")]}]
+    detail = _detail(entries, missed_waqf_map={"u1": MISSED_ENTRY})
+    (mw,) = detail["missed_waqf"]
+    assert mw["segment_uid"] == "u1"
+    assert "missed_waqf" in mw["classified_issues"]
+    assert "resolved" not in mw
+    assert mw["boundary"]["cursors"] == [1200, 2400]
+    assert mw["boundary"]["refs"] == MISSED_ENTRY["refs"]
+    assert mw["boundary"]["cuts"][0]["evidence"]["phoneme"]["dip_db"] == 14.0
+    dumped = SegValidateResponse.model_validate({"missed_waqf": detail["missed_waqf"]}).model_dump(
+        mode="json", exclude_unset=True
+    )
+    assert dumped["missed_waqf"][0]["boundary"]["cuts"][1]["word"] == "الرحمن"
+
+
+def test_labelled_missed_waqf_stays_listed_as_resolved():
+    """Ignored (all WASL) or resolved by an edit from the card (split) — the
+    item stays in the list with ``resolved: True`` so its labels are reviewable."""
+    entries = [
+        {
+            "ref": "1",
+            "segments": [
+                _seg("u1", "1:1:1-1:1:4", ignored_categories=["missed_waqf"]),
+                _seg("u2", "1:2:1-1:2:2", _resolved_by_edit=["missed_waqf"]),
+                _seg("u3", "1:2:3-1:2:4"),
+            ],
+        }
+    ]
+    detail = _detail(
+        entries, missed_waqf_map={"u1": MISSED_ENTRY, "u2": MISSED_ENTRY, "u3": MISSED_ENTRY}
+    )
+    by_uid = {it["segment_uid"]: it for it in detail["missed_waqf"]}
+    assert by_uid["u1"]["resolved"] is True
+    assert by_uid["u2"]["resolved"] is True
+    assert "resolved" not in by_uid["u3"]
+    SegValidateResponse.model_validate({"missed_waqf": detail["missed_waqf"]})
+
+
+def test_validate_counts_open_missed_waqf_only_and_gates(monkeypatch, tmp_reciter_dir):
+    from services import validation as val
+    from services.storage.data_loader import load_detailed
+
+    reciter = "fixture_reciter"
+    tmp_reciter_dir.install(reciter, "112-ikhlas")
+    segs = load_detailed(reciter)[0]["segments"]
+    first, second = segs[0]["segment_uid"], segs[1]["segment_uid"]
+    segs[1]["ignored_categories"] = ["missed_waqf"]
+    monkeypatch.setattr(
+        val,
+        "load_missed_waqf",
+        lambda _r: ({first: MISSED_ENTRY, second: MISSED_ENTRY}, {"kind": "missed_waqf"}),
+    )
+
+    full = val.validate_reciter_segments(reciter)
+    assert full is not None
+    assert full["category_counts"]["missed_waqf"] == 1
+    assert [it["segment_uid"] for it in full["missed_waqf"]] == [first, second]
+    assert full["missed_waqf"][1]["resolved"] is True
+    assert full["missed_waqf_meta"] == {"kind": "missed_waqf"}
+
+    gated = val.validate_reciter_segments(reciter, include_boundary_review=False)
+    assert gated is not None
+    assert "missed_waqf" not in gated
+    assert "missed_waqf_meta" not in gated
+    assert gated["category_counts"]["missed_waqf"] == 0

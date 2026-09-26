@@ -125,6 +125,14 @@ EXPECTED_MATRIX = {
         "card_type": "generic",
         "severity": "info",
     },
+    "missed_waqf": {
+        "can_ignore": True,
+        "auto_suppress": True,
+        "persists_ignore": True,
+        "scope": "per_segment",
+        "card_type": "generic",
+        "severity": "info",
+    },
     "false_split": {
         "can_ignore": True,
         "auto_suppress": True,

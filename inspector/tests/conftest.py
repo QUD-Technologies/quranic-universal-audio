@@ -373,6 +373,7 @@ _SEG_CACHE_NAMES = (
     "_seg_probe_v2",
     "_seg_auto_split",
     "_seg_hidden_pause",
+    "_seg_missed_waqf",
     "_seg_false_split",
     "_seg_unmarked_wasl",
     "_seg_pipeline_meta",

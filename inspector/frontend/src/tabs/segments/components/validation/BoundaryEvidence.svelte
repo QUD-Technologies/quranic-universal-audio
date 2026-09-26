@@ -1,10 +1,11 @@
 <script lang="ts">
     /**
-     * BoundaryEvidence — the evidence strip on a Hidden Pause / False Split /
-     * Unmarked Wasl card. Reads the item's `boundary` payload (offline sidecar
-     * pass-through) and renders: the agreeing axes as chips, the proposed
-     * cursor(s) as m:ss.mmm, the gap, the word and its final-letter class, and
-     * the score. A False Split row also states that the merge target is the
+     * BoundaryEvidence — the evidence strip on a Hidden Pause / Missed Waqf /
+     * False Split / Unmarked Wasl card. Reads the item's `boundary` payload
+     * (offline sidecar pass-through) and renders: the agreeing axes as chips,
+     * the proposed cursor(s) as m:ss.mmm (one line per cut on Hidden Pause and
+     * Missed Waqf, which share the cuts shape), the gap, the word and its
+     * final-letter class, and the score. A False Split row also states that the merge target is the
      * next segment; an Unmarked Wasl row states the join was read through and
      * should be marked waṣl.
      */

@@ -87,9 +87,10 @@ _seg_probe_v2: _KeyedCache[tuple[set[str], dict | None]] = _KeyedCache()
 # Auto-Split sidecar — precomputed cursors/refs by uid, plus meta. Empty dict
 # tuple member when sidecar absent so callers don't re-stat on every lookup.
 _seg_auto_split: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
-# Boundary-review sidecars (hidden_pause_v1 / false_split_v1 / unmarked_wasl_v1)
-# — by-uid map plus meta; empty dict when the sidecar is absent.
+# Boundary-review sidecars (hidden_pause_v1 / missed_waqf_v1 / false_split_v1 /
+# unmarked_wasl_v1) — by-uid map plus meta; empty dict when the sidecar is absent.
 _seg_hidden_pause: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
+_seg_missed_waqf: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
 _seg_false_split: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
 _seg_unmarked_wasl: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
 # pipeline_meta.json sidecar — extraction-time facts (deleted_basmala_chapters,
@@ -197,6 +198,14 @@ def get_seg_hidden_pause(reciter: str) -> tuple[dict[str, dict], dict | None] | 
 
 def set_seg_hidden_pause(reciter: str, value: tuple[dict[str, dict], dict | None]) -> None:
     _seg_hidden_pause.set(reciter, value)
+
+
+def get_seg_missed_waqf(reciter: str) -> tuple[dict[str, dict], dict | None] | None:
+    return _seg_missed_waqf.get(reciter)
+
+
+def set_seg_missed_waqf(reciter: str, value: tuple[dict[str, dict], dict | None]) -> None:
+    _seg_missed_waqf.set(reciter, value)
 
 
 def get_seg_false_split(reciter: str) -> tuple[dict[str, dict], dict | None] | None:
@@ -357,6 +366,7 @@ def invalidate_seg_caches(reciter: str) -> None:
     _seg_resolved_by_edit.pop(reciter)
     _seg_probe_v2.pop(reciter)
     _seg_hidden_pause.pop(reciter)
+    _seg_missed_waqf.pop(reciter)
     _seg_false_split.pop(reciter)
     _seg_unmarked_wasl.pop(reciter)
     _seg_auto_split.pop(reciter)
@@ -390,6 +400,7 @@ def pop_seg_caches_affected_by_segment_edit(reciter: str) -> None:
     _seg_resolved_by_edit.pop(reciter)
     _seg_probe_v2.pop(reciter)
     _seg_hidden_pause.pop(reciter)
+    _seg_missed_waqf.pop(reciter)
     _seg_false_split.pop(reciter)
     _seg_unmarked_wasl.pop(reciter)
     _seg_edit_history.pop(reciter)

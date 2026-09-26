@@ -44,7 +44,7 @@ export interface IssueDefinition {
     sorts?: readonly SortOption[];
     /**
      * Offer the Unset · Wasl · Waqf boundary chips + filter in the accordion
-     * header (cross-verse only). FE-only presentation concern, absent from
+     * header (cross-verse and missed-waqf). FE-only presentation concern, absent from
      * the Python registry. See `utils/validation/boundary-state.ts`.
      */
     boundaryFilter?: boolean;
@@ -186,7 +186,7 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         kind: 'qalqala',
         cardType: 'generic',
         severity: 'info',
-        accordionOrder: 11,
+        accordionOrder: 12,
         canIgnore: false,
         autoSuppress: false,
         persistsIgnore: false,
@@ -200,7 +200,7 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         kind: 'muqattaat',
         cardType: 'generic',
         severity: 'info',
-        accordionOrder: 12,
+        accordionOrder: 13,
         canIgnore: false,
         autoSuppress: false,
         persistsIgnore: false,
@@ -213,7 +213,7 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         kind: 'basmala_amin',
         cardType: 'generic',
         severity: 'info',
-        accordionOrder: 13,
+        accordionOrder: 14,
         canIgnore: true,
         autoSuppress: true,
         persistsIgnore: true,
@@ -226,20 +226,34 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         kind: 'hidden_pause',
         cardType: 'generic',
         severity: 'info',
-        accordionOrder: 14,
+        accordionOrder: 15,
         canIgnore: true,
         autoSuppress: true,
         persistsIgnore: true,
         scope: 'per_segment',
         displayTitle: 'Hidden Pause (review)',
-        description: 'An offline pass heard a pause inside this segment. The card shows the pieces with a WASL / WAQF picker (1 / 2): WAQF splits at the cursor, WASL records that there is no pause and ignores the item.',
+        description: 'Re-segmentation found a pause inside this segment. Auto Split places the proposed cut; ignore if there is no pause.',
         sorts: [{ kind: 'score', default: true }, { kind: 'quran_order' }],
+    },
+    missed_waqf: {
+        kind: 'missed_waqf',
+        cardType: 'generic',
+        severity: 'info',
+        accordionOrder: 11,
+        canIgnore: true,
+        autoSuppress: true,
+        persistsIgnore: true,
+        scope: 'per_segment',
+        displayTitle: 'Missed Waqf (review)',
+        description: 'An offline detector heard the reciter stop inside this segment. Label each proposed cut: WAQF cuts there, WASL keeps it joined. The split saves on the last label; all WASL ignores the item.',
+        sorts: [{ kind: 'score', default: true }, { kind: 'quran_order' }],
+        boundaryFilter: true,
     },
     false_split: {
         kind: 'false_split',
         cardType: 'generic',
         severity: 'info',
-        accordionOrder: 15,
+        accordionOrder: 16,
         canIgnore: true,
         autoSuppress: true,
         persistsIgnore: true,
@@ -252,7 +266,7 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         kind: 'unmarked_wasl',
         cardType: 'generic',
         severity: 'info',
-        accordionOrder: 16,
+        accordionOrder: 17,
         canIgnore: true,
         autoSuppress: true,
         persistsIgnore: true,

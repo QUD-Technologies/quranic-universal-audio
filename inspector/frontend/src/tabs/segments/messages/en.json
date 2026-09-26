@@ -346,6 +346,7 @@
   "segments_validation_basmala_amin_title": "Basmala + Amin",
   "segments_validation_sort_score_label": "Score",
   "segments_validation_hidden_pause_title": "Hidden Pause (review)",
+  "segments_validation_missed_waqf_title": "Missed Waqf (review)",
   "segments_validation_false_split_title": "False Split (review)",
   "segments_validation_unmarked_wasl_title": "Unmarked Wasl (review)",
   "segments_boundary_cut_at": "cut {time}",

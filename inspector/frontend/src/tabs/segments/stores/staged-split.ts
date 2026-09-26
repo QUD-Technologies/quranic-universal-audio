@@ -1,12 +1,12 @@
 /**
- * Staged cross-verse split — per-session WASL/WAQF picks made on a split
- * that has NOT been dispatched yet.
+ * Staged split — per-session WASL/WAQF picks made on a split that has NOT
+ * been dispatched yet.
  *
- * A cross-verse card with a sidecar auto-split entry renders its N pieces
- * up front (see `utils/validation/staged-split.ts`) and asks for a label on
- * every inter-piece boundary. The picks live here, keyed by the parent
- * (root) uid, until all `cursors.length` slots are answered — then the card
- * dispatches ONE `split` command carrying `wasls[]` and clears the entry.
+ * A cross-verse or missed-waqf card renders its N pieces up front (see
+ * `utils/validation/staged-split.ts`) and asks for a label on every
+ * inter-piece boundary. The picks live here, keyed by `stagedPickKey` (the
+ * root uid, prefixed per category), until all `cursors.length` slots are
+ * answered — then the card commits (`stagedCommit`) and clears the entry.
  *
  * Child uids are minted once per parent and memoised so re-renders don't
  * reshuffle them; the commit reuses the same uids so a staged row and its

@@ -22,6 +22,13 @@ def _patch_sidecar(monkeypatch, by_uid: dict[str, object]) -> None:
         lambda _r: (by_uid, {"created_at": "2026-01-01T00:00:00Z"}),
     )
     monkeypatch.setattr(auto_split, "load_hidden_pause", lambda _r: ({}, None))
+    monkeypatch.setattr(auto_split, "load_missed_waqf", lambda _r: ({}, None))
+
+
+def _patch_missed_waqf(monkeypatch, by_uid: dict[str, object]) -> None:
+    monkeypatch.setattr(
+        auto_split, "load_missed_waqf", lambda _r: (by_uid, {"kind": "missed_waqf"})
+    )
 
 
 def _patch_hidden_pause(monkeypatch, by_uid: dict[str, object]) -> None:
@@ -343,5 +350,44 @@ def test_compute_auto_split_resolves_hidden_pause_hit(monkeypatch):
         "cursors": [5000],
         "refs": ["a", "b"],
         "kind": "hidden_pause",
+        "source": "sidecar",
+    }
+
+
+# ---------------------------------------------------------------------------
+# missed_waqf_v1 merge
+# ---------------------------------------------------------------------------
+
+
+def test_missed_waqf_entries_with_refs_merge_as_missed_waqf_kind(monkeypatch):
+    _patch_sidecar(
+        monkeypatch, {"u_cv": {"cursors": [1], "refs": ["a", "b"], "kind": "cross_verse"}}
+    )
+    _patch_missed_waqf(
+        monkeypatch,
+        {
+            "u_mw": {"cursors": [4000], "refs": ["2:5:1-2:5:3", "2:5:4-2:5:6"], "score": 1300},
+            "u_norefs": {"cursors": [7000], "refs": None, "score": 1040},
+            "u_cv": {"cursors": [9], "refs": ["x", "y"], "score": 1},
+        },
+    )
+    out = auto_split.load_auto_split_map("r")
+    assert out["u_mw"] == {
+        "cursors": [4000],
+        "refs": ["2:5:1-2:5:3", "2:5:4-2:5:6"],
+        "kind": "missed_waqf",
+    }
+    assert "u_norefs" not in out
+    assert out["u_cv"]["kind"] == "cross_verse"
+
+
+def test_missed_waqf_entry_wins_over_hidden_pause_for_same_uid(monkeypatch):
+    _patch_sidecar(monkeypatch, {})
+    _patch_missed_waqf(monkeypatch, {"u": {"cursors": [4000], "refs": ["a", "b"]}})
+    _patch_hidden_pause(monkeypatch, {"u": {"cursors": [5000], "refs": ["c", "d"]}})
+    assert auto_split.compute_auto_split("r", 2, "u") == {
+        "cursors": [4000],
+        "refs": ["a", "b"],
+        "kind": "missed_waqf",
         "source": "sidecar",
     }

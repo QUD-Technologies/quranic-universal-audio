@@ -17,6 +17,7 @@ export const ALL_CATEGORIES = [
   'muqattaat',
   'basmala_amin',
   'hidden_pause',
+  'missed_waqf',
   'false_split',
   'unmarked_wasl',
 ] as const;
@@ -35,6 +36,7 @@ export const PER_SEGMENT_CATEGORIES: CategoryName[] = [
   'muqattaat',
   'basmala_amin',
   'hidden_pause',
+  'missed_waqf',
   'false_split',
   'unmarked_wasl',
 ];
@@ -47,6 +49,7 @@ export const CAN_IGNORE_CATEGORIES: CategoryName[] = [
   'boundary_adj',
   'basmala_amin',
   'hidden_pause',
+  'missed_waqf',
   'false_split',
   'unmarked_wasl',
 ];
@@ -64,6 +67,7 @@ export const AUTO_SUPPRESS_CATEGORIES: CategoryName[] = [
   'boundary_adj',
   'basmala_amin',
   'hidden_pause',
+  'missed_waqf',
   'false_split',
   'unmarked_wasl',
 ];

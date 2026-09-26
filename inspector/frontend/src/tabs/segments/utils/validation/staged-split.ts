@@ -5,9 +5,10 @@
  * `resolveStagedSplit` is the eligibility gate: anything short of a clean,
  * in-range sidecar entry of an accepted kind answers `null`, and the card
  * falls back to the classic single row with its Auto Split / Split button.
- * A cross-verse card stages `cross_verse` entries; a hidden-pause card stages
- * `hidden_pause` entries, where a WASL pick means "no pause here" and only
- * the boundaries picked WAQF are cut (`waqfOnlySplit`).
+ * `stagedSplitFor` picks the source per card: a cross-verse card stages the
+ * `cross_verse` entry of the Auto Split map; a missed-waqf card stages its own
+ * item's `boundary` (cursors + refs), where a WASL pick means "no stop here"
+ * and only the boundaries picked WAQF are cut (`waqfOnlySplit`).
  *
  * `buildStagedChildren` slices the parent exactly as `_reduceSplit` would
  * (piece 0 keeps the parent uid + index; later pieces take the memoised
@@ -18,6 +19,7 @@
 import { get } from 'svelte/store';
 
 import { quranRefs } from '../../../../lib/refs/quran-refs';
+import type { SegValAnyItem } from '../../../../lib/types/generated/schemas';
 import type { Segment } from '../../../../lib/types/view-models';
 import type { AutoSplitMap } from '../../stores/auto-split';
 import type { StagedPick } from '../../stores/staged-split';
@@ -28,9 +30,10 @@ export interface StagedSplit {
     refs: string[];
 }
 
-export type StagedKind = 'cross_verse' | 'hidden_pause';
+/** Also the categories whose card stages a split with a WASL / WAQF pick per boundary. */
+export type StagedKind = 'cross_verse' | 'missed_waqf';
 export const CROSS_VERSE_KINDS: readonly StagedKind[] = ['cross_verse'];
-export const HIDDEN_PAUSE_KINDS: readonly StagedKind[] = ['hidden_pause'];
+export const MISSED_WAQF_KINDS: readonly StagedKind[] = ['missed_waqf'];
 
 export type StagedSegment = Segment & { _staged: true };
 
@@ -62,12 +65,47 @@ export function resolveStagedSplit(
     return { cursors: cursors.slice(), refs: refs.slice() };
 }
 
+interface ItemBoundary {
+    cursors?: number[];
+    refs?: string[] | null;
+}
+
+function _itemBoundary(item: SegValAnyItem | null): ItemBoundary | null {
+    return (item as { boundary?: ItemBoundary } | null)?.boundary ?? null;
+}
+
+/** Number of proposed cuts on a missed-waqf item (0 when it carries none). */
+export function itemCursorCount(item: SegValAnyItem | null): number {
+    const cursors = _itemBoundary(item)?.cursors;
+    return Array.isArray(cursors) ? cursors.length : 0;
+}
+
+/** The staged split a `category` card shows for `seg` (the item's root), or null. */
+export function stagedSplitFor(
+    category: StagedKind,
+    seg: Segment | null,
+    item: SegValAnyItem | null,
+    map: AutoSplitMap | null,
+): StagedSplit | null {
+    if (category === 'cross_verse') return resolveStagedSplit(seg, map, CROSS_VERSE_KINDS);
+    const uid = seg?.segment_uid;
+    const b = _itemBoundary(item);
+    if (!uid || !Array.isArray(b?.cursors) || !Array.isArray(b?.refs)) return null;
+    const entry = { cursors: b.cursors, refs: b.refs, kind: 'missed_waqf' as const };
+    return resolveStagedSplit(seg, { [uid]: entry }, MISSED_WAQF_KINDS);
+}
+
+/** Session-pick key: one seg can sit in both staged accordions with different cuts. */
+export function stagedPickKey(category: StagedKind, uid: string): string {
+    return category === 'cross_verse' ? uid : `${category}:${uid}`;
+}
+
 function joinRefs(a: string, b: string): string {
     return `${a.split('-')[0]}-${b.split('-').pop()}`;
 }
 
 /**
- * The split a hidden-pause card commits: only the boundaries picked WAQF
+ * The split a missed-waqf card commits: only the boundaries picked WAQF
  * (`false`, or unanswered) are cut; a WASL pick merges its two pieces back
  * into one ref. `null` when no boundary is cut.
  */
@@ -87,6 +125,28 @@ export function waqfOnlySplit(staged: StagedSplit, picks: readonly StagedPick[])
     }
     refs.push(open);
     return cursors.length ? { cursors, refs } : null;
+}
+
+export type StagedCommit =
+    | { kind: 'ignore' }
+    | { kind: 'split'; split: StagedSplit; wasls: boolean[] };
+
+/**
+ * What a `category` card commits once its boundaries are answered. Cross-verse
+ * cuts every boundary and carries each pick as `is_wasl`. Missed-waqf cuts
+ * only the WAQF boundaries (all `is_wasl` false); with no cut left the item
+ * is ignored instead.
+ */
+export function stagedCommit(
+    category: StagedKind,
+    staged: StagedSplit,
+    picks: readonly StagedPick[],
+): StagedCommit {
+    if (category === 'cross_verse') {
+        return { kind: 'split', split: staged, wasls: staged.cursors.map((_, i) => picks[i] === true) };
+    }
+    const cut = waqfOnlySplit(staged, picks);
+    return cut ? { kind: 'split', split: cut, wasls: cut.cursors.map(() => false) } : { kind: 'ignore' };
 }
 
 /**

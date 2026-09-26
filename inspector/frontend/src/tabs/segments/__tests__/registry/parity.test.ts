@@ -24,12 +24,13 @@ const PY_SNAPSHOT = {
   audio_bleeding:    { canIgnore: true,  autoSuppress: true,  persistsIgnore: true,  scope: 'per_segment', cardType: 'generic',        severity: 'warning', accordionOrder: 7, displayTitle: 'Audio Bleeding' },
   boundary_adj:      { canIgnore: true,  autoSuppress: true,  persistsIgnore: true,  scope: 'per_segment', cardType: 'generic',        severity: 'warning', accordionOrder: 8, displayTitle: 'May Require Boundary Adjustment', ownerOnly: true },
   cross_verse:       { canIgnore: false, autoSuppress: false, persistsIgnore: false, scope: 'per_segment', cardType: 'generic',        severity: 'warning', accordionOrder: 10, displayTitle: 'Cross-verse' },
-  qalqala:           { canIgnore: false, autoSuppress: false, persistsIgnore: false, scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 11, displayTitle: 'Qalqala', ownerOnly: true },
-  muqattaat:         { canIgnore: false, autoSuppress: false, persistsIgnore: false, scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 12, displayTitle: 'Muqattaʼat' },
-  basmala_amin:      { canIgnore: true,  autoSuppress: true,  persistsIgnore: true,  scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 13, displayTitle: 'Basmala + Amin' },
-  hidden_pause:      { canIgnore: true,  autoSuppress: true,  persistsIgnore: true,  scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 14, displayTitle: 'Hidden Pause (review)' },
-  false_split:       { canIgnore: true,  autoSuppress: true,  persistsIgnore: true,  scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 15, displayTitle: 'False Split (review)' },
-  unmarked_wasl:     { canIgnore: true,  autoSuppress: true,  persistsIgnore: true,  scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 16, displayTitle: 'Unmarked Wasl (review)' },
+  qalqala:           { canIgnore: false, autoSuppress: false, persistsIgnore: false, scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 12, displayTitle: 'Qalqala', ownerOnly: true },
+  muqattaat:         { canIgnore: false, autoSuppress: false, persistsIgnore: false, scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 13, displayTitle: 'Muqattaʼat' },
+  basmala_amin:      { canIgnore: true,  autoSuppress: true,  persistsIgnore: true,  scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 14, displayTitle: 'Basmala + Amin' },
+  hidden_pause:      { canIgnore: true,  autoSuppress: true,  persistsIgnore: true,  scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 15, displayTitle: 'Hidden Pause (review)' },
+  missed_waqf:       { canIgnore: true,  autoSuppress: true,  persistsIgnore: true,  scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 11, displayTitle: 'Missed Waqf (review)' },
+  false_split:       { canIgnore: true,  autoSuppress: true,  persistsIgnore: true,  scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 16, displayTitle: 'False Split (review)' },
+  unmarked_wasl:     { canIgnore: true,  autoSuppress: true,  persistsIgnore: true,  scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 17, displayTitle: 'Unmarked Wasl (review)' },
 };
 
 describe('TS ↔ Python registry parity', () => {

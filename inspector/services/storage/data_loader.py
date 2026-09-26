@@ -4,7 +4,8 @@ All data is loaded once and cached via ``services.cache``. Functions here never
 import Flask -- they return plain dicts/lists.
 
 Per-reciter reads (``load_seg_verses``, ``load_detailed``, ``load_probe_v2``,
-``load_hidden_pause``, ``load_false_split``, ``load_unmarked_wasl``)
+``load_hidden_pause``, ``load_missed_waqf``, ``load_false_split``,
+``load_unmarked_wasl``)
 go through the storage backend via ``services.data_dir`` — no direct
 filesystem access to ``RECITATION_SEGMENTS_PATH``. Static reference data
 (qpc_hafs, surah_info, digital_khatt) still lives in the image at
@@ -331,6 +332,18 @@ def load_hidden_pause(reciter: str) -> tuple[dict[str, dict], dict | None]:
         data_dir.read_hidden_pause_doc,
         cache.get_seg_hidden_pause,
         cache.set_seg_hidden_pause,
+    )
+
+
+def load_missed_waqf(reciter: str) -> tuple[dict[str, dict], dict | None]:
+    """Load ``missed_waqf_v1.json`` — cursors inside a segment where an offline
+    phoneme + silence detector heard the reciter stop, keyed by
+    ``segment_uid``. Never written by the Inspector."""
+    return _load_by_uid_sidecar(
+        reciter,
+        data_dir.read_missed_waqf_doc,
+        cache.get_seg_missed_waqf,
+        cache.set_seg_missed_waqf,
     )
 
 

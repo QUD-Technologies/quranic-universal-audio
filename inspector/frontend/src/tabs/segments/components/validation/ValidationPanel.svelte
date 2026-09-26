@@ -68,6 +68,7 @@
         filterByBoundaryStates,
     } from '../../utils/validation/boundary-state';
     import { resolveCardLeadSeg } from '../../utils/validation/card-lead-seg';
+    import type { StagedKind } from '../../utils/validation/staged-split';
     import { filterStaleIssues } from '../../utils/validation/stale';
     import { _fetchPeaks } from '../../utils/waveform/utils';
     import ErrorCard from './ErrorCard.svelte';
@@ -93,7 +94,7 @@
     // each Auto Split click is a zero-network O(1) lookup instead of a per-click
     // round trip. Fire-and-forget + deduped (stores/auto-split.ts); the
     // reciter-scoped map is dropped on switch by clearPerReciterState.
-    $: if ((openCategory === 'cross_verse' || openCategory === 'repetitions' || openCategory === 'hidden_pause') && $selectedReciter) {
+    $: if ((openCategory === 'cross_verse' || openCategory === 'repetitions') && $selectedReciter) {
         void ensureAutoSplitMap($selectedReciter);
     }
 
@@ -303,7 +304,7 @@
         qalqalaLetters: string[];
         /** Sort options this accordion offers (undefined = no sort pills). */
         sorts?: readonly SortOption[];
-        /** Unset · Wasl · Waqf boundary totals (cross-verse only). */
+        /** Unset · Wasl · Waqf boundary totals (staged-split categories only). */
         boundaryCounts?: Record<BoundaryState, number>;
     }
 
@@ -481,11 +482,12 @@
             let summaryCount = b.items.length;
             let boundaryCounts: Record<BoundaryState, number> | undefined;
             if (b.boundaryFilter) {
-                // Cross-verse: chips count boundaries; the badge counts items
-                // still holding an unlabelled boundary (the work left).
-                boundaryCounts = countBoundaryStates(b.items, _boundaryCtx);
-                visibleItems = filterByBoundaryStates(b.items, _boundarySel, _boundaryCtx);
-                summaryCount = b.items.filter((it) => boundaryStates(it, _boundaryCtx).includes('unset')).length;
+                // Cross-verse / missed-waqf: chips count boundaries; the badge
+                // counts items still holding an unlabelled boundary (the work left).
+                const cat = b.kind as StagedKind;
+                boundaryCounts = countBoundaryStates(b.items, _boundaryCtx, cat);
+                visibleItems = filterByBoundaryStates(b.items, _boundarySel, _boundaryCtx, cat);
+                summaryCount = b.items.filter((it) => boundaryStates(it, _boundaryCtx, cat).includes('unset')).length;
             } else if (b.isLowConf) {
                 const lowConf = b.items as SegValLowConfidenceItem[];
                 visibleItems = lowConf.filter((i) => (i.confidence * 100) < _lcThreshold);
@@ -528,7 +530,7 @@
         return out;
     }
 
-    // Live inputs for the cross-verse boundary states: store segs + op log
+    // Live inputs for the staged-split boundary states: store segs + op log
     // (committed / in-progress splits and their is_wasl), pending post-split
     // picks, the sidecar map (staged splits) and the staged session picks.
     $: boundaryCtx = ((): BoundaryCtx => {
@@ -1113,7 +1115,7 @@
                     </div>
                 {/if}
 
-                <!-- Boundary chips (Cross-verse only): Unset · Wasl · Waqf, each
+                <!-- Boundary chips (Cross-verse, Missed Waqf): Unset · Wasl · Waqf, each
                      with its boundary count; multi-select filter. -->
                 {#if cat.boundaryCounts}
                     <div class="lc-slider-row val-boundary-row">
