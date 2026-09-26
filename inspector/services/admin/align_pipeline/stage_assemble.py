@@ -131,10 +131,12 @@ def _materialise_sidecars(run_dir: Path, slug: str, run_id: str, riwayah: str | 
 
 def _write_coverage(run_dir: Path, chapters: list[int], outcome: dict) -> None:
     """``outcome`` is the split stage's record: chapters dropped because their
-    file did not hold them (or held another surah) are ``missing``; the
+    file did not hold them (or held another surah), and surahs missing inside
+    the delivery's span (``gaps``), are ``missing``; files repeating a surah
+    taken from another file are reported; the
     mislabelled single files, cuts that likely hold a missed chapter's audio and
     files with no recitation are listed as ``unresolved_files``."""
-    missing = sorted(set(outcome.get("dropped") or []))
+    missing = sorted(set(outcome.get("dropped") or []) | set(outcome.get("gaps") or []))
     unresolved = [
         f"chapter {ch}: audio is surah {surah}"
         for ch, surah in sorted(
@@ -146,6 +148,11 @@ def _write_coverage(run_dir: Path, chapters: list[int], outcome: dict) -> None:
         for ch, note in sorted((outcome.get("suspect") or {}).items(), key=lambda kv: int(kv[0]))
     ]
     unresolved += [f"{url}: no recitation detected" for url in outcome.get("empty_sources") or []]
+    unresolved += [
+        f"{url}: repeats surah {ch}, already taken from {other}"
+        for url, taken in sorted((outcome.get("repeats") or {}).items())
+        for ch, other in sorted(taken.items(), key=lambda kv: int(kv[0]))
+    ]
     unresolved += [
         f"surah {ch}: {note}"
         for ch, note in sorted((outcome.get("fragments") or {}).items(), key=lambda kv: int(kv[0]))

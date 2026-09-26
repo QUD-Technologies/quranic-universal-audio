@@ -13,7 +13,9 @@ assemble need no special case.
 
 Coverage is tolerant, not fatal: a planned chapter nobody holds is dropped, a
 surah nobody planned is adopted, a single-chapter file whose audio is another
-surah is dropped, a file with no recitation is reported. Every call is recorded
+surah is dropped, a file with no recitation is reported, a surah missing inside
+the delivery's span is a gap, and a file repeating a surah taken from another
+file is reported. Every call is recorded
 in ``split_outcome.json`` and published in ``coverage_report.json``.
 """
 
@@ -48,6 +50,8 @@ def run(slug: str, run_id: str, groups: list[SourceGroup]) -> dict:
         "suspect": {},
         "empty_sources": [],
         "fragments": {},
+        "repeats": {},
+        "gaps": [],
         "stitched": {},
     }
     _guard_singles(slug, run_id, groups, outcome)
@@ -138,6 +142,10 @@ def _record(res: resolve.Resolution, outcome: dict) -> None:
     outcome["suspect"] = {str(ch): note for ch, note in res.suspect.items()}
     outcome["empty_sources"] = list(res.empty)
     outcome["fragments"] = {str(ch): note for ch, note in res.fragments.items()}
+    outcome["repeats"] = {
+        url: {str(ch): other for ch, other in taken.items()} for url, taken in res.repeats.items()
+    }
+    outcome["gaps"] = list(res.gaps)
     outcome["stitched"] = {
         str(ch): len(pieces) for ch, pieces in res.chapters.items() if len(pieces) > 1
     }

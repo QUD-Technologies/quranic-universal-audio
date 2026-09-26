@@ -389,3 +389,33 @@ def test_record_acquired_fills_only_unprobed_fields(split_env):
     assert doc["chapters"]["113"]["size_bytes"] == 777
     assert doc["chapters"]["113"]["duration_sec"] == 34
     assert doc["chapters"]["114"].get("size_bytes") is None
+
+
+def test_a_duplicate_upload_is_a_repeat_and_its_missing_surah_a_gap():
+    # A playlist whose "046" file is a copy of "047": both hold surah 47, so
+    # surah 46 is missing inside the delivery's 45..48 span.
+    files = [
+        _file(245, [_row("45:1:1", "45:37:8", 1.0, 600.0)]),
+        _file(246, [_row("47:1:1", "47:38:29", 1.0, 700.0)]),
+        _file(247, [_row("47:1:1", "47:38:29", 1.0, 699.0)]),
+        _file(248, [_row("48:1:1", "48:29:54", 1.0, 750.0)]),
+    ]
+    res = resolve.resolve(files, fixed=set())
+    assert sorted(res.chapters) == [45, 47, 48]
+    assert res.repeats == {"https://src/247": {47: "https://src/246"}}
+    assert res.gaps == [46]
+
+
+def test_coverage_report_lists_gaps_as_missing_and_repeats_as_unresolved(tmp_path):
+    from services.admin.align_pipeline import stage_assemble
+
+    stage_assemble._write_coverage(
+        tmp_path,
+        [45, 47, 48],
+        {"dropped": [], "gaps": [46], "repeats": {"https://src/247": {"47": "https://src/246"}}},
+    )
+    report = json.loads((tmp_path / "coverage_report.json").read_text(encoding="utf-8"))
+    assert report["missing"] == [46] and report["clean"] is False
+    assert report["unresolved_files"] == [
+        "https://src/247: repeats surah 47, already taken from https://src/246"
+    ]

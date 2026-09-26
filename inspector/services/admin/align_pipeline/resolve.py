@@ -61,6 +61,12 @@ class Resolution:
     #: Unplanned surahs found only as excerpts → why they were not adopted.
     fragments: dict[int, str] = field(default_factory=dict)
     suspect: dict[int, str] = field(default_factory=dict)
+    #: File URL → {surah it holds: URL of the file the surah was taken from}
+    #: (a re-upload, or a duplicate uploaded under another surah's name).
+    repeats: dict[str, dict[int, str]] = field(default_factory=dict)
+    #: Surahs inside the delivery's span (first to last surah found) that no
+    #: file provides and nobody planned — a playlist with a hole in it.
+    gaps: list[int] = field(default_factory=list)
 
 
 def resolve(
@@ -96,7 +102,11 @@ def resolve(
         unused = sorted(set(f.cuts) - used)
         if unused:
             out.ignored[f.item] = unused
+        taken = {ch: out.chapters[ch][0].file.url for ch in unused if ch in out.chapters}
+        if taken:
+            out.repeats[f.url] = taken
     out.suspect = _suspects(out.chapters, fixed)
+    out.gaps = _gaps(out.chapters, fixed, planned)
     return out
 
 
@@ -122,6 +132,14 @@ def _too_short(ch: int, pieces: list[Piece], ayah_counts: dict[int, int] | None)
         return None
     where = ", ".join(sorted({p.file.url.rsplit("/", 1)[-1] for p in pieces}))
     return f"only {len(covered)} of {total} ayahs found (in {where}) — an excerpt, not adopted"
+
+
+def _gaps(chapters: dict[int, list[Piece]], fixed: set[int], planned: set[int]) -> list[int]:
+    present = set(chapters) | fixed
+    if not present:
+        return []
+    lo, hi = min(present), max(present)
+    return [n for n in range(lo + 1, hi) if n not in present and n not in planned]
 
 
 def _suspects(chapters: dict[int, list[Piece]], fixed: set[int]) -> dict[int, str]:

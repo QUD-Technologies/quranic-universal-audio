@@ -159,6 +159,12 @@ Coverage is tolerant, not fatal:
   another surah is **mismatched** (the `mohammed_burhaji_yt` mis-index) and
   dropped *before* the cut (its mp3 deleted), so another file can provide it;
 - a file with no recitation found is reported (`empty_sources`);
+- a surah inside the delivery's span (first to last surah found) that no file
+  provides is a **gap**, listed as `missing` in `coverage_report.json`; a file
+  holding a surah already taken from another file is a **repeat**, listed in
+  `unresolved_files` with both URLs (e.g. `adel_al_karbalaei_archive_v2`: the
+  upstream `046 - الأحقاف.mp3` is a byte-identical copy of `047 - محمد.mp3`, so
+  46 was a gap);
 - an unplanned surah whose pieces cover under `MIN_SURAH_COVERAGE = 0.5` of its
   ayahs is a **fragment**, not a chapter: a CD intro montage or trailer holds
   short excerpts of many surahs (seen live: the Afasy Juz ʿAmma CD's intro held
