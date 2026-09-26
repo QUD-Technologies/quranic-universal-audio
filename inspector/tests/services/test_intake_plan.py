@@ -14,6 +14,8 @@ import pytest
 from qua_shared.schemas import (
     Actor,
     Channel,
+    IntakeListing,
+    IntakeListingEntry,
     IntakePlan,
     IntakePlanUpdate,
     IntakeSource,
@@ -294,6 +296,31 @@ def test_build_lists_files_and_proposes_identity_without_reading_titles(intake_e
     assert view.errors == []
     assert "1 file(s) left out of the delivery." in view.warnings
     assert {o.slug for o in view.channel_options} == {"drive", "youtube"}
+
+
+def test_a_listing_made_off_the_space_is_planned_without_enumerating(intake_env, monkeypatch):
+    def refuse(_src):
+        raise AssertionError("must not enumerate when a listing is given")
+
+    monkeypatch.setattr(plan._enumerate, "enumerate_source", refuse)
+    rid = _submit()
+    listing = IntakeListing(
+        host="drive",
+        source_url=PLAYLIST,
+        entries=[
+            IntakeListingEntry(url="https://drive.google.com/file/d/AAAAAAAAAAAA/view", index=1),
+            IntakeListingEntry(url="https://x/dead", index=2, unavailable=True),
+        ],
+    )
+    view = plan.build(rid, listing)
+    assert view.status == "ready"
+    stored = plan.get(rid)
+    assert stored is not None
+    assert [(e.url, e.include) for e in stored.entries] == [
+        ("https://drive.google.com/file/d/AAAAAAAAAAAA/view", True),
+        ("https://x/dead", False),
+    ]
+    assert stored.identity.slug == "mohammed_ayyub_drive"
 
 
 def test_enumeration_failure_is_shown_on_the_plan(intake_env, monkeypatch):

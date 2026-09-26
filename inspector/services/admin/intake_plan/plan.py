@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 from typing import cast
 
 from qua_shared.schemas import (
+    IntakeListing,
     IntakePlan,
     IntakePlanUpdate,
     IntakePlanView,
@@ -104,9 +105,17 @@ def get(request_id: str) -> IntakePlanView | None:
     return to_view(plan, kind=row["kind"]) if plan else None
 
 
-def build(request_id: str) -> IntakePlanView:
-    """(Re)enumerate the source in the background; returns the pending plan."""
+def build(request_id: str, listing: IntakeListing | None = None) -> IntakePlanView:
+    """(Re)enumerate the source in the background; returns the pending plan.
+    A ``listing`` made off the Space (a host refusing Hugging Face IPs) is
+    planned at once instead, replacing any plan in flight."""
     row = pending_intake(request_id)
+    if listing is not None:
+        payload = _serde.json_loads(row["payload"]) or {}
+        now = _now()
+        plan = _plan_from(row["kind"], payload, _raw_listing(listing), now)
+        _save(request_id, plan)
+        return to_view(plan, kind=row["kind"])
     current = stored_plan(row)
     if current is not None and current.status == "enumerating":
         return to_view(current, kind=row["kind"])
@@ -154,7 +163,32 @@ def _enumerate_into(request_id: str, created_at: str) -> None:
 
 
 def _fresh_plan(kind: str, payload: dict, source: IntakeSource, created_at: str) -> IntakePlan:
-    listing = _enumerate.enumerate_source(source)
+    return _plan_from(kind, payload, _enumerate.enumerate_source(source), created_at)
+
+
+def _raw_listing(listing: IntakeListing) -> _enumerate.Listing:
+    entries = [
+        _enumerate.RawEntry(
+            url=e.url,
+            title=e.title,
+            index=e.index,
+            duration_sec=e.duration_sec,
+            unavailable=e.unavailable,
+        )
+        for e in listing.entries
+    ]
+    return _enumerate.Listing(
+        host=listing.host,
+        entries=entries,
+        source_url=listing.source_url,
+        uploader=listing.uploader,
+        uploader_url=listing.uploader_url,
+    )
+
+
+def _plan_from(
+    kind: str, payload: dict, listing: _enumerate.Listing, created_at: str
+) -> IntakePlan:
     entries: list[PlanEntry] = []
     seen: set[str] = set()
     for raw in listing.entries:

@@ -250,7 +250,12 @@ This replaces the offline `ingest_intake.py` driver, the LLM-reviewed playlist
 chapter map (`playlist_map`), and the bearer `POST /api/admin/intake/<rid>/ingest`
 route, all removed. The plan lives on the request row as `payload.plan`.
 
-1. **Build** (`POST …/intake/<rid>/plan`). `plan.build` stamps
+1. **Build** (`POST …/intake/<rid>/plan`). With a `listing` body
+   (`IntakePlanBuild` → `IntakeListing`: host, source URL, uploader, entries),
+   the plan is built at once from it, with no enumeration; that's the owner's
+   fallback when a host (YouTube) refuses Hugging Face IPs, listed on their
+   own machine and posted with an owner bearer token. With an empty body,
+   `plan.build` stamps
    `status="enumerating"` and a daemon thread enumerates the source
    (`enumerate.py`):
    - `links` submissions keep their chapters; links sharing one URL become one

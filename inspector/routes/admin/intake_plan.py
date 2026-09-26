@@ -15,7 +15,7 @@ from __future__ import annotations
 from flask import Blueprint, jsonify, request
 from pydantic import ValidationError
 
-from qua_shared.schemas import IntakeAlignRequest, IntakePlanUpdate
+from qua_shared.schemas import IntakeAlignRequest, IntakePlanBuild, IntakePlanUpdate
 from routes.admin.align import authorize_with_exemption
 from services.admin import intake as intake_service
 from services.admin.intake_plan import mint as intake_mint
@@ -51,7 +51,11 @@ def build_plan(rid: str):
     if err is not None:
         return err
     try:
-        view = intake_plan.build(rid)
+        body = IntakePlanBuild.model_validate(request.get_json(silent=True) or {})
+    except ValidationError as exc:
+        return jsonify({"error": "invalid body", "detail": exc.errors()}), 400
+    try:
+        view = intake_plan.build(rid, body.listing)
     except intake_plan.PlanError as exc:
         return jsonify({"error": str(exc)}), exc.status
     return _view_payload(view), 202

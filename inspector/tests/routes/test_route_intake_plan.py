@@ -30,7 +30,12 @@ def stub_plan(monkeypatch):
         return IntakeAlignResponse(slug="rec_new", state="awaiting_alignment", align_started=True)
 
     monkeypatch.setattr(intake_plan, "get", lambda rid: None)
-    monkeypatch.setattr(intake_plan, "build", lambda rid: _VIEW)
+
+    def _build(rid, listing=None):
+        calls.append(("build", rid, None if listing is None else len(listing.entries)))
+        return _VIEW
+
+    monkeypatch.setattr(intake_plan, "build", _build)
     monkeypatch.setattr(intake_plan, "update", _update)
     monkeypatch.setattr(intake_mint, "mint_and_align", _mint)
     return calls
@@ -67,7 +72,17 @@ def test_owner_reads_builds_edits_and_aligns(signed_in_client, stub_plan):
         "/api/admin/intake/rq_1/align", headers=_HEADERS, data=json.dumps({"device": "CPU"})
     )
     assert res.status_code == 201 and res.get_json()["slug"] == "rec_new"
-    assert stub_plan == [("update", "rq_1", "rec_new"), ("mint", "rq_1", "CPU", True)]
+    listing = {"host": "youtube", "entries": [{"url": "https://www.youtube.com/watch?v=a"}]}
+    res = client.post(
+        "/api/admin/intake/rq_1/plan", headers=_HEADERS, data=json.dumps({"listing": listing})
+    )
+    assert res.status_code == 202
+    assert stub_plan == [
+        ("build", "rq_1", None),
+        ("update", "rq_1", "rec_new"),
+        ("mint", "rq_1", "CPU", True),
+        ("build", "rq_1", 1),
+    ]
 
 
 def test_bad_bodies_are_400(signed_in_client, stub_plan):
@@ -79,6 +94,9 @@ def test_bad_bodies_are_400(signed_in_client, stub_plan):
     res = client.post(
         "/api/admin/intake/rq_1/align", headers=_HEADERS, data=json.dumps({"device": "TPU"})
     )
+    assert res.status_code == 400
+    empty = {"listing": {"host": "youtube", "entries": []}}
+    res = client.post("/api/admin/intake/rq_1/plan", headers=_HEADERS, data=json.dumps(empty))
     assert res.status_code == 400
     assert stub_plan == []
 

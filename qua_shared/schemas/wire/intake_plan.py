@@ -129,6 +129,38 @@ class IntakePlanUpdate(BaseModel):
     identity: PlanIdentity
 
 
+class IntakeListingEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    url: str
+    title: str = ""
+    index: int | None = None
+    duration_sec: float | None = None
+    unavailable: bool = False
+
+
+class IntakeListing(BaseModel):
+    """A source listed off the Space (the owner's machine, when the host
+    refuses Hugging Face IPs) — used instead of enumerating."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    host: PlanHost
+    source_url: str | None = None
+    uploader: str | None = None
+    uploader_url: str | None = None
+    entries: list[IntakeListingEntry] = Field(min_length=1)
+
+
+class IntakePlanBuild(BaseModel):
+    """Body of ``POST /api/admin/intake/<id>/plan`` — empty to enumerate on
+    the Space, or a ready ``listing``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    listing: IntakeListing | None = None
+
+
 class IntakeAlignRequest(BaseModel):
     """Body of ``POST /api/admin/intake/<id>/align``."""
 
