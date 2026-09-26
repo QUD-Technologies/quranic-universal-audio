@@ -748,6 +748,17 @@ def _gh_request(
         raise RuntimeError(f"GH API {method} {url} → {e.code}: {msg[:500]}{hint}") from e
 
 
+def _gh_release_exists(owner: str, repo: str, version: str, token: str) -> bool:
+    """True when a release tagged ``version`` already exists on GitHub."""
+    try:
+        _gh_request("GET", f"/repos/{owner}/{repo}/releases/tags/{version}", token)
+    except RuntimeError as exc:
+        if "→ 404" in str(exc):
+            return False
+        raise
+    return True
+
+
 def _gh_create_release(owner: str, repo: str, version: str, body: str, token: str) -> dict:
     """Create a draft-less release tag. Returns the release dict (with upload_url)."""
     return _gh_request(
@@ -1449,7 +1460,27 @@ def main() -> int:
     if si_path.exists():
         static_files["surah_info.json"] = si_path.read_bytes()
 
-    # 8. Create the GH release + upload all assets.
+    # 8. Create the GH release + upload all assets. A tag that already exists
+    # means the ledger missed a prior cut (e.g. its webhook failed) — refuse
+    # rather than bump from a stale prior version.
+    if _gh_release_exists(owner, repo, version, gh_token):
+        log.error(
+            "release %s already exists on %s/%s — the Inspector ledger is behind GitHub; "
+            "record it with `admin_release.py complete %s --job-id <job>` and re-cut",
+            version,
+            owner,
+            repo,
+            version,
+        )
+        _post_webhook(
+            version=version,
+            job_id=job_id,
+            external_uri="",
+            members=[],
+            launched_by=launched_by,
+            status="failed",
+        )
+        return 15
     log.info("creating GH release %s on %s/%s ...", version, owner, repo)
     rel = _gh_create_release(owner, repo, version, changelog_md.decode("utf-8"), token=gh_token)
     upload_url = rel["upload_url"]
@@ -1490,7 +1521,7 @@ def main() -> int:
         for m in members
     ]
 
-    _post_webhook(
+    recorded = _post_webhook(
         version=version,
         job_id=job_id,
         external_uri=release_html_url,
@@ -1503,6 +1534,16 @@ def main() -> int:
     )
 
     log.info("cut_release: done version=%s recitations=%d", version, len(members))
+    if not recorded and os.environ.get("INSPECTOR_WEBHOOK_URL", "").strip():
+        # The release is live on GitHub but the Inspector ledger never heard of
+        # it; fail the job loudly so the next preview doesn't re-propose this tag.
+        log.error(
+            "ledger NOT updated for %s — run `admin_release.py complete %s --job-id %s`",
+            version,
+            version,
+            job_id,
+        )
+        return 16
     return 0
 
 
