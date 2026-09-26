@@ -7,7 +7,8 @@
  * falls back to the classic single row with its Auto Split / Split button.
  * `stagedSplitFor` picks the source per card: a cross-verse card stages the
  * `cross_verse` entry of the Auto Split map; a missed-waqf card stages its own
- * item's `boundary` (cursors + refs). Both commit the same way (`stagedCommit`).
+ * item's `boundary` (cursors + refs), where a WASL pick means "no stop here"
+ * and only the boundaries picked WAQF are cut (`waqfOnlySplit`).
  *
  * `buildStagedChildren` slices the parent exactly as `_reduceSplit` would
  * (piece 0 keeps the parent uid + index; later pieces take the memoised
@@ -99,18 +100,63 @@ export function stagedPickKey(category: StagedKind, uid: string): string {
     return category === 'cross_verse' ? uid : `${category}:${uid}`;
 }
 
+function joinRefs(a: string, b: string): string {
+    return `${a.split('-')[0]}-${b.split('-').pop()}`;
+}
+
 /**
- * The one split a staged card commits from its picks so far: every boundary is
- * cut, each pick carried as `is_wasl` (unanswered commits as WAQF; the card
- * keeps asking). `childUids` are the staged pieces' uids (pieces 1..N).
+ * Only the boundaries picked WAQF (`false`, or unanswered) are cut; a WASL
+ * pick merges its two pieces back into one ref. `null` when no boundary is cut.
+ */
+export function waqfOnlySplit(staged: StagedSplit, picks: readonly StagedPick[]): StagedSplit | null {
+    const cursors: number[] = [];
+    const refs: string[] = [];
+    let open = staged.refs[0]!;
+    for (let i = 0; i < staged.cursors.length; i++) {
+        const next = staged.refs[i + 1]!;
+        if (picks[i] === true) {
+            open = joinRefs(open, next);
+            continue;
+        }
+        cursors.push(staged.cursors[i]!);
+        refs.push(open);
+        open = next;
+    }
+    refs.push(open);
+    return cursors.length ? { cursors, refs } : null;
+}
+
+export type StagedCommit =
+    | { kind: 'none' }
+    | { kind: 'split'; split: StagedSplit; wasls: boolean[]; newUids: string[] };
+
+/**
+ * What a `category` card commits from its picks so far. `childUids` are the
+ * staged pieces' uids (pieces 1..N).
+ *
+ * Cross-verse cuts every boundary, carrying each pick as `is_wasl`
+ * (unanswered commits as WAQF; the card keeps asking).
+ *
+ * Missed-waqf cuts only the boundaries answered WAQF: a WASL or unanswered
+ * cut is a suspect that never becomes a split. Each committed piece keeps the
+ * uid of the staged piece that starts where it starts, so those rows keep
+ * their identity. `none` when no cut is answered WAQF.
  */
 export function stagedCommit(
+    category: StagedKind,
     staged: StagedSplit,
     picks: readonly StagedPick[],
     childUids: readonly string[],
-): { split: StagedSplit; wasls: boolean[]; newUids: string[] } {
-    const wasls = staged.cursors.map((_, i) => picks[i] === true);
-    return { split: staged, wasls, newUids: childUids.slice() };
+): StagedCommit {
+    if (category === 'cross_verse') {
+        const wasls = staged.cursors.map((_, i) => picks[i] === true);
+        return { kind: 'split', split: staged, wasls, newUids: childUids.slice() };
+    }
+    const kept = staged.cursors.map((_, i) => picks[i] === false);
+    const split = waqfOnlySplit(staged, kept.map((k) => !k));
+    if (!split) return { kind: 'none' };
+    const newUids = childUids.filter((_, i) => kept[i]);
+    return { kind: 'split', split, wasls: split.cursors.map(() => false), newUids };
 }
 
 /**

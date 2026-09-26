@@ -71,7 +71,8 @@
      * dispatched yet (pre-applied cross-verse auto-split). The picker then
      * owns no store/op work: it renders `stagedValue` (undefined = pending)
      * and hands every click to `onPick`; the card commits the split once all
-     * of its boundaries are answered.
+     * of its boundaries are answered. A split missed-waqf card uses the same
+     * mode on its cuts (`stagedValue` false): its `onPick` merges on WASL.
      */
     export let onPick: ((_value: boolean) => void) | null = null;
     export let stagedValue: boolean | undefined = undefined;
