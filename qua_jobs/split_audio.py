@@ -14,9 +14,14 @@ canonical ``audio/<ch>.mp3`` and its ``peaks/<ch>.json.gz``. The Inspector
 rebases the chapter's timestamps with the same windows, so cut and timings agree
 by construction.
 
+Each slot file is copied off the bucket mount (size-checked, retried) before
+it is cut: under load the mount can fail a read mid-file and ffmpeg then writes
+a truncated chapter with exit 0. Every cut's length is checked against the plan.
+
 Writes ``staging/<slug>/<run_id>/split.json`` (``cuts`` + ``failures``). Every
 slot file is deleted only when every cut succeeded, so a retry can cut again.
-Idempotent per chapter: an already-persisted chapter is re-measured, not re-cut.
+Idempotent per chapter: an already-persisted chapter of the planned length is
+re-measured, not re-cut; one of the wrong length is cut again.
 
 Env: SLUG, RUN_ID (required); INSPECTOR_BUCKET_MOUNT (default ``/data``);
 SPLIT_WORKERS (default one per vCPU, 8 max).
@@ -27,8 +32,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import sys
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -39,30 +46,76 @@ from qua_jobs import audio_io  # noqa: E402
 log = logging.getLogger("split_audio")
 
 MAX_WORKERS = 8
+#: A cut whose length is off the plan by more than this is refused (encoder
+#: padding and frame rounding stay well under it; a truncated read does not).
+LENGTH_TOLERANCE_MS = 1500
+COPY_ATTEMPTS = 4
+COPY_RETRY_SLEEP_S = 5
 
 
 def _root() -> Path:
     return Path(os.environ.get("INSPECTOR_BUCKET_MOUNT", "/data"))
 
 
+def _expected_ms(pieces: list[list[int]]) -> int:
+    return sum(int(b) - int(a) for _s, a, b in pieces)
+
+
+def _check_length(chapter: int, duration_ms: int, expected_ms: int) -> None:
+    if abs(duration_ms - expected_ms) > LENGTH_TOLERANCE_MS:
+        raise RuntimeError(
+            f"chapter {chapter} cut is {duration_ms / 1000:.1f}s, "
+            f"the plan says {expected_ms / 1000:.1f}s"
+        )
+
+
+def _local_copy(src: Path, dest: Path) -> Path:
+    """Copy a slot file off the bucket mount before cutting it. Under load the
+    mount can fail a read mid-file, and ffmpeg then ends the input early and
+    still exits 0 — so the copy is size-checked and retried."""
+    expected = src.stat().st_size
+    for attempt in range(1, COPY_ATTEMPTS + 1):
+        try:
+            shutil.copyfile(src, dest)
+            if dest.stat().st_size == expected:
+                return dest
+            log.warning("%s: copied %d of %d bytes", src.name, dest.stat().st_size, expected)
+        except OSError as exc:
+            log.warning("%s: copy attempt %d failed: %s", src.name, attempt, exc)
+        time.sleep(COPY_RETRY_SLEEP_S * attempt)
+    raise RuntimeError(f"could not read {src.name} off the bucket mount")
+
+
 def _cut_one(slug: str, chapter: int, pieces: list[list[int]], channels: int) -> dict:
     reciter = _root() / "reciters" / slug
     mp3 = reciter / "audio" / f"{chapter}.mp3"
     peaks = reciter / "peaks" / f"{chapter}.json.gz"
+    expected_ms = _expected_ms(pieces)
     if mp3.is_file() and peaks.is_file():
-        return {
-            "bytes": mp3.stat().st_size,
-            "duration_ms": audio_io.probe_duration_ms(mp3),
-            "pieces": len(pieces),
-            "skipped": True,
-        }
-    windows = [(reciter / "audio" / f"{int(s)}.mp3", int(a), int(b)) for s, a, b in pieces]
+        duration_ms = audio_io.probe_duration_ms(mp3)
+        if duration_ms is not None and abs(duration_ms - expected_ms) <= LENGTH_TOLERANCE_MS:
+            return {
+                "bytes": mp3.stat().st_size,
+                "duration_ms": duration_ms,
+                "pieces": len(pieces),
+                "skipped": True,
+            }
+        log.warning("chapter %d: persisted cut has the wrong length, cutting again", chapter)
     with tempfile.TemporaryDirectory(prefix=f"split_{chapter}_") as tmp:
-        encoded = Path(tmp) / f"{chapter}.mp3"
+        work = Path(tmp)
+        local: dict[int, Path] = {}
+        for slot in sorted({int(p[0]) for p in pieces}):
+            src = reciter / "audio" / f"{slot}.mp3"
+            local[slot] = _local_copy(src, work / f"src_{slot}.mp3")
+        windows = [(local[int(s)], int(a), int(b)) for s, a, b in pieces]
+        encoded = work / f"{chapter}.mp3"
         audio_io.encode_pieces(windows, encoded, channels)
         blob, duration_ms = audio_io.bake_peaks(encoded)
+        _check_length(chapter, duration_ms, expected_ms)
         audio_io.atomic_write_bytes(peaks, blob)
         audio_io.atomic_write(mp3, encoded)
+        if mp3.stat().st_size != encoded.stat().st_size:
+            raise RuntimeError(f"chapter {chapter}: the bucket copy is incomplete")
         return {
             "bytes": encoded.stat().st_size,
             "duration_ms": duration_ms,

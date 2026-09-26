@@ -65,7 +65,11 @@ align     per-file loop, aligner Space POST /api/v1/batches (alignment-only) +
           from (resolve.py) → split_plan.json {chapters: {ch: [[slot,start,end], …]}}
           → CPU HF Job qua_jobs/split_audio.py (kind split_audio) encodes each chapter's
           pieces end to end → audio/<ch>.mp3 + peaks, deletes the slots once every cut
-          succeeded → rows rebased onto each cut, staged as chapters/<ch>.json; outcome →
+          succeeded. Each slot is copied off the bucket mount first (size-checked,
+          retried): under concurrent load the mount failed reads mid-file and ffmpeg
+          wrote 2.7 s "chapters" with exit 0 (2026-09-26). Every cut's length must match
+          the plan within LENGTH_TOLERANCE_MS = 1500, and a persisted chapter of the
+          wrong length is cut again rather than skipped → rows rebased onto each cut, staged as chapters/<ch>.json; outcome →
           split_outcome.json + manifest (chapters written, sources cleared).
           From here a cut chapter is indistinguishable from a single one.
 sidecars  one reciter-wide POST /api/v1/extraction/sidecars (SSE) — the aligner runs

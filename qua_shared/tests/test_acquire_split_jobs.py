@@ -148,3 +148,44 @@ def test_acquire_follows_the_runs_frozen_groups(mount):
     assert acquire_audio.main() == 0
     assert fetched == ["https://yt/a"]
     assert (_reciter(root) / "audio" / "205.mp3").is_file()
+
+
+def test_split_recuts_a_persisted_chapter_of_the_wrong_length(mount):
+    root, _ = mount
+    assert acquire_audio.main() == 0
+    audio = _reciter(root) / "audio"
+    peaks = _reciter(root) / "peaks"
+    # A truncated cut left by an earlier run: 2.5 s where the plan says 6 s.
+    audio_io.encode(audio / "201.mp3", audio / "1.mp3", 1, start_ms=0, end_ms=2500)
+    peaks.mkdir(parents=True, exist_ok=True)
+    (peaks / "1.json.gz").write_bytes(b"stale")
+    plan = root / "staging" / SLUG / "run-1" / "split_plan.json"
+    plan.write_text(json.dumps({"chapters": {"1": [[201, 0, 6000]]}, "slots": [201]}))
+
+    assert split_audio.main() == 0
+
+    report = json.loads((root / "staging" / SLUG / "run-1" / "split.json").read_text("utf-8"))
+    assert report["cuts"]["1"]["skipped"] is False
+    recut_ms = audio_io.probe_duration_ms(audio / "1.mp3")
+    assert recut_ms is not None and abs(recut_ms - 6000) < 150
+
+
+def test_split_refuses_a_short_cut_and_keeps_the_slot(mount, monkeypatch):
+    root, _ = mount
+    assert acquire_audio.main() == 0
+    real = audio_io.encode_pieces
+
+    def truncated(pieces, dest, channels):
+        src, start, _end = pieces[0]
+        real([(src, start, start + 1000)], dest, channels)  # the input ended early
+
+    monkeypatch.setattr(audio_io, "encode_pieces", truncated)
+    plan = root / "staging" / SLUG / "run-1" / "split_plan.json"
+    plan.write_text(json.dumps({"chapters": {"1": [[201, 0, 6000]]}, "slots": [201]}))
+
+    assert split_audio.main() == 1
+
+    report = json.loads((root / "staging" / SLUG / "run-1" / "split.json").read_text("utf-8"))
+    assert "the plan says 6.0s" in report["failures"]["1"]
+    assert (_reciter(root) / "audio" / "201.mp3").is_file()
+    assert not (_reciter(root) / "audio" / "1.mp3").exists()
