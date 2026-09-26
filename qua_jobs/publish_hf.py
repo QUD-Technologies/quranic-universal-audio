@@ -42,6 +42,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from qua_shared.catalog_visibility import is_everyayah_channel  # noqa: E402
+from qua_shared.inspector_notify import WEBHOOK_USER_AGENT  # noqa: E402
 from qua_shared.mp3_frames import (  # noqa: E402
     FrameIndex,
     MultiFrameSlice,
@@ -56,7 +57,6 @@ from qua_shared.riwayat import (  # noqa: E402
     from_sdk_slug,
     resolve_sdk_slug,
 )
-from qua_shared.inspector_notify import WEBHOOK_USER_AGENT  # noqa: E402
 from qua_shared.verse_layout import (  # noqa: E402
     build_verse_layouts,
     load_canonical_verses,
@@ -861,7 +861,9 @@ def publish_slug(
         log.error("riwayah unusable for %s: %s", slug, exc)
         return _result(slug, "failed", error=str(exc), exit_code=17)
     if delivery_riwayah != shard_riwayah:
-        log.error("riwayah mismatch: delivery says %s, shards are %s", config_riwayah, shard_riwayah)
+        log.error(
+            "riwayah mismatch: delivery says %s, shards are %s", config_riwayah, shard_riwayah
+        )
         return _result(
             slug,
             "failed",

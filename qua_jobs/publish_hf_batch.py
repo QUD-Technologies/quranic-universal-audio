@@ -49,13 +49,13 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from qua_shared.inspector_notify import WEBHOOK_USER_AGENT  # noqa: E402
 from qua_jobs.publish_hf import (  # noqa: E402
     _bucket_root,
     _resolve_dataset_repo_id,
     _sync_dataset_catalog_and_card,
     publish_slug,
 )
+from qua_shared.inspector_notify import WEBHOOK_USER_AGENT  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("publish_hf_batch")

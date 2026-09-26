@@ -58,6 +58,7 @@ from qua_shared.digital_khatt import (  # noqa: E402
     DIGITAL_KHATT_SCRIPT_ID,
     UNICODE_INDEXING,
 )
+from qua_shared.inspector_notify import WEBHOOK_USER_AGENT  # noqa: E402
 from qua_shared.riwayat import (  # noqa: E402
     DEFAULT_SDK_RIWAYAH,
     UnsupportedRiwayah,
@@ -78,7 +79,6 @@ from qua_shared.schemas import (  # noqa: E402
     WordTimestampsDoc,
 )
 from qua_shared.schemas.wire.release import SCHEMA_VERSION  # noqa: E402
-from qua_shared.inspector_notify import WEBHOOK_USER_AGENT  # noqa: E402
 from qua_shared.verse_layout import (  # noqa: E402
     PadParams,
     build_verse_layouts,
