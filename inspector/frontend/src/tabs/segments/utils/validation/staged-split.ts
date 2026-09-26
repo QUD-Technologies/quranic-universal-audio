@@ -105,9 +105,8 @@ function joinRefs(a: string, b: string): string {
 }
 
 /**
- * The split a missed-waqf card commits: only the boundaries picked WAQF
- * (`false`, or unanswered) are cut; a WASL pick merges its two pieces back
- * into one ref. `null` when no boundary is cut.
+ * Only the boundaries picked WAQF (`false`, or unanswered) are cut; a WASL
+ * pick merges its two pieces back into one ref. `null` when no boundary is cut.
  */
 export function waqfOnlySplit(staged: StagedSplit, picks: readonly StagedPick[]): StagedSplit | null {
     const cursors: number[] = [];
@@ -128,25 +127,36 @@ export function waqfOnlySplit(staged: StagedSplit, picks: readonly StagedPick[])
 }
 
 export type StagedCommit =
-    | { kind: 'ignore' }
-    | { kind: 'split'; split: StagedSplit; wasls: boolean[] };
+    | { kind: 'none' }
+    | { kind: 'split'; split: StagedSplit; wasls: boolean[]; newUids: string[] };
 
 /**
- * What a `category` card commits once its boundaries are answered. Cross-verse
- * cuts every boundary and carries each pick as `is_wasl`. Missed-waqf cuts
- * only the WAQF boundaries (all `is_wasl` false); with no cut left the item
- * is ignored instead.
+ * What a `category` card commits from its picks so far. `childUids` are the
+ * staged pieces' uids (pieces 1..N).
+ *
+ * Cross-verse cuts every boundary, carrying each pick as `is_wasl`
+ * (unanswered commits as WAQF; the card keeps asking).
+ *
+ * Missed-waqf cuts only the boundaries answered WAQF: a WASL or unanswered
+ * cut is a suspect that never becomes a split. Each committed piece keeps the
+ * uid of the staged piece that starts where it starts, so those rows keep
+ * their identity. `none` when no cut is answered WAQF.
  */
 export function stagedCommit(
     category: StagedKind,
     staged: StagedSplit,
     picks: readonly StagedPick[],
+    childUids: readonly string[],
 ): StagedCommit {
     if (category === 'cross_verse') {
-        return { kind: 'split', split: staged, wasls: staged.cursors.map((_, i) => picks[i] === true) };
+        const wasls = staged.cursors.map((_, i) => picks[i] === true);
+        return { kind: 'split', split: staged, wasls, newUids: childUids.slice() };
     }
-    const cut = waqfOnlySplit(staged, picks);
-    return cut ? { kind: 'split', split: cut, wasls: cut.cursors.map(() => false) } : { kind: 'ignore' };
+    const kept = staged.cursors.map((_, i) => picks[i] === false);
+    const split = waqfOnlySplit(staged, kept.map((k) => !k));
+    if (!split) return { kind: 'none' };
+    const newUids = childUids.filter((_, i) => kept[i]);
+    return { kind: 'split', split, wasls: split.cursors.map(() => false), newUids };
 }
 
 /**

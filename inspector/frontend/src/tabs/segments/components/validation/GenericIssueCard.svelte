@@ -276,42 +276,56 @@
         return waslCommitForPiece(i, members.map((mem) => mem.segment_uid), commits);
     }
 
-    /** Dispatch the staged split. On a cross-verse card unanswered boundaries
-     *  commit as WAQF but stay flagged pending, so their pickers keep asking
-     *  and amend the same op in place (the post-split path). On a missed-waqf
-     *  card only the WAQF boundaries are cut; all WASL ignores the item. */
-    function materializeStaged(): void {
-        if (!staged || !stagedKey || !resolvedSeg) return;
+    /** Dispatch the staged split from the picks so far (`stagedCommit`);
+     *  returns the committed piece uids, or null when nothing was split. On a
+     *  cross-verse card unanswered boundaries commit as WAQF but stay flagged
+     *  pending, so their pickers keep asking and amend the same op in place
+     *  (the post-split path). On a missed-waqf card only the cuts answered
+     *  WAQF are cut; with none, the last answer (all WASL) ignores the item,
+     *  while an edit on a piece leaves the seg and its picks untouched. */
+    function materializeStaged(fromEdit = false): string[] | null {
+        if (!staged || !stagedKey || !resolvedSeg) return null;
         const picks = get(stagedWaslPicks)[stagedKey] ?? [];
-        const plan = stagedCommit(stagedCategory, staged, picks);
-        if (plan.kind === 'ignore') {
+        const childUids = stagedChildUidsFor(stagedKey, staged.cursors.length);
+        const plan = stagedCommit(stagedCategory, staged, picks, childUids);
+        if (plan.kind === 'none') {
+            if (fromEdit) return null;
             clearStagedPicks(stagedKey);
             handleIgnore();
-            return;
+            return null;
         }
-        const { split: cut, wasls } = plan;
-        const n = cut.cursors.length;
-        const uids = stagedChildUidsFor(stagedKey, n);
+        const { split: cut, wasls, newUids } = plan;
         try {
             const commit = commitSplit(resolvedSeg, cut.cursors, {
                 refs: cut.refs,
                 wasls,
-                newUids: uids,
+                newUids,
                 contextCategory: category,
             });
-            if (!commit) return;
+            if (!commit) return null;
             finalizeSplit(commit);
-            if (isMissedWaqfCard) return;
-            for (let i = 0; i < n; i++) {
+            const pieceUids = commit.pieces.map((p) => p.segment_uid ?? '');
+            if (isMissedWaqfCard) return pieceUids;
+            for (let i = 0; i < cut.cursors.length; i++) {
                 if (picks[i] !== undefined) continue;
                 const left = commit.pieces[i]?.segment_uid;
                 if (left) markWaslPending(left);
             }
+            return pieceUids;
         } catch (err) {
             console.warn('Staged split: commit failed:', err);
+            return null;
         } finally {
             clearStagedPicks(stagedKey);
         }
+    }
+
+    /** An edit action on staged piece `uid`: commit, then let the action run
+     *  only if that piece is now real (a missed-waqf piece whose start cut was
+     *  not answered WAQF is merged away, so its action is a no-op). */
+    function activateStagedPiece(uid: string | null): boolean {
+        const pieceUids = materializeStaged(true);
+        return uid != null && pieceUids != null && pieceUids.includes(uid);
     }
 
     function onStagedPick(i: number, value: boolean): void {
@@ -448,7 +462,7 @@
                 showPlayBtn={true}
                 showChapter={true}
                 staged={memStaged}
-                onStagedActivate={memStaged ? materializeStaged : null}
+                onStagedActivate={memStaged ? activateStagedPiece : null}
                 validationCategory={category}
                 accordionSiblings={siblings}
                 onCardIgnore={canIgnore ? handleIgnore : null}
