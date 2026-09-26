@@ -23,6 +23,10 @@ log = logging.getLogger("inspector_notify")
 
 _TS_REFRESHED_PATH = "/api/admin/internal/ts-refreshed"
 
+# Cloudflare (in front of the custom domain) rejects the stock Python-urllib
+# user agent with 403 / error 1010, so every callback to the Inspector names itself.
+WEBHOOK_USER_AGENT = "quranic-universal-audio-job/1.0"
+
 
 def notify_ts_refreshed(
     inspector_url: str | None,
@@ -58,7 +62,7 @@ def notify_ts_refreshed(
         resp = requests.post(
             endpoint,
             json=body,
-            headers={"X-Inspector-Job-Secret": secret},
+            headers={"X-Inspector-Job-Secret": secret, "User-Agent": WEBHOOK_USER_AGENT},
             timeout=timeout,
         )
         ok = 200 <= resp.status_code < 300

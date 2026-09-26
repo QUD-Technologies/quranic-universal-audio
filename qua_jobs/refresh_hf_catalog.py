@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import sys
+from qua_shared.inspector_notify import WEBHOOK_USER_AGENT
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("refresh_hf_catalog")
@@ -37,7 +38,11 @@ def _post_webhook(*, job_id: str, status: str) -> bool:
         url,
         data=data,
         method="POST",
-        headers={"Content-Type": "application/json", "X-Inspector-Job-Secret": secret},
+        headers={
+            "Content-Type": "application/json",
+            "X-Inspector-Job-Secret": secret,
+            "User-Agent": WEBHOOK_USER_AGENT,
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:

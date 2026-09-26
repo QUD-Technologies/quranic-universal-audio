@@ -56,6 +56,7 @@ from qua_shared.riwayat import (  # noqa: E402
     from_sdk_slug,
     resolve_sdk_slug,
 )
+from qua_shared.inspector_notify import WEBHOOK_USER_AGENT  # noqa: E402
 from qua_shared.verse_layout import (  # noqa: E402
     build_verse_layouts,
     load_canonical_verses,
@@ -713,7 +714,11 @@ def _post_webhook(
         url,
         data=data,
         method="POST",
-        headers={"Content-Type": "application/json", "X-Inspector-Job-Secret": secret},
+        headers={
+            "Content-Type": "application/json",
+            "X-Inspector-Job-Secret": secret,
+            "User-Agent": WEBHOOK_USER_AGENT,
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:

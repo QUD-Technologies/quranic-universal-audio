@@ -78,6 +78,7 @@ from qua_shared.schemas import (  # noqa: E402
     WordTimestampsDoc,
 )
 from qua_shared.schemas.wire.release import SCHEMA_VERSION  # noqa: E402
+from qua_shared.inspector_notify import WEBHOOK_USER_AGENT  # noqa: E402
 from qua_shared.verse_layout import (  # noqa: E402
     PadParams,
     build_verse_layouts,
@@ -829,7 +830,11 @@ def _post_webhook(
         url,
         data=data,
         method="POST",
-        headers={"Content-Type": "application/json", "X-Inspector-Job-Secret": secret},
+        headers={
+            "Content-Type": "application/json",
+            "X-Inspector-Job-Secret": secret,
+            "User-Agent": WEBHOOK_USER_AGENT,
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
