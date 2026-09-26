@@ -7,12 +7,11 @@
  * items by the states they contain.
  *
  * Sources, checked in order:
- *   1. a committed / in-progress split (≥2 live members). Cross-verse reads
- *      each left member's `is_wasl` on every verse join (a uid still awaiting
- *      its post-split pick is unset). Missed-waqf counts every cut as waqf and
- *      every proposed cut the split dropped as wasl;
+ *   1. a committed / in-progress split (≥2 live members): each left member's
+ *      `is_wasl` (a uid still awaiting its post-split pick is unset), on every
+ *      verse join for cross-verse and on every join for missed-waqf;
  *   2. missed-waqf only: the root is ignored for the category — every
- *      proposed cut was answered WASL;
+ *      proposed cut reads as wasl;
  *   3. a staged split (not dispatched) — read the session picks;
  *   4. none of these — one unset boundary.
  */
@@ -52,23 +51,14 @@ function _memberState(left: Segment, pending: ReadonlySet<string>): BoundaryStat
     return left.is_wasl === true ? 'wasl' : 'waqf';
 }
 
-function _repeat(state: BoundaryState, n: number): BoundaryState[] {
-    return new Array<BoundaryState>(n).fill(state);
-}
-
 function _committedStates(
     category: StagedKind,
-    item: SegValAnyItem,
     members: Segment[],
     pending: ReadonlySet<string>,
 ): BoundaryState[] {
-    if (category === 'missed_waqf') {
-        const cuts = members.length - 1;
-        return [..._repeat('waqf', cuts), ..._repeat('wasl', Math.max(0, itemCursorCount(item) - cuts))];
-    }
     const out: BoundaryState[] = [];
     for (let i = 0; i < members.length - 1; i++) {
-        if (!isVerseBoundary(members[i]!, members[i + 1]!)) continue;
+        if (category === 'cross_verse' && !isVerseBoundary(members[i]!, members[i + 1]!)) continue;
         out.push(_memberState(members[i]!, pending));
     }
     return out.length ? out : ['unset'];
@@ -84,10 +74,10 @@ export function boundaryStates(
     if (!uid || chapter == null) return ['unset'];
     const segs = ctx.chapterSegs(chapter);
     const members = getSplitGroupMembers(uid, segs, ctx.splitGroupIndex[uid], ctx.opLog(chapter));
-    if (members.length >= 2) return _committedStates(category, item, members, ctx.pendingWasl);
+    if (members.length >= 2) return _committedStates(category, members, ctx.pendingWasl);
     const root = segs.find((s) => s.segment_uid === uid) ?? null;
     if (category === 'missed_waqf' && root && isIgnoredFor(root, category)) {
-        return _repeat('wasl', Math.max(1, itemCursorCount(item)));
+        return new Array<BoundaryState>(Math.max(1, itemCursorCount(item))).fill('wasl');
     }
     const staged = stagedSplitFor(category, root, item, ctx.autoSplitMap);
     if (staged) {

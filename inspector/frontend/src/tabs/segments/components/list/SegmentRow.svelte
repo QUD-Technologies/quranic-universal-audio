@@ -204,26 +204,23 @@ import type { Segment } from '../../../../lib/types/view-models';
     export let groupEndMs: number | null = null;
     /**
      * Staged piece of a pre-applied split (cross-verse, missed-waqf) that is
-     * not in the store yet (see `utils/validation/staged-split.ts`). The row
-     * looks and acts like any other, drawing its own waveform from the
-     * piece's time range (`data-hist-*`); the differences are that it does
-     * not register in the playback row registry (its index is still the
-     * parent's) and every edit action first calls `onStagedActivate(uid)` —
-     * the card commits the split — then runs against the now-real piece
-     * (same uid, same mounted row). The card answers false when the commit
-     * left no real piece with this uid; the action is then a no-op.
+     * not in the store yet (see `utils/validation/staged-split.ts`). The row looks and
+     * acts like any other, drawing its own waveform from the piece's time
+     * range (`data-hist-*`); the differences are that it does not register
+     * in the playback row registry (its index is still the parent's) and
+     * every edit action first calls `onStagedActivate` — the card commits
+     * the split — then runs against the now-real piece (same uid, same
+     * mounted row).
      */
     export let staged: boolean = false;
-    export let onStagedActivate: ((_uid: string | null) => boolean) | null = null;
+    export let onStagedActivate: (() => void) | null = null;
 
     /** Materialise the staged split before an edit action, and let the
-     *  props settle so `seg` is the store-backed piece. False = no piece to
-     *  act on. */
-    async function activate(): Promise<boolean> {
-        if (!staged || !onStagedActivate) return true;
-        const ok = onStagedActivate(seg.segment_uid ?? null);
+     *  props settle so `seg` is the store-backed piece. */
+    async function activate(): Promise<void> {
+        if (!staged || !onStagedActivate) return;
+        onStagedActivate();
         await tick();
-        return ok;
     }
 
     // Apply history-mode highlight descriptors to the underlying canvas element
@@ -821,7 +818,7 @@ import type { Segment } from '../../../../lib/types/view-models';
 
     function onAdjustClick(e: MouseEvent): void {
         e.stopPropagation();
-        void activate().then((ok) => { if (ok) doAdjust(); });
+        void activate().then(doAdjust);
     }
 
     function doAdjust(): void {
@@ -842,7 +839,7 @@ import type { Segment } from '../../../../lib/types/view-models';
 
     function onSplitClick(e: MouseEvent): void {
         e.stopPropagation();
-        void activate().then((ok) => { if (ok) void doSplit(); });
+        void activate().then(doSplit);
     }
 
     async function doSplit(): Promise<void> {
@@ -892,17 +889,17 @@ import type { Segment } from '../../../../lib/types/view-models';
 
     function onMergePrevClick(e: MouseEvent): void {
         e.stopPropagation();
-        void activate().then((ok) => { if (ok) mergeAdjacent(seg, 'prev', validationCategory, _mountId); });
+        void activate().then(() => mergeAdjacent(seg, 'prev', validationCategory, _mountId));
     }
 
     function onMergeNextClick(e: MouseEvent): void {
         e.stopPropagation();
-        void activate().then((ok) => { if (ok) mergeAdjacent(seg, 'next', validationCategory, _mountId); });
+        void activate().then(() => mergeAdjacent(seg, 'next', validationCategory, _mountId));
     }
 
     function onDeleteClick(e: MouseEvent): void {
         e.stopPropagation();
-        void activate().then((ok) => { if (ok) doDelete(); });
+        void activate().then(doDelete);
     }
 
     function doDelete(): void {
@@ -911,7 +908,7 @@ import type { Segment } from '../../../../lib/types/view-models';
 
     function onEditRefClick(e: MouseEvent): void {
         e.stopPropagation();
-        void activate().then((ok) => { if (ok) doEditRef(); });
+        void activate().then(doEditRef);
     }
 
     function doEditRef(): void {
@@ -971,7 +968,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     function onRefTextClick(e: MouseEvent): void {
         if (readOnly) return;
         e.stopPropagation();
-        void activate().then((ok) => { if (ok) beginRefEdit(seg, validationCategory, _mountId); });
+        void activate().then(() => beginRefEdit(seg, validationCategory, _mountId));
     }
 
     // ---------------------------------------------------------------------
@@ -997,8 +994,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     function openFlagEditor(e: MouseEvent): void {
         e.stopPropagation();
         if (!canEditFlag) return;
-        void activate().then((ok) => {
-            if (!ok) return;
+        void activate().then(() => {
             flagDraft = seg.flag?.comment ?? '';
             flagEditing = true;
         });

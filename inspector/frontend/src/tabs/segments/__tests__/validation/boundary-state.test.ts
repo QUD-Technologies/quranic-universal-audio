@@ -126,13 +126,16 @@ describe('boundaryStates — missed_waqf', () => {
             .toEqual(['unset', 'unset']);
     });
 
-    it('counts every cut of a split as waqf and every dropped cursor as wasl', () => {
+    it('reads is_wasl on every join of a split, pending joins unset', () => {
         const segs = [
-            seg({ segment_uid: 'root', index: 0, time_start: 0, time_end: 600, matched_ref: '2:1:1-2:1:5', is_wasl: false }),
-            seg({ segment_uid: 'b', index: 1, time_start: 600, time_end: 1000, matched_ref: '2:1:6-2:1:9' }),
+            seg({ segment_uid: 'root', index: 0, time_start: 0, time_end: 300, matched_ref: '2:1:1-2:1:2', is_wasl: true }),
+            seg({ segment_uid: 'b', index: 1, time_start: 300, time_end: 600, matched_ref: '2:1:3-2:1:5', is_wasl: false }),
+            seg({ segment_uid: 'c', index: 2, time_start: 600, time_end: 1000, matched_ref: '2:1:6-2:1:9' }),
         ];
-        const c = ctx(segs, { splitGroupIndex: { root: ['b'] } });
-        expect(boundaryStates(mw, c, 'missed_waqf')).toEqual(['waqf', 'wasl']);
+        const c = ctx(segs, { splitGroupIndex: { root: ['b', 'c'] } });
+        expect(boundaryStates(mw, c, 'missed_waqf')).toEqual(['wasl', 'waqf']);
+        expect(boundaryStates(mw, ctx(segs, { splitGroupIndex: { root: ['b', 'c'] }, pendingWasl: new Set(['b']) }), 'missed_waqf'))
+            .toEqual(['wasl', 'unset']);
     });
 
     it('counts every cursor of an ignored item as wasl', () => {

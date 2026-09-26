@@ -1,6 +1,6 @@
 /**
  * Staged split (cross-verse, missed-waqf) — eligibility gate, per-card
- * source, display-piece builder and the WAQF-only commit.
+ * source, display-piece builder and the commit.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -10,13 +10,11 @@ import type { AutoSplitMap } from '../../stores/auto-split';
 import {
     buildStagedChildren,
     isStagedSegment,
-    itemCursorCount,
     MISSED_WAQF_KINDS,
     resolveStagedSplit,
     stagedCommit,
     stagedPickKey,
     stagedSplitFor,
-    waqfOnlySplit,
 } from '../../utils/validation/staged-split';
 
 const seg = (o: Partial<Segment> = {}): Segment => ({
@@ -99,13 +97,11 @@ describe('stagedSplitFor', () => {
             cursors: [2000, 4000],
             refs: ['2:1:1-2:1:2', '2:1:3-2:1:6', '2:1:7-2:1:9'],
         });
-        expect(itemCursorCount(item)).toBe(2);
     });
 
     it('does not stage a missed-waqf item without refs', () => {
         const item = mwItem({ cursors: [2000], refs: null });
         expect(stagedSplitFor('missed_waqf', inVerse, item, null)).toBeNull();
-        expect(itemCursorCount(item)).toBe(1);
     });
 
     it('stages a cross-verse card from the map entry', () => {
@@ -159,79 +155,16 @@ describe('buildStagedChildren', () => {
     });
 });
 
-describe('waqfOnlySplit', () => {
-    const staged = { cursors: [2000, 3500], refs: ['2:1:1-2:1:4', '2:1:5-2:1:8', '2:1:9-2:1:12'] };
-
-    it('cuts only the boundaries picked WAQF or left unanswered', () => {
-        expect(waqfOnlySplit(staged, [false, false])).toEqual(staged);
-        expect(waqfOnlySplit(staged, [])).toEqual(staged);
-        expect(waqfOnlySplit(staged, [true, false])).toEqual({
-            cursors: [3500],
-            refs: ['2:1:1-2:1:8', '2:1:9-2:1:12'],
-        });
-        expect(waqfOnlySplit(staged, [false, true])).toEqual({
-            cursors: [2000],
-            refs: ['2:1:1-2:1:4', '2:1:5-2:1:12'],
-        });
-    });
-
-    it('is null when every boundary is WASL', () => {
-        expect(waqfOnlySplit(staged, [true, true])).toBeNull();
-    });
-});
-
 describe('stagedCommit', () => {
     const staged = { cursors: [2000, 3500], refs: ['2:1:1-2:1:4', '2:1:5-2:1:8', '2:1:9-2:1:12'] };
     const kids = ['k1', 'k2'];
 
-    it('missed-waqf: all WASL commits nothing (the card ignores the item)', () => {
-        expect(stagedCommit('missed_waqf', staged, [true, true], kids)).toEqual({ kind: 'none' });
+    it('cuts every boundary, unanswered included, and carries the picks as is_wasl', () => {
+        expect(stagedCommit(staged, [true, false], kids)).toEqual({ split: staged, wasls: [true, false], newUids: kids });
+        expect(stagedCommit(staged, [true, undefined], kids)).toEqual({ split: staged, wasls: [true, false], newUids: kids });
     });
 
-    it('missed-waqf: mixed picks split at the WAQF cursors only, none marked wasl', () => {
-        expect(stagedCommit('missed_waqf', staged, [true, false], kids)).toEqual({
-            kind: 'split',
-            split: { cursors: [3500], refs: ['2:1:1-2:1:8', '2:1:9-2:1:12'] },
-            wasls: [false],
-            newUids: ['k2'],
-        });
-        expect(stagedCommit('missed_waqf', staged, [false, false], kids)).toEqual({
-            kind: 'split',
-            split: staged,
-            wasls: [false, false],
-            newUids: ['k1', 'k2'],
-        });
-    });
-
-    it('missed-waqf: an edit before every cut is answered never cuts an unanswered one', () => {
-        expect(stagedCommit('missed_waqf', staged, [], kids)).toEqual({ kind: 'none' });
-        expect(stagedCommit('missed_waqf', staged, [undefined, true], kids)).toEqual({ kind: 'none' });
-        expect(stagedCommit('missed_waqf', staged, [undefined, false], kids)).toEqual({
-            kind: 'split',
-            split: { cursors: [3500], refs: ['2:1:1-2:1:8', '2:1:9-2:1:12'] },
-            wasls: [false],
-            newUids: ['k2'],
-        });
-        expect(stagedCommit('missed_waqf', staged, [false, undefined], kids)).toEqual({
-            kind: 'split',
-            split: { cursors: [2000], refs: ['2:1:1-2:1:4', '2:1:5-2:1:12'] },
-            wasls: [false],
-            newUids: ['k1'],
-        });
-    });
-
-    it('cross-verse: cuts every boundary, unanswered included, and carries the picks as is_wasl', () => {
-        expect(stagedCommit('cross_verse', staged, [true, false], kids)).toEqual({
-            kind: 'split',
-            split: staged,
-            wasls: [true, false],
-            newUids: kids,
-        });
-        expect(stagedCommit('cross_verse', staged, [true, undefined], kids)).toEqual({
-            kind: 'split',
-            split: staged,
-            wasls: [true, false],
-            newUids: kids,
-        });
+    it('all WASL still splits, every piece marked wasl', () => {
+        expect(stagedCommit(staged, [true, true], kids)).toEqual({ split: staged, wasls: [true, true], newUids: kids });
     });
 });
