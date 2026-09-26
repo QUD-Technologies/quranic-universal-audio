@@ -16,6 +16,7 @@ the same OAuth + claim check on the route layer.
 from collections import defaultdict
 from copy import deepcopy
 from datetime import UTC, datetime
+
 from pydantic import ValidationError
 
 from adapters.save_payload import build_seg_lookups as _adapter_build_seg_lookups
@@ -408,6 +409,8 @@ def _apply_patch(matching: list[dict], updates: dict, riwayah: str = DEFAULT_SDK
                 else:
                     flat_segments[idx].pop("ignored_categories", None)
                     flat_segments[idx].pop("ignored", None)
+            if upd.get("is_wasl") is not None:
+                flat_segments[idx]["is_wasl"] = bool(upd["is_wasl"])
             # Re-stamp persisted classifier fields since matched_ref/text changed.
             stamp_segment(flat_segments[idx], single_word_verses, riwayah)
 
@@ -415,12 +418,25 @@ def _apply_patch(matching: list[dict], updates: dict, riwayah: str = DEFAULT_SDK
 def _apply_word_timing_op(matching: list[dict], updates: dict, *, reciter: str, chapter: int):
     """Apply one sample-only word-boundary edit and build its authoritative undo patch."""
     operations = updates.get("operations") or []
-    timing_ops = [op for op in operations if isinstance(op, dict) and op.get("op_type") == "edit_word_timings"]
-    if any(isinstance(op, dict) and op.get("type") == "editWordTimings" and op.get("op_type") != "edit_word_timings" for op in operations):
+    timing_ops = [
+        op for op in operations if isinstance(op, dict) and op.get("op_type") == "edit_word_timings"
+    ]
+    if any(
+        isinstance(op, dict)
+        and op.get("type") == "editWordTimings"
+        and op.get("op_type") != "edit_word_timings"
+        for op in operations
+    ):
         return {"error": "Invalid word timing edit operation."}, 400
     if not timing_ops:
         return None
-    if not storage_paths.is_sample_slug(reciter) or len(operations) != 1 or len(timing_ops) != 1 or updates.get("segments") or updates.get("full_replace"):
+    if (
+        not storage_paths.is_sample_slug(reciter)
+        or len(operations) != 1
+        or len(timing_ops) != 1
+        or updates.get("segments")
+        or updates.get("full_replace")
+    ):
         return {"error": "Word timing edits must be a single sample-only operation."}, 400
     op = timing_ops[0]
     cmd = op.get("command") or {}
@@ -429,7 +445,11 @@ def _apply_word_timing_op(matching: list[dict], updates: dict, *, reciter: str, 
     uid = cmd.get("segmentUid")
     expected = cmd.get("expected")
     boundaries = cmd.get("boundaries")
-    if not isinstance(uid, str) or not isinstance(expected, list) or not isinstance(boundaries, list):
+    if (
+        not isinstance(uid, str)
+        or not isinstance(expected, list)
+        or not isinstance(boundaries, list)
+    ):
         return {"error": "Word timing edit requires a segment and boundary lists."}, 400
     for entry in matching:
         for index, segment in enumerate(entry.get("segments", [])):
@@ -438,7 +458,9 @@ def _apply_word_timing_op(matching: list[dict], updates: dict, *, reciter: str, 
             old = segment.get("word_timings") or []
             current_bounds = [{"start_ms": w["start_ms"], "end_ms": w["end_ms"]} for w in old]
             if expected != current_bounds:
-                return {"error": "Word timings changed since this editor opened. Reload the sample."}, 409
+                return {
+                    "error": "Word timings changed since this editor opened. Reload the sample."
+                }, 409
             if not old or len(boundaries) != len(old):
                 return {"error": "Word count changed; reload the sample."}, 409
             candidate = []
@@ -447,10 +469,22 @@ def _apply_word_timing_op(matching: list[dict], updates: dict, *, reciter: str, 
                 if not isinstance(bound, dict) or set(bound) != {"start_ms", "end_ms"}:
                     return {"error": "Each word needs start_ms and end_ms."}, 400
                 start, end = bound["start_ms"], bound["end_ms"]
-                if type(start) is not int or type(end) is not int or start < previous_end or end - start < 20 or end > segment["time_end"]:
-                    return {"error": "Word boundaries must stay ordered, non-overlapping, and inside the segment."}, 400
+                if (
+                    type(start) is not int
+                    or type(end) is not int
+                    or start < previous_end
+                    or end - start < 20
+                    or end > segment["time_end"]
+                ):
+                    return {
+                        "error": "Word boundaries must stay ordered, non-overlapping, and inside the segment."
+                    }, 400
                 try:
-                    candidate.append(DetailedWordTiming.model_validate({**old_word, **bound}).model_dump(mode="json"))
+                    candidate.append(
+                        DetailedWordTiming.model_validate({**old_word, **bound}).model_dump(
+                            mode="json"
+                        )
+                    )
                 except ValidationError:
                     return {"error": "Invalid word timing data."}, 400
                 previous_end = end
@@ -459,18 +493,27 @@ def _apply_word_timing_op(matching: list[dict], updates: dict, *, reciter: str, 
             before = deepcopy(segment)
             segment["word_timings"] = candidate
             try:
-                DetailedSegment.model_validate({k: v for k, v in segment.items() if k != "_resolved_by_edit"})
+                DetailedSegment.model_validate(
+                    {k: v for k, v in segment.items() if k != "_resolved_by_edit"}
+                )
             except ValidationError:
                 segment.clear()
                 segment.update(before)
                 return {"error": "Invalid word timing edit."}, 400
             after = deepcopy(segment)
             op["patch"] = {
-                "before": [before], "after": [after],
-                "removedIds": [], "insertedIds": [], "affectedChapterIds": [chapter],
+                "before": [before],
+                "after": [after],
+                "removedIds": [],
+                "insertedIds": [],
+                "affectedChapterIds": [chapter],
             }
-            op["targets_before"] = [{**before, "chapter": chapter, "entry_ref": entry["ref"], "index_at_save": index}]
-            op["targets_after"] = [{**after, "chapter": chapter, "entry_ref": entry["ref"], "index_at_save": index}]
+            op["targets_before"] = [
+                {**before, "chapter": chapter, "entry_ref": entry["ref"], "index_at_save": index}
+            ]
+            op["targets_after"] = [
+                {**after, "chapter": chapter, "entry_ref": entry["ref"], "index_at_save": index}
+            ]
             op["op_context_category"] = None
             op["fix_kind"] = "manual"
             return None

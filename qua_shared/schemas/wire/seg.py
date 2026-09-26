@@ -310,7 +310,7 @@ class SegSavePatchSegment(BaseModel):
     """One segment in a ``patch`` (field-level) save payload.
 
     The patch path keys updates by chapter-local ``index`` and only rewrites
-    ``matched_ref`` / ``confidence`` / ``ignored_categories``.
+    ``matched_ref`` / ``confidence`` / ``ignored_categories`` / ``is_wasl``.
     """
 
     model_config = ConfigDict(extra="forbid")

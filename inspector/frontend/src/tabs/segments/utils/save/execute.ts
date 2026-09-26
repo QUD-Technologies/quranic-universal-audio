@@ -180,7 +180,7 @@ export async function executeSave(isAutoSave = false): Promise<void> {
                             ignored_categories: s.ignored_categories ?? [],
                         };
                         if (s.wrap_word_ranges) o.wrap_word_ranges = s.wrap_word_ranges;
-                        if (s.is_wasl) o.is_wasl = true;
+                        o.is_wasl = s.is_wasl === true;
                         return o;
                     }),
                     operations: chOps,
@@ -196,8 +196,8 @@ export async function executeSave(isAutoSave = false): Promise<void> {
                             matched_ref: seg.matched_ref,
                             confidence: seg.confidence,
                             ignored_categories: seg.ignored_categories ?? [],
+                            is_wasl: seg.is_wasl === true,
                         };
-                        if (seg.is_wasl) upd.is_wasl = true;
                         updates.push(upd);
                     }
                 }

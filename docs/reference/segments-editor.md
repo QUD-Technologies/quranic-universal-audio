@@ -55,7 +55,7 @@ Each user action dispatches a `SegmentCommand` through `applyCommand`. `confiden
 | Delete | `delete` | n/a | `utils/edit/delete.ts` | full_replace; seg removed |
 | Auto-fill / auto-fix | `autoFixMissingWord` | `1.0` | `utils/edit/auto-fix.ts`, `reference.ts` | full_replace; `op_context_category` defaults `missing_words`, `fix_kind=auto_fix` |
 | Ignore | `ignoreIssue` | `1.0` | `utils/edit/ignore.ts` | patch path; appends `category` to `ignored_categories` |
-| Set wasl | `setIsWasl` | unchanged | `utils/edit/setIsWasl.ts` | full_replace; `is_wasl` toggled (omitted when `False`); TS-affecting |
+| Set wasl | `setIsWasl` | unchanged | `utils/edit/setIsWasl.ts` | patch (full_replace when the chapter also has a structural op); `is_wasl` sent `true`/`false` on every saved seg; TS-affecting |
 
 Edit-flow support modules in `utils/edit/`:
 

@@ -86,11 +86,11 @@ def make_seg(
     ):
         result["ignored_categories"] = ["_all"]
 
-    # is_wasl boundary annotation. Payload-authoritative when the key is
-    # present (FE just toggled or split set it); otherwise inherit from the
-    # existing entry-side value. Omit from serialization when False so the
-    # field stays absent on untouched segs.
-    if "is_wasl" in s:
+    # is_wasl boundary annotation. Payload-authoritative when set (the FE
+    # sends it on every seg); otherwise inherit from the existing entry-side
+    # value. Omit from serialization when False so the field stays absent on
+    # untouched segs.
+    if s.get("is_wasl") is not None:
         if bool(s.get("is_wasl")):
             result["is_wasl"] = True
     elif bool(existing.get("is_wasl")):
