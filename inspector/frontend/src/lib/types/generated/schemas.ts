@@ -2246,8 +2246,10 @@ export interface SegValBasmalaAminItem {
  * ``unmarked_wasl_meta`` are present only when the sidecar carried a
  * ``_meta`` block. ``hidden_pause`` / ``missed_waqf`` / ``false_split`` /
  * ``unmarked_wasl`` (and their metas) are omitted for
- * viewers without ``segments.view_boundary_review``. Each item carries a
- * ``classified_issues`` field.
+ * viewers without ``segments.view_boundary_review``. ``wasl_recheck`` lists
+ * the left-piece uids of cross-verse boundaries whose WASL / WAQF answer is
+ * re-asked (open until answered after the sidecar was written); it is shown
+ * to every viewer. Each item carries a ``classified_issues`` field.
  */
 export interface SegValidateResponse {
   errors?: SegValStructuralErrorItem[];
@@ -2280,6 +2282,7 @@ export interface SegValidateResponse {
   missed_waqf_meta?: SegValBoundaryMeta | null;
   false_split_meta?: SegValBoundaryMeta | null;
   unmarked_wasl_meta?: SegValBoundaryMeta | null;
+  wasl_recheck?: string[];
 }
 /**
  * ``stats`` — per-reciter structural segmentation statistics.

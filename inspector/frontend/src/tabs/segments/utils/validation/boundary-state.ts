@@ -8,8 +8,9 @@
  *
  * Sources, checked in order:
  *   1. a committed / in-progress split (≥2 live members): each left member's
- *      `is_wasl` (a uid still awaiting its post-split pick is unset), on every
- *      verse join for cross-verse and on every join for missed-waqf;
+ *      `is_wasl` (a uid still awaiting its post-split pick, or whose answer is
+ *      re-asked, is unset), on every verse join for cross-verse and on every
+ *      join for missed-waqf;
  *   2. missed-waqf only: the root is ignored for the category — every
  *      proposed cut reads as wasl;
  *   3. a staged split (not dispatched) — read the session picks;
@@ -33,6 +34,8 @@ export interface BoundaryCtx {
     opLog: (chapter: number) => readonly EditOp[];
     splitGroupIndex: Record<string, string[]>;
     pendingWasl: ReadonlySet<string>;
+    /** Left-piece uids whose WASL / WAQF answer is re-asked (`wasl_recheck`). */
+    waslRecheck: ReadonlySet<string>;
     autoSplitMap: AutoSplitMap | null;
     stagedPicks: StagedPicks;
 }
@@ -45,21 +48,21 @@ export function isVerseBoundary(a: Segment, b: Segment): boolean {
     return pa.surah !== pb.surah || pa.ayah_to !== pb.ayah_from;
 }
 
-function _memberState(left: Segment, pending: ReadonlySet<string>): BoundaryState {
+function _memberState(left: Segment, ctx: BoundaryCtx): BoundaryState {
     const uid = left.segment_uid;
-    if (uid && pending.has(uid)) return 'unset';
+    if (uid && (ctx.pendingWasl.has(uid) || ctx.waslRecheck.has(uid))) return 'unset';
     return left.is_wasl === true ? 'wasl' : 'waqf';
 }
 
 function _committedStates(
     category: StagedKind,
     members: Segment[],
-    pending: ReadonlySet<string>,
+    ctx: BoundaryCtx,
 ): BoundaryState[] {
     const out: BoundaryState[] = [];
     for (let i = 0; i < members.length - 1; i++) {
         if (category === 'cross_verse' && !isVerseBoundary(members[i]!, members[i + 1]!)) continue;
-        out.push(_memberState(members[i]!, pending));
+        out.push(_memberState(members[i]!, ctx));
     }
     return out.length ? out : ['unset'];
 }
@@ -74,7 +77,7 @@ export function boundaryStates(
     if (!uid || chapter == null) return ['unset'];
     const segs = ctx.chapterSegs(chapter);
     const members = getSplitGroupMembers(uid, segs, ctx.splitGroupIndex[uid], ctx.opLog(chapter));
-    if (members.length >= 2) return _committedStates(category, members, ctx.pendingWasl);
+    if (members.length >= 2) return _committedStates(category, members, ctx);
     const root = segs.find((s) => s.segment_uid === uid) ?? null;
     if (category === 'missed_waqf' && root && isIgnoredFor(root, category)) {
         return new Array<BoundaryState>(Math.max(1, itemCursorCount(item))).fill('wasl');

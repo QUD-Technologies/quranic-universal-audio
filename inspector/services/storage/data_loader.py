@@ -5,7 +5,7 @@ import Flask -- they return plain dicts/lists.
 
 Per-reciter reads (``load_seg_verses``, ``load_detailed``, ``load_probe_v2``,
 ``load_hidden_pause``, ``load_missed_waqf``, ``load_false_split``,
-``load_unmarked_wasl``)
+``load_unmarked_wasl``, ``load_wasl_recheck``)
 go through the storage backend via ``services.data_dir`` — no direct
 filesystem access to ``RECITATION_SEGMENTS_PATH``. Static reference data
 (qpc_hafs, surah_info, digital_khatt) still lives in the image at
@@ -368,6 +368,18 @@ def load_unmarked_wasl(reciter: str) -> tuple[dict[str, dict], dict | None]:
         data_dir.read_unmarked_wasl_doc,
         cache.get_seg_unmarked_wasl,
         cache.set_seg_unmarked_wasl,
+    )
+
+
+def load_wasl_recheck(reciter: str) -> tuple[dict[str, dict], dict | None]:
+    """Load ``wasl_recheck_v1.json`` — reviewer-settled verse-to-verse joins
+    whose WASL / WAQF answer must be re-asked, keyed by the left segment's
+    ``segment_uid``. Never written by the Inspector."""
+    return _load_by_uid_sidecar(
+        reciter,
+        data_dir.read_wasl_recheck_doc,
+        cache.get_seg_wasl_recheck,
+        cache.set_seg_wasl_recheck,
     )
 
 

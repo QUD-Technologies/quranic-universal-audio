@@ -52,7 +52,7 @@
     import { stagedWaslPicks } from '../../stores/staged-split';
     import { openGuideModal } from '../../stores/guides';
     import { autoScrollEnabled, playingSegmentIndex } from '../../stores/playback';
-    import { segValidation, splitGroupIndex, valUiLcThreshold, valUiMeasuredCardHeight,valUiOpenCategory, valUiScrollTop } from '../../stores/validation';
+    import { segValidation, splitGroupIndex, valUiLcThreshold, valUiMeasuredCardHeight,valUiOpenCategory, valUiScrollTop, waslRecheck } from '../../stores/validation';
     import { resolveSort, selectSort, toggleDir, valSortPrefs, type SortPrefs } from '../../stores/validation-sort';
     import {
         VAL_VIRTUALIZE_THRESHOLD,
@@ -532,7 +532,8 @@
 
     // Live inputs for the staged-split boundary states: store segs + op log
     // (committed / in-progress splits and their is_wasl), pending post-split
-    // picks, the sidecar map (staged splits) and the staged session picks.
+    // picks, re-asked boundaries, the sidecar map (staged splits) and the
+    // staged session picks.
     $: boundaryCtx = ((): BoundaryCtx => {
         void $segAllData; void $dirtyTick;
         return {
@@ -540,6 +541,7 @@
             opLog: getChapterOpsSnapshot,
             splitGroupIndex: $splitGroupIndex,
             pendingWasl: $pendingWaslConfirm,
+            waslRecheck: $waslRecheck,
             autoSplitMap: $autoSplitMap,
             stagedPicks: $stagedWaslPicks,
         };

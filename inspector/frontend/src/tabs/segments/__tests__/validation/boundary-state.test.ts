@@ -26,6 +26,7 @@ function ctx(segs: Segment[], over: Partial<BoundaryCtx> = {}): BoundaryCtx {
         opLog: () => [] as EditOp[],
         splitGroupIndex: {},
         pendingWasl: new Set(),
+        waslRecheck: new Set(),
         autoSplitMap: null,
         stagedPicks: {},
         ...over,
@@ -62,6 +63,19 @@ describe('boundaryStates', () => {
         ];
         const c = ctx(segs, { splitGroupIndex: { root: ['b'] }, pendingWasl: new Set(['root']) });
         expect(boundaryStates(root, c)).toEqual(['unset']);
+    });
+
+    it('treats a re-asked boundary as unset, counted and filtered as unset', () => {
+        const segs = [
+            seg({ segment_uid: 'root', index: 0, time_start: 0, time_end: 500, matched_ref: '2:1:1-2:1:4', is_wasl: false }),
+            seg({ segment_uid: 'b', index: 1, time_start: 500, time_end: 800, matched_ref: '2:2:1-2:2:3', is_wasl: true }),
+            seg({ segment_uid: 'c', index: 2, time_start: 800, time_end: 1000, matched_ref: '2:3:1-2:3:2' }),
+        ];
+        const c = ctx(segs, { splitGroupIndex: { root: ['b', 'c'] }, waslRecheck: new Set(['root']) });
+        expect(boundaryStates(root, c)).toEqual(['unset', 'wasl']);
+        expect(countBoundaryStates([root], c)).toEqual({ unset: 1, wasl: 1, waqf: 0 });
+        expect(filterByBoundaryStates([root], new Set(['unset']), c)).toEqual([root]);
+        expect(filterByBoundaryStates([root], new Set(['waqf']), c)).toEqual([]);
     });
 
     it('skips same-verse joins inside a committed group', () => {

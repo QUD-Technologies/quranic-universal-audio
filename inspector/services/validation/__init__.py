@@ -7,6 +7,7 @@ Public API (routes use ``from services.validation import X``):
 - ``classify_segment``, ``classify_segment_full``, ``classify_entry``
 - ``classify_snapshot``
 - ``validate_reciter_segments``, ``strip_boundary_review``
+- ``open_wasl_recheck_uids``
 - registry symbols (re-exported)
 """
 
@@ -35,11 +36,9 @@ from services.storage.data_loader import (
 from services.validation._missing import _build_missing_words
 from services.validation._structural import _check_structural_errors
 
-# Phonemizer is no longer loaded in the validate runtime path. The phonemic
-# side of boundary_adj is captured at backfill / extraction time via
-# ``scripts/backfills/backfill_boundary_adj.py`` and persisted as
-# ``is_boundary_adj`` on every segment. The classifier reads the persisted
-# value instead of recomputing — canonical=None throughout the runtime path.
+# The phonemic side of boundary_adj is persisted as ``is_boundary_adj`` at
+# extraction / backfill time (``scripts/backfills/backfill_boundary_adj.py``);
+# the classifier reads it, so canonical=None throughout the runtime path.
 from services.validation.classifier import (
     _check_boundary_adj,
     classify_entry,
@@ -66,6 +65,7 @@ from services.validation.registry import (
     filter_persistent_ignores,
 )
 from services.validation.snapshot_classifier import classify_snapshot
+from services.validation.wasl_recheck import open_wasl_recheck_uids
 from utils.references import is_by_ayah_source
 
 ISSUE_REGISTRY = IssueRegistry
@@ -130,13 +130,17 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
     counts (the viewer lacks ``segments.view_boundary_review``). None of them
     is in ``BLOCKING_COUNT_KEYS``, so the mark-ready gate is unaffected
     either way.
+
+    ``wasl_recheck`` lists the left-piece uids of cross-verse boundaries whose
+    WASL / WAQF answer is re-asked (see ``services/validation/wasl_recheck.py``).
+    It is not review-only and survives ``strip_boundary_review``.
     """
-    # Parallel I/O fan-out: eight independent bucket reads. SSL recv releases
+    # Parallel I/O fan-out: nine independent bucket reads. SSL recv releases
     # the GIL, so threads cut the wall-clock cost from sum(serial) to
     # max(slowest). Each loader caches its own result via services/cache.py,
     # so the threads don't double-fetch. ``load_seg_verses`` populates the
     # cache that ``_check_structural_errors`` later reads.
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with ThreadPoolExecutor(max_workers=9) as pool:
         f_detailed = pool.submit(load_detailed, reciter)
         f_resolved = pool.submit(_load_resolved_idx_cached, reciter)
         f_probe = pool.submit(load_probe_v2, reciter)
@@ -145,6 +149,7 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
         f_false = pool.submit(load_false_split, reciter)
         f_wasl = pool.submit(load_unmarked_wasl, reciter)
         f_verses = pool.submit(load_seg_verses, reciter)
+        f_recheck = pool.submit(open_wasl_recheck_uids, reciter)
         entries = f_detailed.result()
         resolved_idx = f_resolved.result()
         probe_failed_uids, probe_meta = f_probe.result()
@@ -153,6 +158,7 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
         false_split_map, false_split_meta = f_false.result()
         unmarked_wasl_map, unmarked_wasl_meta = f_wasl.result()
         f_verses.result()  # prime the seg_verses cache before structural pass
+        wasl_recheck = f_recheck.result()
 
     if not entries:
         return None
@@ -273,6 +279,7 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
         # this map instead of walking historyData to expand accordion cards
         # with the full descendant chain after a split.
         "split_group_index": split_group_index,
+        "wasl_recheck": wasl_recheck,
     }
     if probe_meta is not None:
         result["low_confidence_v2_meta"] = probe_meta
@@ -306,6 +313,7 @@ __all__ = [
     "classify_snapshot",
     "validate_reciter_segments",
     "strip_boundary_review",
+    "open_wasl_recheck_uids",
     "BOUNDARY_REVIEW_CATEGORIES",
     "_build_detail_lists",
     "IssueDefinition",

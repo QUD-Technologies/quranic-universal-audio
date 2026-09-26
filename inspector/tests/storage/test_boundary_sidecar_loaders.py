@@ -1,5 +1,5 @@
 """``load_hidden_pause`` / ``load_missed_waqf`` / ``load_false_split`` /
-``load_unmarked_wasl`` — sidecar readers + cache."""
+``load_unmarked_wasl`` / ``load_wasl_recheck`` — sidecar readers + cache."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from services.storage.data_loader import (
     load_hidden_pause,
     load_missed_waqf,
     load_unmarked_wasl,
+    load_wasl_recheck,
 )
 
 SLUG = "loader_reciter"
@@ -98,3 +99,15 @@ def test_missed_waqf_sidecar_parses_and_invalidates(reciter_dir):
     )
     cache.invalidate_seg_caches(SLUG)
     assert cache.get_seg_missed_waqf(SLUG) is None
+
+
+def test_wasl_recheck_sidecar_parses_and_invalidates(reciter_dir):
+    meta = {"created_at": "2026-09-27T00:00:00Z", "reciter": SLUG, "kind": "wasl_recheck"}
+    _write(
+        reciter_dir,
+        "wasl_recheck_v1.json",
+        {"_meta": meta, "by_uid": {"u7": {"chapter": 2, "after_ref": "2:5:9"}}},
+    )
+    assert load_wasl_recheck(SLUG) == ({"u7": {"chapter": 2, "after_ref": "2:5:9"}}, meta)
+    cache.invalidate_seg_caches(SLUG)
+    assert cache.get_seg_wasl_recheck(SLUG) is None

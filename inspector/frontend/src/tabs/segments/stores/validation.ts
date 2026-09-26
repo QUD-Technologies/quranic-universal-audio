@@ -6,11 +6,15 @@
  * Items carry `segment_uid` for stable identity through structural edits.
  * Stale items (uid absent from live state) are filtered before render by
  * `filterStaleIssues` in ValidationPanel.
+ *
+ * `waslRecheck` mirrors the payload's `wasl_recheck` uids: boundaries whose
+ * WASL / WAQF answer is re-asked render as unset until answered.
  */
 
 import { derived, writable } from 'svelte/store';
 
 import type { SegValidateResponse } from '../../../lib/types/generated/schemas';
+import { getOpLog } from './dirty';
 
 /** Validation data for the currently-loaded reciter, or null if none loaded. */
 export const segValidation = writable<SegValidateResponse | null>(null);
@@ -33,6 +37,41 @@ export const splitGroupIndex = derived(
     segValidation,
     ($v) => ($v?.split_group_index ?? {}) as Record<string, string[]>,
 );
+
+/** Left-piece uids of boundaries whose WASL / WAQF answer is re-asked.
+ *  Reseeded from every validate payload (empty when none is loaded), minus
+ *  uids already answered by an unsaved `set_is_wasl` op; the picker drops a
+ *  uid once answered. */
+export const waslRecheck = writable<Set<string>>(new Set());
+
+function _answeredInOpLog(): Set<string> {
+    const out = new Set<string>();
+    for (const ops of getOpLog().values()) {
+        for (const op of ops) {
+            if (op.op_type !== 'set_is_wasl') continue;
+            for (const snap of op.targets_before) {
+                const uid = snap.segment_uid;
+                if (typeof uid === 'string' && uid) out.add(uid);
+            }
+        }
+    }
+    return out;
+}
+
+segValidation.subscribe(($v) => {
+    const answered = _answeredInOpLog();
+    waslRecheck.set(new Set(($v?.wasl_recheck ?? []).filter((uid) => !answered.has(uid))));
+});
+
+/** Drop `uid` from the re-check set once its boundary has been answered. */
+export function resolveWaslRecheck(uid: string): void {
+    waslRecheck.update((s) => {
+        if (!s.has(uid)) return s;
+        const next = new Set(s);
+        next.delete(uid);
+        return next;
+    });
+}
 
 // ---- UI state persistence (in-memory) ----
 export const valUiOpenCategory = writable<string | null>(null);

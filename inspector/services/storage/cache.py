@@ -88,11 +88,13 @@ _seg_probe_v2: _KeyedCache[tuple[set[str], dict | None]] = _KeyedCache()
 # tuple member when sidecar absent so callers don't re-stat on every lookup.
 _seg_auto_split: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
 # Boundary-review sidecars (hidden_pause_v1 / missed_waqf_v1 / false_split_v1 /
-# unmarked_wasl_v1) — by-uid map plus meta; empty dict when the sidecar is absent.
+# unmarked_wasl_v1 / wasl_recheck_v1) — by-uid map plus meta; empty dict when
+# the sidecar is absent.
 _seg_hidden_pause: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
 _seg_missed_waqf: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
 _seg_false_split: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
 _seg_unmarked_wasl: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
+_seg_wasl_recheck: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
 # pipeline_meta.json sidecar — extraction-time facts (deleted_basmala_chapters,
 # generated_at, ...). Immutable post-extraction; NEVER invalidated by save.
 _seg_pipeline_meta: _KeyedCache[dict] = _KeyedCache()
@@ -222,6 +224,14 @@ def get_seg_unmarked_wasl(reciter: str) -> tuple[dict[str, dict], dict | None] |
 
 def set_seg_unmarked_wasl(reciter: str, value: tuple[dict[str, dict], dict | None]) -> None:
     _seg_unmarked_wasl.set(reciter, value)
+
+
+def get_seg_wasl_recheck(reciter: str) -> tuple[dict[str, dict], dict | None] | None:
+    return _seg_wasl_recheck.get(reciter)
+
+
+def set_seg_wasl_recheck(reciter: str, value: tuple[dict[str, dict], dict | None]) -> None:
+    _seg_wasl_recheck.set(reciter, value)
 
 
 def pop_seg_auto_split(reciter: str) -> None:
@@ -369,6 +379,7 @@ def invalidate_seg_caches(reciter: str) -> None:
     _seg_missed_waqf.pop(reciter)
     _seg_false_split.pop(reciter)
     _seg_unmarked_wasl.pop(reciter)
+    _seg_wasl_recheck.pop(reciter)
     _seg_auto_split.pop(reciter)
     _seg_edit_history.pop(reciter)
     _seg_history_peaks.pop(reciter)
@@ -403,6 +414,7 @@ def pop_seg_caches_affected_by_segment_edit(reciter: str) -> None:
     _seg_missed_waqf.pop(reciter)
     _seg_false_split.pop(reciter)
     _seg_unmarked_wasl.pop(reciter)
+    _seg_wasl_recheck.pop(reciter)
     _seg_edit_history.pop(reciter)
     _seg_history_peaks.pop(reciter)
     _seg_history_peaks_response.pop(reciter)

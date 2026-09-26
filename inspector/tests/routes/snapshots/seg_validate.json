@@ -106,5 +106,6 @@
     "segments": 4,
     "single": 4
   },
-  "structural_errors": []
+  "structural_errors": [],
+  "wasl_recheck": []
 }

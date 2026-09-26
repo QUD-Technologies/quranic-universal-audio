@@ -5,7 +5,8 @@
      *
      * Both labels are always visible. Three states:
      *
-     *   pending  (leftUid ∈ pendingWaslConfirm, no prior pick):
+     *   pending  (leftUid ∈ pendingWaslConfirm, no prior pick; or leftUid ∈
+     *       waslRecheck, a settled answer that is re-asked):
      *       both labels muted; picker auto-scrolls + focuses when
      *       focusWaslBoundary names this UID. Chain is paused here.
      *
@@ -22,11 +23,13 @@
      *     per logical split regardless of how many wasl decisions or
      *     mind-changes happen during the chain.
      *   • Otherwise (post-save ad-hoc edit), dispatch a ``set_is_wasl``
-     *     op via the standard setIsWaslOnSegment dispatcher.
+     *     op via the standard setIsWaslOnSegment dispatcher. A re-asked
+     *     boundary always records the op, even when the answer matches the
+     *     stored flag, so the answer persists and closes the re-check.
      *
-     * After commit, the picker clears its UID from pendingWaslConfirm,
-     * unhooks focus, and calls resumePendingChain() so the post-split
-     * chain advances to the next piece's ref-edit.
+     * After commit, the picker clears its UID from pendingWaslConfirm and
+     * waslRecheck, unhooks focus, and calls resumePendingChain() so the
+     * post-split chain advances to the next piece's ref-edit.
      *
      * Keyboard (while this boundary is the paused chain step): ← highlights
      * WASL, → highlights WAQF (positional), Tab toggles between them, and
@@ -57,6 +60,7 @@
         focusWaslBoundary,
         pendingWaslConfirm,
     } from '../../stores/edit';
+    import { resolveWaslRecheck, waslRecheck } from '../../stores/validation';
     import { resumePendingChain } from '../../utils/edit/reference';
     import { setIsWaslOnSegment } from '../../utils/edit/setIsWasl';
 
@@ -97,9 +101,10 @@
 
     $: isStaged = onPick !== null;
     $: isWasl = isStaged ? stagedValue === true : leftSeg.is_wasl === true;
+    $: isRecheck = !isStaged && leftUid !== '' && $waslRecheck.has(leftUid);
     $: isPending = isStaged
         ? stagedValue === undefined
-        : leftUid !== '' && $pendingWaslConfirm.has(leftUid);
+        : isRecheck || (leftUid !== '' && $pendingWaslConfirm.has(leftUid));
 
     // Reactive auto-focus when the chain pauses on this boundary.
     // Defer to next tick so the smooth-scroll lands before the focus ring
@@ -184,10 +189,13 @@
                 delete (leftSeg as Segment & { _derived?: unknown })._derived;
                 refreshSegInStore(leftSeg);
                 markDirty(chapter, leftSeg.index);
+            } else if (isRecheck) {
+                setIsWaslOnSegment(leftSeg, value, { force: true });
             } else if (value !== isWasl) {
                 // Post-save ad-hoc edit: emit a real set_is_wasl op.
                 setIsWaslOnSegment(leftSeg, value);
             }
+            resolveWaslRecheck(leftUid);
         } catch (err) {
             console.warn('WaslBoundary: commit failed:', err);
         } finally {

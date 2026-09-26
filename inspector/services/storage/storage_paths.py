@@ -204,6 +204,13 @@ def unmarked_wasl_path(slug: str) -> str:
     return reciter_file(slug, "unmarked_wasl_v1.json")
 
 
+def wasl_recheck_path(slug: str) -> str:
+    """Boundary-review sidecar — reviewer-settled verse-to-verse joins whose
+    WASL / WAQF answer is doubtful and must be re-asked. Keyed by the left
+    segment's ``segment_uid``; read by ``services/data_loader.load_wasl_recheck``."""
+    return reciter_file(slug, "wasl_recheck_v1.json")
+
+
 def pipeline_meta_path(slug: str) -> str:
     """Per-reciter immutable extraction-time facts.
 
@@ -269,5 +276,6 @@ PER_RECITER_FILES: tuple[str, ...] = (
     "missed_waqf_v1.json",
     "false_split_v1.json",
     "unmarked_wasl_v1.json",
+    "wasl_recheck_v1.json",
     "pipeline_meta.json",
 )
