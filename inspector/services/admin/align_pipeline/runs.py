@@ -117,9 +117,14 @@ def retry(slug: str, actor: Actor) -> AlignRunStatus:
         raise AlignRunError(
             f"{slug}: run is {run['status']}, only a failed run can be retried", 409
         )
+    # A failed acquire job is terminal: keeping its id would make the runner
+    # re-read that failure instead of launching a fresh (idempotent) job.
+    fresh_acquire = {"acquire_job_id": None} if run["stage"] == "acquire" else {}
     with durable_transaction():
         _check_limit(limits.check_retry, run)
-        repo_align_runs.update(run["run_id"], status="pending", attempt=run["attempt"] + 1)
+        repo_align_runs.update(
+            run["run_id"], status="pending", attempt=run["attempt"] + 1, **fresh_acquire
+        )
     cache.invalidate_admin_requests_cache()
     log.info(
         "align: %s retried run %s (attempt %d)", actor.hf_user_id, run["run_id"], run["attempt"] + 1

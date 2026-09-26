@@ -270,6 +270,25 @@ def test_start_retry_cancel_lifecycle(align_env):
     assert runs.start(SLUG, OWNER).run_id != status.run_id
 
 
+def test_retry_of_a_failed_acquire_drops_the_dead_job_but_not_later_stages(align_env):
+    from services.admin.align_pipeline import runs
+    from services.db import repo_align_runs
+    from services.db.sync import durable_transaction
+
+    run_id = runs.start(SLUG, OWNER).run_id
+    with durable_transaction():
+        repo_align_runs.update(run_id, status="failed", acquire_job_id="job_dead")
+    runs.retry(SLUG, OWNER)
+    row = repo_align_runs.get(run_id)
+    assert row is not None and row["acquire_job_id"] is None
+
+    with durable_transaction():
+        repo_align_runs.update(run_id, status="failed", stage="align", acquire_job_id="job_ok")
+    runs.retry(SLUG, OWNER)
+    row = repo_align_runs.get(run_id)
+    assert row is not None and row["acquire_job_id"] == "job_ok"
+
+
 def test_start_refuses_wrong_state_and_missing_config(align_env, monkeypatch):
     from services.admin.align_pipeline import runs
     from services.state import state as state_service
@@ -486,9 +505,7 @@ def test_sidecars_stage_sends_interactive_timings_in_published_segment_order(
 
     monkeypatch.setattr(stage_sidecars, "_call", fake_call)
 
-    stage_sidecars.run(
-        SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"}
-    )
+    stage_sidecars.run(SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"})
 
     assert captured["auto_split_timings"]["112"] == [None, None, chapter["segments"][3]["words"]]
 
