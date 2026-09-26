@@ -144,9 +144,10 @@ def _ytdlp() -> Any:
     return yt_dlp
 
 
-def _base_opts() -> dict[str, Any]:
-    """Options every extraction shares: yt-dlp's own retries, plus the Space's
-    YouTube cookies / proxy secrets when set (HF IPs get throttled without)."""
+def _base_opts(*, with_cookies: bool = False) -> dict[str, Any]:
+    """Options every extraction shares: yt-dlp's own retries, the Space's proxy
+    secret, and on request its YouTube cookies. Public listings go without
+    cookies: a stale session makes YouTube demand sign-in for a public playlist."""
     opts: dict[str, Any] = {
         "quiet": True,
         "no_warnings": True,
@@ -155,7 +156,7 @@ def _base_opts() -> dict[str, Any]:
         "retries": _YTDLP_RETRIES,
         "extractor_retries": _YTDLP_RETRIES,
     }
-    cookies = _cookies_file()
+    cookies = _cookies_file() if with_cookies else None
     if cookies:
         opts["cookiefile"] = cookies
     proxy = (os.environ.get("INSPECTOR_YTDLP_PROXY") or "").strip()
@@ -199,9 +200,26 @@ def _extract(url: str, opts: dict[str, Any]) -> dict:
     raise AssertionError("unreachable")
 
 
+def _list(url: str) -> dict:
+    """Flat listing without cookies; retried with them (a private or
+    unlisted playlist) only when the anonymous listing fails."""
+    flat = {"extract_flat": "in_playlist"}
+    try:
+        return _extract(url, {**_base_opts(), **flat})
+    except Exception as exc:  # noqa: BLE001
+        if not _cookies_file():
+            raise
+        log.warning(
+            "intake enumerate: %s anonymous listing failed (%s); retrying with cookies",
+            url,
+            _short(exc),
+        )
+        return _extract(url, {**_base_opts(with_cookies=True), **flat})
+
+
 def _from_ytdlp(url: str, host: str) -> Listing:
     try:
-        info = _extract(url, {**_base_opts(), "extract_flat": "in_playlist"})
+        info = _list(url)
     except Exception as exc:  # noqa: BLE001 — yt-dlp raises its own DownloadError tree
         if host == "youtube":
             return _single_youtube_fallback(url, exc)

@@ -107,7 +107,7 @@ class _FlakyYtDlp:
     YoutubeDL = _FlakyYDL
 
 
-def test_ytdlp_listing_retries_a_dropped_connection_with_cookies(monkeypatch):
+def test_ytdlp_listing_retries_a_dropped_connection_without_cookies(monkeypatch):
     monkeypatch.setattr(enumerate_mod, "_ytdlp", lambda: _FlakyYtDlp)
     monkeypatch.setattr(enumerate_mod, "_RETRY_SLEEP_S", 0)
     monkeypatch.setenv("INSPECTOR_YTDLP_COOKIES", "# Netscape HTTP Cookie File")
@@ -117,7 +117,29 @@ def test_ytdlp_listing_retries_a_dropped_connection_with_cookies(monkeypatch):
     )
     assert _FlakyYDL.calls == 3
     assert [e.url for e in listing.entries] == ["https://www.youtube.com/watch?v=a"]
-    assert _FlakyYDL.seen_opts["cookiefile"].endswith(".txt")
+    assert "cookiefile" not in _FlakyYDL.seen_opts
+
+
+def test_ytdlp_listing_falls_back_to_cookies_when_anonymous_fails(monkeypatch):
+    class _NeedsLogin(_FakeYDL):
+        seen: list = []
+
+        def extract_info(self, url, download=False):
+            type(self).seen.append("cookiefile" in self.opts)
+            if "cookiefile" not in self.opts:
+                raise RuntimeError("ERROR: This playlist is private")
+            return {"entries": [{"title": "t", "url": "https://www.youtube.com/watch?v=p"}]}
+
+    class _NeedsLoginYtDlp:
+        YoutubeDL = _NeedsLogin
+
+    monkeypatch.setattr(enumerate_mod, "_ytdlp", lambda: _NeedsLoginYtDlp)
+    monkeypatch.setenv("INSPECTOR_YTDLP_COOKIES", "# Netscape HTTP Cookie File")
+    listing = enumerate_mod.enumerate_source(
+        IntakeSource(method="playlist", playlist_url="https://www.youtube.com/playlist?list=PL")
+    )
+    assert _NeedsLogin.seen == [False, True]
+    assert [e.url for e in listing.entries] == ["https://www.youtube.com/watch?v=p"]
 
 
 def test_ytdlp_listing_does_not_retry_a_permanent_error(monkeypatch):
