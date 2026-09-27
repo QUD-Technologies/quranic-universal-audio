@@ -19,7 +19,7 @@ import {
     proxyPlayUrl,
     resolvePlayUrl,
 } from '../play-url';
-import { mp3Head } from './mp3-fixtures';
+import { frameRun, mp3Head } from './mp3-fixtures';
 
 const CDN = 'https://audio-cdn.example.com/quran/husary/002.mp3';
 const CDN_SIBLING = 'https://audio-cdn.example.com/quran/husary/003.mp3';
@@ -76,9 +76,15 @@ describe('probeDirectPlayable', () => {
         expect(playUrl('husary', CDN)).toBe(CDN);
     });
 
-    it('plays an untagged (no Xing / Info) file direct', async () => {
-        respond(206, mp3Head({ tag: null }));
+    it('plays an untagged (no Xing / Info) file direct when it holds its nominal rate', async () => {
+        respond(206, frameRun(150, { padded: true }));
         await expect(probeDirectPlayable(CDN)).resolves.toBe(true);
+    });
+
+    it('keeps an untagged file that never pads on the proxy', async () => {
+        respond(206, frameRun(150, { padded: false }));
+        await expect(probeDirectPlayable(CDN)).resolves.toBe(false);
+        expect(playUrl('husary', CDN)).toBe(PROXIED);
     });
 
     it('keeps a Xing-tagged file on the proxy even though the host is CORS-ok', async () => {

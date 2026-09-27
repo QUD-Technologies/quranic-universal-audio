@@ -21,10 +21,12 @@
  *       what makes seeking work; a missing ACAO rejects the fetch, which is
  *       exactly the case where the element would play silence). A failed
  *       host short-circuits every later URL on it without a fetch.
- *     · per URL — the first MPEG frame does NOT carry a `Xing` VBR tag
- *       (`mp3-header.ts`). Chrome seeks a `Xing`-tagged file through its
- *       1/256-quantised TOC and lands seconds off while still reporting the
- *       requested `currentTime`; the bucket copy the proxy serves is
+ *     · per URL — the file seeks natively (`mp3-header.ts`): its first
+ *       MPEG frame carries an `Info` tag, or no tag and the sniffed frames
+ *       run at the header's nominal byte rate. Chrome seeks a `Xing`-tagged
+ *       file through its 1/256-quantised TOC and an untagged one at the
+ *       nominal rate, landing seconds off either way while still reporting
+ *       the requested `currentTime`; the bucket copy the proxy serves is
  *       remuxed with an `Info` tag and seeks exactly. Direct requires both.
  * - `playUrl(reciter, url)` is the SYNC decision used at `setSource` time:
  *   direct when the URL is known-good, proxy otherwise (unknown URLs stay

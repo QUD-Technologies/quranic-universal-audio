@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { firstFrameVbrTag, isNativelySeekable } from '../mp3-header';
-import { frame, id3v2, mp3Head, MPEG1_MONO, MPEG1_STEREO, MPEG2_STEREO } from './mp3-fixtures';
+import { frame, frameRun, id3v2, mp3Head, MPEG1_MONO, MPEG1_STEREO, MPEG2_STEREO } from './mp3-fixtures';
 
 describe('firstFrameVbrTag', () => {
     it('reads an Info tag on a bare MPEG-1 stereo frame', () => {
@@ -44,9 +44,31 @@ describe('firstFrameVbrTag', () => {
 });
 
 describe('isNativelySeekable', () => {
-    it('is true for Info-tagged and untagged files', () => {
+    it('is true for an Info-tagged file', () => {
         expect(isNativelySeekable(mp3Head({ tag: 'Info' }))).toBe(true);
-        expect(isNativelySeekable(mp3Head({ tag: null }))).toBe(true);
+    });
+
+    it('is true for an untagged file whose frames hold the nominal byte rate', () => {
+        expect(isNativelySeekable(frameRun(150, { padded: true }))).toBe(true);
+        const hz48k = [0xff, 0xfb, 0x94, 0x64];
+        expect(isNativelySeekable(frameRun(150, { padded: false, header: hz48k, nominal: 384 }))).toBe(true);
+    });
+
+    it('is false for an untagged file that never pads (nominal-rate seek drifts)', () => {
+        expect(isNativelySeekable(frameRun(150, { padded: false }))).toBe(false);
+    });
+
+    it('is false for an untagged file that changes bitrate (untagged VBR)', () => {
+        expect(isNativelySeekable(frameRun(150, { padded: true, switchAt: 40 }))).toBe(false);
+    });
+
+    it('is false for an untagged head too short to vouch for', () => {
+        expect(isNativelySeekable(mp3Head({ tag: null }))).toBe(false);
+        expect(isNativelySeekable(frameRun(4, { padded: true }))).toBe(false);
+    });
+
+    it('does not walk frames behind an Info tag', () => {
+        expect(isNativelySeekable(frameRun(150, { padded: false, tag: 'Info' }))).toBe(true);
     });
 
     it('is false for a Xing-tagged file (TOC seek) and for an unreadable head', () => {
