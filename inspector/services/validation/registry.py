@@ -185,6 +185,7 @@ _REGISTRY: dict[str, IssueDefinition] = {
         scope="per_segment",
         display_title="Cross-verse",
         description="Label each verse boundary WASL or WAQF — the split is pre-applied from the aligner and saves on the last label. Adjust a piece if the suggested cut is off.",
+        owner_only=True,
     ),
     "qalqala": IssueDefinition(
         kind="qalqala",

@@ -181,6 +181,7 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         description: 'Label each verse boundary WASL or WAQF — the split is pre-applied from the aligner and saves on the last label. Adjust a piece if the suggested cut is off.',
         sorts: [{ kind: 'quran_order', default: true }, { kind: 'verse_count' }],
         boundaryFilter: true,
+        ownerOnly: true,
     },
     qalqala: {
         kind: 'qalqala',

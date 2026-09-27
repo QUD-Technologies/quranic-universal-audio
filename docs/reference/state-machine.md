@@ -116,13 +116,12 @@ The five checklist keys mirror to the FE copy module at `inspector/frontend/src/
 Two gates run inside `_h_marked_ready` before the transition is accepted:
 
 1. **Checklist completeness.** All five values MUST be `True`. Any `False` → `InvalidTransition("checklist incomplete", details={unchecked: [...]})`.
-2. **Blocking validation counts.** The handler calls `services.validation.validate_reciter_segments(slug)` and checks the five keys in `BLOCKING_COUNT_KEYS` (`qua_shared/schemas/wire/mark_ready.py`) against the live `category_counts` (`boundary_adj` is owner-only and deliberately absent; resolved cross-verse items are not counted):
+2. **Blocking validation counts.** The handler calls `services.validation.validate_reciter_segments(slug)` and checks the four keys in `BLOCKING_COUNT_KEYS` (`qua_shared/schemas/wire/mark_ready.py`) against the live `category_counts` (`boundary_adj` and `cross_verse` are owner-only and deliberately absent):
 
    | Key | Accordion |
    |---|---|
    | `low_confidence` | Low confidence |
    | `low_confidence_v2` | Low confidence v2 |
-   | `cross_verse` | Cross-verse |
    | `basmala_amin` | Basmala + amin |
    | `repetitions` | Repetitions |
 

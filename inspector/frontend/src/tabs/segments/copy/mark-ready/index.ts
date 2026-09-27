@@ -51,7 +51,6 @@ export const CHECKLIST_ORDER: readonly ChecklistKey[] = [
 export const BLOCKING_COUNT_KEYS = [
     'low_confidence',
     'low_confidence_v2',
-    'cross_verse',
     'basmala_amin',
     'repetitions',
 ] as const;
@@ -63,7 +62,6 @@ export type BlockingCountKey = (typeof BLOCKING_COUNT_KEYS)[number];
 export const BLOCKING_LABELS: Record<BlockingCountKey, string> = {
     low_confidence: 'Low confidence',
     low_confidence_v2: 'Low confidence v2',
-    cross_verse: 'Cross-verse',
     basmala_amin: 'Basmala + amin',
     repetitions: 'Repetitions',
 };
