@@ -82,6 +82,7 @@ import {
 } from './play-range';
 import { nextDisplayedSeg, nextSiblingSeg } from './resolvers';
 import { getRowEntriesFor } from './row-registry';
+import { heardTimeMs } from './heard-time';
 import { resolveSegSource } from './source';
 import { warmSeg } from './warmup';
 import { wordIndexAt } from '../samples/word-timing';
@@ -112,6 +113,11 @@ const _stagedCursorCanvases = new WeakSet<SegCanvas>();
  * stops there.
  */
 let _activeGroupEndMs: number | null = null;
+
+/** Where the current play started (file-absolute ms): the floor for the heard
+ *  playhead (see `heard-time.ts`), so a fresh play never shows the segment
+ *  before the one being played while the audio catches up. */
+let _activePlayStartMs: number | null = null;
 
 /** Active segment-bounded range. Used for accordion plays (always bounded
  *  to the played segment) and chapter-mode plays when autoplay is OFF.
@@ -461,8 +467,11 @@ function _chimeSegmentEnd(resume: () => void): void {
  * path, and moves `segCurrentIdx` + the nav cursor in lockstep (see
  * `updateSegHighlight`, which forces the pair back onto `segCurrentIdx`).
  *
- * `groupEndMs` is the caller's group bound (`_activeGroupEndMs` on the tick);
- * null means this play covers a single segment and there is nothing to follow.
+ * `timeMs` is the HEARD position (`heardTimeMs`), the clock the cursor draws
+ * on — following the raw clock moved the pair into the next piece while the
+ * previous one was still audible. `groupEndMs` is the caller's group bound
+ * (`_activeGroupEndMs` on the tick); null means this play covers a single
+ * segment and there is nothing to follow.
  */
 export function followGroupPlayhead(timeMs: number, groupEndMs: number | null): void {
     if (groupEndMs == null) return;
@@ -487,7 +496,7 @@ export function followGroupPlayhead(timeMs: number, groupEndMs: number | null): 
 }
 
 function _onRangeTick(timeMs: number): void {
-    followGroupPlayhead(timeMs, _activeGroupEndMs);
+    followGroupPlayhead(heardTimeMs(timeMs, _activePlayStartMs), _activeGroupEndMs);
     drawActivePlayhead(timeMs);
     updateSegHighlight();
 }
@@ -787,6 +796,7 @@ export function playFromSegment(
     // piece 0's end pauses the audio there. Any toggle (autoplay, chime) or an
     // edit-mode exit can trigger that rebuild mid-play.
     _activeGroupEndMs = endMs > seg.time_end ? endMs : null;
+    _activePlayStartMs = seekMs;
     const bounded = isAccordionPlay || !get(autoPlayEnabled) || _chimeArmed();
 
     if (bounded) {
@@ -1023,7 +1033,9 @@ export function onSegTimeUpdate(fileMs?: number): void {
     // `fileMs` comes from the port's `onTimeUpdate` subscription (file-
     // absolute). Fall back to a fresh read for direct callers (none today,
     // but the public export shape allows it).
-    const timeMs = fileMs ?? segPort.currentTimeMs();
+    // Heard position, not the raw clock: the pair must cross into the next
+    // segment when the cursor does (see `heard-time.ts`).
+    const timeMs = heardTimeMs(fileMs ?? segPort.currentTimeMs(), _activePlayStartMs);
     const currentSrc = _curChapterUrl();
     const displayed = get(displayedSegments);
     const active = get(playingSegmentIndex);
@@ -1337,13 +1349,12 @@ export function drawActivePlayhead(timeMs?: number): void {
     }
     const audioUrl = seg.audio_url || allData?.audio_by_chapter?.[String(active.chapter)] || '';
 
-    // Compensate the visual playhead for platform output latency: `time` is the
-    // media/decode clock, which leads the audible recitation by the OS+Web-Audio
-    // output latency. Subtract it so the playhead tracks what the user HEARS.
-    // Clamp into the segment window so it pins at the left edge during the
-    // initial latency window instead of vanishing (drawSegPlayhead skips
-    // out-of-range times). Display-only — control paths keep the raw clock.
-    const displayT = Math.min(seg.time_end, Math.max(seg.time_start, displayTimeMs(time)));
+    // Draw at the HEARD position (`heard-time.ts`), the same clock that picks
+    // the playing pair and staged piece, so cursor and highlight cross a piece
+    // edge together. Clamp into the segment window so it pins at the left edge
+    // instead of vanishing (drawSegPlayhead skips out-of-range times). Visual
+    // only — control paths keep the raw clock.
+    const displayT = Math.min(seg.time_end, Math.max(seg.time_start, heardTimeMs(time, _activePlayStartMs)));
     const activeWordIndex = wordIndexAt(displayT, seg.word_timings);
     setActiveWordCursor(activeWordIndex >= 0
         ? { chapter: active.chapter, index: active.index, wordIndex: activeWordIndex }
