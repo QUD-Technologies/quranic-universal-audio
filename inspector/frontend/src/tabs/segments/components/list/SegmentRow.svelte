@@ -62,12 +62,14 @@ import type { Segment } from '../../../../lib/types/view-models';
     import { deriveRowChips, type RowChip } from '../../utils/samples/chips';
     import { displayWordsForTimings, timingsMatchRef } from '../../utils/samples/word-timing';
     import { contiguousWordDraft } from '../../utils/samples/word-timing-draft';
+    import { stagedPieceIsCurrent } from '../../utils/validation/wasl-binding';
     import {
         chapterIndexKey,
         flashSegmentIndices,
         targetSegmentIndex,
     } from '../../stores/navigation';
     import {
+        accordionNavCursor,
         activeWordCursor,
         isMainAudioPlaying,
         playingSegmentIndex,
@@ -933,11 +935,20 @@ import type { Segment } from '../../../../lib/types/view-models';
     // card commits with the split, exactly like clicking the picker. So the
     // wasl action publishes for staged rows too, and the rest doesn't.
     // ---------------------------------------------------------------------
+    // A staged piece's position comes from the nav cursor, not the playhead
+    // (`stagedPieceIsCurrent`).
+    // ---------------------------------------------------------------------
     $: accordionOpen = $valUiOpenCategory !== null;
+    $: stagedPrimary = stagedPieceIsCurrent(
+        $accordionNavCursor,
+        { uid: seg.segment_uid ?? '', startMs: seg.time_start },
+        isPlaying,
+        segIsCurrent && _stagedCursorLatched,
+    );
     $: isPrimaryRow = !readOnly && !isContext && !!rowEl
-        && (isPlaying
-            || (staged && segIsCurrent && _stagedCursorLatched)
-            || (instanceRole === 'main' && !accordionOpen && $segCurrentIdx === seg.index));
+        && (staged
+            ? stagedPrimary
+            : isPlaying || (instanceRole === 'main' && !accordionOpen && $segCurrentIdx === seg.index));
     $: isPrimaryForShortcuts = isPrimaryRow && !staged;
     $: isPrimaryForWasl = isPrimaryRow && !!onCardSetWasl;
     let _pubKey = '';
