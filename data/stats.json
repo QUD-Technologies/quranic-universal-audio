@@ -2,14 +2,14 @@
   "schema_version": 1,
   "catalog": {
     "reciters": 1214,
-    "mushafs": 2295,
+    "mushafs": 2301,
     "riwayat": 19,
-    "seconds": 171438315
+    "seconds": 171850606
   },
   "aligned": {
-    "reciters": 48,
-    "mushafs": 60,
+    "reciters": 66,
+    "mushafs": 79,
     "riwayat": 4,
-    "seconds": 6413410
+    "seconds": 8254649
   }
 }
