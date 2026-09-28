@@ -11,6 +11,7 @@ import argparse
 import json
 import os
 import sqlite3
+import sys
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -69,7 +70,12 @@ def download_db(bucket_id: str, *, token: str | None = None) -> Path:
 def _duration_from_manifest(doc: dict, slug: str) -> int:
     chapters = doc.get("chapters")
     if not isinstance(chapters, dict) or not chapters:
-        raise RuntimeError(f"{slug}: audio manifest has no chapters")
+        # Sources-only manifest = online-intake detect group awaiting align;
+        # durations are unknown until the playlist files are split per surah.
+        if doc.get("sources"):
+            print(f"{slug}: sources-only manifest, counting 0s until aligned", file=sys.stderr)
+            return 0
+        raise RuntimeError(f"{slug}: audio manifest has no chapters or sources")
 
     total = 0.0
     missing: list[str] = []
