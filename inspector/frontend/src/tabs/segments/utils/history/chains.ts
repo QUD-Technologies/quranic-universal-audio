@@ -134,6 +134,7 @@ export function snapToSeg(snap: HistorySnapshot, chapter: number | null): Segmen
         time_start: snap.time_start, time_end: snap.time_end,
         matched_ref: snap.matched_ref || '', matched_text: snap.matched_text || '',
         confidence: snap.confidence ?? 0,
+        join_verdicts: snap.join_verdicts,
         ...(snap.wrap_word_ranges ? { wrap_word_ranges: snap.wrap_word_ranges } : {}),
     };
 }

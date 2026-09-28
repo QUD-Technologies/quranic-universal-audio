@@ -1,4 +1,4 @@
-import type { SegDataResponse } from '../../../lib/types/generated/schemas';
+import type { JoinVerdict, SegDataResponse } from '../../../lib/types/generated/schemas';
 import type { PeakBucket } from '../../../lib/types/peaks-transport';
 import type { EditOp, HistoryBatch } from '../../../lib/types/view-models';
 
@@ -14,6 +14,7 @@ export interface EditChainOp {
 /** Narrow view of a segment snapshot as referenced by history views. Loose
  *  by design — unknown fields preserved via index signature. */
 export interface HistorySnapshot {
+    join_verdicts?: JoinVerdict[] | null;
     index_at_save?: number;
     segment_uid?: string;
     audio_url?: string;

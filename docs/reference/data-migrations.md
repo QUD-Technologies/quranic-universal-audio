@@ -143,3 +143,34 @@ The `seg`/`timestamps`/`public`/`audio` routes serialize **through** the `wire/`
 ### Dead-set-emptying prod migration (done, 2026-06)
 
 The bucket artefact models are now pure `extra="forbid"`: the `strip_and_warn` helper and the per-model dead-field sets (`_OP_DEAD_FIELDS` / `_BATCH_DEAD_FIELDS`, etc.) are gone, so any unknown/legacy field raises `ValidationError` rather than being silently stripped. The one-shot prod-data migration ran in 2026-06 — every reciter's on-disk artefacts were rewritten to the canonical shape via round-trip through the schemas, then re-audited to ZERO legacy strips. The only survivors of the old tolerance are the documented forward-compat exceptions `ts_validation` and `ts_shard`'s `_meta`.
+
+
+## Join-verdict backfill
+
+`scripts/backfills/backfill_join_verdicts.py` audits a **local export** laid out
+as `<input>/<slug>/detailed.json` plus optional `edit_history.jsonl` and
+`wasl_recheck_v1.json`. It has no bucket client or Inspector-service imports.
+Default execution only prints a JSON plan; `--report` can create a local report.
+
+```powershell
+python scripts/backfills/backfill_join_verdicts.py --input C:/review-export/reciters --report C:/review-export-plan.json
+python scripts/backfills/backfill_join_verdicts.py --input C:/review-export/reciters --apply --output C:/review-staged
+```
+
+The report includes source hashes, per-reciter counts, join coordinates,
+source operation IDs, reasons, and recovery statuses. Recovery accepts an
+explicit legacy `set_is_wasl` answer (omitted false in that op means WAQF), a
+true flag on a split child, or an explicitly supplied false pick on a Low
+Confidence Waqf split. It skips reverted operations/batches, requires unchanged
+live UID/time/reference geometry, respects pending rechecks, and never
+replaces a conflicting explicit verdict. Bare false flags, unlabelled cuts,
+and blanket `missed_waqf` ignores do not prove an answer and remain unset.
+
+`--apply` requires a **new local output directory outside the input tree**.
+All inputs and candidate audit batches are validated before output is created.
+Changed reciters receive schema-round-tripped `detailed.json` and their original
+history bytes followed by reversible `join_verdict_backfill` audit batches.
+The original export is never modified. Output contains only the changed files
+and `report.json`, not a complete bucket mirror. Rerunning against staged data
+finds the recovered records unchanged. No upload, service restart, or remote
+mutation is part of this command; inspect the plan and staged diff separately.

@@ -27,6 +27,7 @@
     import { onOpUndoClick } from '../../utils/save/undo';
     import SegmentRow from '../list/SegmentRow.svelte';
     import HistoryArrows from './HistoryArrows.svelte';
+    import JoinVerdicts from './JoinVerdicts.svelte';
 
     // Props ------------------------------------------------------------------
 
@@ -222,6 +223,7 @@
                             opId={primary?.op_id ?? null}
                             {previewCtx}
                         />
+                        <JoinVerdicts answers={snap.join_verdicts} />
                     </div>
                 {/each}
             {/if}

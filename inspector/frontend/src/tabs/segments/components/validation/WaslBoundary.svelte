@@ -45,6 +45,7 @@
 
     import { onMount, tick } from 'svelte';
 
+    import { edgeAnswer, edgeState, putVerdicts } from '../../domain/join-verdict';
     import { editGate } from '../../../../lib/actions/editGate';
     import { localeStore, tr } from '../../../../lib/i18n/locale-store';
     import * as m from '../../../../lib/paraglide/messages';
@@ -101,11 +102,12 @@
         && leftSeg.chapter === rightSeg.chapter;
 
     $: isStaged = onPick !== null;
-    $: isWasl = isStaged ? stagedValue === true : leftSeg.is_wasl === true;
+    $: verdict = edgeState(leftSeg);
+    $: isWasl = isStaged ? stagedValue === true : verdict === 'wasl';
     $: isRecheck = !isStaged && leftUid !== '' && $waslRecheck.has(leftUid);
     $: isPending = isStaged
         ? stagedValue === undefined
-        : isRecheck || (leftUid !== '' && $pendingWaslConfirm.has(leftUid));
+        : verdict === 'unset' || isRecheck || (leftUid !== '' && $pendingWaslConfirm.has(leftUid));
 
     // Reactive auto-focus when the chain pauses on this boundary.
     // Defer to next tick so the smooth-scroll lands before the focus ring
@@ -185,14 +187,16 @@
                 // While the parent split is still in the dirty buffer,
                 // amend its targets_after snapshots in place. No new op,
                 // no history-row noise from mind-changes during the chain.
-                amendSegInOp(parentSplit, leftUid, { is_wasl: value });
+                const join_verdicts = putVerdicts(leftSeg.join_verdicts, [edgeAnswer(leftSeg, value)]);
+                amendSegInOp(parentSplit, leftUid, { is_wasl: value, join_verdicts });
+                leftSeg.join_verdicts = join_verdicts;
                 leftSeg.is_wasl = value;
                 delete (leftSeg as Segment & { _derived?: unknown })._derived;
                 refreshSegInStore(leftSeg);
                 markDirty(chapter, leftSeg.index);
             } else if (isRecheck) {
                 setIsWaslOnSegment(leftSeg, value, { force: true });
-            } else if (value !== isWasl) {
+            } else if (isPending || value !== isWasl) {
                 // Post-save ad-hoc edit: emit a real set_is_wasl op.
                 setIsWaslOnSegment(leftSeg, value);
             }

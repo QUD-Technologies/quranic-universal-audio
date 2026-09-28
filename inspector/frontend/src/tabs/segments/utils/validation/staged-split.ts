@@ -128,7 +128,7 @@ export function waqfOnlySplit(staged: StagedSplit, picks: readonly StagedPick[])
 
 export type StagedCommit =
     | { kind: 'none' }
-    | { kind: 'split'; split: StagedSplit; wasls: boolean[]; newUids: string[] };
+    | { kind: 'split'; split: StagedSplit; wasls: (boolean | undefined)[]; newUids: string[] };
 
 /**
  * What a `category` card commits from its picks so far. `childUids` are the
@@ -149,7 +149,7 @@ export function stagedCommit(
     childUids: readonly string[],
 ): StagedCommit {
     if (category === 'cross_verse') {
-        const wasls = staged.cursors.map((_, i) => picks[i] === true);
+        const wasls = staged.cursors.map((_, i) => picks[i]);
         return { kind: 'split', split: staged, wasls, newUids: childUids.slice() };
     }
     const kept = staged.cursors.map((_, i) => picks[i] === false);

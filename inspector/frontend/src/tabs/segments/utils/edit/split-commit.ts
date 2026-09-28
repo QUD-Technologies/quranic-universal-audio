@@ -46,7 +46,8 @@ export interface CommitSplitOptions {
      *  binary cross-verse suggestion (single-cursor case only). */
     refs?: readonly (string | undefined)[] | null;
     /** `is_wasl` for every non-last piece (`cursors.length`). */
-    wasls?: readonly boolean[] | null;
+    wasls?: readonly (boolean | undefined)[] | null;
+    joinVerdicts?: NonNullable<Segment['join_verdicts']>;
     /** Uids for pieces 1..N; fresh uuids when omitted. */
     newUids?: readonly string[] | null;
     /** Validation category the split was launched from (history pill). Used
@@ -119,6 +120,7 @@ export function commitSplit(
         },
         {
             type: 'split',
+            joinVerdicts: opts.joinVerdicts,
             segmentUid: uid,
             splitMs: cursors.slice(),
             newUids,

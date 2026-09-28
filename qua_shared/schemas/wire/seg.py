@@ -35,6 +35,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
+from ..bucket.segment import JoinVerdict
+
 # ===========================================================================
 # Shared scalar aliases (documentation-only; TS sees ``string`` / ``number``)
 # ===========================================================================
@@ -201,6 +203,7 @@ class SegDataSegment(BaseModel):
     audio_url: str
     ignored_categories: list[str] | None = None
     is_wasl: bool | None = None
+    join_verdicts: list[JoinVerdict] | None = None
     word_timings: list[SegWordTiming] | None = None
 
 
@@ -227,6 +230,7 @@ class SegAllSegment(BaseModel):
     wrap_word_ranges: list | None = None
     ignored_categories: list[str] | None = None
     is_wasl: bool | None = None
+    join_verdicts: list[JoinVerdict] | None = None
     flag: SegmentFlagView | None = None
     word_timings: list[SegWordTiming] | None = None
 
@@ -321,6 +325,7 @@ class SegSavePatchSegment(BaseModel):
     confidence: float
     ignored_categories: list[str] | None = None
     is_wasl: bool | None = None
+    join_verdicts: list[JoinVerdict] | None = None
 
 
 class SegSaveFullSegment(BaseModel):
@@ -336,6 +341,7 @@ class SegSaveFullSegment(BaseModel):
     wrap_word_ranges: list | None = None
     ignored_categories: list[str] | None = None
     is_wasl: bool | None = None
+    join_verdicts: list[JoinVerdict] | None = None
 
 
 class SegSaveRequest(BaseModel):

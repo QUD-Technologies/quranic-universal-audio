@@ -67,6 +67,18 @@ Edit-flow support modules in `utils/edit/`:
 
 The reducer never writes `seg.ignored_categories` except for the explicit `ignoreIssue` command. Editing from a validation accordion card records `op_context_category` (history pill provenance) but does NOT mutate the persisted ignore list — soft-card dismissal is FE session state.
 
+### Join answers
+
+`join_verdicts` records `{at_ms, after_ref, verdict: "wasl" | "waqf"}` on the
+segment to the left of each answered join, including internal joins. Missing
+records mean unset. The `setIsWasl` command records either an explicit internal
+`join` or the segment's outer edge, and updates `is_wasl` only for the latter.
+The picker must record an initial WAQF even when `is_wasl` was already false.
+Split/merge carry records by audio ownership; merge takes the outer edge from
+its right input. Both save modes, read routes, history snapshots, local discard,
+and server undo preserve answers. History shows the answered word joins.
+See [validation.md](validation.md) for review behavior and backfill semantics.
+
 ## Command grammar
 
 `SegmentCommand` is a discriminated union on `type`. TS twin: `domain/command.ts`. Python has no command-object twin — the on-wire op carries a `command` envelope validated by name in `save.py::_validate_command_envelopes`; the actual mutation is replayed from the save payload + the op `patch`, not from re-running a Python reducer.
@@ -82,7 +94,7 @@ Command variants (TS):
 | `delete` | `segmentUid` |
 | `ignoreIssue` | `segmentUid`, `category` |
 | `autoFixMissingWord` | `segmentUid`, `matched_ref`, `matched_text?` |
-| `setIsWasl` | `segmentUid`, `is_wasl` |
+| `setIsWasl` | `segmentUid`, `is_wasl`, optional `join:{at_ms,after_ref}` for an internal join |
 
 `CommandBase` carries `sourceCategory`/`contextCategory` (history-pill provenance), `fixKind` (`manual`\|`auto_fix`\|`audit`\|`ignore`), and `_mountId` (UI binding; reducer ignores it).
 
@@ -102,7 +114,7 @@ Op recording: dispatcher calls reducer → gets `operation` → `finalizeOp(chap
 
 ### Snapshots — `snapshotSeg` (`stores/dirty.ts`)
 
-Each op carries `targets_before`/`targets_after` (and mirror `snapshots.before/after`) of `SegSnapshot` dicts. Snapshot fields: `segment_uid`, `index_at_save`, `audio_url`, `time_start`, `time_end`, `matched_ref`, `confidence`, optional `wrap_word_ranges`/`entry_ref`/`chapter`/`ignored_categories`/`is_wasl`. Migration #5: `matched_text` and `phonemes_asr` are NOT snapshotted (derivable / retired). Backend `save.py::_attach_classified_issues` enriches each persisted snapshot with `classified_issues: string[]` at write time so the History delta reads it directly.
+Each op carries `targets_before`/`targets_after` (and mirror `snapshots.before/after`) of `SegSnapshot` dicts. Snapshot fields: `segment_uid`, `index_at_save`, `audio_url`, `time_start`, `time_end`, `matched_ref`, `confidence`, optional `wrap_word_ranges`/`entry_ref`/`chapter`/`ignored_categories`/`is_wasl`/`join_verdicts`. Migration #5: `matched_text` and `phonemes_asr` are NOT snapshotted (derivable / retired). Backend `save.py::_attach_classified_issues` enriches each persisted snapshot with `classified_issues: string[]` at write time so the History delta reads it directly.
 
 ## Normalized state — `stores/segments.ts`
 

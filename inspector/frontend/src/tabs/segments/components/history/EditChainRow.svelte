@@ -34,6 +34,7 @@
     import SegmentRow from '../list/SegmentRow.svelte';
     import GuideFlagButton from './GuideFlagButton.svelte';
     import HistoryArrows from './HistoryArrows.svelte';
+    import JoinVerdicts from './JoinVerdicts.svelte';
 
     // Props ------------------------------------------------------------------
 
@@ -211,8 +212,6 @@
     $: chainUndoButtonLabel = tr($localeStore, isChainUndoing ? m.segments_history_op_undoing_button() : m.segments_history_op_undo_button());
     $: discardButtonLabel = tr($localeStore, m.segments_history_discard_button());
     $: allDeletedPlaceholder = tr($localeStore, m.segments_history_all_deleted_placeholder());
-    $: waslTagLabel = tr($localeStore, m.segments_history_wasl_tag());
-    $: waqfTagLabel = tr($localeStore, m.segments_history_waqf_tag());
     $: chainDateLabel = tr($localeStore, formatHistDate(chain.latestDate));
 </script>
 
@@ -298,17 +297,7 @@
                                 opId={chain.ops[0]?.op.op_id ?? null}
                                 {previewCtx}
                             />
-                            {#if isSplit
-                                && i < leafSnaps.length - 1
-                                && (leaf as { is_wasl?: boolean }).is_wasl !== undefined}
-                                <!-- Boundary annotation captured by the in-card
-                                     WASL/WAQF picker during the post-split chain.
-                                     Only the LAST leaf has no following boundary,
-                                     so we elide it. -->
-                                <span class="seg-history-wasl-tag" class:on={(leaf as { is_wasl?: boolean }).is_wasl}>
-                                    {(leaf as { is_wasl?: boolean }).is_wasl ? waslTagLabel : waqfTagLabel}
-                                </span>
-                            {/if}
+                            <JoinVerdicts answers={leaf.join_verdicts} />
                         </div>
                     {/each}
                 {/if}

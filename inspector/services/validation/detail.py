@@ -159,6 +159,40 @@ def false_split_boundary(entry: dict) -> dict:
     }
 
 
+def resolve_join_reviews(
+    items: list[dict],
+    entries: list[dict],
+    split_groups: dict,
+    recheck: list[str] | tuple[str, ...] = (),
+) -> None:
+    """Set Low Confidence Waqf completion from answers, never split geometry.
+
+    Explicit Ignore remains a dismissal; it does not supply any join verdicts.
+    A partial answer must not close the entire multi-join card after reload.
+    """
+    live = {s.get("segment_uid"): s for e in entries for s in e.get("segments", [])}
+    for item in items:
+        uid = item.get("segment_uid")
+        root = live.get(uid, {})
+        boundary = item.get("boundary") or {}
+        cursors, refs = boundary.get("cursors") or [], boundary.get("refs") or []
+        answers = {
+            (j["at_ms"], j["after_ref"])
+            for member in [uid, *split_groups.get(uid, [])]
+            for j in live.get(member, {}).get("join_verdicts") or []
+            if not (member in recheck and j["at_ms"] == live[member].get("time_end"))
+        }
+        complete = (
+            bool(cursors)
+            and len(refs) == len(cursors) + 1
+            and all((at, refs[i].split("-")[-1]) in answers for i, at in enumerate(cursors))
+        )
+        if complete or is_ignored_for(root, "missed_waqf"):
+            item["resolved"] = True
+        else:
+            item.pop("resolved", None)
+
+
 def _build_detail_lists(
     entries: list[dict],
     is_by_ayah: bool,

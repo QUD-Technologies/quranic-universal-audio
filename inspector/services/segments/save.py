@@ -400,6 +400,7 @@ def _apply_patch(matching: list[dict], updates: dict, riwayah: str = DEFAULT_SDK
             if ref != flat_segments[idx].get("matched_ref"):
                 flat_segments[idx].pop("word_timings", None)
                 flat_segments[idx].pop("pauses", None)
+                flat_segments[idx].pop("join_verdicts", None)
             flat_segments[idx]["matched_ref"] = ref
             if "confidence" in upd:
                 flat_segments[idx]["confidence"] = upd["confidence"]
@@ -410,6 +411,8 @@ def _apply_patch(matching: list[dict], updates: dict, riwayah: str = DEFAULT_SDK
                 else:
                     flat_segments[idx].pop("ignored_categories", None)
                     flat_segments[idx].pop("ignored", None)
+            if "join_verdicts" in upd:
+                flat_segments[idx]["join_verdicts"] = upd["join_verdicts"] or []
             if upd.get("is_wasl") is not None:
                 flat_segments[idx]["is_wasl"] = bool(upd["is_wasl"])
             # Re-stamp persisted classifier fields since matched_ref/text changed.

@@ -32,6 +32,32 @@ def _parse_utc(value: object) -> datetime | None:
 
 
 def _op_uids(op: dict) -> set[str]:
+    command = op.get("command") or {}
+    explicit = command.get("join")
+    if explicit:
+        return {
+            snap["segment_uid"]
+            for snap in op.get("targets_before") or []
+            if snap.get("segment_uid")
+            and explicit.get("at_ms") == snap.get("time_end")
+            and explicit.get("after_ref") == snap.get("matched_ref", "").split("-")[-1]
+        }
+    # New structural operations carry explicit records. Merely retaining or
+    # splitting the old left UID no longer counts as answering its outer join.
+    if op.get("op_type") in {"split_segment", "merge_segments"} and any(
+        "join_verdicts" in snap for snap in op.get("targets_after") or []
+    ):
+        answers = command.get("joinVerdicts") or []
+        return {
+            snap["segment_uid"]
+            for snap in op.get("targets_before") or []
+            if snap.get("segment_uid")
+            and any(
+                answer.get("at_ms") == snap.get("time_end")
+                and answer.get("after_ref") == snap.get("matched_ref", "").split("-")[-1]
+                for answer in answers
+            )
+        }
     uids: set[str] = set()
     for key in ("targets_before", "targets_after"):
         for snap in op.get(key) or []:

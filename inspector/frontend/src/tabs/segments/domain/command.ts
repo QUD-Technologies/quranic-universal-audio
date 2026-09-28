@@ -16,7 +16,7 @@
  * dispatcher's convenience and never leaks into the operation log.
  */
 
-import type { FlagAuthor } from '../../../lib/types/generated/schemas';
+import type { FlagAuthor, JoinVerdict } from '../../../lib/types/generated/schemas';
 import type { EditOp, Segment } from '../../../lib/types/view-models';
 import type { SegSnapshot } from '../stores/dirty';
 
@@ -79,7 +79,8 @@ export interface SplitCommand extends CommandBase {
      *  (the left side of that boundary). When absent, all children default
      *  is_wasl=false except the LAST child which inherits the parent's
      *  is_wasl (which represented the parent-to-next-seg right edge). */
-    wasls?: boolean[];
+    wasls?: (boolean | undefined)[];
+    joinVerdicts?: JoinVerdict[];
     // ---- Legacy single-cursor convenience fields (still accepted) --------
     firstRef?: string;
     secondRef?: string;
@@ -90,6 +91,7 @@ export interface SplitCommand extends CommandBase {
 
 export interface MergeCommand extends CommandBase {
     type: 'merge';
+    joinVerdicts?: JoinVerdict[];
     /** Adjacent pair. The reducer determines the kept side by chapter order
      *  (the earlier seg's UID is preserved on the merged result). Either UID
      *  may be passed as `fromUid` or `toUid` — order isn't load-bearing. */
@@ -141,6 +143,8 @@ export interface SetIsWaslCommand extends CommandBase {
     type: 'setIsWasl';
     segmentUid: string;
     is_wasl: boolean;
+    /** Omit for the segment edge; internal review joins use explicit coordinates. */
+    join?: Pick<JoinVerdict, 'at_ms' | 'after_ref'>;
 }
 
 /** Flag a segment with a comment thread. The actor + timestamps are stamped

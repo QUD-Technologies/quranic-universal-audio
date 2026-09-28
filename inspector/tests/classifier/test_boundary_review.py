@@ -15,7 +15,30 @@ from services.validation import (
     classify_segment,
     strip_boundary_review,
 )
-from services.validation.detail import _build_detail_lists
+from services.validation.detail import _build_detail_lists, resolve_join_reviews
+
+
+def test_review_completion_requires_every_join_answer_across_live_pieces():
+    item = {
+        "segment_uid": "root",
+        "resolved": True,
+        "boundary": {
+            "cursors": [300, 600],
+            "refs": ["2:1:1-2:1:2", "2:1:3-2:1:5", "2:1:6-2:1:9"],
+        },
+    }
+    left = {
+        "segment_uid": "root",
+        "join_verdicts": [{"at_ms": 300, "after_ref": "2:1:2", "verdict": "waqf"}],
+    }
+    right = {"segment_uid": "right", "join_verdicts": []}
+    entries = [{"segments": [left, right]}]
+    resolve_join_reviews([item], entries, {"root": ["right"]})
+    assert "resolved" not in item  # the split/history suppression was not an answer
+    right["join_verdicts"].append({"at_ms": 600, "after_ref": "2:1:5", "verdict": "wasl"})
+    resolve_join_reviews([item], entries, {"root": ["right"]})
+    assert item["resolved"] is True
+
 
 HIDDEN_ENTRY = {
     "kind": "hidden_pause",

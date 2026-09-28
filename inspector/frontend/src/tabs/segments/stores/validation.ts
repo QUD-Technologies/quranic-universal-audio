@@ -50,6 +50,8 @@ function _answeredInOpLog(): Set<string> {
         for (const op of ops) {
             if (op.op_type !== 'set_is_wasl') continue;
             for (const snap of op.targets_before) {
+                const join = (op as { command?: { join?: { at_ms: number; after_ref: string } } }).command?.join;
+                if (join && (join.at_ms !== snap.time_end || join.after_ref !== String(snap.matched_ref ?? '').split('-').pop())) continue;
                 const uid = snap.segment_uid;
                 if (typeof uid === 'string' && uid) out.add(uid);
             }

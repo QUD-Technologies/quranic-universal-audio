@@ -50,7 +50,7 @@ from services.validation.classifier import (
     is_suppressed_for,
 )
 from services.validation.cross_verse_resolved import resolved_cross_verse_items
-from services.validation.detail import _build_detail_lists
+from services.validation.detail import _build_detail_lists, resolve_join_reviews
 from services.validation.registry import (
     ALL_CATEGORIES,
     AUTO_SUPPRESS_CATEGORIES,
@@ -217,6 +217,7 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
         unmarked_wasl_map=unmarked_wasl_map,
         riwayah=riwayah,
     )
+    resolve_join_reviews(detail["missed_waqf"], entries, split_group_index, wasl_recheck)
     missing_words = _build_missing_words(
         detail["verse_segments"], word_counts, detail["sequence_gaps"], riwayah
     )

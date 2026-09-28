@@ -82,3 +82,11 @@ def test_split_or_merge_touching_uid_after_created_at_closes_it(sidecar, monkeyp
 def test_non_answering_op_after_created_at_keeps_uid_open(sidecar, monkeypatch):
     _stub_history(monkeypatch, [(AFTER, [_op("trim_segment", ["left-a"], ["left-a"])])])
     assert wr.open_wasl_recheck_uids(SLUG) == ["left-a", "left-b"]
+
+
+def test_internal_join_answer_does_not_close_outer_edge_recheck(sidecar, monkeypatch):
+    op = _op("set_is_wasl", ["left-a"], ["left-a"])
+    op["targets_before"][0].update(time_end=1000, matched_ref="2:5:1-2:5:9")
+    op["command"] = {"join": {"at_ms": 500, "after_ref": "2:5:4"}}
+    _stub_history(monkeypatch, [(AFTER, [op])])
+    assert wr.open_wasl_recheck_uids(SLUG) == ["left-a", "left-b"]

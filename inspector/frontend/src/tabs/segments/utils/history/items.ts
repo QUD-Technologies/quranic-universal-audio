@@ -224,15 +224,15 @@ export function chainMatchesCatFilter(chain: EditChain, cats: Set<string>): bool
 }
 
 /** True iff any snapshot inside ``op.targets_after`` or
- *  ``op.snapshots?.after`` carries ``is_wasl === true``. Waqf is the default
- *  state for any cross-verse boundary; the filter exists to surface the
- *  affirmative WASL assertions, not the trivially-true waqf majority. */
+ *  ``op.snapshots?.after`` carries ``is_wasl === true``. Explicit internal WASL answers also count. Legacy true flags remain
+ *  visible in historical records; absent/false flags never imply an answer. */
 function _opHasWaslAnnotation(op: EditOp): boolean {
     const seen = (arr: unknown): boolean => {
         if (!Array.isArray(arr)) return false;
         for (const snap of arr) {
             if (snap && typeof snap === 'object'
-                && (snap as { is_wasl?: unknown }).is_wasl === true) {
+                && ((snap as HistorySnapshot).join_verdicts?.some((j) => j.verdict === 'wasl')
+                    || (snap as { is_wasl?: unknown }).is_wasl === true)) {
                 return true;
             }
         }

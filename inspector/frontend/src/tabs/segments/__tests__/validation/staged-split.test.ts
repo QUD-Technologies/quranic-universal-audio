@@ -184,7 +184,7 @@ describe('stagedCommit', () => {
     const staged = { cursors: [2000, 3500], refs: ['2:1:1-2:1:4', '2:1:5-2:1:8', '2:1:9-2:1:12'] };
     const kids = ['k1', 'k2'];
 
-    it('missed-waqf: all WASL commits nothing (the card ignores the item)', () => {
+    it('missed-waqf: all WASL needs no physical cuts', () => {
         expect(stagedCommit('missed_waqf', staged, [true, true], kids)).toEqual({ kind: 'none' });
     });
 
@@ -230,7 +230,7 @@ describe('stagedCommit', () => {
         expect(stagedCommit('cross_verse', staged, [true, undefined], kids)).toEqual({
             kind: 'split',
             split: staged,
-            wasls: [true, false],
+            wasls: [true, undefined],
             newUids: kids,
         });
     });

@@ -56,6 +56,7 @@ no-op-or-error by design. Idempotent `backfill_*`/`purge_*`/`convert_*` stay in
 - `download_bucket_reciter.py` → `audit_bucket_reciter.py` → `upload_bucket_reciter.py` — reciter-folder round-trip (download → validate → upload)
 
 ### `backfills/`
+- `backfill_join_verdicts.py` — dry-run-first recovery of explicit join answers from a local review export; `--apply --output` stages reversible changes in a new local directory, with no bucket access.
 - `backfill_*` (5), `convert_peaks_v2_to_v3`, `derive_pipeline_meta`, `rollback_peaks_slim` — re-runnable artefact backfills / conversions
 - `purge_pad_migration`, `purge_stale_wraps` — strip stale records from `detailed.json` / `edit_history`
 - `unignore_category` — bulk-revert `ignore_issue` ops (re-runnable data-fix)

@@ -971,6 +971,7 @@ export interface DetailedSegment {
   segment_uid?: string | null;
   word_timings?: DetailedWordTiming[] | null;
   pauses?: DetailedPause[] | null;
+  join_verdicts?: JoinVerdict[] | null;
   source_ref?: string | null;
   projection_support?: ("full" | "partial") | null;
   ignored_categories?: string[] | null;
@@ -998,6 +999,18 @@ export interface DetailedPause {
   after_ref: string;
   gain: number;
   separability: number;
+}
+/**
+ * An explicit answer at one word join, independent of segment geometry.
+ *
+ * Owned by the segment containing the audio immediately before ``at_ms``.
+ * Missing records mean unset; neither a cut nor an ignore is an answer.
+ * The word reference and audio cursor together distinguish repeated words.
+ */
+export interface JoinVerdict {
+  after_ref: string;
+  at_ms: number;
+  verdict: "wasl" | "waqf";
 }
 /**
  * A flag on a single segment: a required root comment + reply thread.
@@ -1714,6 +1727,7 @@ export interface SegAllSegment {
   wrap_word_ranges?: unknown[] | null;
   ignored_categories?: string[] | null;
   is_wasl?: boolean | null;
+  join_verdicts?: JoinVerdict[] | null;
   flag?: SegmentFlagView | null;
   word_timings?: SegWordTiming[] | null;
 }
@@ -1826,6 +1840,7 @@ export interface SegDataSegment {
   audio_url: string;
   ignored_categories?: string[] | null;
   is_wasl?: boolean | null;
+  join_verdicts?: JoinVerdict[] | null;
   word_timings?: SegWordTiming[] | null;
 }
 /**

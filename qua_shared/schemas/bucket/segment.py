@@ -104,6 +104,21 @@ class DetailedPause(BaseModel):
     separability: float
 
 
+class JoinVerdict(BaseModel):
+    """An explicit answer at one word join, independent of segment geometry.
+
+    Owned by the segment containing the audio immediately before ``at_ms``.
+    Missing records mean unset; neither a cut nor an ignore is an answer.
+    The word reference and audio cursor together distinguish repeated words.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    after_ref: str = Field(..., pattern=r"^[1-9][0-9]*:[1-9][0-9]*:[1-9][0-9]*$")
+    at_ms: int = Field(..., ge=0)
+    verdict: Literal["wasl", "waqf"]
+
+
 class DetailedSegment(BaseModel):
     """Atomic seg in a chapter's ``segments`` list.
 
@@ -166,6 +181,19 @@ class DetailedSegment(BaseModel):
     # hide them from playback review.
     word_timings: list[DetailedWordTiming] | None = None
     pauses: list[DetailedPause] | None = None
+    join_verdicts: list[JoinVerdict] | None = None
+
+    @model_validator(mode="after")
+    def _validate_join_verdicts(self) -> DetailedSegment:
+        seen: set[tuple[int, str]] = set()
+        for answer in self.join_verdicts or []:
+            key = (answer.at_ms, answer.after_ref)
+            if key in seen:
+                raise ValueError("duplicate join verdict")
+            seen.add(key)
+            if not self.time_start < answer.at_ms <= self.time_end:
+                raise ValueError("join verdict must belong to the segment on its left")
+        return self
 
     # === Coordinate provenance (multi-riwayah) ===
     # ``matched_ref`` above is the DELIVERY EDITION's coordinate — what the

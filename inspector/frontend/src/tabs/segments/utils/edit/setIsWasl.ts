@@ -19,6 +19,7 @@
 import { get } from 'svelte/store';
 
 import type { Segment } from '../../../../lib/types/view-models';
+import { edgeState, joinState } from '../../domain/join-verdict';
 import { applyCommand } from '../../domain/apply-command';
 import { refreshSegInStore, selectedChapter } from '../../stores/chapter';
 import {
@@ -37,10 +38,10 @@ import {
 export function setIsWaslOnSegment(
     seg: Segment,
     value: boolean,
-    opts: { force?: boolean } = {},
+    opts: { force?: boolean; join?: { at_ms: number; after_ref: string }; contextCategory?: string } = {},
 ): boolean {
-    const current = seg.is_wasl === true;
-    if (current === value && opts.force !== true) return false;
+    const current = opts.join ? joinState(seg, opts.join.at_ms, opts.join.after_ref) : edgeState(seg);
+    if (current === (value ? 'wasl' : 'waqf') && opts.force !== true) return false;
 
     const segChapter = seg.chapter ?? parseInt(get(selectedChapter));
     const uid = seg.segment_uid;
@@ -52,12 +53,13 @@ export function setIsWaslOnSegment(
             idsByChapter: { [segChapter]: [uid] },
             selectedChapter: segChapter,
         },
-        { type: 'setIsWasl', segmentUid: uid, is_wasl: value },
+        { type: 'setIsWasl', segmentUid: uid, is_wasl: value, join: opts.join, contextCategory: opts.contextCategory },
     );
 
     const updated = result.nextState.byId[uid];
     if (updated) {
         seg.is_wasl = updated.is_wasl;
+        seg.join_verdicts = updated.join_verdicts;
         delete (seg as Segment & { _derived?: unknown })._derived;
     }
     markDirty(segChapter, seg.index);

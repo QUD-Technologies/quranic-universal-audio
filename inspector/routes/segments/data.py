@@ -267,6 +267,8 @@ def seg_all(reciter):
                 seg_dict["is_wasl"] = True
             if seg.get("flag"):
                 seg_dict["flag"] = flag_view(seg["flag"], viewer_id, can_see_flagger)
+            if "join_verdicts" in seg:
+                seg_dict["join_verdicts"] = seg["join_verdicts"]
             if seg.get("word_timings"):
                 seg_dict["word_timings"] = seg["word_timings"]
             segments.append(seg_dict)

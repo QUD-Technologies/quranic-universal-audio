@@ -12,7 +12,7 @@
  * live here too. Codegen'd wire rows are imported from `./generated/schemas`.
  */
 
-import type { Actor as GenActor, ErrorEnvelope, SegmentFlagView, SegWordTiming } from './generated/schemas';
+import type { Actor as GenActor, ErrorEnvelope, JoinVerdict, SegmentFlagView, SegWordTiming } from './generated/schemas';
 
 // ---------------------------------------------------------------------------
 // Reference strings: "surah:ayah[:word]" or compound "S:A:W-S:A:W"
@@ -59,6 +59,7 @@ export interface Segment {
     confidence: number; // 0..1
     ignored_categories?: string[] | null;
     is_wasl?: boolean | null;
+    join_verdicts?: JoinVerdict[] | null;
     /** Opaque — used by repetition detection. */
     wrap_word_ranges?: unknown;
     // From SegDataSegment (`/data`) — injected onto `/all` rows by the editor

@@ -122,6 +122,11 @@ def make_seg(
     # re-derived from the ref by ``services.segments.stamping.stamp_segment``,
     # which every save path already runs and which knows the riwayah.
 
+    if "join_verdicts" in s:
+        result["join_verdicts"] = s["join_verdicts"] or []
+    elif unchanged and "join_verdicts" in existing:
+        result["join_verdicts"] = existing["join_verdicts"]
+
     return result
 
 
