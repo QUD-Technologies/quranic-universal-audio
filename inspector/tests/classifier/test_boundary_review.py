@@ -21,7 +21,6 @@ from services.validation.detail import _build_detail_lists, resolve_join_reviews
 def test_review_completion_requires_every_join_answer_across_live_pieces():
     item = {
         "segment_uid": "root",
-        "resolved": True,
         "boundary": {
             "cursors": [300, 600],
             "refs": ["2:1:1-2:1:2", "2:1:3-2:1:5", "2:1:6-2:1:9"],
@@ -34,8 +33,19 @@ def test_review_completion_requires_every_join_answer_across_live_pieces():
     right = {"segment_uid": "right", "join_verdicts": []}
     entries = [{"segments": [left, right]}]
     resolve_join_reviews([item], entries, {"root": ["right"]})
-    assert "resolved" not in item  # the split/history suppression was not an answer
+    assert "resolved" not in item
     right["join_verdicts"].append({"at_ms": 600, "after_ref": "2:1:5", "verdict": "wasl"})
+    resolve_join_reviews([item], entries, {"root": ["right"]})
+    assert item["resolved"] is True
+
+
+def test_history_resolution_stands_without_stored_answers():
+    item = {
+        "segment_uid": "root",
+        "resolved": True,
+        "boundary": {"cursors": [300], "refs": ["2:1:1-2:1:2", "2:1:3-2:1:9"]},
+    }
+    entries = [{"segments": [{"segment_uid": "root"}, {"segment_uid": "right"}]}]
     resolve_join_reviews([item], entries, {"root": ["right"]})
     assert item["resolved"] is True
 

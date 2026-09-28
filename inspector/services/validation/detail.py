@@ -165,7 +165,7 @@ def resolve_join_reviews(
     split_groups: dict,
     recheck: list[str] | tuple[str, ...] = (),
 ) -> None:
-    """Recognize stored answers alongside the category's history resolution."""
+    """Mark items whose every join carries a stored answer resolved; history resolution stays."""
     live = {s.get("segment_uid"): s for e in entries for s in e.get("segments", [])}
     for item in items:
         uid = item.get("segment_uid")
@@ -185,8 +185,6 @@ def resolve_join_reviews(
         )
         if complete or is_ignored_for(root, "missed_waqf"):
             item["resolved"] = True
-        else:
-            item.pop("resolved", None)
 
 
 def _build_detail_lists(

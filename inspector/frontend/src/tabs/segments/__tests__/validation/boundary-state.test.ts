@@ -154,9 +154,22 @@ describe('boundaryStates — missed_waqf', () => {
         expect(boundaryStates(mw, c, 'missed_waqf')).toEqual(['unset', 'waqf']);
     });
 
-    it('does not infer answers from an ignored item', () => {
+    it('reads an ignored item saved without verdicts as all wasl', () => {
         const segs = [seg({ segment_uid: 'root', matched_ref: '2:1:1-2:1:9', ignored_categories: ['missed_waqf'] })];
-        expect(boundaryStates(mw, ctx(segs), 'missed_waqf')).toEqual(['unset', 'unset']);
+        expect(boundaryStates(mw, ctx(segs), 'missed_waqf')).toEqual(['wasl', 'wasl']);
+    });
+
+    it('reads a split saved without verdicts as waqf at its cuts and wasl elsewhere', () => {
+        const bare = (o: Partial<Segment>): Segment => ({
+            index: 0, entry_idx: 0, chapter: 2, time_start: 0, time_end: 1000,
+            matched_ref: '2:1:1-2:1:4', confidence: 1, ...o,
+        });
+        const segs = [
+            bare({ segment_uid: 'root', index: 0, time_start: 0, time_end: 600, matched_ref: '2:1:1-2:1:5' }),
+            bare({ segment_uid: 'b', index: 1, time_start: 600, time_end: 1000, matched_ref: '2:1:6-2:1:9' }),
+        ];
+        const c = ctx(segs, { splitGroupIndex: { root: ['b'] } });
+        expect(boundaryStates(mw, c, 'missed_waqf')).toEqual(['waqf', 'wasl']);
     });
 
     it('drives the Unset · Wasl · Waqf chips across items', () => {

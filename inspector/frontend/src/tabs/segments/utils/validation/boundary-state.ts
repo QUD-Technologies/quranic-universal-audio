@@ -6,7 +6,9 @@
  * a three-verse item contributes two) and the filter that hides or shows
  * items by the states they contain.
  *
- * Join verdicts record the cut and ignore answers. A pending recheck overrides
+ * Join verdicts record the cut and ignore answers; a Missed Waqf item answered
+ * before verdicts existed reads its cuts as waqf and its other cursors (or an
+ * ignored root) as wasl. A pending recheck overrides
  * an edge answer. Cross-verse session picks apply before committing; saved
  * boundaries use their verdict or the segment's is_wasl flag.
  */
@@ -16,10 +18,11 @@ import type { EditOp, Segment } from '../../../../lib/types/view-models';
 import type { AutoSplitMap } from '../../stores/auto-split';
 import type { StagedPicks } from '../../stores/staged-split';
 import { parseSegRef } from '../data/references';
+import { isIgnoredFor } from './classified-issues';
 import { edgeState } from '../../domain/join-verdict';
 import { reviewBoundary, reviewStates } from './join-review';
 import { getSplitGroupMembers } from './split-group';
-import { type StagedKind, stagedPickKey, stagedSplitFor } from './staged-split';
+import { itemCursorCount, type StagedKind, stagedPickKey, stagedSplitFor } from './staged-split';
 
 export type BoundaryState = 'unset' | 'wasl' | 'waqf';
 export const BOUNDARY_STATES: readonly BoundaryState[] = ['unset', 'wasl', 'waqf'];
@@ -62,6 +65,20 @@ function _committedStates(
     return out.length ? out : ['unset'];
 }
 
+/** A Missed Waqf answer saved without verdicts: its cuts stop, the item's other cursors and an ignored root continue. */
+function _answeredMissedWaqf(item: SegValAnyItem, members: Segment[], root: Segment | null): BoundaryState[] | null {
+    const n = Math.max(1, itemCursorCount(item));
+    if (members.length >= 2) {
+        const cuts = Math.min(members.length - 1, n);
+        return [..._repeat('waqf', cuts), ..._repeat('wasl', n - cuts)];
+    }
+    return root && isIgnoredFor(root, 'missed_waqf') ? _repeat('wasl', n) : null;
+}
+
+function _repeat(state: BoundaryState, n: number): BoundaryState[] {
+    return new Array<BoundaryState>(n).fill(state);
+}
+
 export function boundaryStates(
     item: SegValAnyItem,
     ctx: BoundaryCtx,
@@ -72,16 +89,19 @@ export function boundaryStates(
     if (!uid || chapter == null) return ['unset'];
     const segs = ctx.chapterSegs(chapter);
     const members = getSplitGroupMembers(uid, segs, ctx.splitGroupIndex[uid], ctx.opLog(chapter));
+    const root = segs.find((s) => s.segment_uid === uid) ?? null;
     if (category === 'missed_waqf') {
         const boundary = reviewBoundary(item);
+        const answered = _answeredMissedWaqf(item, members, root);
         if (boundary) {
             const saved = reviewStates(members, boundary, ctx.waslRecheck);
             const picks = ctx.stagedPicks[stagedPickKey(category, uid)] ?? [];
-            return saved.map((s, i) => picks[i] === undefined ? s : picks[i] ? 'wasl' : 'waqf');
+            const base = answered && saved.every((s) => s === 'unset') ? answered : saved;
+            return base.map((s, i) => picks[i] === undefined ? s : picks[i] ? 'wasl' : 'waqf');
         }
+        if (answered) return answered;
     }
     if (members.length >= 2) return _committedStates(members, ctx);
-    const root = segs.find((s) => s.segment_uid === uid) ?? null;
     const staged = stagedSplitFor(category, root, item, ctx.autoSplitMap);
     if (staged) {
         const picks = ctx.stagedPicks[stagedPickKey(category, uid)] ?? [];
