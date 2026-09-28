@@ -107,7 +107,9 @@ def _stage_missed_waqf(
     if staging.read_json(path) is not None:
         return
     docs = staging.read_chapters(slug, run_id, chapters)
-    doc = pause_sidecar.build(slug, docs, sources, params.riwayah)
+    from services.storage.data_loader import load_detailed
+
+    doc = pause_sidecar.build(slug, docs, sources, params.riwayah, load_detailed(slug))
     staging.write_json(path, doc)
     log.info("align %s: %s staged, %d item(s)", run_id, MISSED_WAQF_FILE, len(doc["by_uid"]))
 

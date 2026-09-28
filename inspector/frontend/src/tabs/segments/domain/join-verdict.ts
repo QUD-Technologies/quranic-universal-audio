@@ -42,3 +42,25 @@ export function pickedVerdicts(
 export function edgeAnswer(seg: Segment, value: boolean): JoinVerdict {
     return { at_ms: seg.time_end, after_ref: endRef(seg.matched_ref), verdict: value ? 'wasl' : 'waqf' };
 }
+
+function compareRef(a: string, b: string): number {
+    const x = a.split(':').map(Number), y = b.split(':').map(Number);
+    for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i]! - y[i]!;
+    return 0;
+}
+
+/** Keep answers whose word and audio coordinates still belong to this piece. */
+export function containedVerdicts(seg: Segment, answers = seg.join_verdicts ?? []): JoinVerdict[] {
+    const start = seg.matched_ref.split('-')[0]!;
+    const end = endRef(seg.matched_ref);
+    return answers.filter((j) => j.at_ms > seg.time_start && j.at_ms <= seg.time_end
+        && compareRef(start, j.after_ref) <= 0 && compareRef(j.after_ref, end) <= 0
+        && (j.verdict === 'waqf'
+            ? j.at_ms === seg.time_end && j.after_ref === end
+            : j.at_ms < seg.time_end && compareRef(j.after_ref, end) < 0));
+}
+
+/** Resolving an item answers all its cursors: cuts stop, the rest continue. */
+export function resolvedVerdicts(boundary: { cursors: readonly number[]; refs: readonly string[] }, cuts: readonly number[]): JoinVerdict[] {
+    return pickedVerdicts(boundary.cursors, boundary.refs, boundary.cursors.map((c) => !cuts.includes(c)));
+}

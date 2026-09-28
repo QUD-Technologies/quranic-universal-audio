@@ -28,35 +28,40 @@ afterEach(() => {
     setEditingMode({ kind: 'view', viewReason: 'unauthenticated' });
 });
 
-it('keeps every join answerable through partial split, relabel, merge, and reload', async () => {
+
+const item = { chapter: 2, seg_index: 0, segment_uid: 'root', boundary: {
+    cursors: [1000, 2000], refs: ['2:1:1-2:1:2', '2:1:3-2:1:5', '2:1:6-2:1:9'],
+} } as SegValAnyItem;
+
+function setup() {
     const root = { ...makeSegment(0, 0, 3000, { segment_uid: 'root', matched_ref: '2:1:1-2:1:9', confidence: 0.4 }), chapter: 2 };
     segAllData.set({ segments: [root] } as never);
-    const item = { chapter: 2, seg_index: 0, segment_uid: 'root', boundary: {
-        cursors: [1000, 2000], refs: ['2:1:1-2:1:2', '2:1:3-2:1:5', '2:1:6-2:1:9'],
-    } } as SegValAnyItem;
-    const { container, getAllByText } = render(GenericIssueCard, { category: 'missed_waqf', item });
-    const pressed = () => [...container.querySelectorAll('.wasl-boundary')].map((el) =>
-        el.querySelector('[aria-pressed="true"]')?.textContent ?? 'unset');
-    await waitFor(() => expect(pressed()).toEqual(['unset', 'unset']));
+    return render(GenericIssueCard, { category: 'missed_waqf', item });
+}
 
+it('keeps the staged flow and writes mixed answers when it commits', async () => {
+    const { getAllByText, container } = setup();
     await fireEvent.click(getAllByText('WAQF')[1]!);
-    await waitFor(() => expect(get(segAllData)!.segments).toHaveLength(2));
-    await waitFor(() => expect(pressed()).toEqual(['unset', 'WAQF']));
+    expect(get(segAllData)!.segments).toHaveLength(1);
+    expect(getChapterOps(2)).toHaveLength(0);
     await fireEvent.click(getAllByText('WASL')[0]!);
-    await waitFor(() => expect(pressed()).toEqual(['WASL', 'WAQF']));
-    expect(get(segAllData)!.segments).toHaveLength(2);
-    await fireEvent.click(getAllByText('WASL')[1]!);
+    await waitFor(() => expect(get(segAllData)!.segments).toHaveLength(2));
+    expect(get(segAllData)!.segments[0]!.join_verdicts).toEqual([
+        { at_ms: 1000, after_ref: '2:1:2', verdict: 'wasl' },
+        { at_ms: 2000, after_ref: '2:1:5', verdict: 'waqf' },
+    ]);
+    expect(container.querySelectorAll('.wasl-boundary')).toHaveLength(1);
+    expect(getChapterOps(2).map((op) => op.op_type)).toEqual(['split_segment']);
+    await fireEvent.click(getAllByText('WASL')[0]!);
     await waitFor(() => expect(get(segAllData)!.segments).toHaveLength(1));
-    await waitFor(() => expect(pressed()).toEqual(['WASL', 'WASL']));
-    expect(getChapterOps(2).map((op) => op.op_type)).toEqual(['split_segment', 'set_is_wasl', 'merge_segments']);
-    expect(get(segAllData)!.segments[0]!.ignored_categories).toBeUndefined();
+    expect(get(segAllData)!.segments[0]!.join_verdicts!.map((j) => j.verdict)).toEqual(['wasl', 'wasl']);
+    expect(get(segAllData)!.segments[0]!.ignored_categories).toContain('missed_waqf');
+});
 
-    const saved = JSON.parse(JSON.stringify(get(segAllData)));
-    clearOpLog();
-    clearDirtyMap();
-    segAllData.set(saved);
-    await waitFor(() => expect(pressed()).toEqual(['WASL', 'WASL']));
-    await fireEvent.click(getAllByText('WAQF')[0]!);
-    await waitFor(() => expect(pressed()).toEqual(['WAQF', 'WASL']));
-    expect(get(segAllData)!.segments).toHaveLength(2);
+it('ignore answers every asked cursor WASL and raises confidence to 1', async () => {
+    const { container } = setup();
+    await fireEvent.click(container.querySelector('.ignore-btn')!);
+    await waitFor(() => expect(get(segAllData)!.segments[0]!.confidence).toBe(1));
+    expect(get(segAllData)!.segments[0]!.join_verdicts!.map((j) => j.verdict)).toEqual(['wasl', 'wasl']);
+    expect(getChapterOps(2)[0]!.targets_after[0]!.join_verdicts).toHaveLength(2);
 });

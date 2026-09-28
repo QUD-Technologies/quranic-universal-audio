@@ -124,6 +124,7 @@ export interface IgnoreIssueCommand extends CommandBase {
     type: 'ignoreIssue';
     segmentUid: string;
     category: string;
+    joinVerdicts?: JoinVerdict[];
 }
 
 export interface AutoFixMissingWordCommand extends CommandBase {
@@ -143,8 +144,6 @@ export interface SetIsWaslCommand extends CommandBase {
     type: 'setIsWasl';
     segmentUid: string;
     is_wasl: boolean;
-    /** Omit for the segment edge; internal review joins use explicit coordinates. */
-    join?: Pick<JoinVerdict, 'at_ms' | 'after_ref'>;
 }
 
 /** Flag a segment with a comment thread. The actor + timestamps are stamped

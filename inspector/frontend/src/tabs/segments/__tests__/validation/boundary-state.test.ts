@@ -139,7 +139,7 @@ describe('boundaryStates — missed_waqf', () => {
         const segs = [seg({ segment_uid: 'root', matched_ref: '2:1:1-2:1:9' })];
         expect(boundaryStates(mw, ctx(segs), 'missed_waqf')).toEqual(['unset', 'unset']);
         const picked = ctx(segs, { stagedPicks: { 'missed_waqf:root': [true, false] } });
-        expect(boundaryStates(mw, picked, 'missed_waqf')).toEqual(['unset', 'unset']);
+        expect(boundaryStates(mw, picked, 'missed_waqf')).toEqual(['wasl', 'waqf']);
         // cross-verse picks for the same uid do not leak in
         expect(boundaryStates(mw, ctx(segs, { stagedPicks: { root: [true, true] } }), 'missed_waqf'))
             .toEqual(['unset', 'unset']);

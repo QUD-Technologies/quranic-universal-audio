@@ -3,7 +3,7 @@ const source = `
 
 The aligner heard what may be a stop inside this segment, but not clearly enough to cut there. Each proposed cut asks one question: did the reciter stop at this word, or read straight through? Listen across the cut and label it.
 
-> By the end Unset should be zero. Each label is recorded as an edit. WASL keeps the audio continuous; WAQF cuts at the stop. Save your edits when ready.
+> By the end Unset should be zero. The split saves on the last label; if every cut is WASL the item is ignored.
 
 ## Waqf — the reciter stopped
 

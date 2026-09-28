@@ -362,3 +362,7 @@ the scraped Drive listing key. The app itself needs `yt-dlp` (in
 
 by_ayah deliveries, Katana runbook removal, prod rollout
 (`INSPECTOR_ALIGN_PIPELINE` stays unset on prod).
+
+The pause-sidecar builder receives live detailed entries and skips joins with
+`join_verdicts` when the candidate time and reference geometry still matches.
+Skipped answers are counted as `_meta.answered`; changed geometry is reviewed again.

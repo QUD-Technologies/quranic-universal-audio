@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { setEditingMode } from '../../../../../lib/stores/editing-mode';
 import type { EditOp, Segment } from '../../../../../lib/types/view-models';
 import { makeSegment } from '../../../__tests__/helpers/make-segment';
-import { edgeAnswer } from '../../../domain/join-verdict';
 import { segAllData } from '../../../stores/chapter';
 import { clearDirtyMap, clearOpLog, getChapterOps } from '../../../stores/dirty';
 import { waslRecheck } from '../../../stores/validation';
@@ -82,20 +81,10 @@ describe('WaslBoundary re-asked boundary', () => {
 
     it('emits no op for a same-value click on a boundary that is not re-asked', async () => {
         const [left, right] = pieces(false);
-        left.join_verdicts = [edgeAnswer(left, false)];
         const { getByText } = render(WaslBoundary, { leftSeg: left, rightSeg: right });
 
         await fireEvent.click(getByText('WAQF'));
 
         expect(waslOps()).toHaveLength(0);
-    });
-
-    it('persists the first WAQF answer when a legacy false flag had no verdict', async () => {
-        const [left, right] = pieces(false);
-        const { getByText } = render(WaslBoundary, { leftSeg: left, rightSeg: right });
-        expect(getByText('WAQF').getAttribute('aria-pressed')).toBe('false');
-        await fireEvent.click(getByText('WAQF'));
-        expect(waslOps()).toHaveLength(1);
-        expect(left.join_verdicts).toEqual([edgeAnswer(left, false)]);
     });
 });

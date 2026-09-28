@@ -24,6 +24,7 @@ from adapters.save_payload import make_seg as _adapter_make_seg
 from adapters.segments_json import build_segments_doc as _adapter_build_segments_doc
 from constants import HISTORY_SCHEMA_VERSION
 from domain.command import validate_patch_dict
+from qua_shared.join_verdicts import contained_verdicts
 from qua_shared.riwayat import DEFAULT_SDK_RIWAYAH
 from qua_shared.schemas import Actor, FlagFollowUp, SegmentFlag
 from qua_shared.schemas.bucket.segment import DetailedSegment, DetailedWordTiming
@@ -400,8 +401,11 @@ def _apply_patch(matching: list[dict], updates: dict, riwayah: str = DEFAULT_SDK
             if ref != flat_segments[idx].get("matched_ref"):
                 flat_segments[idx].pop("word_timings", None)
                 flat_segments[idx].pop("pauses", None)
-                flat_segments[idx].pop("join_verdicts", None)
             flat_segments[idx]["matched_ref"] = ref
+            if "join_verdicts" in flat_segments[idx]:
+                flat_segments[idx]["join_verdicts"] = contained_verdicts(
+                    flat_segments[idx], flat_segments[idx]["join_verdicts"] or []
+                )
             if "confidence" in upd:
                 flat_segments[idx]["confidence"] = upd["confidence"]
             if "ignored_categories" in upd:

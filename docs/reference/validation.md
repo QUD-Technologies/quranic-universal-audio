@@ -32,35 +32,28 @@ Accordion order (registry `accordion_order`). `card_type` = FE card subcomponent
 
 `hidden_pause` / `missed_waqf` / `false_split` / `unmarked_wasl` are **review-only**: their arrays + `*_meta` blocks are emitted only to viewers holding `segments.view_boundary_review` (maintainer default; owner superuser) — the route caches the full payload per reciter and `strip_boundary_review` redacts per request (counts zeroed, keys absent → the FE hides the accordions). None is in `BLOCKING_COUNT_KEYS` or `REQUIRED_GUIDE_KEYS` (`missed_waqf` has a guide, recorded in `GUIDE_VIEW_KEYS` but never required). Each item carries the sidecar payload under `boundary` (hidden_pause and missed_waqf: `cursors` / `refs` / `score` / `cuts[]` with per-axis `evidence`; false_split and unmarked_wasl share one shape: `next_uid` / `axes` / `gap_ms` / `score` / `word` / `final_class` / `is_wasl` / `evidence`); `score` = agreeing axes × 1000 + min(gap_ms, 999) and all four accordions default-sort by it descending. Auto Split on a `hidden_pause` row reads the cut from `/api/seg/auto-split` — `services/segments/auto_split.py` merges `missed_waqf_v1` and `hidden_pause_v1` entries that carry `refs` (kinds `missed_waqf` / `hidden_pause`; per uid `auto_split_v1` wins, then `missed_waqf`); entries with `refs: null` fall back to plain Split. A `false_split` row resolves with the row's Merge ↓ (auto-suppress on edit, like every per-segment category). An `unmarked_wasl` row opens with the next segment in context (`ACCORDION_CONTEXT` `next_only`) and the WASL/WAQF picker between the two; the fix is `set_is_wasl` on the left segment (or Merge ↓ if it is one utterance) — never a split, so the row is not an Auto Split candidate and `auto_split.py` does not read the sidecar.
 
-**Wasl re-check (`wasl_recheck_v1.json`).** Not a category: an offline list of reviewer-settled verse joins whose WASL / WAQF answer is doubtful (e.g. splits made before WASL tagging, whose left piece reads as WAQF by default). Shape `{"_meta": {created_at, reciter, kind: "wasl_recheck", reason}, "by_uid": {<left piece uid>: {chapter, after_ref, reason}}}`, never written by the Inspector (`load_wasl_recheck`). `services/validation/wasl_recheck.py::open_wasl_recheck_uids` ships the still-open uids as the top-level `wasl_recheck: list[str]`; a uid closes once an effective edit-history op touches it (`set_is_wasl` on it, or a `split_segment` / `merge_segments` naming it in `targets_before` / `targets_after`) in a batch saved after `_meta.created_at`. Visible to every viewer (not redacted by `strip_boundary_review`), no count, never blocks mark-ready. The FE keeps it in `stores/validation.ts::waslRecheck` (reseeded per payload, minus uids an unsaved `set_is_wasl` already answers); `boundary-state.ts` reads those boundaries as **unset** and `WaslBoundary` renders them pending. Answering records a `set_is_wasl` op even when the value equals the stored flag (`setIsWaslOnSegment(…, { force: true })`) so WAQF on a `false` piece still persists and closes the uid; the picker then drops the uid locally. No segment data changes from the list itself. New internal-join answers do not close an outer-edge recheck, and new structural ops close one only when they explicitly answer that original edge; legacy op handling remains compatible.
+**Wasl re-check (`wasl_recheck_v1.json`).** Not a category: an offline list of reviewer-settled verse joins whose WASL / WAQF answer is doubtful (e.g. splits made before WASL tagging, whose left piece reads as WAQF by default). Shape `{"_meta": {created_at, reciter, kind: "wasl_recheck", reason}, "by_uid": {<left piece uid>: {chapter, after_ref, reason}}}`, never written by the Inspector (`load_wasl_recheck`). `services/validation/wasl_recheck.py::open_wasl_recheck_uids` ships the still-open uids as the top-level `wasl_recheck: list[str]`; a uid closes once an effective edit-history op touches it (`set_is_wasl` on it, or a `split_segment` / `merge_segments` naming it in `targets_before` / `targets_after`) in a batch saved after `_meta.created_at`. Visible to every viewer (not redacted by `strip_boundary_review`), no count, never blocks mark-ready. The FE keeps it in `stores/validation.ts::waslRecheck` (reseeded per payload, minus uids an unsaved `set_is_wasl` already answers); `boundary-state.ts` reads those boundaries as **unset** and `WaslBoundary` renders them pending. Answering records a `set_is_wasl` op even when the value equals the stored flag (`setIsWaslOnSegment(…, { force: true })`) so WAQF on a `false` piece still persists and closes the uid; the picker then drops the uid locally. No segment data changes from the list itself.
 
-**Join-verdict convention.** Every reviewed join uses `join_verdicts` on the segment
-containing the audio immediately before the join. A record is
-`{at_ms, after_ref, verdict: "wasl" | "waqf"}`: WASL means continuous speech,
-WAQF means a stop, and an absent record means **unset**. The audio cursor and
-word reference together distinguish repeated occurrences. `is_wasl` remains the
-compatibility flag for the segment's outer edge; its default false is not a
-review answer. Splits, merges, ignored categories, and suppression by history do
-not establish answers. Pickers and Unset/Wasl/Waqf counts read the same records.
+**Join-verdict convention.** `join_verdicts` contains
+`{after_ref, at_ms, verdict: "wasl" | "waqf"}`. Waqf belongs on the left segment
+of a boundary, ending at that word and cursor. Wasl belongs inside a segment.
+A join that has not been reviewed has no record. Cursor and word coordinates
+distinguish repeated occurrences. `is_wasl` keeps its boundary-flag meaning.
 
-**`missed_waqf` card (Low Confidence Waqf).** The internal category key stays
-`missed_waqf`. The card uses its own `boundary.cursors` / `boundary.refs`, never
-an unrelated Auto Split entry. It renders virtual slices at all proposed joins,
-including joins inside a segment that has already been partly split. Each pick
-records an answer through the normal command/dirty/save flow immediately:
-WASL inside a segment leaves its geometry alone; WAQF cuts there; switching a
-cut to WASL merges its adjacent pieces while retaining the internal answer.
-Unanswered joins remain visible and unset across save/reload. The server's
-`resolve_join_reviews` marks the card complete only when all proposed joins have
-records across its live split descendants. Ignore is a separate dismissal and
-supplies no WASL answers. The existing Ignore confidence behavior is unchanged.
+**`missed_waqf` card (Low Confidence Waqf).** The card keeps its staged flow and
+uses its own `boundary.cursors` / `boundary.refs` for v1 and v2 sidecars. A cut
+answers waqf. When a split resolves the item, every asked cursor left uncut
+answers wasl. Ignore answers all asked cursors wasl and sets confidence to 1.0.
+The word before cursor k is the end of `refs[k]`, for every evidence axis.
+Split descendants carry the corresponding records; changing a retained cut to
+wasl merges its pieces. Existing staged pickers, context, edit actions and
+Ignore remain in place. Saved records also feed boundary counts and completion.
 
-Cross-verse staged picks also become explicit records when committed; an
-unanswered cursor can be physically cut but remains unset after reload. Split
-children own the records in their audio range (the left piece owns the cut),
-and the final child inherits the outer edge. Merge combines internal records
-and inherits the **right** segment's outer edge. Reference/timing edits invalidate
-answer coordinates. Snapshots carry records for save, history, and undo.
+Split distributes answers within each piece's word and audio range. Merge
+unions records and drops waqf at the seam. Reference and timing edits discard
+only answers that no longer fit. Snapshots carry records through save,
+history and undo. The v2 pause-sidecar builder suppresses answered joins on
+live segments with matching time/reference geometry.
 
 Existing data can be audited and staged with
 `scripts/backfills/backfill_join_verdicts.py`; see [data-migrations.md](data-migrations.md#join-verdict-backfill).

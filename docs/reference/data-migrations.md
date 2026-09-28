@@ -147,30 +147,47 @@ The bucket artefact models are now pure `extra="forbid"`: the `strip_and_warn` h
 
 ## Join-verdict backfill
 
-`scripts/backfills/backfill_join_verdicts.py` audits a **local export** laid out
-as `<input>/<slug>/detailed.json` plus optional `edit_history.jsonl` and
-`wasl_recheck_v1.json`. It has no bucket client or Inspector-service imports.
-Default execution only prints a JSON plan; `--report` can create a local report.
+`scripts/backfills/backfill_join_verdicts.py` reads a local snapshot containing
+`<slug>/{detailed.json,edit_history.jsonl,missed_waqf_v1.json}`. All snapshot voices
+are included by default; repeat `--slug` to select voices. It imports no bucket
+client or Inspector services. Dry run prints totals; `--report-dir` writes
+`report.json` and `summary.txt`, including every change and every skip.
 
 ```powershell
-python scripts/backfills/backfill_join_verdicts.py --input C:/review-export/reciters --report C:/review-export-plan.json
-python scripts/backfills/backfill_join_verdicts.py --input C:/review-export/reciters --apply --output C:/review-staged
+python scripts/backfills/backfill_join_verdicts.py --input C:/review-snapshot --report-dir C:/joins_dry
+python scripts/backfills/backfill_join_verdicts.py --input C:/review-snapshot --apply --output C:/joins_staged
 ```
 
-The report includes source hashes, per-reciter counts, join coordinates,
-source operation IDs, reasons, and recovery statuses. Recovery accepts an
-explicit legacy `set_is_wasl` answer (omitted false in that op means WAQF), a
-true flag on a split child, or an explicitly supplied false pick on a Low
-Confidence Waqf split. It skips reverted operations/batches, requires unchanged
-live UID/time/reference geometry, respects pending rechecks, and never
-replaces a conflicting explicit verdict. Bare false flags, unlabelled cuts,
-and blanket `missed_waqf` ignores do not prove an answer and remain unset.
+Missed Waqf split cuts recover waqf; ignores recover wasl at every asked cursor;
+mixed splits recover wasl at uncut cursors. Questions come from the snapshotted
+sidecar, following effective split ancestry for child operations. Reviewed
+cross-verse boundaries and recorded verse-end splits recover waqf where the
+boundary still exists. Placement requires current word and audio ownership.
+Wasl answers awaiting a containing segment are retried after the merges.
+Reverts, changed geometry, missing coordinates and conflicting explicit answers
+are listed with source operation IDs, rather than guessed.
 
-`--apply` requires a **new local output directory outside the input tree**.
-All inputs and candidate audit batches are validated before output is created.
-Changed reciters receive schema-round-tripped `detailed.json` and their original
-history bytes followed by reversible `join_verdict_backfill` audit batches.
-The original export is never modified. Output contains only the changed files
-and `report.json`, not a complete bucket mirror. Rerunning against staged data
-finds the recovered records unchanged. No upload, service restart, or remote
-mutation is part of this command; inspect the plan and staged diff separately.
+A left segment with `is_wasl: true` merges with its immediate temporal successor
+only within the same chapter, entry and audio, with contiguous references,
+nonoverlapping times and neither flags, wraps nor special/unmatched rows.
+Chains merge left to right. Each merge keeps the first UID, spans the time/ref
+range, takes minimum confidence, unions ignores and verdicts, records wasl at
+the join, and drops word timings. Only a blocked trailing connection retains
+`is_wasl`. One `merge_segments` operation per merge carries `cross_verse` context
+and the `join-verdict-backfill` actor in a reversible audit batch; timestamp
+staleness therefore sees every structural change. Verdict-only audit operations
+do not mark timestamps stale.
+
+`--apply` requires a new output directory outside the input tree. It stages all
+voices for direct comparison, preserves history bytes, appends validated audit
+batches and copies the sidecar. Inputs are re-read before writing and every
+output is read back. `--live-input` can name a second local export: any difference
+in detailed.json refuses staging before output creation. Neither mode writes
+to the snapshot or bucket. A subsequent remote rollout must obtain a fresh
+export and pass this comparison; this command has no upload path.
+
+Reports include hashes, per-voice/category counts, merge chains, reasons and
+timestamp impact. Known snapshot-only annotations present in the supplied
+export are retained on untouched rows; the persisted projection and audit
+models are validated. Unknown fields still fail validation. Re-running staged
+data produces no additional changes.

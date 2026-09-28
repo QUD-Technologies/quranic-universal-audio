@@ -8,6 +8,7 @@ adapter internally; the route shape is unchanged (MUST-1).
 
 from __future__ import annotations
 
+from qua_shared.join_verdicts import contained_verdicts
 from services.validation.registry import filter_persistent_ignores
 from utils.references import normalize_ref
 from utils.repetitions import is_wrap_consistent
@@ -124,8 +125,8 @@ def make_seg(
 
     if "join_verdicts" in s:
         result["join_verdicts"] = s["join_verdicts"] or []
-    elif unchanged and "join_verdicts" in existing:
-        result["join_verdicts"] = existing["join_verdicts"]
+    elif "join_verdicts" in existing:
+        result["join_verdicts"] = contained_verdicts(result, existing["join_verdicts"] or [])
 
     return result
 

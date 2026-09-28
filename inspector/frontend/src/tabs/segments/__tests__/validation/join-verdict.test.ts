@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest';
 import type { Segment } from '../../../../lib/types/view-models';
 import { applyCommand } from '../../domain/apply-command';
 import { applyInversePatchToSegments } from '../../domain/inverse-patch';
-import { edgeState, joinState } from '../../domain/join-verdict';
+import { edgeState, joinState, resolvedVerdicts } from '../../domain/join-verdict';
 import { snapshotSeg } from '../../stores/dirty';
-import { reviewPieces, reviewStates } from '../../utils/validation/join-review';
+import { reviewStates } from '../../utils/validation/join-review';
 
 const root = (extra: Partial<Segment> = {}): Segment => ({
     index: 0, entry_idx: 0, chapter: 2, segment_uid: 'root',
@@ -24,39 +24,27 @@ describe('one join verdict convention', () => {
         expect(reviewStates([seg], boundary)).toEqual(['unset', 'unset']);
     });
 
-    it('records an explicit WAQF even when the legacy flag was already false', () => {
+    it('ignore writes all WASL answers, confidence 1, and snapshots without touching is_wasl', () => {
         const seg = root({ is_wasl: false });
-        const result = applyCommand(state(seg), { type: 'setIsWasl', segmentUid: 'root', is_wasl: false });
-        const next = result.nextState.byId.root!;
-        expect(edgeState(next)).toBe('waqf');
-        expect(result.operation.targets_after[0]!.join_verdicts).toEqual(next.join_verdicts);
-        expect(result.patch!.before[0]!.join_verdicts).toBeUndefined();
-        expect(seg.join_verdicts).toBeUndefined();
-    });
-
-    it('stores WASL inside an unsplit segment without changing its outer edge', () => {
-        const seg = root({ is_wasl: false });
-        const result = applyCommand(state(seg), {
-            type: 'setIsWasl', segmentUid: 'root', is_wasl: true,
-            join: { at_ms: 300, after_ref: '2:1:2' }, contextCategory: 'missed_waqf',
-        });
+        const result = applyCommand(state(seg), { type: 'ignoreIssue', segmentUid: 'root', category: 'missed_waqf',
+            joinVerdicts: resolvedVerdicts(boundary, []) });
         const next = result.nextState.byId.root!;
         expect(next.is_wasl).toBe(false);
-        expect(next.confidence).toBe(0.4);
-        expect(reviewStates([next], boundary)).toEqual(['wasl', 'unset']);
+        expect(next.confidence).toBe(1);
+        expect(reviewStates([next], boundary)).toEqual(['wasl', 'wasl']);
         expect(snapshotSeg(next).join_verdicts).toEqual(next.join_verdicts);
+        expect(result.patch.before[0]!.join_verdicts).toBeUndefined();
     });
 
-    it('keeps a dropped unknown cursor unset through a partial split and reload', () => {
+    it('records mixed answers on their current pieces through reload', () => {
         const result = applyCommand(state(root()), {
             type: 'split', segmentUid: 'root', splitMs: [600], newUids: ['right'],
-            refs: ['2:1:1-2:1:5', '2:1:6-2:1:9'], wasls: [false],
+            refs: ['2:1:1-2:1:5', '2:1:6-2:1:9'], sourceCategory: 'missed_waqf',
+            joinVerdicts: resolvedVerdicts(boundary, [600]),
         });
         const members: Segment[] = JSON.parse(JSON.stringify(Object.values(result.nextState.byId)));
-        expect(reviewStates(members, boundary)).toEqual(['unset', 'waqf']);
-        const display = reviewPieces(members, boundary, ['virtual', 'right']);
-        expect(display.map((s) => [s.time_start, s.time_end])).toEqual([[0, 300], [300, 600], [600, 1000]]);
-        expect(display.map((s) => s.matched_ref)).toEqual(boundary.refs);
+        expect(reviewStates(members, boundary)).toEqual(['wasl', 'waqf']);
+        expect(members[1]!.join_verdicts).toEqual([]);
     });
 
     it('preserves internal answers and the right outer edge when merging', () => {
@@ -76,10 +64,10 @@ describe('one join verdict convention', () => {
         expect(undone.map((s) => s.is_wasl === true)).toEqual([false, true]);
     });
 
-    it('does not turn unpicked cross-verse split cursors into answers', () => {
+    it('a cut with a known reference records waqf', () => {
         const result = applyCommand(state(root()), { type: 'split', segmentUid: 'root', splitMs: [300],
             newUids: ['right'], refs: ['2:1:1-2:1:2', '2:1:3-2:1:9'], wasls: [undefined] });
-        expect(edgeState(result.nextState.byId.root!)).toBe('unset');
+        expect(edgeState(result.nextState.byId.root!)).toBe('waqf');
     });
 
     it('distinguishes repeated occurrences by cursor and drops answers on reference edits', () => {
@@ -88,4 +76,19 @@ describe('one join verdict convention', () => {
         const result = applyCommand(state(seg), { type: 'editReference', segmentUid: 'root', matched_ref: '2:2:1-2:2:9' });
         expect(result.nextState.byId.root!.join_verdicts).toEqual([]);
     });
+    it('trim and reference edits retain only answers in the resulting range', () => {
+        const seg = root({ join_verdicts: resolvedVerdicts(boundary, []) });
+        const trimmed = applyCommand(state(seg), { type: 'trim', segmentUid: 'root', delta: { time_start: 350 } }).nextState.byId.root!;
+        expect(trimmed.join_verdicts!.map((j) => j.at_ms)).toEqual([600]);
+        const edited = applyCommand(state(seg), { type: 'editReference', segmentUid: 'root', matched_ref: '2:1:3-2:1:9' }).nextState.byId.root!;
+        expect(edited.join_verdicts!.map((j) => j.at_ms)).toEqual([600]);
+    });
+
+    it('ordinary merge drops the waqf answer at its seam', () => {
+        const a = root({ time_end: 300, matched_ref: boundary.refs[0], join_verdicts: [{ at_ms: 300, after_ref: '2:1:2', verdict: 'waqf' }] });
+        const b = root({ segment_uid: 'b', index: 1, time_start: 300, matched_ref: '2:1:3-2:1:9' });
+        const next = applyCommand(state(a, b), { type: 'merge', fromUid: 'root', toUid: 'b' }).nextState.byId.root!;
+        expect(next.join_verdicts).toEqual([]);
+    });
+
 });

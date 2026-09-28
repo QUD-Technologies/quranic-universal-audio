@@ -165,11 +165,7 @@ def resolve_join_reviews(
     split_groups: dict,
     recheck: list[str] | tuple[str, ...] = (),
 ) -> None:
-    """Set Low Confidence Waqf completion from answers, never split geometry.
-
-    Explicit Ignore remains a dismissal; it does not supply any join verdicts.
-    A partial answer must not close the entire multi-join card after reload.
-    """
+    """Recognize stored answers alongside the category's history resolution."""
     live = {s.get("segment_uid"): s for e in entries for s in e.get("segments", [])}
     for item in items:
         uid = item.get("segment_uid")

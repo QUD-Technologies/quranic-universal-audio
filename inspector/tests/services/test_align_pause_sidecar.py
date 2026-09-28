@@ -87,3 +87,25 @@ def test_adapt_carries_pauses_without_token_pos():
     assert candidate["entries"][0]["segments"][0]["pauses"] == [
         {"after_ref": "2:2:2", "gain": 1.4, "separability": 2.0}
     ]
+
+
+def test_builder_skips_live_reviewed_joins_but_not_a_different_geometry():
+    row = _row(10.0, 15.0, "2:2:1", "2:3:1", pauses=[_pause("2:2:2")], words=WORDS)
+    live = [
+        {
+            "ref": "2",
+            "segments": [
+                {
+                    "time_start": 10000,
+                    "time_end": 15000,
+                    "matched_ref": "2:2:1-2:3:1",
+                    "join_verdicts": [{"after_ref": "2:2:2", "at_ms": 11500, "verdict": "wasl"}],
+                }
+            ],
+        }
+    ]
+    result = pause_sidecar.build("rec", {2: _doc(row)}, {2: "u"}, "hafs", live)
+    assert result["by_uid"] == {}
+    assert result["_meta"]["answered"] == 1
+    live[0]["segments"][0]["time_start"] = 9999
+    assert pause_sidecar.build("rec", {2: _doc(row)}, {2: "u"}, "hafs", live)["by_uid"]

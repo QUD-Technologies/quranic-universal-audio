@@ -6,10 +6,9 @@
  * a three-verse item contributes two) and the filter that hides or shows
  * items by the states they contain.
  *
- * Explicit join_verdicts are the saved answers in every category. A pending
- * recheck overrides an edge answer. Cross-verse session picks apply before a
- * split is committed. Cuts, ignored categories and is_wasl defaults never
- * establish a reviewed answer.
+ * Join verdicts record the cut and ignore answers. A pending recheck overrides
+ * an edge answer. Cross-verse session picks apply before committing; saved
+ * boundaries use their verdict or the segment's is_wasl flag.
  */
 
 import type { SegValAnyItem } from '../../../../lib/types/generated/schemas';
@@ -47,7 +46,8 @@ export function isVerseBoundary(a: Segment, b: Segment): boolean {
 function _memberState(left: Segment, ctx: BoundaryCtx): BoundaryState {
     const uid = left.segment_uid;
     if (uid && (ctx.pendingWasl.has(uid) || ctx.waslRecheck.has(uid))) return 'unset';
-    return edgeState(left);
+    const explicit = edgeState(left);
+    return explicit === 'unset' ? (left.is_wasl === true ? 'wasl' : 'waqf') : explicit;
 }
 
 function _committedStates(
@@ -74,7 +74,11 @@ export function boundaryStates(
     const members = getSplitGroupMembers(uid, segs, ctx.splitGroupIndex[uid], ctx.opLog(chapter));
     if (category === 'missed_waqf') {
         const boundary = reviewBoundary(item);
-        if (boundary) return reviewStates(members, boundary, ctx.waslRecheck);
+        if (boundary) {
+            const saved = reviewStates(members, boundary, ctx.waslRecheck);
+            const picks = ctx.stagedPicks[stagedPickKey(category, uid)] ?? [];
+            return saved.map((s, i) => picks[i] === undefined ? s : picks[i] ? 'wasl' : 'waqf');
+        }
     }
     if (members.length >= 2) return _committedStates(members, ctx);
     const root = segs.find((s) => s.segment_uid === uid) ?? null;

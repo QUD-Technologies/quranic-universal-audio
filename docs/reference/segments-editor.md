@@ -69,14 +69,20 @@ The reducer never writes `seg.ignored_categories` except for the explicit `ignor
 
 ### Join answers
 
-`join_verdicts` records `{at_ms, after_ref, verdict: "wasl" | "waqf"}` on the
-segment to the left of each answered join, including internal joins. Missing
-records mean unset. The `setIsWasl` command records either an explicit internal
-`join` or the segment's outer edge, and updates `is_wasl` only for the latter.
-The picker must record an initial WAQF even when `is_wasl` was already false.
-Split/merge carry records by audio ownership; merge takes the outer edge from
-its right input. Both save modes, read routes, history snapshots, local discard,
-and server undo preserve answers. History shows the answered word joins.
+`join_verdicts` records `{at_ms, after_ref, verdict: "wasl" | "waqf"}`.
+A waqf answer belongs to the left piece ending at that cursor and word; a wasl
+answer belongs inside the segment spanning the join. Missing records mean unset.
+Resolving Low Confidence Waqf uses the existing card actions: every cut records
+waqf, and every asked cursor left uncut by a mixed split or Ignore records wasl.
+Ignore also sets confidence to 1.0. The item's `refs[k]` supplies the word before
+cursor k, independently of its evidence axis. `is_wasl` retains its boundary-flag
+meaning; these review writers do not use it for internal joins.
+
+Split distributes answers by word and audio range, recording waqf at each known
+cut. Merge unions answers and drops the waqf answer at the merged seam; relabelling
+a missed-waqf cut records wasl there. Trim and reference edits retain answers
+inside the resulting range. Both save modes, read routes, history snapshots,
+local discard and server undo preserve answers. History shows answered joins.
 See [validation.md](validation.md) for review behavior and backfill semantics.
 
 ## Command grammar
@@ -94,7 +100,7 @@ Command variants (TS):
 | `delete` | `segmentUid` |
 | `ignoreIssue` | `segmentUid`, `category` |
 | `autoFixMissingWord` | `segmentUid`, `matched_ref`, `matched_text?` |
-| `setIsWasl` | `segmentUid`, `is_wasl`, optional `join:{at_ms,after_ref}` for an internal join |
+| `setIsWasl` | `segmentUid`, `is_wasl` |
 
 `CommandBase` carries `sourceCategory`/`contextCategory` (history-pill provenance), `fixKind` (`manual`\|`auto_fix`\|`audit`\|`ignore`), and `_mountId` (UI binding; reducer ignores it).
 

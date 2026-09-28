@@ -41,7 +41,7 @@ import type {
     SplitCommand,
     TrimCommand,
 } from './command';
-import { edgeAnswer, pickedVerdicts, putVerdicts } from './join-verdict';
+import { containedVerdicts, edgeAnswer, pickedVerdicts, putVerdicts } from './join-verdict';
 import { IssueRegistry } from './registry';
 
 const HISTORY_NEUTRAL_CONTEXT_CATEGORIES = new Set(['muqattaat']);
@@ -184,7 +184,7 @@ function _reduceTrim(state: ApplyCommandState, cmd: TrimCommand, ctx?: ApplyComm
     const next = _cloneSeg(target);
     if (cmd.delta.time_start != null) next.time_start = cmd.delta.time_start;
     if (cmd.delta.time_end != null) next.time_end = cmd.delta.time_end;
-    if (next.time_start !== target.time_start || next.time_end !== target.time_end) next.join_verdicts = [];
+    if (next.join_verdicts) next.join_verdicts = containedVerdicts(next);
     next.confidence = 1.0;
     const resolved = _resolvedFromContext(cmd.sourceCategory ?? cmd.contextCategory);
 
@@ -275,8 +275,8 @@ function _reduceSplit(state: ApplyCommandState, cmd: SplitCommand, ctx?: ApplyCo
         ? cmd.wasls
         : null;
 
-    const answers = putVerdicts(target.join_verdicts, cmd.joinVerdicts ?? pickedVerdicts(
-        cursors, refs.map((r) => r ?? target.matched_ref), waslOverrides ?? [],
+    const answers = putVerdicts(putVerdicts(target.join_verdicts, cmd.joinVerdicts ?? []), pickedVerdicts(
+        cursors, refs.map((r) => r ?? ''), refs.slice(0, cursors.length).map((r) => r ? false : undefined),
     ));
     const pieces: Segment[] = [];
     for (let i = 0; i < nPieces; i++) {
@@ -303,7 +303,7 @@ function _reduceSplit(state: ApplyCommandState, cmd: SplitCommand, ctx?: ApplyCo
         } else {
             piece.is_wasl = parentWasl;
         }
-        piece.join_verdicts = answers.filter((j) => j.at_ms > start && j.at_ms <= end);
+        if (answers.length) piece.join_verdicts = containedVerdicts(piece, answers);
         pieces.push(piece);
     }
 
@@ -389,7 +389,8 @@ function _reduceMerge(state: ApplyCommandState, cmd: MergeCommand, ctx?: ApplyCo
     };
     merged.is_wasl = second.is_wasl === true;
     merged.join_verdicts = putVerdicts(
-        putVerdicts(first.join_verdicts, second.join_verdicts ?? []), cmd.joinVerdicts ?? [],
+        putVerdicts(first.join_verdicts, second.join_verdicts ?? []).filter((j) => !(j.verdict === 'waqf' && j.at_ms === first.time_end)),
+        cmd.joinVerdicts ?? ((cmd.sourceCategory ?? cmd.contextCategory) === 'missed_waqf' ? [edgeAnswer(first, true)] : []),
     );
     merged.ignored_categories = mergedIc.size ? [...mergedIc] : undefined;
     // Merging changes the seg's matched_ref + geometry; any wrap that was
@@ -459,8 +460,8 @@ function _reduceEditReference(
     const chapter = _chapterFor(target, state);
 
     const next = _cloneSeg(target);
-    if (next.matched_ref !== cmd.matched_ref) next.join_verdicts = [];
     next.matched_ref = cmd.matched_ref;
+    if (next.join_verdicts) next.join_verdicts = containedVerdicts(next);
     if (cmd.matched_text !== undefined) next.matched_text = cmd.matched_text;
     next.confidence = 1.0;
     // Same reasoning as the split path: changing matched_ref invalidates any
@@ -558,6 +559,7 @@ function _reduceIgnoreIssue(
         next.ignored_categories.push(cmd.category);
     }
     next.confidence = 1.0;
+    if (cmd.joinVerdicts?.length) next.join_verdicts = containedVerdicts(next, putVerdicts(next.join_verdicts, cmd.joinVerdicts));
 
     const op = _baseOperation(cmd, target, chapter, target.index, ctx);
     op.op_context_category = cmd.category;
@@ -597,12 +599,7 @@ function _reduceSetIsWasl(
     const chapter = _chapterFor(target, state);
 
     const next = _cloneSeg(target);
-    const answer = { ...edgeAnswer(next, cmd.is_wasl), ...cmd.join };
-    if (answer.at_ms <= next.time_start || answer.at_ms > next.time_end) {
-        throw new Error('Join answer is outside the segment');
-    }
-    if (answer.at_ms === next.time_end) next.is_wasl = !!cmd.is_wasl;
-    next.join_verdicts = putVerdicts(next.join_verdicts, [answer]);
+    next.is_wasl = !!cmd.is_wasl;
 
     const op = _baseOperation(cmd, target, chapter, target.index, ctx);
     op.fix_kind = cmd.fixKind ?? 'manual';
@@ -696,8 +693,8 @@ function _reduceAutoFixMissingWord(
     const chapter = _chapterFor(target, state);
 
     const next = _cloneSeg(target);
-    if (next.matched_ref !== cmd.matched_ref) next.join_verdicts = [];
     next.matched_ref = cmd.matched_ref;
+    if (next.join_verdicts) next.join_verdicts = containedVerdicts(next);
     if (cmd.matched_text !== undefined) next.matched_text = cmd.matched_text;
     next.confidence = 1.0;
 

@@ -122,6 +122,9 @@ def item_for(chapter: int, seg: dict, row: dict, riwayah: str, tally: dict) -> d
             tally["untimed"] += 1
             continue
         last_cursor = cursor
+        if any(j["after_ref"] == after_ref for j in seg.get("join_verdicts") or []):
+            tally["answered"] = tally.get("answered", 0) + 1
+            continue
         word = dk_text_for_ref(f"{after_ref}-{after_ref}", riwayah)
         cuts.append(_cut(pause, prev_word, next_word, cursor, word))
         joins.append((after_ref, next_word["location"]))
@@ -138,12 +141,25 @@ def item_for(chapter: int, seg: dict, row: dict, riwayah: str, tally: dict) -> d
     }
 
 
-def build(reciter: str, docs: dict[int, dict], sources: dict[int, str], riwayah: str) -> dict:
+def build(
+    reciter: str,
+    docs: dict[int, dict],
+    sources: dict[int, str],
+    riwayah: str,
+    live_entries: list[dict] | None = None,
+) -> dict:
     """The whole ``missed_waqf_v2`` doc for the staged aligner results ``docs``."""
     from domain.identity import derive_uid
 
     tally = {"pauses": 0, "verse_end": 0, "untimed": 0}
     by_uid: dict[str, dict] = {}
+    reviewed = {
+        (int(e["ref"].split(":")[0]), s["time_start"], s["time_end"], s["matched_ref"]): s.get(
+            "join_verdicts"
+        )
+        for e in live_entries or []
+        for s in e.get("segments", [])
+    }
     for chapter in sorted(docs):
         candidate, _events, _basmala = adapt.adapt_chapter(
             chapter, docs[chapter], source_url=sources[chapter], riwayah=riwayah
@@ -154,6 +170,11 @@ def build(reciter: str, docs: dict[int, dict], sources: dict[int, str], riwayah:
         ):
             if not row.get("pauses"):
                 continue
+            answers = reviewed.get(
+                (chapter, seg["time_start"], seg["time_end"], seg["matched_ref"])
+            )
+            if answers:
+                seg = {**seg, "join_verdicts": answers}
             item = item_for(chapter, seg, row, riwayah, tally)
             if item is not None:
                 by_uid[derive_uid(chapter, index, seg["time_start"])] = item

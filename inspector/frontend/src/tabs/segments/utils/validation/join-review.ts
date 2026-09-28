@@ -1,8 +1,8 @@
-/** Project candidate joins onto live pieces; cuts and answers are independent. */
+/** Project candidate joins onto live pieces; resolved cuts and uncut cursors carry answers. */
 import type { SegValAnyItem } from '../../../../lib/types/generated/schemas';
 import type { Segment } from '../../../../lib/types/view-models';
 import { endRef, joinState } from '../../domain/join-verdict';
-import { buildStagedChildren, type StagedSplit } from './staged-split';
+import { type StagedSplit } from './staged-split';
 
 export function reviewBoundary(item: SegValAnyItem): StagedSplit | null {
     const b = (item as { boundary?: Partial<StagedSplit> }).boundary;
@@ -36,20 +36,4 @@ export function reviewJoinOwner(members: readonly Segment[], boundary: StagedSpl
     if (at === owner.time_end && after !== endRef(owner.matched_ref)) return undefined;
     if (at < owner.time_end && compareRef(boundary.refs[i + 1]!.split('-')[0]!, endRef(owner.matched_ref)) > 0) return undefined;
     return owner;
-}
-
-/** Virtual slices keep every proposed join reviewable after a partial physical split. */
-export function reviewPieces(members: readonly Segment[], boundary: StagedSplit, childUids: readonly string[]): Segment[] {
-    return members.flatMap((seg) => {
-        const indices = boundary.cursors.flatMap((c, i) => c > seg.time_start && c < seg.time_end && reviewJoinOwner([seg], boundary, i) ? [i] : []);
-        if (!indices.length) return [seg];
-        const refs = [seg.matched_ref.split('-')[0]!];
-        const ranges: string[] = [];
-        for (const i of indices) {
-            ranges.push(`${refs.pop()}-${endRef(boundary.refs[i]!)}`);
-            refs.push(boundary.refs[i + 1]!.split('-')[0]!);
-        }
-        ranges.push(`${refs.pop()}-${endRef(seg.matched_ref)}`);
-        return buildStagedChildren(seg, { cursors: indices.map((i) => boundary.cursors[i]!), refs: ranges }, indices.map((i) => childUids[i]!));
-    });
 }

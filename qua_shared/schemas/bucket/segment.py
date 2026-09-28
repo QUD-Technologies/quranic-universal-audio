@@ -105,10 +105,10 @@ class DetailedPause(BaseModel):
 
 
 class JoinVerdict(BaseModel):
-    """An explicit answer at one word join, independent of segment geometry.
+    """A reviewed word join: waqf at a boundary, wasl inside a segment.
 
     Owned by the segment containing the audio immediately before ``at_ms``.
-    Missing records mean unset; neither a cut nor an ignore is an answer.
+    Cuts record waqf; resolving an item records wasl at its uncut cursors.
     The word reference and audio cursor together distinguish repeated words.
     """
 

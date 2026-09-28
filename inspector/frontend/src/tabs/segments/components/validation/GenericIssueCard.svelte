@@ -7,8 +7,9 @@
     import * as m from '../../../../lib/paraglide/messages';
     import type { SegValAnyItem } from '../../../../lib/types/generated/schemas';
     import type { Segment } from '../../../../lib/types/view-models';
-    import { waslRecheck } from '../../stores/validation';
     import { IssueRegistry } from '../../domain/registry';
+    import { resolvedVerdicts } from '../../domain/join-verdict';
+    import { reviewBoundary } from '../../utils/validation/join-review';
     import { autoSplitMap, ensureAutoSplitMap } from '../../stores/auto-split';
     import {
         getAdjacentSegments,
@@ -33,8 +34,7 @@
     } from '../../stores/staged-split';
     import { splitGroupIndex } from '../../stores/validation';
     import { ignoreIssueOnSegment } from '../../utils/edit/ignore';
-    import { answerReviewJoin } from '../../utils/edit/join-review';
-    import { reviewBoundary, reviewPieces, reviewStates } from '../../utils/validation/join-review';
+    import { mergeAdjacent } from '../../utils/edit/merge';
     import { waslCommitForPiece, type WaslCommits } from '../../utils/validation/wasl-binding';
     import { commitSplit, finalizeSplit } from '../../utils/edit/split-commit';
     import { isVerseBoundary } from '../../utils/validation/boundary-state';
@@ -44,6 +44,7 @@
     import {
         buildStagedChildren,
         isStagedSegment,
+        type StagedKind,
         stagedCommit,
         stagedPickKey,
         stagedSplitFor,
@@ -150,7 +151,6 @@
     // refresh (which ships a new `split_group_uids`), so we don't track it
     // separately here — the new item identity drives re-render.
     let _splitGroupMemoKey = '';
-    let _splitGroupSource: Segment[] | null = null;
     let _splitGroupMemoResult: Segment[] = [];
     $: {
         void segStoreTick; void $dirtyTick;
@@ -167,8 +167,7 @@
             }
             const committedLen = _committedSplitGroupUids?.length ?? 0;
             const key = `${_groupChapter}|${_boundUid}|${chapterSegs.length}|${committedLen}|${mutatingOpsCount}`;
-            if (key !== _splitGroupMemoKey || chapterSegs !== _splitGroupSource) {
-                _splitGroupSource = chapterSegs;
+            if (key !== _splitGroupMemoKey) {
                 _splitGroupMemoKey = key;
                 _splitGroupMemoResult = getSplitGroupMembers(
                     _boundUid, chapterSegs, _committedSplitGroupUids, ops,
@@ -191,25 +190,27 @@
     // `groupMembers` and the pickers switch to the default (pending-split
     // amend) path on their own. On a missed-waqf card (cuts from the item's
     // `boundary`) WASL means "no stop here": only the boundaries picked WAQF
-    // are cut. Every pick is stored as a join verdict; Ignore is separate.
+    // are cut, and a card with no cut is ignored instead.
     $: isMissedWaqfCard = category === 'missed_waqf';
-    const stagedCategory = 'cross_verse';
+    $: stagedCategory = (isMissedWaqfCard ? 'missed_waqf' : 'cross_verse') as StagedKind;
     $: if (resolvedSeg && !isMissedWaqfCard && isCrossVerseSeg(resolvedSeg) && $selectedReciter) {
         void ensureAutoSplitMap($selectedReciter);
     }
     // `getSplitGroupMembers` always returns at least the root itself, so
     // "no split has touched the seg" is a group of ≤1.
     $: isSplitMissedWaqf = isMissedWaqfCard && groupMembers.length > 1;
-    $: review = isMissedWaqfCard ? reviewBoundary(item) : null;
-    $: reviewChildUids = review && resolvedSeg?.segment_uid
-        ? stagedChildUidsFor(`missed_waqf:${resolvedSeg.segment_uid}`, review.cursors.length) : [];
-    $: reviewAnswers = review ? (void segStoreTick, reviewStates(groupMembers, review, $waslRecheck)) : [];
-    $: staged = !isMissedWaqfCard && groupMembers.length <= 1
+    $: staged = groupMembers.length <= 1
         ? stagedSplitFor(stagedCategory, resolvedSeg, item, $autoSplitMap)
         : null;
     $: stagedUid = staged && resolvedSeg?.segment_uid ? resolvedSeg.segment_uid : null;
     $: stagedKey = stagedUid ? stagedPickKey(stagedCategory, stagedUid) : null;
-    $: stagedPicks = stagedKey ? ($stagedWaslPicks[stagedKey] ?? []) : [];
+    // An ignored missed-waqf item had every cut answered WASL: show it so
+    // until a pick relabels it.
+    $: ignoredAsWasl = isMissedWaqfCard && resolvedSeg != null
+        && (void segStoreTick, isIgnoredFor(resolvedSeg, category));
+    $: stagedPicks = stagedKey
+        ? ($stagedWaslPicks[stagedKey] ?? (ignoredAsWasl && staged ? staged.cursors.map(() => true) : []))
+        : [];
     $: stagedChildren = staged && resolvedSeg && stagedKey
         ? buildStagedChildren(
             resolvedSeg,
@@ -219,14 +220,13 @@
         )
         : [];
 
-    $: mainMembers = review ? (void segStoreTick, reviewPieces(groupMembers, review, reviewChildUids))
-        : stagedChildren.length > 0
+    $: mainMembers = stagedChildren.length > 0
         ? stagedChildren
         : groupMembers.length > 0
             ? groupMembers
             : (resolvedSeg ? [resolvedSeg] : []);
     // Real (store-backed) members — what Ignore and dirty checks act on.
-    $: realMembers = review ? groupMembers : mainMembers.filter((mem) => !isStagedSegment(mem));
+    $: realMembers = mainMembers.filter((mem) => !isStagedSegment(mem));
 
     function isCrossVerseSeg(seg: Segment): boolean {
         const parts = seg.matched_ref.split('-');
@@ -243,7 +243,6 @@
     $: boundaryAt = mainMembers.map((a, i) => {
         const b = mainMembers[i + 1];
         if (!b) return false;
-        if (review) return review.cursors.includes(a.time_end);
         if (staged || category === 'cross_verse' || isSplitMissedWaqf) return true;
         return groupMembers.length > 1 && isVerseBoundary(a, b);
     });
@@ -279,16 +278,28 @@
         return waslCommitForPiece(i, members.map((mem) => mem.segment_uid), commits);
     }
 
-    /** Commit cross-verse display pieces; unanswered joins remain unset. */
-    function materializeStaged(): string[] | null {
+    /** Dispatch the staged split from the picks so far (`stagedCommit`);
+     *  returns the committed piece uids, or null when nothing was split. On a
+     *  cross-verse card unanswered boundaries commit as WAQF but stay flagged
+     *  pending, so their pickers keep asking and amend the same op in place
+     *  (the post-split path). On a missed-waqf card only the cuts answered
+     *  WAQF are cut; with none, the last answer (all WASL) ignores the item,
+     *  while an edit on a piece leaves the seg and its picks untouched. */
+    function materializeStaged(fromEdit = false): string[] | null {
         if (!staged || !stagedKey || !resolvedSeg) return null;
         const picks = get(stagedWaslPicks)[stagedKey] ?? [];
         const childUids = stagedChildUidsFor(stagedKey, staged.cursors.length);
         const plan = stagedCommit(stagedCategory, staged, picks, childUids);
-        if (plan.kind === 'none') return null;
+        if (plan.kind === 'none') {
+            if (fromEdit) return null;
+            clearStagedPicks(stagedKey);
+            handleIgnore();
+            return null;
+        }
         const { split: cut, wasls, newUids } = plan;
         try {
             const commit = commitSplit(resolvedSeg, cut.cursors, {
+                joinVerdicts: isMissedWaqfCard ? resolvedVerdicts(staged, cut.cursors) : undefined,
                 refs: cut.refs,
                 wasls,
                 newUids,
@@ -297,6 +308,7 @@
             if (!commit) return null;
             finalizeSplit(commit);
             const pieceUids = commit.pieces.map((p) => p.segment_uid ?? '');
+            if (isMissedWaqfCard) return pieceUids;
             for (let i = 0; i < cut.cursors.length; i++) {
                 if (picks[i] !== undefined) continue;
                 const left = commit.pieces[i]?.segment_uid;
@@ -311,24 +323,41 @@
         }
     }
 
-    /** Cross-verse edits materialize the split; review-slice edits target their
-     *  enclosing live segment without creating a cut or an answer. */
-    function activateStagedPiece(uid: string | null): boolean | Segment {
-        if (review) {
-            const piece = mainMembers.find((s) => s.segment_uid === uid);
-            return piece ? groupMembers.find((s) => s.time_start <= piece.time_start && s.time_end >= piece.time_end) ?? false : false;
-        }
-        const pieceUids = materializeStaged();
+    /** An edit action on staged piece `uid`: commit, then let the action run
+     *  only if that piece is now real (a missed-waqf piece whose start cut was
+     *  not answered WAQF is merged away, so its action is a no-op). */
+    function activateStagedPiece(uid: string | null): boolean {
+        const pieceUids = materializeStaged(true);
         return uid != null && pieceUids != null && pieceUids.includes(uid);
     }
 
     function onStagedPick(i: number, value: boolean): void {
         if (!staged || !stagedKey) return;
         const n = staged.cursors.length;
+        // Relabelling an ignored missed-waqf item starts from its all-WASL answer.
+        if (ignoredAsWasl && !get(stagedWaslPicks)[stagedKey]) {
+            for (let j = 0; j < n; j++) setStagedPick(stagedKey, j, true, n);
+        }
         setStagedPick(stagedKey, i, value, n);
         if (allPicked(get(stagedWaslPicks)[stagedKey], n)) materializeStaged();
     }
 
+    /** Relabel a cut of a split missed-waqf item: WASL (no stop) merges the
+     *  two pieces back; merging the last cut away ignores the item (all WASL). */
+    function onCutPick(i: number, value: boolean): void {
+        const left = mainMembers[i];
+        if (!value || !left || isStagedSegment(left)) return;
+        const lastCut = mainMembers.length === 2;
+        try {
+            mergeAdjacent(left, 'next', category);
+            if (!lastCut || left.chapter == null) return;
+            const merged = getChapterSegments(left.chapter)
+                .find((s) => s.segment_uid === left.segment_uid);
+            if (merged) ignoreIssueOnSegment(merged, category);
+        } catch (err) {
+            console.warn('Missed waqf: relabel failed:', err);
+        }
+    }
     $: firstMember = mainMembers[0] ?? null;
     $: lastMember = mainMembers.length > 0 ? mainMembers[mainMembers.length - 1] ?? null : null;
 
@@ -396,7 +425,7 @@
         try {
             let any = false;
             for (const mem of targets) {
-                if (ignoreIssueOnSegment(mem, category)) any = true;
+                if (ignoreIssueOnSegment(mem, category, reviewBoundary(item))) any = true;
             }
             if (any) isAlreadyIgnored = true;
         } catch (err) {
@@ -449,21 +478,20 @@
             />
             {#if boundaryAt[i]}
                 {@const next = mainMembers[i + 1]}
-                {#if next && review}
-                    {@const joinIndex = review.cursors.indexOf(mem.time_end)}
-                    <WaslBoundary
-                        leftSeg={mem}
-                        rightSeg={next}
-                        stagedValue={reviewAnswers[joinIndex] === 'unset' ? undefined : reviewAnswers[joinIndex] === 'wasl'}
-                        onPick={(v) => answerReviewJoin(groupMembers, review!, joinIndex, v, reviewChildUids[joinIndex]!)}
-                        onCommitReady={takeWaslCommit}
-                    />
-                {:else if next && memStaged}
+                {#if next && memStaged}
                     <WaslBoundary
                         leftSeg={mem}
                         rightSeg={next}
                         stagedValue={stagedPicks[i]}
                         onPick={(v) => onStagedPick(i, v)}
+                        onCommitReady={takeWaslCommit}
+                    />
+                {:else if next && isSplitMissedWaqf}
+                    <WaslBoundary
+                        leftSeg={mem}
+                        rightSeg={next}
+                        stagedValue={false}
+                        onPick={(v) => onCutPick(i, v)}
                         onCommitReady={takeWaslCommit}
                     />
                 {:else if next}

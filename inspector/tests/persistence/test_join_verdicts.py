@@ -33,7 +33,7 @@ def test_full_replace_preserves_explicit_false_answer():
 def test_legacy_payload_preserves_answers_only_for_unchanged_geometry():
     existing = seg(join_verdicts=[ANSWER])
     assert make_seg(seg(), {}, {"root": existing}, {})["join_verdicts"] == [ANSWER]
-    assert "join_verdicts" not in make_seg(seg(time_end=600), {}, {"root": existing}, {})
+    assert make_seg(seg(time_end=600), {}, {"root": existing}, {})["join_verdicts"] == []
     assert make_seg(seg(join_verdicts=[]), {}, {"root": existing}, {})["join_verdicts"] == []
 
 

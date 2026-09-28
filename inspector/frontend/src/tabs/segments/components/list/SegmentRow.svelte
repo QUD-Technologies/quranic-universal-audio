@@ -215,7 +215,7 @@ import type { Segment } from '../../../../lib/types/view-models';
      * left no real piece with this uid; the action is then a no-op.
      */
     export let staged: boolean = false;
-    export let onStagedActivate: ((_uid: string | null) => boolean | Segment) | null = null;
+    export let onStagedActivate: ((_uid: string | null) => boolean) | null = null;
 
     /** Materialise the staged split before an edit action, and let the
      *  props settle so `seg` is the store-backed piece. False = no piece to
@@ -223,14 +223,8 @@ import type { Segment } from '../../../../lib/types/view-models';
     async function activate(): Promise<boolean> {
         if (!staged || !onStagedActivate) return true;
         const ok = onStagedActivate(seg.segment_uid ?? null);
-        if (typeof ok === 'object') {
-            // A review slice can belong to an unsplit live segment. Edit that
-            // whole segment, rather than applying the slice's coordinates to it.
-            seg = ok;
-            staged = false;
-        }
         await tick();
-        return !!ok;
+        return ok;
     }
 
     // Apply history-mode highlight descriptors to the underlying canvas element

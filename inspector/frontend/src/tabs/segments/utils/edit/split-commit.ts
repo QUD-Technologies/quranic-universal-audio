@@ -22,6 +22,9 @@ import { get } from 'svelte/store';
 import { quranRefs } from '../../../../lib/refs/quran-refs';
 import type { Segment } from '../../../../lib/types/view-models';
 import { applyCommand } from '../../domain/apply-command';
+import { resolvedVerdicts } from '../../domain/join-verdict';
+import { segValidation } from '../../stores/validation';
+import { reviewBoundary } from '../validation/join-review';
 import type { CommandResult } from '../../domain/command';
 import {
     getChapterSegments,
@@ -88,6 +91,9 @@ export function commitSplit(
     const prePlayingUid = seg.segment_uid ?? null;
 
     const ctxCat = getPendingOp()?.op_context_category ?? opts.contextCategory ?? null;
+    const item = ctxCat === 'missed_waqf'
+        ? get(segValidation)?.missed_waqf?.find((it) => it.segment_uid === uid) : null;
+    const asked = item ? reviewBoundary(item) : null;
 
     const n = cursors.length + 1;
     const dk = get(quranRefs)?.dk_words;
@@ -120,7 +126,7 @@ export function commitSplit(
         },
         {
             type: 'split',
-            joinVerdicts: opts.joinVerdicts,
+            joinVerdicts: opts.joinVerdicts ?? (asked ? resolvedVerdicts(asked, cursors) : undefined),
             segmentUid: uid,
             splitMs: cursors.slice(),
             newUids,
