@@ -567,6 +567,7 @@ def test_sidecars_stage_builds_missed_waqf_v2_and_assemble_publishes_it(align_en
 
     stage_sidecars.run(SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"})
     staged = staging.read_json(staging.sidecar_path(SLUG, run.run_id, "missed_waqf_v2.json"))
+    assert staged is not None
     assert staged["_meta"]["kind"] == "missed_waqf"
     assert staged["by_uid"] == {}
 

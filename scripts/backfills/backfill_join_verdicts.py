@@ -16,6 +16,7 @@ from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -85,13 +86,13 @@ def contiguous(left: dict, right: dict, riwayah: str) -> bool:
     )
 
 
-def answer(seg: dict, verdict: str = "waqf") -> dict:
+def answer(seg: dict, verdict: Literal["wasl", "waqf"] = "waqf") -> dict:
     return JoinVerdict(
         at_ms=seg["time_end"], after_ref=seg["matched_ref"].split("-")[-1], verdict=verdict
     ).model_dump()
 
 
-def join_key(j: dict) -> tuple:
+def join_key(j: dict) -> tuple[int, str]:
     return j["at_ms"], j["after_ref"]
 
 
@@ -238,7 +239,8 @@ def place_verdicts(evidence: list[dict], entries: list[dict]) -> tuple[list[dict
         if key not in changes:
             changes[key] = (entry, seg, i, snapshot(seg, entry, i), [])
         changes[key][4].append(row["op_id"])
-        seg["join_verdicts"] = sorted([*(seg.get("join_verdicts") or []), j], key=join_key)
+        verdicts: list[dict] = [*(seg.get("join_verdicts") or []), j]
+        seg["join_verdicts"] = sorted(verdicts, key=join_key)
         report.append({**row, "status": "placed"})
     for entry, seg, i, before, sources in changes.values():
         ops.append(
@@ -333,7 +335,8 @@ def plan_backfill(
                         and i < len(after) - 1
                         and verse_end
                         and contiguous(seg, after[i + 1], riwayah)
-                        and bounds(after[i + 1])[0][:2] != ref[1][:2]
+                        and (next_ref := bounds(after[i + 1])) is not None
+                        and next_ref[0][:2] != ref[1][:2]
                     )
                     reviewed = (
                         category == "cross_verse"
@@ -385,6 +388,7 @@ def plan_backfill(
                 report.append({**row, "status": "skipped", "reason": reason})
                 i += 1
                 continue
+            assert right is not None, "merge_skip accepts only pairs with a right segment"
             pre = [snapshot(left, entry, i), snapshot(right, entry, i + 1)]
             merged = copy.deepcopy(left)
             merged.update(

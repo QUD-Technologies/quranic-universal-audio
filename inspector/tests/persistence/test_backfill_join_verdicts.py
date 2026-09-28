@@ -4,16 +4,20 @@ import copy
 import importlib.util
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[3] / "scripts/backfills/backfill_join_verdicts.py"
 spec = importlib.util.spec_from_file_location("backfill_join_verdicts", SCRIPT)
+assert spec is not None and spec.loader is not None
 backfill = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(backfill)
 
 
-def seg(uid="root", start=0, end=900, ref="1:1:1-1:1:4", **extra):
+def seg(
+    uid: str = "root", start: int = 0, end: int = 900, ref: str = "1:1:1-1:1:4", **extra: Any
+) -> dict[str, Any]:
     return dict(
         segment_uid=uid, time_start=start, time_end=end, matched_ref=ref, confidence=0.9, **extra
     )

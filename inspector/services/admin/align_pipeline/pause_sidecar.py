@@ -99,7 +99,8 @@ def item_for(chapter: int, seg: dict, row: dict, riwayah: str, tally: dict) -> d
     """One sidecar item for a published ``seg`` (its aligner ``row`` alongside), or ``None``."""
     from services.reference.quran_refs import dk_text_for_ref
 
-    words = row.get("words") if isinstance(row.get("words"), list) else []
+    row_words = row.get("words")
+    words = row_words if isinstance(row_words, list) else []
     cuts: list[dict] = []
     joins: list[tuple[str, str]] = []
     search_from = 0
