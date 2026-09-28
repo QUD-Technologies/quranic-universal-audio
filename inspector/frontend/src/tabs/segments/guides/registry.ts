@@ -10,6 +10,7 @@ import flaggingGuide from './accordion/flagging.guide';
 import generalEditingGuide from './accordion/general_editing.guide';
 import lowConfidenceGuide from './accordion/low_confidence.guide';
 import lowConfidenceV2Guide from './accordion/low_confidence_v2.guide';
+import missedWaqfGuide from './accordion/missed_waqf.guide';
 import missingVersesGuide from './accordion/missing_verses.guide';
 import missingWordsGuide from './accordion/missing_words.guide';
 import muqattaatGuide from './accordion/muqattaat.guide';
@@ -28,6 +29,7 @@ const accordionGuides: Readonly<Record<string, string>> = Object.freeze({
     boundary_adj: boundaryAdjGuide,
     repetitions: repetitionsGuide,
     cross_verse: crossVerseGuide,
+    missed_waqf: missedWaqfGuide,
     qalqala: qalqalaGuide,
     muqattaat: muqattaatGuide,
     basmala_amin: basmalaAminGuide,
@@ -117,6 +119,7 @@ export const ALL_GUIDE_KEYS: readonly string[] = Object.freeze([
     'boundary_adj',
     'repetitions',
     'cross_verse',
+    'missed_waqf',
     'qalqala',
     'muqattaat',
     'basmala_amin',
@@ -124,15 +127,23 @@ export const ALL_GUIDE_KEYS: readonly string[] = Object.freeze([
 ]);
 
 /**
+ * Guides of review-only categories — served only to holders of
+ * `segments.view_boundary_review`, so they are readable and recorded but never
+ * required of everyone.
+ */
+const REVIEW_ONLY_GUIDE_KEYS: ReadonlySet<string> = new Set(['missed_waqf']);
+
+/**
  * The distinct guides a reviewer must read once before editing — the gate set.
  * `ALL_GUIDE_KEYS` minus the guides for owner-only validation categories
- * (`IssueRegistry[cat].ownerOnly`), which are invisible to non-owners and so
- * must not gate anyone's first edit or show up in the guides checklist. A guide
- * that should NOT re-onboard established reviewers can be registered in
- * `accordionGuides` but left out of `ALL_GUIDE_KEYS` (badge-only).
+ * (`IssueRegistry[cat].ownerOnly`), which are invisible to non-owners, and
+ * minus the review-only guides: neither may gate anyone's first edit or show up
+ * in the guides checklist. A guide that should NOT re-onboard established
+ * reviewers can be registered in `accordionGuides` but left out of
+ * `ALL_GUIDE_KEYS` (badge-only).
  */
 export const REQUIRED_GUIDE_KEYS: readonly string[] = Object.freeze(
-    ALL_GUIDE_KEYS.filter((k) => !IssueRegistry[k]?.ownerOnly),
+    ALL_GUIDE_KEYS.filter((k) => !IssueRegistry[k]?.ownerOnly && !REVIEW_ONLY_GUIDE_KEYS.has(k)),
 );
 
 /** True iff this user has opened the guide for `category` (alias-aware). */

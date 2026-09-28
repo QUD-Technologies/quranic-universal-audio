@@ -35,6 +35,12 @@ describe('REQUIRED_GUIDE_KEYS', () => {
         expect(REQUIRED_GUIDE_KEYS).not.toContain('qalqala');
     });
 
+    it('records the Low Confidence Waqf guide but never requires it', () => {
+        expect(hasAccordionGuide('missed_waqf')).toBe(true);
+        expect(ALL_GUIDE_KEYS).toContain('missed_waqf');
+        expect(REQUIRED_GUIDE_KEYS).not.toContain('missed_waqf');
+    });
+
     it('never contains the low_confidence_v2 alias', () => {
         expect(REQUIRED_GUIDE_KEYS).not.toContain('low_confidence_v2');
         expect(REQUIRED_GUIDE_KEYS).toContain('low_confidence');
