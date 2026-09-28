@@ -29,7 +29,7 @@ from services.storage.hf_bucket import StorageNotFound, get_backend
 from . import adapt, staging
 from . import params as _params
 from .params import AlignParams
-from .stage_sidecars import AUTO_SPLIT_FILE, LOW_CONFIDENCE_FILE
+from .stage_sidecars import AUTO_SPLIT_FILE, LOW_CONFIDENCE_FILE, MISSED_WAQF_FILE
 
 log = logging.getLogger("inspector")
 
@@ -115,12 +115,13 @@ def _materialise_sidecars(run_dir: Path, slug: str, run_id: str, riwayah: str | 
     ``auto_split_v1`` is always owed. ``low_confidence_v2`` is owed only on Hafs:
     a non-Hafs delivery never gets the probe (D12 — its question is Hafs-only),
     so its absence there is the contract, not a stage that failed to stage.
+    ``missed_waqf_v2`` is published whenever it was staged.
     """
     (run_dir / "sidecars").mkdir()
     required = [AUTO_SPLIT_FILE]
     if (riwayah or DEFAULT_SDK_RIWAYAH) == DEFAULT_SDK_RIWAYAH:
         required.append(LOW_CONFIDENCE_FILE)
-    for name in (LOW_CONFIDENCE_FILE, AUTO_SPLIT_FILE):
+    for name in (LOW_CONFIDENCE_FILE, AUTO_SPLIT_FILE, MISSED_WAQF_FILE):
         doc = staging.read_json(staging.sidecar_path(slug, run_id, name))
         if doc is None:
             if name in required:

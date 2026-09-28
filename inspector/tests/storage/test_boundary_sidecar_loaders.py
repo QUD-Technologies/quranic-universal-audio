@@ -111,3 +111,14 @@ def test_wasl_recheck_sidecar_parses_and_invalidates(reciter_dir):
     assert load_wasl_recheck(SLUG) == ({"u7": {"chapter": 2, "after_ref": "2:5:9"}}, meta)
     cache.invalidate_seg_caches(SLUG)
     assert cache.get_seg_wasl_recheck(SLUG) is None
+
+
+def test_missed_waqf_reads_v1_when_no_v2(reciter_dir):
+    _write(reciter_dir, "missed_waqf_v1.json", {"_meta": {"arms": "lab"}, "by_uid": {"a": {}}})
+    assert load_missed_waqf(SLUG) == ({"a": {}}, {"arms": "lab"})
+
+
+def test_missed_waqf_v2_shadows_v1(reciter_dir):
+    _write(reciter_dir, "missed_waqf_v1.json", {"_meta": {"arms": "lab"}, "by_uid": {"a": {}}})
+    _write(reciter_dir, "missed_waqf_v2.json", {"_meta": {"arms": "lattice"}, "by_uid": {"b": {}}})
+    assert load_missed_waqf(SLUG) == ({"b": {}}, {"arms": "lattice"})

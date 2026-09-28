@@ -946,6 +946,9 @@ export interface DetailedEntry {
  *     extraction output.
  *   - ``word_timings`` — optional historical word intervals retained by
  *     imported review samples and exposed for playback highlighting.
+ *   - ``pauses`` — stops the aligner heard inside the segment
+ *     (``DetailedPause``). Kept only while the segment's time and ref are
+ *     unchanged; the source of the Low Confidence Waqf review.
  *   - ``ignored_categories`` — per-seg category-level ignore set written
  *     by the "ignore this issue" accordion action; consulted by
  *     ``services/validation/classifier.py::is_ignored_for`` to suppress
@@ -967,6 +970,7 @@ export interface DetailedSegment {
   wrap_word_ranges?: string[][] | null;
   segment_uid?: string | null;
   word_timings?: DetailedWordTiming[] | null;
+  pauses?: DetailedPause[] | null;
   source_ref?: string | null;
   projection_support?: ("full" | "partial") | null;
   ignored_categories?: string[] | null;
@@ -982,6 +986,18 @@ export interface DetailedWordTiming {
   location: string;
   start_ms: number;
   end_ms: number;
+}
+/**
+ * A stop the aligner's phoneme lattice heard inside a segment.
+ *
+ * ``after_ref`` is the last word before the stop (``s:a:w``); ``gain`` is how
+ * much the decode loses when that join may not pause, ``separability`` how far
+ * apart the stopped and continued voicings are. The aligner never cuts on it.
+ */
+export interface DetailedPause {
+  after_ref: string;
+  gain: number;
+  separability: number;
 }
 /**
  * A flag on a single segment: a required root comment + reply thread.

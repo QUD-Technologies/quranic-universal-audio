@@ -1,7 +1,8 @@
 """Aligner public rows → the staged-run shapes ``promote_build`` reads.
 
 The aligner returns the app's public segment rows (seconds, ``ref_from``/``ref_to``,
-``kind``/``special_type``, plus ``merge_group_id``/``merge_members`` when asked).
+``kind``/``special_type``, plus ``merge_group_id``/``merge_members`` when asked and
+the lattice ``pauses`` heard inside a row).
 The Katana pipeline's post-process did three things on top of the matcher's
 output before staging, and this module does the same three, in the same order and
 with the same index bookkeeping (``qua_sdk.pipelines.align_postprocess``):
@@ -62,6 +63,9 @@ def is_special(row: dict) -> bool:
 def _segment(row: dict, riwayah: str) -> dict:
     """One kept row as a ``DetailedSegment`` dict in the delivery edition's coordinates.
 
+    The lattice ``pauses`` ride along without ``token_pos`` (a decoder index
+    with no meaning once the row is published).
+
     A non-Hafs delivery's rows arrive projected (the aligner matched against
     Hafs and wrote the edition's refs); the Hafs ``source_ref`` the sidecars and
     the timestamps engine align against is re-derived here through the same
@@ -78,6 +82,11 @@ def _segment(row: dict, riwayah: str) -> dict:
     }
     if row.get("wrap_word_ranges"):
         seg["wrap_word_ranges"] = row["wrap_word_ranges"]
+    if row.get("pauses"):
+        seg["pauses"] = [
+            {"after_ref": p["after_ref"], "gain": p["gain"], "separability": p["separability"]}
+            for p in row["pauses"]
+        ]
     stamp_projection(seg, riwayah)
     return seg
 

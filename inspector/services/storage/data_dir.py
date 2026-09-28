@@ -97,8 +97,8 @@ def hidden_pause_path(slug: str) -> str:
     return storage_paths.hidden_pause_path(slug)
 
 
-def missed_waqf_path(slug: str) -> str:
-    return storage_paths.missed_waqf_path(slug)
+def missed_waqf_path(slug: str, version: int = 1) -> str:
+    return storage_paths.missed_waqf_path(slug, version)
 
 
 def false_split_path(slug: str) -> str:
@@ -185,11 +185,14 @@ def read_hidden_pause_doc(slug: str) -> dict | None:
 
 
 def read_missed_waqf_doc(slug: str) -> dict | None:
-    """Return the parsed ``missed_waqf_v1.json`` doc, or ``None`` if absent."""
-    try:
-        return get_backend().read_json(missed_waqf_path(slug))  # type: ignore[return-value]
-    except StorageNotFound:
-        return None
+    """Return the parsed ``missed_waqf_v2.json`` doc, else ``missed_waqf_v1.json``,
+    or ``None`` if neither exists."""
+    for version in (2, 1):
+        try:
+            return get_backend().read_json(missed_waqf_path(slug, version))  # type: ignore[return-value]
+        except StorageNotFound:
+            continue
+    return None
 
 
 def read_false_split_doc(slug: str) -> dict | None:

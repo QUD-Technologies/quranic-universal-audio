@@ -21,7 +21,7 @@ Where it lives:
 
 | Piece | Path |
 |---|---|
-| Service package | `inspector/services/admin/align_pipeline/` — `runs` (start/retry/cancel/status), `runner` (worker threads), `stage_acquire` · `stage_align` · `stage_split` · `stage_sidecars` · `stage_assemble`, `sources` (manifest → source groups + slots), `partition` (pure cut logic), `resolve` (which file each surah is taken from), `manifest` (writes acquired size/duration/offset + split coverage back to the audio manifest), `adapt` (aligner rows → staged shapes), `aligner_client` (SSE), `staging` (bucket paths), `progress` (in-memory detail + cancel), `params` (knobs + env), `limits` (shared GPU/CPU budget) |
+| Service package | `inspector/services/admin/align_pipeline/` — `runs` (start/retry/cancel/status), `runner` (worker threads), `stage_acquire` · `stage_align` · `stage_split` · `stage_sidecars` · `stage_assemble`, `sources` (manifest → source groups + slots), `partition` (pure cut logic), `resolve` (which file each surah is taken from), `manifest` (writes acquired size/duration/offset + split coverage back to the audio manifest), `adapt` (aligner rows → staged shapes), `pause_sidecar` (lattice pauses → `missed_waqf_v2`), `aligner_client` (SSE), `staging` (bucket paths), `progress` (in-memory detail + cancel), `params` (knobs + env), `limits` (shared GPU/CPU budget) |
 | Intake planner | `inspector/services/admin/intake_plan/` — `enumerate` (+ `drive`), `identity`, `plan`, `mint` |
 | Durable row | `align_runs` table — `services/db/migrations/0031_align_runs.sql`, `services/db/repo_align_runs.py` |
 | HF jobs | `qua_jobs/acquire_audio.py` (kind `acquire_audio`) and `qua_jobs/split_audio.py` (kind `split_audio`), both shown in the Jobs tab; shared fetch/encode/cut/peaks helpers in `qua_jobs/audio_io.py`; grouping in `qua_shared/audio/sources.py` |
@@ -79,9 +79,12 @@ sidecars  one reciter-wide POST /api/v1/extraction/sidecars (SSE) — the aligne
           → staging/<slug>/<run>/sidecars/{low_confidence_v2,auto_split_v1}.json
           Hafs only for the probe: a non-Hafs delivery gets `low_confidence_v2: null`
           (D12, editions.md) and nothing is staged for it; auto_split_v1 is always staged
+          + sidecars/missed_waqf_v2.json built in-process (pause_sidecar) from the rows'
+          lattice `pauses` + word timings — see Low Confidence Waqf below
 assemble  in-process: adapt → promote_build.build_artifacts (peaks from the acquired blobs,
           no ffmpeg) → reciters/<slug>/{detailed,segments,pipeline_meta,chapter_sources,
-          coverage_report,edit_history*.jsonl,low_confidence_v2,auto_split_v1}.json
+          coverage_report,edit_history*.jsonl,low_confidence_v2,auto_split_v1,
+          missed_waqf_v2}.json
           chapter_sources carries each chapter's offset inside its source file;
           coverage_report lists split drops as missing; mislabelled files, suspect cuts and
           files with no recitation as unresolved
@@ -123,7 +126,9 @@ Parameters (`params.py`): model `Large` (the same `hetchyy/r7` checkpoint as the
 Katana extraction), `pad_left_ms=100`, `pad_right_ms=100`, `min_silence_floor_ms=50`,
 matcher/thresholds = whatever the Space runs, `include_merge_groups=true`,
 `include_auto_split_timings=true`, `discard_session=true`, no full word-timestamp
-pass, no aligner-side split. Only cross-verse and repetition rows are timed. Those interactive
+pass, no aligner-side split. Only Auto Split candidates are timed — the aligner's
+`batches._is_auto_split_candidate` (cross-verse and repetition rows, and rows carrying
+lattice `pauses` once the aligner counts them). Those interactive
 word timings are returned with the alignment result and reused by Auto Split; times
 are segment-relative while segment bounds remain relative to the persisted mp3 (no trim).
 For each section boundary, the cursor is the midpoint between the preceding
@@ -241,7 +246,25 @@ and (when asked) `merge_group_id`/`merge_members`. `adapt.adapt_chapter` mirrors
 Seconds → integer ms (`round(s*1000)`), confidence → 2 dp, `ref_from == ref_to`
 → single ref else `a-b`, unmatched rows keep `matched_ref=""`. The resulting
 `ChapterCandidate` + events feed both the sidecars call and `promote_build`,
-so the sidecars index exactly the rows that get published.
+so the sidecars index exactly the rows that get published. A row's lattice `pauses`
+(`[{after_ref, token_pos, gain, separability}]`, stops the aligner heard inside the
+row and never split on) persist as `DetailedSegment.pauses` without `token_pos`; the
+save flow keeps them only while the row's time and ref are unchanged.
+
+## Low Confidence Waqf (`missed_waqf_v2.json`)
+
+`pause_sidecar.build` turns every **mid-verse** lattice pause (after_ref and the
+next timed word in the same verse; verse-end pauses are skipped) into a proposed
+cut of the `missed_waqf` review category. Cursor = midpoint between the end of the
+`after_ref` word and the start of the next word in the row's `words`, plus the
+segment start (the Auto Split rule). `refs` = the pieces the cursors cut
+`matched_ref` into (`null` on a repetition row); each cut carries `axes: ["lattice"]`,
+`gap_ms`, `score = round(gain × 1000)`, `word` (Arabic of `after_ref`) and
+`evidence.lattice = {gain, separability, after_ref, next_ref}`. Keys are
+`derive_uid(chapter, index, time_start)` over the chapter's kept rows — the uid the
+published row gets. A pause on a row without word timings is skipped and counted in
+`_meta.untimed` (also `pauses`, `verse_end`). The Inspector reads v2 in preference
+to the lab's `missed_waqf_v1.json`.
 
 ## Scope and what is refused at start
 

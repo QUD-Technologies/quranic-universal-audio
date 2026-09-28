@@ -399,6 +399,7 @@ def _apply_patch(matching: list[dict], updates: dict, riwayah: str = DEFAULT_SDK
             ref = normalize_ref_with_wc(upd.get("matched_ref", ""), riwayah)
             if ref != flat_segments[idx].get("matched_ref"):
                 flat_segments[idx].pop("word_timings", None)
+                flat_segments[idx].pop("pauses", None)
             flat_segments[idx]["matched_ref"] = ref
             if "confidence" in upd:
                 flat_segments[idx]["confidence"] = upd["confidence"]

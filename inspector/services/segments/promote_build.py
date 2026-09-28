@@ -39,7 +39,7 @@ PIPELINE_ACTOR = {"hf_user_id": "pipeline", "login_at_time": "pipeline", "role":
 _PIPELINE_ACTOR = PIPELINE_ACTOR
 
 # Staged sidecars publish under their bare names at the reciter root.
-SIDECAR_NAMES = ("low_confidence_v2.json", "auto_split_v1.json")
+SIDECAR_NAMES = ("low_confidence_v2.json", "auto_split_v1.json", "missed_waqf_v2.json")
 _SIDECARS = SIDECAR_NAMES
 
 

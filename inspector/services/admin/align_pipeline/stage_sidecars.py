@@ -5,7 +5,8 @@ same adaptation assemble uses, so the sidecars index exactly the rows that get
 published) and streams ``POST /api/v1/extraction/sidecars``. Auto Split reuses
 the align stage's candidate-only interactive timings; Low Confidence keeps its
 independent MFA probe. The Space runs one sidecar job at a time; a 409 waits and
-retries.
+retries. ``missed_waqf_v2`` (Low Confidence Waqf) is built here from the staged
+rows' lattice pauses and word timings, without the Space (``pause_sidecar``).
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ import requests
 
 from services.storage.hf_bucket import resolve_bucket_repo
 
-from . import adapt, progress, staging
+from . import adapt, pause_sidecar, progress, staging
 from .aligner_client import AlignerClient, AlignerError
 from .params import AUTO_SPLIT_TIMING_SOURCE, AlignParams
 
@@ -25,6 +26,7 @@ log = logging.getLogger("inspector")
 
 LOW_CONFIDENCE_FILE = "low_confidence_v2.json"
 AUTO_SPLIT_FILE = "auto_split_v1.json"
+MISSED_WAQF_FILE = pause_sidecar.SIDECAR_FILE
 BUSY_RETRY_S = 60
 BUSY_MAX_WAIT_S = 6 * 3600
 TRANSIENT_ATTEMPTS = 3
@@ -71,6 +73,7 @@ def run(
     chapters: list[int],
     sources: dict[int, str],
 ) -> None:
+    _stage_missed_waqf(slug, run_id, params, chapters, sources)
     if staging.read_json(staging.sidecar_path(slug, run_id, AUTO_SPLIT_FILE)) is not None:
         log.info("align %s: sidecars already staged, skipped", run_id)
         return
@@ -95,6 +98,18 @@ def run(
         )
     staging.write_json(staging.sidecar_path(slug, run_id, AUTO_SPLIT_FILE), result["auto_split_v1"])
     log.info("align %s: sidecars staged", run_id)
+
+
+def _stage_missed_waqf(
+    slug: str, run_id: str, params: AlignParams, chapters: list[int], sources: dict[int, str]
+) -> None:
+    path = staging.sidecar_path(slug, run_id, MISSED_WAQF_FILE)
+    if staging.read_json(path) is not None:
+        return
+    docs = staging.read_chapters(slug, run_id, chapters)
+    doc = pause_sidecar.build(slug, docs, sources, params.riwayah)
+    staging.write_json(path, doc)
+    log.info("align %s: %s staged, %d item(s)", run_id, MISSED_WAQF_FILE, len(doc["by_uid"]))
 
 
 def _call(run_id: str, body: dict) -> dict:

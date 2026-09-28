@@ -85,10 +85,23 @@ class DetailedWordTiming(BaseModel):
     @model_validator(mode="after")
     def _validate_time_range(self) -> DetailedWordTiming:
         if self.end_ms < self.start_ms:
-            raise ValueError(
-                f"end_ms ({self.end_ms}) must be >= start_ms ({self.start_ms})"
-            )
+            raise ValueError(f"end_ms ({self.end_ms}) must be >= start_ms ({self.start_ms})")
         return self
+
+
+class DetailedPause(BaseModel):
+    """A stop the aligner's phoneme lattice heard inside a segment.
+
+    ``after_ref`` is the last word before the stop (``s:a:w``); ``gain`` is how
+    much the decode loses when that join may not pause, ``separability`` how far
+    apart the stopped and continued voicings are. The aligner never cuts on it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    after_ref: str
+    gain: float
+    separability: float
 
 
 class DetailedSegment(BaseModel):
@@ -118,6 +131,9 @@ class DetailedSegment(BaseModel):
         extraction output.
       - ``word_timings`` — optional historical word intervals retained by
         imported review samples and exposed for playback highlighting.
+      - ``pauses`` — stops the aligner heard inside the segment
+        (``DetailedPause``). Kept only while the segment's time and ref are
+        unchanged; the source of the Low Confidence Waqf review.
       - ``ignored_categories`` — per-seg category-level ignore set written
         by the "ignore this issue" accordion action; consulted by
         ``services/validation/classifier.py::is_ignored_for`` to suppress
@@ -149,6 +165,7 @@ class DetailedSegment(BaseModel):
     # omit these, but QAB review samples carry them and the Inspector must not
     # hide them from playback review.
     word_timings: list[DetailedWordTiming] | None = None
+    pauses: list[DetailedPause] | None = None
 
     # === Coordinate provenance (multi-riwayah) ===
     # ``matched_ref`` above is the DELIVERY EDITION's coordinate — what the

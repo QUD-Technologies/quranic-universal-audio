@@ -552,3 +552,30 @@ def test_assemble_still_requires_low_confidence_on_hafs(align_env):
             {112: "https://cdn/112.mp3"},
             started_at="2026-09-13T00:00:00Z",
         )
+
+
+def test_sidecars_stage_builds_missed_waqf_v2_and_assemble_publishes_it(align_env):
+    from services.admin.align_pipeline import runs, stage_assemble, stage_sidecars, staging
+    from services.admin.align_pipeline.params import AlignParams
+
+    backend, _started = align_env
+    run = runs.start(SLUG, OWNER)
+    staging.write_json(staging.chapter_path(SLUG, run.run_id, 112), CH112)
+    for name in ("auto_split_v1.json", "low_confidence_v2.json"):
+        staging.write_json(staging.sidecar_path(SLUG, run.run_id, name), {"v": 1})
+    backend.write_bytes_atomic(f"reciters/{SLUG}/peaks/112.json.gz", _slim_blob(23000))
+
+    stage_sidecars.run(SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"})
+    staged = staging.read_json(staging.sidecar_path(SLUG, run.run_id, "missed_waqf_v2.json"))
+    assert staged["_meta"]["kind"] == "missed_waqf"
+    assert staged["by_uid"] == {}
+
+    stage_assemble.run(
+        SLUG,
+        run.run_id,
+        AlignParams(),
+        [112],
+        {112: "https://cdn/112.mp3"},
+        started_at="2026-09-13T00:00:00Z",
+    )
+    assert backend.exists(f"reciters/{SLUG}/missed_waqf_v2.json")

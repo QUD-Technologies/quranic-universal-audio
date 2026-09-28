@@ -336,9 +336,10 @@ def load_hidden_pause(reciter: str) -> tuple[dict[str, dict], dict | None]:
 
 
 def load_missed_waqf(reciter: str) -> tuple[dict[str, dict], dict | None]:
-    """Load ``missed_waqf_v1.json`` — cursors inside a segment where an offline
-    phoneme + silence detector heard the reciter stop, keyed by
-    ``segment_uid``. Never written by the Inspector."""
+    """Load the Low Confidence Waqf sidecar — cursors inside a segment where the
+    reciter may have stopped, keyed by ``segment_uid``: ``missed_waqf_v2.json``
+    (the align pipeline's lattice pauses) when present, else the lab's
+    ``missed_waqf_v1.json``. Never written by the Inspector's save flow."""
     return _load_by_uid_sidecar(
         reciter,
         data_dir.read_missed_waqf_doc,

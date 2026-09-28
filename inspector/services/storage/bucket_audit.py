@@ -13,6 +13,7 @@ file we expect to find there:
 * ``auto_split_v1.json``       -> structural check (``by_uid`` dict of slim entries)
 * ``hidden_pause_v1.json``     -> structural check (``by_uid`` dict keyed by segment uid)
 * ``missed_waqf_v1.json``      -> structural check (``by_uid`` dict keyed by segment uid)
+* ``missed_waqf_v2.json``      -> structural check (``by_uid`` dict keyed by segment uid)
 * ``false_split_v1.json``      -> structural check (``by_uid`` dict keyed by segment uid)
 * ``unmarked_wasl_v1.json``    -> structural check (``by_uid`` dict keyed by segment uid)
 * ``wasl_recheck_v1.json``     -> structural check (``by_uid`` dict keyed by segment uid)
@@ -553,7 +554,7 @@ def _audit_peaks_slim(backend, path: str) -> FileResult:
 # ---------------------------------------------------------------------------
 # Top-level walker
 def _audit_by_uid_sidecar(backend, path: str) -> FileResult:
-    """Boundary-review sidecars (``hidden_pause_v1`` / ``missed_waqf_v1`` /
+    """Boundary-review sidecars (``hidden_pause_v1`` / ``missed_waqf_v1`` / ``missed_waqf_v2`` /
     ``false_split_v1`` / ``unmarked_wasl_v1`` / ``wasl_recheck_v1``).
 
     Expected shape:
@@ -604,6 +605,7 @@ TOP_LEVEL_AUDITORS: list[tuple[str, Callable, bool]] = [
     ("auto_split_v1.json", _audit_auto_split_v1, False),
     ("hidden_pause_v1.json", _audit_by_uid_sidecar, False),
     ("missed_waqf_v1.json", _audit_by_uid_sidecar, False),
+    ("missed_waqf_v2.json", _audit_by_uid_sidecar, False),
     ("false_split_v1.json", _audit_by_uid_sidecar, False),
     ("unmarked_wasl_v1.json", _audit_by_uid_sidecar, False),
     ("wasl_recheck_v1.json", _audit_by_uid_sidecar, False),
