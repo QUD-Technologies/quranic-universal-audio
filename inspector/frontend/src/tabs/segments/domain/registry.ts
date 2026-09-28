@@ -8,7 +8,8 @@
  *
  * camelCase mirrors of the Python fields:
  *   kind / cardType / severity / accordionOrder / canIgnore /
- *   autoSuppress / persistsIgnore / scope / displayTitle / description.
+ *   autoSuppress / persistsIgnore / scope / displayTitle / description /
+ *   ownerOnly / retired.
  */
 
 import type { SortOption } from './sorting';
@@ -35,6 +36,12 @@ export interface IssueDefinition {
      * exist. Mirrors the Python registry's `owner_only`. Defaults to false.
      */
     ownerOnly?: boolean;
+    /**
+     * Retired category: offered to nobody (owners included) and never gates
+     * mark-ready, but still classified so its history and `is_wasl` data keep
+     * displaying. Mirrors the Python registry's `retired`. Defaults to false.
+     */
+    retired?: boolean;
     /**
      * Sort options the accordion offers (first = active default). FE-only
      * presentation concern — deliberately absent from the Python registry and
@@ -182,6 +189,7 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         sorts: [{ kind: 'quran_order', default: true }, { kind: 'verse_count' }],
         boundaryFilter: true,
         ownerOnly: true,
+        retired: true,
     },
     qalqala: {
         kind: 'qalqala',
@@ -245,8 +253,8 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         autoSuppress: true,
         persistsIgnore: true,
         scope: 'per_segment',
-        displayTitle: 'Missed Waqf (review)',
-        description: 'An offline detector heard the reciter stop inside this segment. Label each proposed cut: WAQF cuts there, WASL keeps it joined. The split saves on the last label; all WASL ignores the item.',
+        displayTitle: 'Low Confidence Waqf',
+        description: 'The aligner heard a possible stop inside this segment. Label each proposed cut: WAQF if the reciter stopped (split there), WASL if they read through (keep it whole). The split saves on the last label; all WASL ignores the item.',
         sorts: [{ kind: 'score', default: true }, { kind: 'quran_order' }],
         boundaryFilter: true,
     },
@@ -295,10 +303,13 @@ export const PERSISTS_IGNORE_CATEGORIES: readonly string[] = _entries
     .filter(([, v]) => v.persistsIgnore).map(([k]) => k);
 export const OWNER_ONLY_CATEGORIES: readonly string[] = _entries
     .filter(([, v]) => v.ownerOnly).map(([k]) => k);
+export const RETIRED_CATEGORIES: readonly string[] = _entries
+    .filter(([, v]) => v.retired).map(([k]) => k);
 
-/** True iff `category` is owner-only and so must be hidden from this viewer. */
+/** True iff `category` is retired, or owner-only for a non-owner, and so must be hidden. */
 export function isCategoryHidden(category: string, isOwner: boolean): boolean {
-    return !isOwner && (IssueRegistry[category]?.ownerOnly ?? false);
+    const defn = IssueRegistry[category];
+    return (defn?.retired ?? false) || (!isOwner && (defn?.ownerOnly ?? false));
 }
 
 /**

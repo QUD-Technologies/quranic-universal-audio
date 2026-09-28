@@ -38,7 +38,7 @@
     import { TAB_NAMES } from '../../../../lib/utils/constants';
     import { pendingSegmentsDeepLink, type SegmentsDeepLink } from '../../../../lib/utils/goto-segments';
     import { getWaveformPeaks } from '../../../../lib/utils/waveform-cache';
-    import { IssueRegistry } from '../../domain/registry';
+    import { IssueRegistry, isCategoryHidden } from '../../domain/registry';
     import { SORT_META, sortItems, type SortOption } from '../../domain/sorting';
     import { hasAccordionGuide, isGuideRead } from '../../guides/registry';
     import { VALIDATION_TITLE } from '../../i18n/validation-labels';
@@ -402,11 +402,10 @@
             return _baseMemoResult;
         }
 
-        // Owner-only categories are dropped outright for everyone else — no
-        // accordion, no count, no filter entry: the category may as well not
-        // exist for a non-owner.
+        // Retired categories are dropped for everyone and owner-only ones for
+        // everyone else — no accordion, no count, no filter entry.
         const ordered = Object.values(IssueRegistry)
-            .filter((d) => owner || !d.ownerOnly)
+            .filter((d) => !isCategoryHidden(d.kind, owner))
             .sort((a, b) => a.accordionOrder - b.accordionOrder);
 
         // Build the live-uid set once so stale-filter has O(1) membership

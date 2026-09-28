@@ -218,3 +218,11 @@ def test_registry_accordion_order_is_complete():
     assert sorted(orders) == list(range(1, n + 1)), (
         f"expected accordion_order to be a 1..{n} permutation; got sorted={sorted(orders)}"
     )
+
+
+def test_only_cross_verse_is_retired_and_it_never_gates_mark_ready():
+    from qua_shared.schemas.wire.mark_ready import BLOCKING_COUNT_KEYS
+    from services.validation.registry import RETIRED_CATEGORIES
+
+    assert RETIRED_CATEGORIES == ("cross_verse",)
+    assert not set(RETIRED_CATEGORIES) & set(BLOCKING_COUNT_KEYS)

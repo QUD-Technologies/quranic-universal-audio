@@ -19,6 +19,10 @@ Each row pins:
                            it is dropped from the validation accordion, from the
                            mark-ready blocking gate, and from the required
                            editing-guide set. Defaults to ``False``.
+- ``retired``            — the category is no longer reviewed: it is offered to
+                           nobody (owners included) and never gates mark-ready,
+                           but it is still classified so its edit history and
+                           ``is_wasl`` data keep displaying. Defaults to ``False``.
 - ``scope``              — granularity of the issue: ``"per_segment"``,
                            ``"per_verse"``, or ``"per_chapter"``.
 - ``display_title``      — user-facing accordion header for the category.
@@ -56,6 +60,7 @@ class IssueDefinition:
     display_title: str
     description: str
     owner_only: bool = False
+    retired: bool = False
 
     # Permit ``row["field"]`` access alongside ``row.field`` so registry rows
     # interoperate with monkeypatched plain-dict rows used in the extensibility
@@ -186,6 +191,7 @@ _REGISTRY: dict[str, IssueDefinition] = {
         display_title="Cross-verse",
         description="Label each verse boundary WASL or WAQF — the split is pre-applied from the aligner and saves on the last label. Adjust a piece if the suggested cut is off.",
         owner_only=True,
+        retired=True,
     ),
     "qalqala": IssueDefinition(
         kind="qalqala",
@@ -245,8 +251,8 @@ _REGISTRY: dict[str, IssueDefinition] = {
         auto_suppress=True,
         persists_ignore=True,
         scope="per_segment",
-        display_title="Missed Waqf (review)",
-        description="An offline detector heard the reciter stop inside this segment. Label each proposed cut: WAQF cuts there, WASL keeps it joined. The split saves on the last label; all WASL ignores the item.",
+        display_title="Low Confidence Waqf",
+        description="The aligner heard a possible stop inside this segment. Label each proposed cut: WAQF if the reciter stopped (split there), WASL if they read through (keep it whole). The split saves on the last label; all WASL ignores the item.",
     ),
     "false_split": IssueDefinition(
         kind="false_split",
@@ -320,6 +326,7 @@ PERSISTS_IGNORE_CATEGORIES: tuple[str, ...] = tuple(
     k for k, v in _REGISTRY.items() if v.persists_ignore
 )
 OWNER_ONLY_CATEGORIES: tuple[str, ...] = tuple(k for k, v in _REGISTRY.items() if v.owner_only)
+RETIRED_CATEGORIES: tuple[str, ...] = tuple(k for k, v in _REGISTRY.items() if v.retired)
 
 
 def filter_persistent_ignores(categories: list[str] | None) -> list[str]:
@@ -359,6 +366,7 @@ __all__ = [
     "AUTO_SUPPRESS_CATEGORIES",
     "PERSISTS_IGNORE_CATEGORIES",
     "OWNER_ONLY_CATEGORIES",
+    "RETIRED_CATEGORIES",
     "filter_persistent_ignores",
     "registry_as_dict",
 ]
