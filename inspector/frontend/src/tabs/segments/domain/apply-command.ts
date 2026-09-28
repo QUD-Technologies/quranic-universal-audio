@@ -532,6 +532,12 @@ function _reduceDelete(state: ApplyCommandState, cmd: DeleteCommand, ctx?: Apply
     };
 }
 
+/** Ignoring one of these vouches for the alignment itself, so it promotes confidence to 1.0. */
+const CONFIDENCE_IGNORE_CATEGORIES: ReadonlySet<string> = new Set([
+    'low_confidence',
+    'low_confidence_v2',
+]);
+
 function _reduceIgnoreIssue(
     state: ApplyCommandState,
     cmd: IgnoreIssueCommand,
@@ -546,7 +552,7 @@ function _reduceIgnoreIssue(
     if (!next.ignored_categories.includes(cmd.category)) {
         next.ignored_categories.push(cmd.category);
     }
-    next.confidence = 1.0;
+    if (CONFIDENCE_IGNORE_CATEGORIES.has(cmd.category)) next.confidence = 1.0;
 
     const op = _baseOperation(cmd, target, chapter, target.index, ctx);
     op.op_context_category = cmd.category;

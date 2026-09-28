@@ -24,6 +24,19 @@ describe('command/ignore', () => {
     expect(updated.confidence).toBe(1.0);
   });
 
+  it('keeps confidence when ignoring a Low Confidence Waqf item', () => {
+    const r = applyCommand(baseState(), { ...baseCmd, category: 'missed_waqf' });
+    const updated = r.nextState.byId['uid-ig']!;
+    expect(updated.ignored_categories).toContain('missed_waqf');
+    expect(updated.confidence).toBe(0.42);
+    expect(r.operation.snapshots.after[0]?.confidence).toBe(0.42);
+  });
+
+  it('keeps confidence when ignoring a repetition', () => {
+    const r = applyCommand(baseState(), { ...baseCmd, category: 'repetitions' });
+    expect(r.nextState.byId['uid-ig']!.confidence).toBe(0.42);
+  });
+
   it('op records snapshots before / after', () => {
     const r = applyCommand(baseState(), baseCmd);
     expect(r.operation.snapshots).toBeTruthy();
