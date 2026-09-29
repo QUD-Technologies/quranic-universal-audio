@@ -64,7 +64,9 @@ def _end_ref(ref: str) -> str:
     return ref.rpartition("-")[2]
 
 
-def _rows_by_chapter(entries: list[dict], chapter_of: Callable[[str], int]) -> dict[int, list[dict]]:
+def _rows_by_chapter(
+    entries: list[dict], chapter_of: Callable[[str], int]
+) -> dict[int, list[dict]]:
     out: dict[int, list[dict]] = {}
     for entry in entries:
         out.setdefault(chapter_of(entry["ref"]), []).extend(entry.get("segments", []))
@@ -181,9 +183,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--slug", required=True)
     ap.add_argument("--timing", help="a local cut_timing_v1.json (default: the bucket's)")
     ap.add_argument("--bucket", choices=sorted(_BUCKETS), default="prod")
-    ap.add_argument("--apply", action="store_true", help="Mutate. Without it the script only reports.")
+    ap.add_argument(
+        "--apply", action="store_true", help="Mutate. Without it the script only reports."
+    )
     args = ap.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
     _setup_paths_and_env(args.bucket)
 
     from qua_shared.schemas import Actor

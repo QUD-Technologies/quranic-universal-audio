@@ -92,9 +92,7 @@ def _wake_unavailable_space(hf_token: str | None) -> bool:
     except Exception as exc:  # noqa: BLE001 — Hub client has several transport errors
         raise TsSpaceError(f"timestamps Space wake failed: {exc}") from exc
 
-    raise TsSpaceError(
-        f"timestamps Space did not wake within {_WAKE_TIMEOUT_SECONDS} seconds"
-    )
+    raise TsSpaceError(f"timestamps Space did not wake within {_WAKE_TIMEOUT_SECONDS} seconds")
 
 
 def _post_run(body: dict[str, Any], hf_token: str):

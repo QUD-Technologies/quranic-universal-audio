@@ -68,7 +68,7 @@ def test_paused_space_is_woken_then_same_request_is_retried(monkeypatch):
         SimpleNamespace(status_code=503, text="The space is paused"),
         SimpleNamespace(status_code=200, text="", json=lambda: {"run_id": "run-after-wake"}),
     ]
-    posted: list[tuple[bytes, dict[str, str]]] = []
+    posted: list[tuple[object, object]] = []
 
     def fake_post(url, data=None, headers=None, timeout=None):
         posted.append((data, headers))

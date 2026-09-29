@@ -35,8 +35,14 @@ def _join(after_ref, start, cursor, end, source):
     }
 
 
+def _apply(timing: dict) -> dict:
+    out = timed_missed_waqf_doc(DOC, timing)
+    assert out is not None
+    return out
+
+
 def test_a_timed_cut_takes_the_silence_and_its_middle():
-    out = timed_missed_waqf_doc(DOC, _timing(_join("2:1:2", 1000, 1100, 1200, "psil")))
+    out = _apply(_timing(_join("2:1:2", 1000, 1100, 1200, "psil")))
     cut = out["by_uid"]["u1"]["cuts"][0]
     assert (cut["silence_start_ms"], cut["cursor_ms"], cut["silence_end_ms"]) == (1000, 1100, 1200)
     assert cut["timing_source"] == "psil"
@@ -47,9 +53,9 @@ def test_a_timed_cut_takes_the_silence_and_its_middle():
 
 
 def test_untimed_joins_and_disordered_cursors_change_nothing():
-    none = timed_missed_waqf_doc(DOC, _timing(_join("2:1:2", 1000, 1000, 1000, "none")))
+    none = _apply(_timing(_join("2:1:2", 1000, 1000, 1000, "none")))
     assert "silence_start_ms" not in none["by_uid"]["u1"]["cuts"][0]
-    crossing = timed_missed_waqf_doc(DOC, _timing(_join("2:1:2", 2050, 2100, 2150, "energy")))
+    crossing = _apply(_timing(_join("2:1:2", 2050, 2100, 2150, "energy")))
     assert crossing["by_uid"]["u1"]["cursors"] == [1000, 2000]
 
 

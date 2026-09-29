@@ -42,16 +42,14 @@ def _apply(entry: dict, joins: list[dict]) -> dict:
     for cut in cuts:
         join = by_ref.get(_after_ref(cut))
         timed = _timed(join) if join else None
-        if timed is None:
+        if join is None or timed is None:
             continue
         cut["silence_start_ms"], cut["cursor_ms"], cut["silence_end_ms"] = timed
-        cut["timing_source"] = join["source"]  # type: ignore[index]
-    cursors = [c.get("cursor_ms") for c in cuts]
+        cut["timing_source"] = join["source"]
+    cursors = [c for c in (cut.get("cursor_ms") for cut in cuts) if isinstance(c, int)]
     out = {**entry, "cuts": cuts}
-    if (
-        len(cursors) == len(entry.get("cursors") or [])
-        and all(isinstance(c, int) for c in cursors)
-        and cursors == sorted(set(cursors))
+    if len(cursors) == len(cuts) == len(entry.get("cursors") or []) and cursors == sorted(
+        set(cursors)
     ):
         out["cursors"] = cursors
     return out
