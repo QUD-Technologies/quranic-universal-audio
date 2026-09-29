@@ -10,6 +10,8 @@ picks its own cache discipline:
   app boot to learn the current hash and cache-bust the payload URL.
 - ``/edition/<riwayah>/font.<ext>`` — immutable + digest-ETagged; the paired
   font for a non-Hafs edition, served out of the packaged ``qua_domain`` asset.
+- ``/mushaf-font/<name>`` — immutable; the Mushaf view's header + 1405H fonts,
+  read from the bucket ``reference/mushaf-fonts/``.
 
 The two ``quran-refs`` routes take an optional ``?riwayah=`` (an **Inspector**
 slug, the vocabulary the catalog stores on a delivery). Omitted, they serve
@@ -140,6 +142,34 @@ def edition_font(riwayah: str) -> Response:
     response.headers["ETag"] = f'"{asset.sha256}"'
     response.headers["Content-Disposition"] = f'inline; filename="{asset.filename}"'
     return response
+
+
+# Timestamps Mushaf-view fonts (surah-name ligatures, surah-header frame, the
+# 1405H Digital Khatt v1 text font). Bucket-only for the same LFS reason as
+# the guide clips below: a binary woff2 in the image is a pointer stub on the
+# Space, the Xet-backed bucket always carries the real bytes. Whitelisted —
+# the name is interpolated into a bucket path.
+_MUSHAF_FONT_BUCKET_DIR = "reference/mushaf-fonts"
+_MUSHAF_FONTS = frozenset(
+    {"surah-name-v2.woff2", "juz-font.woff2", "digital-khatt-madani-v1.woff2"}
+)
+_MUSHAF_FONT_CACHE_CONTROL = "public, max-age=31536000, immutable"
+
+
+@static_bp.route("/mushaf-font/<name>")
+def mushaf_font(name: str) -> Response:
+    """Serve one Mushaf-view webfont from the bucket (404 if unknown/absent)."""
+    if name not in _MUSHAF_FONTS:
+        abort(404)
+    from services.storage.hf_bucket import get_backend
+
+    try:
+        body = get_backend().read_bytes(f"{_MUSHAF_FONT_BUCKET_DIR}/{name}")
+    except Exception:
+        abort(404)
+    resp = Response(body, mimetype="font/woff2")
+    resp.headers["Cache-Control"] = _MUSHAF_FONT_CACHE_CONTROL
+    return resp
 
 
 # Segments-guide example clips. Served here (not as a plain dist static asset)

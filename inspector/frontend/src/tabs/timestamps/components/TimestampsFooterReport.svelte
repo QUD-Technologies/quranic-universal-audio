@@ -21,6 +21,7 @@
     import type { TsVerseData } from '../../../lib/types/ts-client';
     import type { TsReport } from '../../../lib/types/generated/schemas';
     import { getVerseReports } from '../services/reports-client';
+    import { mushafActive } from '../stores/mushaf';
     import {
         enterPhonemes,
         enterSilence,
@@ -54,7 +55,9 @@
         (i18n.locale,
         curVerse ? m.ts_footer_report_aria_label({ verse: curVerse }) : m.ts_footer_report_aria_label_plain()),
     );
-    const reportTitle = $derived((i18n.locale, m.ts_footer_report_title()));
+    const reportTitle = $derived(
+        (i18n.locale, m.ts_footer_report_title()),
+    );
     const reportButtonLabel = $derived((i18n.locale, m.ts_footer_report_button()));
 
     // Keep the reciter-level reported-verse counts (button highlight) in sync
@@ -194,7 +197,8 @@
     }
 </script>
 
-{#if $canReport}
+<!-- Reporting works against the waveform + analysis grid, which the Mushaf view hides. -->
+{#if $canReport && !$mushafActive}
     <div class="report-wrap" use:clickOutside={() => (open = false)}>
         <button
             type="button"

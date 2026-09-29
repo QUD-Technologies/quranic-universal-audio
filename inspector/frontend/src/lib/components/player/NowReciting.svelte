@@ -70,6 +70,7 @@
         removeBookmark,
         toggleBookmarksPanel,
     } from '../../stores/bookmarks';
+    import { nowRecitingSuppressed } from '../../stores/now-reciting-suppressed';
     import { playerContext } from '../../stores/player-context';
     import { progressHoverMs, progressScrubMs } from '../../stores/progress-hover';
     import { activeTab } from '../../utils/active-tab';
@@ -165,7 +166,7 @@
     const reciterSlug = $derived($playerContext.delivery?.slug ?? '');
     const surahNum = $derived($playerContext.surahNum ?? 0);
     const playing = $derived($playerContext.isPlaying);
-    const shown = $derived(isPublished && units.length > 0);
+    const shown = $derived(isPublished && units.length > 0 && !$nowRecitingSuppressed);
 
     // `slug:chapter` the loaded `units` belong to. The shared player switches
     // chapter (and may already be playing it) before this component's load

@@ -241,6 +241,10 @@
     --shadow-modal:        0 18px 48px oklch(0.300 0.030 275 / 0.20),
                            0 2px 6px oklch(0.300 0.030 275 / 0.10);
 
+    /* Timestamps Mushaf view — a warm ivory page, a soft spine shade. */
+    --mushaf-paper:        oklch(0.990 0.008 85);
+    --mushaf-spine:        oklch(0.300 0.030 275 / 0.12);
+
     /* ---------- playback highlight default (overridden live by config) ---------- */
     --anim-highlight-color: oklch(0.620 0.150 70);
 

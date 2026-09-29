@@ -29,6 +29,7 @@
         resolveTsDeliveries,
         type TsPublishedEntry,
     } from '../services/ts-published';
+    import { mushafActive } from '../stores/mushaf';
     import { cycleShuffle, requestManualShuffle, shuffleMode } from '../stores/shuffle';
 
     // Tri-state shuffle: 0 off · 1 ayah (same reciter) · 2 both (random
@@ -212,7 +213,9 @@
         {/if}
     </div>
 
-    <!-- Tri-state shuffle cycle (double-height, right of the picker) -->
+    <!-- Tri-state shuffle cycle (double-height, right of the picker). The
+         Mushaf view reads on in order, so shuffle is off there. -->
+    {#if !$mushafActive}
     <button
         type="button" class="shuffle-btn" class:on={$shuffleMode !== 0}
         aria-label={SHUFFLE_LABEL[$shuffleMode]} title={SHUFFLE_LABEL[$shuffleMode]}
@@ -229,6 +232,7 @@
                 src="/icons/reciter_random.svg" alt="" aria-hidden="true"
             />
         </span></button>
+    {/if}
 </div>
 
 <style>

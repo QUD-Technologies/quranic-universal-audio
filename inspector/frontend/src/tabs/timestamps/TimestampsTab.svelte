@@ -62,6 +62,9 @@
     import TsValidationPanel from './components/TsValidationPanel.svelte';
     import TimedAnalysisRow from './components/TimedAnalysisRow.svelte';
     import WordTimedRow from './components/WordTimedRow.svelte';
+    import MushafView from './mushaf/MushafView.svelte';
+    import { nowRecitingSuppressed } from '../../lib/stores/now-reciting-suppressed';
+    import { mushafActive, mushafAvailable, mushafMode } from './stores/mushaf';
     import {
         assembleOccasion,
         assembleWaslGroup,
@@ -475,6 +478,13 @@
         } finally {
             tsLoading.set(false);
         }
+        // A switch that arrived mid-load was dropped by the guard above — catch
+        // up to where the player is now, or the tab stays on the old chapter.
+        const now = get(playerContext);
+        const nowKey = `${now.delivery?.slug ?? ''}:${now.surahNum ?? 0}`;
+        if (nowKey !== key && nowKey !== loadedChapterKey) {
+            void syncChapter(now.delivery?.slug ?? '', now.surahNum ?? 0);
+        }
     }
 
     /** Precompute the cross-verse waṣl group for each member occasion (by_surah
@@ -630,7 +640,8 @@
             occasions: chapterOccasions,
             ms,
             swapInFlight: chapterSwapInFlight(),
-            armed: getActiveTab() === TAB_NAMES.TIMESTAMPS && !get(loopTarget) && get(shuffleAyah) && !get(reportModeActive),
+            armed: getActiveTab() === TAB_NAMES.TIMESTAMPS && !get(loopTarget) && get(shuffleAyah)
+                && !get(reportModeActive) && !get(mushafActive),
             focusEndMs: fv ? fv.tsSegEnd * 1000 : null,
             guardMs: SHUFFLE_END_GUARD_MS,
             firedForCurrentFocus: shuffleFiredForIdx === focusIdx,
@@ -662,7 +673,7 @@
         if (chapterSwapInFlight()) return false;
         const fv = get(loadedVerse);
         const fire = shouldFireShuffle({
-            armed: !get(loopTarget) && get(shuffleAyah),
+            armed: !get(loopTarget) && get(shuffleAyah) && !get(mushafActive),
             ms,
             focusEndMs: fv ? fv.tsSegEnd * 1000 : null,
             guardMs: SHUFFLE_END_GUARD_MS,
@@ -773,6 +784,7 @@
         clearShuffle();
         const mode = get(shuffleMode);
         if (mode === 0) return; // off → no look-ahead (no jump happens)
+        if (get(mushafActive)) return; // the Mushaf view reads on in order
         const randomReciter = mode === 2;
         const curSlug = get(playerContext).delivery?.slug ?? '';
         const target = await getRandomTarget(randomReciter ? {} : { reciter: curSlug }).catch(() => null);
@@ -985,6 +997,13 @@
         if (getActiveTab() !== TAB_NAMES.TIMESTAMPS) return;
         const cur = dashPort.currentTimeMs() / 1000;
         const lv = get(loadedVerse);
+        if (e.code === 'KeyM') {
+            if (get(mushafAvailable)) mushafMode.update((v) => !v);
+            return;
+        }
+        // The Mushaf view pages with ←/→ itself and has no shuffle, grid,
+        // letters or phonemes.
+        if (get(mushafActive) && ['ArrowLeft', 'ArrowRight', 'KeyR', 'KeyJ', 'KeyL', 'KeyP'].includes(e.code)) return;
         switch (e.code) {
             case 'Space':
                 e.preventDefault();
@@ -1051,6 +1070,10 @@
     // ---------------------------------------------------------------------
     $: if ($activeTabStore === TAB_NAMES.TIMESTAMPS) startTick(); else stopTick();
 
+    // The Mushaf view is the recitation surface on its own: the shared
+    // teleprompter + filmstrip bar steps aside while it's open here.
+    $: nowRecitingSuppressed.set($mushafActive && $activeTabStore === TAB_NAMES.TIMESTAMPS);
+
     let _primedOnce = false;
 
     onMount(() => {
@@ -1074,7 +1097,7 @@
         const unsubManualShuffle = manualShuffleRequest.subscribe((n) => {
             if (n === lastManualShuffle) return;
             lastManualShuffle = n;
-            if (!_primedOnce) return;
+            if (!_primedOnce || get(mushafActive)) return;
             void shuffleJump(true);
         });
         // Capture the loop's verse anchor on engage (null→set) and drop it on
@@ -1113,6 +1136,7 @@
         // Don't leak this tab's last focus to other surfaces (Dashboard's
         // NowReciting subscribes to it).
         recitationFocus.set(null);
+        nowRecitingSuppressed.set(false);
         resetShardEdition();
     });
 </script>
@@ -1133,6 +1157,9 @@
     style:--analysis-letter-font-size={cfg?.analysis_letter_font_size ?? ''}
 >
     <main>
+        {#if $mushafActive}
+            <MushafView />
+        {:else}
         {#if $tsValidation}
             <div class="ts-validation-row">
                 <TsValidationPanel
@@ -1155,6 +1182,7 @@
                 <TimedAnalysisRow bind:this={unifiedEl} />
             {/if}
         </div>
+        {/if}
     </main>
 </div>
 

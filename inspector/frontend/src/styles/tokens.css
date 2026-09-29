@@ -269,6 +269,10 @@
     --shadow-pop:          0 8px 28px oklch(0 0 0 / 0.45);
     --shadow-modal:        0 32px 80px oklch(0 0 0 / 0.45), 0 2px 8px oklch(0 0 0 / 0.30);
 
+    /* Timestamps Mushaf view: the page surface + the shade that marks the spine. */
+    --mushaf-paper:        var(--panel);
+    --mushaf-spine:        oklch(0 0 0 / 0.35);
+
     /* ---------- type ---------- */
     --font-sans:  -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
                   "Helvetica Neue", Arial, sans-serif;
