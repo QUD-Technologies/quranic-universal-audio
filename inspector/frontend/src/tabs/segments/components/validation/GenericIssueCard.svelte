@@ -24,7 +24,6 @@
         getChapterOpsSnapshot,
         isSegmentDirty,
     } from '../../stores/dirty';
-    import { markWaslPending } from '../../stores/edit';
     import {
         allPicked,
         clearStagedPicks,
@@ -48,6 +47,7 @@
         stagedCommit,
         stagedPickKey,
         stagedSplitFor,
+        storedJoinPicks,
     } from '../../utils/validation/staged-split';
     import SegmentRow from '../list/SegmentRow.svelte';
     import BoundaryEvidence from './BoundaryEvidence.svelte';
@@ -213,7 +213,9 @@
     $: ignoredAsWasl = isMissedWaqfCard && resolvedSeg != null
         && (void segStoreTick, isIgnoredFor(resolvedSeg, category));
     $: stagedPicks = stagedKey
-        ? ($stagedWaslPicks[stagedKey] ?? (ignoredAsWasl && staged ? staged.cursors.map(() => true) : []))
+        ? ($stagedWaslPicks[stagedKey] ?? (ignoredAsWasl && staged
+            ? staged.cursors.map(() => true)
+            : storedJoinPicks(staged, item)))
         : [];
     $: stagedChildren = staged && resolvedSeg && stagedKey
         ? buildStagedChildren(
@@ -283,17 +285,15 @@
     }
 
     /** Dispatch the staged split from the picks so far (`stagedCommit`);
-     *  returns the committed piece uids, or null when nothing was split. On a
-     *  cross-verse card unanswered boundaries commit as WAQF but stay flagged
-     *  pending, so their pickers keep asking and amend the same op in place
-     *  (the post-split path). On a missed-waqf card only the cuts answered
-     *  WAQF are cut; with none, the last answer (all WASL) ignores the item,
-     *  while an edit on a piece leaves the seg and its picks untouched. */
+     *  returns the committed piece uids, or null when nothing was split. Only
+     *  the cuts answered WAQF are cut and every answer is saved as a verdict;
+     *  with none cut, the last answer (all WASL) ignores the item, while an
+     *  edit on a piece leaves the seg and its picks untouched. */
     function materializeStaged(fromEdit = false): string[] | null {
         if (!staged || !stagedKey || !resolvedSeg) return null;
         const picks = get(stagedWaslPicks)[stagedKey] ?? [];
         const childUids = stagedChildUidsFor(stagedKey, staged.cursors.length);
-        const plan = stagedCommit(stagedCategory, staged, picks, childUids);
+        const plan = stagedCommit(staged, picks, childUids);
         if (plan.kind === 'none') {
             if (fromEdit) return null;
             clearStagedPicks(stagedKey);
@@ -303,7 +303,7 @@
         const { split: cut, wasls, newUids } = plan;
         try {
             const commit = commitSplit(resolvedSeg, cut.cursors, {
-                joinVerdicts: isMissedWaqfCard ? resolvedVerdicts(staged, cut.cursors) : undefined,
+                joinVerdicts: resolvedVerdicts(staged, cut.cursors),
                 refs: cut.refs,
                 wasls,
                 newUids,
@@ -311,14 +311,7 @@
             });
             if (!commit) return null;
             finalizeSplit(commit);
-            const pieceUids = commit.pieces.map((p) => p.segment_uid ?? '');
-            if (isMissedWaqfCard) return pieceUids;
-            for (let i = 0; i < cut.cursors.length; i++) {
-                if (picks[i] !== undefined) continue;
-                const left = commit.pieces[i]?.segment_uid;
-                if (left) markWaslPending(left);
-            }
-            return pieceUids;
+            return commit.pieces.map((p) => p.segment_uid ?? '');
         } catch (err) {
             console.warn('Staged split: commit failed:', err);
             return null;
@@ -338,9 +331,11 @@
     function onStagedPick(i: number, value: boolean): void {
         if (!staged || !stagedKey) return;
         const n = staged.cursors.length;
-        // Relabelling an ignored missed-waqf item starts from its all-WASL answer.
-        if (ignoredAsWasl && !get(stagedWaslPicks)[stagedKey]) {
-            for (let j = 0; j < n; j++) setStagedPick(stagedKey, j, true, n);
+        // Relabelling starts from the answers shown (an ignored item's all-WASL, stored verdicts).
+        if (!get(stagedWaslPicks)[stagedKey]) {
+            for (let j = 0; j < n; j++) {
+                if (stagedPicks[j] !== undefined) setStagedPick(stagedKey, j, stagedPicks[j]!, n);
+            }
         }
         setStagedPick(stagedKey, i, value, n);
         if (allPicked(get(stagedWaslPicks)[stagedKey], n)) materializeStaged();
@@ -429,13 +424,23 @@
         try {
             let any = false;
             for (const mem of targets) {
-                if (ignoreIssueOnSegment(mem, category, reviewBoundary(item))) any = true;
+                if (ignoreIssueOnSegment(mem, category, reviewBoundary(item) ?? staged)) any = true;
             }
             if (any) isAlreadyIgnored = true;
         } catch (err) {
             console.warn('Ignore: dispatch failed:', err);
         }
     }
+
+    // A merged cross-verse segment with no staged cut still shows its stored verdicts.
+    $: storedJoins = category === 'cross_verse' && !staged
+        ? ((item as { verse_joins?: { after_ref: string; verdict?: 'wasl' | 'waqf' | null }[] }).verse_joins ?? [])
+        : [];
+    $: joinLabels = {
+        wasl: tr($localeStore, m.segments_validation_boundary_wasl()),
+        waqf: tr($localeStore, m.segments_validation_boundary_waqf()),
+        unset: tr($localeStore, m.segments_validation_boundary_unset()),
+    };
 
     $: contextPreviousLabel = tr($localeStore, m.segments_validation_context_label_previous());
     $: contextNextLabel = tr($localeStore, m.segments_validation_context_label_next());
@@ -449,6 +454,11 @@
 <div style:opacity={isAlreadyIgnored ? 0.5 : null}>
     {#if issueMsg}
         <div class="val-card-issue-label">{issueMsg}</div>
+    {/if}
+    {#if storedJoins.length}
+        <div class="val-card-issue-label">
+            {storedJoins.map((j) => `${j.after_ref} · ${joinLabels[j.verdict ?? 'unset']}`).join('  ')}
+        </div>
     {/if}
     {#if isBoundaryReview}
         <BoundaryEvidence {category} {item} />

@@ -276,7 +276,8 @@ function _reduceSplit(state: ApplyCommandState, cmd: SplitCommand, ctx?: ApplyCo
         : null;
 
     const answers = putVerdicts(putVerdicts(target.join_verdicts, cmd.joinVerdicts ?? []), pickedVerdicts(
-        cursors, refs.map((r) => r ?? ''), refs.slice(0, cursors.length).map((r) => r ? false : undefined),
+        cursors, refs.map((r) => r ?? ''),
+        refs.slice(0, cursors.length).map((r, i) => r && waslOverrides?.[i] !== true ? false : undefined),
     ));
     const pieces: Segment[] = [];
     for (let i = 0; i < nPieces; i++) {

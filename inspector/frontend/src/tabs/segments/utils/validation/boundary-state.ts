@@ -111,7 +111,10 @@ export function boundaryStates(
     }
     if (members.length >= 2) return _committedStates(members, ctx);
     const joins = (item as { verse_joins?: { verdict?: 'wasl' | 'waqf' | null }[] }).verse_joins;
-    if (category === 'cross_verse' && joins?.length) return joins.map((j) => j.verdict ?? 'unset');
+    if (category === 'cross_verse' && joins?.length) {
+        const picks = ctx.stagedPicks[stagedPickKey(category, uid)] ?? [];
+        return joins.map((j, i) => picks[i] === undefined ? j.verdict ?? 'unset' : picks[i] ? 'wasl' : 'waqf');
+    }
     const staged = stagedSplitFor(category, root, item, ctx.autoSplitMap);
     if (staged) {
         const picks = ctx.stagedPicks[stagedPickKey(category, uid)] ?? [];

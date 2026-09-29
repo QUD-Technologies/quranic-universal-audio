@@ -24,6 +24,9 @@ import {
 } from '../../stores/dirty';
 import { isIgnoredFor } from '../validation/classified-issues';
 
+/** Categories whose ignore answers every asked join WASL. */
+const JOIN_CATEGORIES = new Set(['missed_waqf', 'cross_verse']);
+
 /**
  * Mark `category` ignored on `seg` by dispatching an `ignoreIssue` command,
  * then commit the resulting op to the dirty store and refresh `seg` in
@@ -36,7 +39,7 @@ import { isIgnoredFor } from '../validation/classified-issues';
 export function ignoreIssueOnSegment(seg: Segment, category: string, boundary?: StagedSplit | null): boolean {
     const item = get(segValidation)?.missed_waqf?.find((it) => it.segment_uid === seg.segment_uid);
     const asked = boundary ?? (item ? reviewBoundary(item) : null);
-    const answers = category === 'missed_waqf' && asked ? containedVerdicts(seg, resolvedVerdicts(asked, [])) : [];
+    const answers = JOIN_CATEGORIES.has(category) && asked ? containedVerdicts(seg, resolvedVerdicts(asked, [])) : [];
     if (isIgnoredFor(seg, category) && JSON.stringify(putVerdicts(seg.join_verdicts, answers)) === JSON.stringify(seg.join_verdicts ?? [])) return false;
     const segChapter = seg.chapter ?? parseInt(get(selectedChapter));
 

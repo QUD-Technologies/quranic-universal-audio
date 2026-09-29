@@ -110,6 +110,7 @@ describe('boundaryStates', () => {
             { after_ref: '2:1:4', verdict: 'wasl' }, { after_ref: '2:2:3', verdict: null },
         ] });
         expect(boundaryStates(it0, ctx(segs))).toEqual(['wasl', 'unset']);
+        expect(boundaryStates(it0, ctx(segs, { stagedPicks: { root: [undefined, false] } }))).toEqual(['wasl', 'waqf']);
     });
 
     it('is one unset boundary for an unsplit seg without a sidecar entry', () => {
