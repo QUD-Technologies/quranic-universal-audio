@@ -2096,7 +2096,9 @@ export interface SegValHiddenPauseBoundary {
  *
  * ``axes`` names the offline arms that agree on the cut (``trio`` = collar
  * boundary head, ``lite`` = lite student, ...). ``evidence`` is the
- * per-axis raw measurement block, passed through for the card.
+ * per-axis raw measurement block, passed through for the card. ``silence_*_ms``
+ * is the pause the cut-timing pass measured around the cursor (``timing_source``
+ * names how): a WAQF answer splits with that gap.
  */
 export interface SegValHiddenPauseCut {
   cursor_ms?: number | null;
@@ -2109,6 +2111,9 @@ export interface SegValHiddenPauseCut {
   evidence?: {
     [k: string]: unknown;
   };
+  silence_start_ms?: number | null;
+  silence_end_ms?: number | null;
+  timing_source?: ("psil" | "energy") | null;
 }
 /**
  * ``missed_waqf`` — an offline phoneme + silence detector heard the

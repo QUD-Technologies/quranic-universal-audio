@@ -511,7 +511,9 @@ class SegValHiddenPauseCut(BaseModel):
 
     ``axes`` names the offline arms that agree on the cut (``trio`` = collar
     boundary head, ``lite`` = lite student, ...). ``evidence`` is the
-    per-axis raw measurement block, passed through for the card."""
+    per-axis raw measurement block, passed through for the card. ``silence_*_ms``
+    is the pause the cut-timing pass measured around the cursor (``timing_source``
+    names how): a WAQF answer splits with that gap."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -523,6 +525,9 @@ class SegValHiddenPauseCut(BaseModel):
     final_class: str | None = None
     verse_end: bool = False
     evidence: dict[str, Any] = Field(default_factory=dict)
+    silence_start_ms: int | None = None
+    silence_end_ms: int | None = None
+    timing_source: Literal["psil", "energy"] | None = None
 
 
 class SegValHiddenPauseBoundary(BaseModel):

@@ -39,6 +39,21 @@ def test_review_completion_requires_every_join_answer_across_live_pieces():
     assert item["resolved"] is True
 
 
+def test_a_cut_opened_to_its_silence_is_answered_by_its_word():
+    item = {
+        "segment_uid": "root",
+        "boundary": {"cursors": [300], "refs": ["2:1:1-2:1:2", "2:1:3-2:1:9"]},
+    }
+    left = {
+        "segment_uid": "root",
+        "time_end": 240,
+        "join_verdicts": [{"at_ms": 240, "after_ref": "2:1:2", "verdict": "waqf"}],
+    }
+    entries = [{"segments": [left, {"segment_uid": "right", "join_verdicts": []}]}]
+    resolve_join_reviews([item], entries, {"root": ["right"]})
+    assert item["resolved"] is True
+
+
 def test_history_resolution_stands_without_stored_answers():
     item = {
         "segment_uid": "root",

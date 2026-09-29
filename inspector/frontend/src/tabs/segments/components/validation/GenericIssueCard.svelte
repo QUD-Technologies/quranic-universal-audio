@@ -10,6 +10,7 @@
     import { IssueRegistry } from '../../domain/registry';
     import { resolvedVerdicts } from '../../domain/join-verdict';
     import { reviewBoundary, reviewMembers } from '../../utils/validation/join-review';
+    import { cutSilences, openCutGaps } from '../../utils/edit/gap-split';
     import { autoSplitMap, ensureAutoSplitMap } from '../../stores/auto-split';
     import {
         getAdjacentSegments,
@@ -286,7 +287,8 @@
 
     /** Dispatch the staged split from the picks so far (`stagedCommit`);
      *  returns the committed piece uids, or null when nothing was split. Only
-     *  the cuts answered WAQF are cut and every answer is saved as a verdict;
+     *  the cuts answered WAQF are cut, each opened to its measured silence,
+     *  and every answer is saved as a verdict;
      *  with none cut, the last answer (all WASL) ignores the item, while an
      *  edit on a piece leaves the seg and its picks untouched. */
     function materializeStaged(fromEdit = false): string[] | null {
@@ -311,6 +313,7 @@
             });
             if (!commit) return null;
             finalizeSplit(commit);
+            openCutGaps(commit.pieces, cutSilences(item, cut.cursors), category);
             return commit.pieces.map((p) => p.segment_uid ?? '');
         } catch (err) {
             console.warn('Staged split: commit failed:', err);

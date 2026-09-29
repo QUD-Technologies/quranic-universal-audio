@@ -92,3 +92,22 @@ describe('one join verdict convention', () => {
     });
 
 });
+
+describe('a cut opened to its silence', () => {
+    const one = { cursors: [300], refs: ['2:1:1-2:1:2', '2:1:3-2:1:9'] };
+
+    it('a trimmed edge keeps its WAQF answer at the new end', () => {
+        const left = root({ time_end: 300, matched_ref: '2:1:1-2:1:2',
+            join_verdicts: [{ at_ms: 300, after_ref: '2:1:2', verdict: 'waqf' }] });
+        const r = applyCommand(state(left), { type: 'trim', segmentUid: 'root', delta: { time_end: 240 } });
+        expect(r.nextState.byId.root?.join_verdicts).toEqual([{ at_ms: 240, after_ref: '2:1:2', verdict: 'waqf' }]);
+    });
+
+    it('the piece ending on the cut word owns a cursor left in the gap', () => {
+        const left = root({ time_end: 240, matched_ref: '2:1:1-2:1:2',
+            join_verdicts: [{ at_ms: 240, after_ref: '2:1:2', verdict: 'waqf' }] });
+        const right = root({ segment_uid: 'right', index: 1, time_start: 360, time_end: 1000, matched_ref: '2:1:3-2:1:9' });
+        expect(reviewStates([left, right], one)).toEqual(['waqf']);
+    });
+});
+

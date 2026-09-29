@@ -31,6 +31,7 @@ from config import (
 from constants import STOP_SIGNS
 from qua_shared.riwayat import DEFAULT_SDK_RIWAYAH
 from services.storage import cache, data_dir, static_refs
+from services.storage.cut_timing import timed_missed_waqf_doc
 
 _detailed_locks: dict[str, threading.Lock] = {}
 _detailed_locks_guard = threading.Lock()
@@ -339,10 +340,13 @@ def load_missed_waqf(reciter: str) -> tuple[dict[str, dict], dict | None]:
     """Load the Low Confidence Waqf sidecar — cursors inside a segment where the
     reciter may have stopped, keyed by ``segment_uid``: ``missed_waqf_v2.json``
     (the align pipeline's lattice pauses) when present, else the lab's
-    ``missed_waqf_v1.json``. Never written by the Inspector's save flow."""
+    ``missed_waqf_v1.json``, with each cut ``cut_timing_v1.json`` timed moved to its
+    measured silence. Never written by the Inspector's save flow."""
     return _load_by_uid_sidecar(
         reciter,
-        data_dir.read_missed_waqf_doc,
+        lambda slug: timed_missed_waqf_doc(
+            data_dir.read_missed_waqf_doc(slug), data_dir.read_cut_timing_doc(slug)
+        ),
         cache.get_seg_missed_waqf,
         cache.set_seg_missed_waqf,
     )

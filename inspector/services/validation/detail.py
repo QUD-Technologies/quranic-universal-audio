@@ -128,6 +128,9 @@ def _cut_payload(cut: dict) -> dict:
         "final_class": cut.get("final_class"),
         "verse_end": bool(cut.get("verse_end", False)),
         "evidence": dict(cut.get("evidence") or {}),
+        "silence_start_ms": _int_or_none(cut.get("silence_start_ms")),
+        "silence_end_ms": _int_or_none(cut.get("silence_end_ms")),
+        "timing_source": cut.get("timing_source"),
     }
 
 
@@ -165,15 +168,18 @@ def resolve_join_reviews(
     split_groups: dict,
     recheck: list[str] | tuple[str, ...] = (),
 ) -> None:
-    """Mark items whose every join carries a stored answer resolved; history resolution stays."""
+    """Mark items whose every join carries a stored answer resolved; history resolution stays.
+
+    Answers match a cut by its word (``after_ref``): a WAQF cut opened to its silence
+    stores its verdict at the left piece's end, not at the cursor."""
     live = {s.get("segment_uid"): s for e in entries for s in e.get("segments", [])}
     for item in items:
         uid = item.get("segment_uid")
         root = live.get(uid, {})
         boundary = item.get("boundary") or {}
         cursors, refs = boundary.get("cursors") or [], boundary.get("refs") or []
-        answers = {
-            (j["at_ms"], j["after_ref"])
+        answered = {
+            j["after_ref"]
             for member in [uid, *split_groups.get(uid, [])]
             for j in live.get(member, {}).get("join_verdicts") or []
             if not (member in recheck and j["at_ms"] == live[member].get("time_end"))
@@ -181,7 +187,7 @@ def resolve_join_reviews(
         complete = (
             bool(cursors)
             and len(refs) == len(cursors) + 1
-            and all((at, refs[i].split("-")[-1]) in answers for i, at in enumerate(cursors))
+            and all(refs[i].split("-")[-1] in answered for i in range(len(cursors)))
         )
         if complete or is_ignored_for(root, "missed_waqf"):
             item["resolved"] = True

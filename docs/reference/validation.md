@@ -49,6 +49,17 @@ Split descendants carry the corresponding records; changing a retained cut to
 wasl merges its pieces. Existing staged pickers, context, edit actions and
 Ignore remain in place. Saved records also feed boundary counts and completion.
 
+**Measured silence.** When `cut_timing_v1.json` (the timing engine's psil-seeded
+cut pass) timed a cut, `services/storage/cut_timing.py` moves its cursor to the
+middle of the measured pause and adds `silence_start_ms` / `silence_end_ms` /
+`timing_source` (`psil`, or `energy` where the psil collapsed). A WAQF answer
+then splits and trims both pieces to that silence (`utils/edit/gap-split.ts`):
+the left piece ends where the pause starts, the right starts where it ends. The
+split and the two trims chain through the pieces' uids, so history shows one
+edit and undo reverts it whole. The WAQF verdict sits at the left piece's end
+and a trim moves it with that edge; completion and the card match a cut's
+answer by its word (`after_ref`), since the cursor now lies in the gap.
+
 Split distributes answers within each piece's word and audio range. Merge
 unions records and drops waqf at the seam. Reference and timing edits discard
 only answers that no longer fit. Snapshots carry records through save,

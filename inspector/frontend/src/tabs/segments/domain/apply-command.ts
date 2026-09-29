@@ -41,7 +41,7 @@ import type {
     SplitCommand,
     TrimCommand,
 } from './command';
-import { containedVerdicts, edgeAnswer, pickedVerdicts, putVerdicts } from './join-verdict';
+import { containedVerdicts, edgeAnswer, movedEdgeVerdicts, pickedVerdicts, putVerdicts } from './join-verdict';
 import { IssueRegistry } from './registry';
 
 const HISTORY_NEUTRAL_CONTEXT_CATEGORIES = new Set(['muqattaat']);
@@ -184,7 +184,7 @@ function _reduceTrim(state: ApplyCommandState, cmd: TrimCommand, ctx?: ApplyComm
     const next = _cloneSeg(target);
     if (cmd.delta.time_start != null) next.time_start = cmd.delta.time_start;
     if (cmd.delta.time_end != null) next.time_end = cmd.delta.time_end;
-    if (next.join_verdicts) next.join_verdicts = containedVerdicts(next);
+    if (next.join_verdicts) next.join_verdicts = containedVerdicts(next, movedEdgeVerdicts(target, next));
     next.confidence = 1.0;
     const resolved = _resolvedFromContext(cmd.sourceCategory ?? cmd.contextCategory);
 
@@ -462,7 +462,7 @@ function _reduceEditReference(
 
     const next = _cloneSeg(target);
     next.matched_ref = cmd.matched_ref;
-    if (next.join_verdicts) next.join_verdicts = containedVerdicts(next);
+    if (next.join_verdicts) next.join_verdicts = containedVerdicts(next, movedEdgeVerdicts(target, next));
     if (cmd.matched_text !== undefined) next.matched_text = cmd.matched_text;
     next.confidence = 1.0;
     // Same reasoning as the split path: changing matched_ref invalidates any
@@ -695,7 +695,7 @@ function _reduceAutoFixMissingWord(
 
     const next = _cloneSeg(target);
     next.matched_ref = cmd.matched_ref;
-    if (next.join_verdicts) next.join_verdicts = containedVerdicts(next);
+    if (next.join_verdicts) next.join_verdicts = containedVerdicts(next, movedEdgeVerdicts(target, next));
     if (cmd.matched_text !== undefined) next.matched_text = cmd.matched_text;
     next.confidence = 1.0;
 
