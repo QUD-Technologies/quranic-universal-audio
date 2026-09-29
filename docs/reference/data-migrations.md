@@ -207,9 +207,10 @@ skipped. Dry run by default; restart the Space before and after `--apply`.
 ## Stop-gap backfill
 
 `scripts/backfills/open_stop_gaps.py --slug <slug> [--timing cut_timing_v1.json] [--apply]`
-trims every abutting stop pair that `cut_timing_v1.json` timed (`kind: stop`,
-`source` `psil` or `energy`) so the left segment ends where the measured pause
-starts and the right starts where it ends; the left's WAQF verdict moves with its
-edge. Two `trim_segment` ops per pair (`fix_kind: auto_fix`), one save per
-chapter. Pairs that moved, no longer abut, or would leave a piece under 50 ms are
-skipped. Dry run by default; restart the Space before and after `--apply`.
+opens the pause between every abutting stop pair that `cut_timing_v1.json` timed
+(`kind: stop`, `source` `psil` or `energy`). The published boundary and the measured
+silence are both evidence of the pause, so the gap spans both: the left segment ends
+at the earlier, the right starts at the later, and the left's WAQF verdict moves with
+its edge. Two `trim_segment` ops per pair (`fix_kind: auto_fix`), one save per
+chapter. Pairs that moved, no longer abut, whose silence lies over 300 ms from the
+boundary, or that would leave a piece under 50 ms are skipped. Dry run by default; restart the Space before and after `--apply`.
