@@ -16,6 +16,7 @@ import {
     stagedCommit,
     stagedPickKey,
     stagedSplitFor,
+    storedJoinPicks,
     waqfOnlySplit,
 } from '../../utils/validation/staged-split';
 
@@ -184,18 +185,18 @@ describe('stagedCommit', () => {
     const staged = { cursors: [2000, 3500], refs: ['2:1:1-2:1:4', '2:1:5-2:1:8', '2:1:9-2:1:12'] };
     const kids = ['k1', 'k2'];
 
-    it('missed-waqf: all WASL needs no physical cuts', () => {
-        expect(stagedCommit('missed_waqf', staged, [true, true], kids)).toEqual({ kind: 'none' });
+    it('all WASL needs no physical cuts', () => {
+        expect(stagedCommit(staged, [true, true], kids)).toEqual({ kind: 'none' });
     });
 
-    it('missed-waqf: mixed picks split at the WAQF cursors only, none marked wasl', () => {
-        expect(stagedCommit('missed_waqf', staged, [true, false], kids)).toEqual({
+    it('mixed picks split at the WAQF cursors only, none marked wasl', () => {
+        expect(stagedCommit(staged, [true, false], kids)).toEqual({
             kind: 'split',
             split: { cursors: [3500], refs: ['2:1:1-2:1:8', '2:1:9-2:1:12'] },
             wasls: [false],
             newUids: ['k2'],
         });
-        expect(stagedCommit('missed_waqf', staged, [false, false], kids)).toEqual({
+        expect(stagedCommit(staged, [false, false], kids)).toEqual({
             kind: 'split',
             split: staged,
             wasls: [false, false],
@@ -203,35 +204,34 @@ describe('stagedCommit', () => {
         });
     });
 
-    it('missed-waqf: an edit before every cut is answered never cuts an unanswered one', () => {
-        expect(stagedCommit('missed_waqf', staged, [], kids)).toEqual({ kind: 'none' });
-        expect(stagedCommit('missed_waqf', staged, [undefined, true], kids)).toEqual({ kind: 'none' });
-        expect(stagedCommit('missed_waqf', staged, [undefined, false], kids)).toEqual({
+    it('an edit before every cut is answered never cuts an unanswered one', () => {
+        expect(stagedCommit(staged, [], kids)).toEqual({ kind: 'none' });
+        expect(stagedCommit(staged, [undefined, true], kids)).toEqual({ kind: 'none' });
+        expect(stagedCommit(staged, [undefined, false], kids)).toEqual({
             kind: 'split',
             split: { cursors: [3500], refs: ['2:1:1-2:1:8', '2:1:9-2:1:12'] },
             wasls: [false],
             newUids: ['k2'],
         });
-        expect(stagedCommit('missed_waqf', staged, [false, undefined], kids)).toEqual({
+        expect(stagedCommit(staged, [false, undefined], kids)).toEqual({
             kind: 'split',
             split: { cursors: [2000], refs: ['2:1:1-2:1:4', '2:1:5-2:1:12'] },
             wasls: [false],
             newUids: ['k1'],
         });
     });
+});
 
-    it('cross-verse: cuts every boundary, unanswered included, and carries the picks as is_wasl', () => {
-        expect(stagedCommit('cross_verse', staged, [true, false], kids)).toEqual({
-            kind: 'split',
-            split: staged,
-            wasls: [true, false],
-            newUids: kids,
-        });
-        expect(stagedCommit('cross_verse', staged, [true, undefined], kids)).toEqual({
-            kind: 'split',
-            split: staged,
-            wasls: [true, undefined],
-            newUids: kids,
-        });
+describe('storedJoinPicks', () => {
+    const staged = { cursors: [2000, 3500], refs: ['2:1:1-2:1:7', '2:2:1-2:2:5', '2:3:1-2:3:4'] };
+
+    it('starts each cut from its stored verse-join verdict', () => {
+        const item = { verse_joins: [{ after_ref: '2:1:7', verdict: 'wasl' }, { after_ref: '2:2:5', verdict: null }] };
+        expect(storedJoinPicks(staged, item as unknown as SegValAnyItem)).toEqual([true, undefined]);
+    });
+
+    it('is empty without joins', () => {
+        expect(storedJoinPicks(staged, {} as SegValAnyItem)).toEqual([]);
+        expect(storedJoinPicks(null, null)).toEqual([]);
     });
 });

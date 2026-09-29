@@ -1,7 +1,11 @@
-/** Project candidate joins onto live pieces; resolved cuts and uncut cursors carry answers. */
+/**
+ * Project candidate joins onto live pieces; resolved cuts and uncut cursors carry answers.
+ * A cut opened to its silence leaves the cursor in the gap: its owner is the piece
+ * ending on the cut's word, and answers are matched by that word, not the cursor.
+ */
 import type { SegValAnyItem } from '../../../../lib/types/generated/schemas';
 import type { Segment } from '../../../../lib/types/view-models';
-import { endRef, joinState } from '../../domain/join-verdict';
+import { endRef } from '../../domain/join-verdict';
 import { type StagedSplit } from './staged-split';
 
 export function reviewBoundary(item: SegValAnyItem): StagedSplit | null {
@@ -12,11 +16,39 @@ export function reviewBoundary(item: SegValAnyItem): StagedSplit | null {
     return { cursors: b.cursors, refs: b.refs };
 }
 
+/**
+ * Each cut's answer, by its word: a verdict stored on any piece, else a piece ending
+ * on that word (a boundary already made there: WASL when marked so, else WAQF).
+ * A piece under WASL recheck answers nothing at its end.
+ */
 export function reviewStates(members: readonly Segment[], boundary: StagedSplit, recheck: ReadonlySet<string> = new Set()) {
-    return boundary.cursors.map((at, i) => {
-        const owner = reviewJoinOwner(members, boundary, i);
-        if (owner?.time_end === at && recheck.has(owner.segment_uid ?? '')) return 'unset';
-        return owner ? joinState(owner, at, endRef(boundary.refs[i]!)) : 'unset';
+    return boundary.refs.slice(0, boundary.cursors.length).map((ref) => {
+        const after = endRef(ref);
+        for (const s of members) {
+            const answer = s.join_verdicts?.find((j) => j.after_ref === after);
+            if (answer && !(recheck.has(s.segment_uid ?? '') && answer.at_ms === s.time_end)) return answer.verdict;
+        }
+        const edge = members.find((s) => WORD_SPAN.test(s.matched_ref) && endRef(s.matched_ref) === after);
+        if (!edge || recheck.has(edge.segment_uid ?? '')) return 'unset';
+        return edge.is_wasl ? 'wasl' : 'waqf';
+    });
+}
+
+const WORD_SPAN = /^\d+:\d+:\d+-\d+:\d+:\d+$/;
+
+/**
+ * The split-group pieces inside the item's own words. The group also holds the
+ * splits that made the reviewed segment (a cross-verse or low-confidence cut),
+ * which are not answers to its cursors.
+ */
+export function reviewMembers(members: readonly Segment[], boundary: StagedSplit | null): Segment[] {
+    if (!boundary) return [...members];
+    const first = boundary.refs[0]!.split('-')[0]!;
+    const last = endRef(boundary.refs[boundary.refs.length - 1]!);
+    return members.filter((s) => {
+        if (!WORD_SPAN.test(s.matched_ref)) return false;
+        const [from, to] = s.matched_ref.split('-') as [string, string];
+        return compareRef(from, first) >= 0 && compareRef(to, last) <= 0;
     });
 }
 
@@ -29,11 +61,13 @@ function compareRef(a: string, b: string): number {
 /** A stale sidecar must not split a segment whose reference has changed. */
 export function reviewJoinOwner(members: readonly Segment[], boundary: StagedSplit, i: number): Segment | undefined {
     const at = boundary.cursors[i]!;
-    const owner = members.find((s) => s.time_start < at && at <= s.time_end);
-    if (!owner || !/^\d+:\d+:\d+-\d+:\d+:\d+$/.test(owner.matched_ref)) return undefined;
     const after = endRef(boundary.refs[i]!);
+    const owner = members.find((s) => s.time_start < at && at <= s.time_end)
+        ?? [...members].reverse()
+            .find((s) => s.time_end < at && WORD_SPAN.test(s.matched_ref) && endRef(s.matched_ref) === after);
+    if (!owner || !/^\d+:\d+:\d+-\d+:\d+:\d+$/.test(owner.matched_ref)) return undefined;
     if (compareRef(after, owner.matched_ref.split('-')[0]!) < 0 || compareRef(after, endRef(owner.matched_ref)) > 0) return undefined;
-    if (at === owner.time_end && after !== endRef(owner.matched_ref)) return undefined;
+    if (at >= owner.time_end && after !== endRef(owner.matched_ref)) return undefined;
     if (at < owner.time_end && compareRef(boundary.refs[i + 1]!.split('-')[0]!, endRef(owner.matched_ref)) > 0) return undefined;
     return owner;
 }

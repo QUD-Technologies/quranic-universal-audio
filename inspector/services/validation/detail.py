@@ -128,6 +128,9 @@ def _cut_payload(cut: dict) -> dict:
         "final_class": cut.get("final_class"),
         "verse_end": bool(cut.get("verse_end", False)),
         "evidence": dict(cut.get("evidence") or {}),
+        "silence_start_ms": _int_or_none(cut.get("silence_start_ms")),
+        "silence_end_ms": _int_or_none(cut.get("silence_end_ms")),
+        "timing_source": cut.get("timing_source"),
     }
 
 
@@ -141,6 +144,13 @@ def hidden_pause_boundary(entry: dict) -> dict:
         "score": _int_or_none(entry.get("score")) or 0,
         "cuts": [_cut_payload(c) for c in (entry.get("cuts") or []) if isinstance(c, dict)],
     }
+
+
+def reviewable(entry: dict) -> bool:
+    """A Low Confidence Waqf entry with one piece per cut and strictly rising cursors."""
+    cursors, refs = entry.get("cursors") or [], entry.get("refs") or []
+    rising = all(a < b for a, b in zip(cursors, cursors[1:], strict=False))
+    return bool(cursors) and len(refs) == len(cursors) + 1 and rising
 
 
 def false_split_boundary(entry: dict) -> dict:
@@ -165,25 +175,32 @@ def resolve_join_reviews(
     split_groups: dict,
     recheck: list[str] | tuple[str, ...] = (),
 ) -> None:
-    """Mark items whose every join carries a stored answer resolved; history resolution stays."""
+    """Mark items whose every cut is answered resolved; history resolution stays.
+
+    A cut is answered by its word (``after_ref``): a verdict stored on any piece of
+    the item's split group (a WAQF cut opened to its silence stores it at the left
+    piece's end, not at the cursor), or a piece that ends on that word, which is a
+    boundary already made there. A piece under WASL recheck answers nothing at its end.
+    """
     live = {s.get("segment_uid"): s for e in entries for s in e.get("segments", [])}
     for item in items:
         uid = item.get("segment_uid")
         root = live.get(uid, {})
-        boundary = item.get("boundary") or {}
-        cursors, refs = boundary.get("cursors") or [], boundary.get("refs") or []
-        answers = {
-            (j["at_ms"], j["after_ref"])
-            for member in [uid, *split_groups.get(uid, [])]
-            for j in live.get(member, {}).get("join_verdicts") or []
-            if not (member in recheck and j["at_ms"] == live[member].get("time_end"))
+        refs = (item.get("boundary") or {}).get("refs") or []
+        members = [live[m] for m in [uid, *split_groups.get(uid, [])] if m in live]
+        answered = {
+            j["after_ref"]
+            for member in members
+            for j in member.get("join_verdicts") or []
+            if not (member.get("segment_uid") in recheck and j["at_ms"] == member.get("time_end"))
         }
-        complete = (
-            bool(cursors)
-            and len(refs) == len(cursors) + 1
-            and all((at, refs[i].split("-")[-1]) in answers for i, at in enumerate(cursors))
-        )
-        if complete or is_ignored_for(root, "missed_waqf"):
+        answered |= {
+            str(member.get("matched_ref") or "").rpartition("-")[2]
+            for member in members
+            if member.get("segment_uid") not in recheck
+        }
+        cuts = [ref.split("-")[-1] for ref in refs[:-1]]
+        if (cuts and all(cut in answered for cut in cuts)) or is_ignored_for(root, "missed_waqf"):
             item["resolved"] = True
 
 
@@ -536,7 +553,7 @@ def _build_detail_lists(
                 )
 
             missed_waqf_entry = (missed_waqf_map or {}).get(str(seg_uid)) if seg_uid else None
-            if missed_waqf_entry is not None:
+            if missed_waqf_entry is not None and reviewable(missed_waqf_entry):
                 item = {
                     "ref": matched_ref,
                     "chapter": chapter,

@@ -191,3 +191,25 @@ timestamp impact. Known snapshot-only annotations present in the supplied
 export are retained on untouched rows; the persisted projection and audit
 models are validated. Unknown fields still fail validation. Re-running staged
 data produces no additional changes.
+
+## Verse-end verdict backfill
+
+`scripts/backfills/store_verse_end_verdicts.py --slug <slug> --applied verse_ends_applied.json [--apply]`
+stores the boundary lab's WASL verse-end verdicts, which `apply_verse_end_verdicts`
+left unrecorded because a WASL join needs no split, as `join_verdicts` (`at_ms` =
+the lab cursor) on the live segment. A segment whose every verse end is then
+answered is settled for `cross_verse` exactly as a reviewer's all-WASL answer is
+(`ignore_issue`, `fix_kind: auto_fix`); otherwise only the answers are stored and
+the rest stay asked. Joins whose segment is gone, whose word is no longer a verse
+end inside it, whose cursor is outside it, or that are already answered are
+skipped. Dry run by default; restart the Space before and after `--apply`.
+
+## Stop-gap backfill
+
+`scripts/backfills/open_stop_gaps.py --slug <slug> [--timing cut_timing_v1.json] [--apply]`
+trims every abutting stop pair that `cut_timing_v1.json` timed (`kind: stop`,
+`source` `psil` or `energy`) so the left segment ends where the measured pause
+starts and the right starts where it ends; the left's WAQF verdict moves with its
+edge. Two `trim_segment` ops per pair (`fix_kind: auto_fix`), one save per
+chapter. Pairs that moved, no longer abut, or would leave a piece under 50 ms are
+skipped. Dry run by default; restart the Space before and after `--apply`.

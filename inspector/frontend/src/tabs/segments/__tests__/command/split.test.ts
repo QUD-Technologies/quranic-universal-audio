@@ -141,6 +141,25 @@ describe('command/split', () => {
     expect(ordered[2].is_wasl).toBe(false);
   });
 
+  it('split records a waqf verdict only at the cuts not labelled wasl', () => {
+    const state = makeApplyCommandState([
+      makeSegment(0, 0, 4500, { segment_uid: 'uid-cv', matched_ref: '37:151:1-37:153:5' }),
+    ]);
+    const cmd: SplitCommand = {
+      type: 'split',
+      segmentUid: 'uid-cv',
+      splitMs: [1500, 3000],
+      newUids: ['uid-c1', 'uid-c2'],
+      refs: ['37:151:1-37:151:4', '37:152:1-37:152:6', '37:153:1-37:153:5'],
+      wasls: [true, false],
+    };
+    const r = applyCommand(state, cmd);
+    expect(r.nextState.byId['uid-cv']?.join_verdicts ?? []).toEqual([]);
+    expect(r.nextState.byId['uid-c1']?.join_verdicts).toEqual([
+      { at_ms: 3000, after_ref: '37:152:6', verdict: 'waqf' },
+    ]);
+  });
+
   it('split with parent is_wasl=true preserves it on the LAST child only', () => {
     // Parent's is_wasl=true described the parent→next-seg boundary. After
     // split, that boundary is still owned by the new last child.

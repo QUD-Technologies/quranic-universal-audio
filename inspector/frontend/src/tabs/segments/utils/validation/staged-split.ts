@@ -95,6 +95,21 @@ export function stagedSplitFor(
     return resolveStagedSplit(seg, { [uid]: entry }, MISSED_WAQF_KINDS);
 }
 
+/**
+ * Picks a cross-verse card starts from: each staged cut's stored verse-join
+ * verdict (`true` = WASL), so saved answers show on the card.
+ */
+export function storedJoinPicks(staged: StagedSplit | null, item: SegValAnyItem | null): StagedPick[] {
+    const joins = (item as { verse_joins?: { after_ref: string; verdict?: 'wasl' | 'waqf' | null }[] } | null)
+        ?.verse_joins;
+    if (!staged || !joins?.length) return [];
+    const byRef = new Map(joins.map((j) => [j.after_ref, j.verdict ?? null]));
+    return staged.cursors.map((_, i) => {
+        const verdict = byRef.get(staged.refs[i]!.split('-').pop()!);
+        return verdict ? verdict === 'wasl' : undefined;
+    });
+}
+
 /** Session-pick key: one seg can sit in both staged accordions with different cuts. */
 export function stagedPickKey(category: StagedKind, uid: string): string {
     return category === 'cross_verse' ? uid : `${category}:${uid}`;
@@ -131,27 +146,20 @@ export type StagedCommit =
     | { kind: 'split'; split: StagedSplit; wasls: (boolean | undefined)[]; newUids: string[] };
 
 /**
- * What a `category` card commits from its picks so far. `childUids` are the
+ * What a staged card commits from its picks so far. `childUids` are the
  * staged pieces' uids (pieces 1..N).
  *
- * Cross-verse cuts every boundary, carrying each pick as `is_wasl`
- * (unanswered commits as WAQF; the card keeps asking).
- *
- * Missed-waqf cuts only the boundaries answered WAQF: a WASL or unanswered
- * cut is a suspect that never becomes a split. Each committed piece keeps the
+ * Both categories cut only the boundaries answered WAQF: a WASL or unanswered
+ * cut never becomes a split (a WASL join is a verdict on the whole segment).
+ * Each committed piece keeps the
  * uid of the staged piece that starts where it starts, so those rows keep
  * their identity. `none` when no cut is answered WAQF.
  */
 export function stagedCommit(
-    category: StagedKind,
     staged: StagedSplit,
     picks: readonly StagedPick[],
     childUids: readonly string[],
 ): StagedCommit {
-    if (category === 'cross_verse') {
-        const wasls = staged.cursors.map((_, i) => picks[i]);
-        return { kind: 'split', split: staged, wasls, newUids: childUids.slice() };
-    }
     const kept = staged.cursors.map((_, i) => picks[i] === false);
     const split = waqfOnlySplit(staged, kept.map((k) => !k));
     if (!split) return { kind: 'none' };

@@ -14,6 +14,7 @@ import {
     filterByBoundaryStates,
     isVerseBoundary,
 } from '../../utils/validation/boundary-state';
+import { reviewMembers } from '../../utils/validation/join-review';
 
 const seg = (o: Partial<Segment>): Segment => {
     const result: Segment = {
@@ -109,6 +110,7 @@ describe('boundaryStates', () => {
             { after_ref: '2:1:4', verdict: 'wasl' }, { after_ref: '2:2:3', verdict: null },
         ] });
         expect(boundaryStates(it0, ctx(segs))).toEqual(['wasl', 'unset']);
+        expect(boundaryStates(it0, ctx(segs, { stagedPicks: { root: [undefined, false] } }))).toEqual(['wasl', 'waqf']);
     });
 
     it('is one unset boundary for an unsplit seg without a sidecar entry', () => {
@@ -167,7 +169,7 @@ describe('boundaryStates — missed_waqf', () => {
         expect(boundaryStates(mw, ctx(segs), 'missed_waqf')).toEqual(['wasl', 'wasl']);
     });
 
-    it('reads a split saved without verdicts as waqf at its cuts and wasl elsewhere', () => {
+    it('reads a split saved without verdicts as waqf at its cut word and wasl elsewhere', () => {
         const bare = (o: Partial<Segment>): Segment => ({
             index: 0, entry_idx: 0, chapter: 2, time_start: 0, time_end: 1000,
             matched_ref: '2:1:1-2:1:4', confidence: 1, ...o,
@@ -177,9 +179,19 @@ describe('boundaryStates — missed_waqf', () => {
             bare({ segment_uid: 'b', index: 1, time_start: 600, time_end: 1000, matched_ref: '2:1:6-2:1:9' }),
         ];
         const c = ctx(segs, { splitGroupIndex: { root: ['b'] } });
-        expect(boundaryStates({ ...mw, resolved: true } as SegValAnyItem, c, 'missed_waqf')).toEqual(['waqf', 'wasl']);
-        // a split the server did not resolve from this card (e.g. a verse-end auto split) is no answer
+        expect(boundaryStates({ ...mw, resolved: true } as SegValAnyItem, c, 'missed_waqf')).toEqual(['wasl', 'waqf']);
+        // a boundary on the cut word answers it however it was made; the other cut stays asked
+        expect(boundaryStates(mw, c, 'missed_waqf')).toEqual(['unset', 'waqf']);
+    });
+
+    it('leaves cursors unset on a segment made by an earlier cross-verse split', () => {
+        const segs = [
+            seg({ segment_uid: 'root', index: 0, time_start: 0, time_end: 1000, matched_ref: '2:1:1-2:1:9', is_wasl: false }),
+            seg({ segment_uid: 'sib', index: 1, time_start: 1000, time_end: 1500, matched_ref: '2:2:1-2:2:3' }),
+        ];
+        const c = ctx(segs, { splitGroupIndex: { root: ['sib'] } });
         expect(boundaryStates(mw, c, 'missed_waqf')).toEqual(['unset', 'unset']);
+        expect(reviewMembers(segs, boundary).map((s) => s.segment_uid)).toEqual(['root']);
     });
 
     it('drives the Unset · Wasl · Waqf chips across items', () => {

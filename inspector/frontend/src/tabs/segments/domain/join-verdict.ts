@@ -49,6 +49,14 @@ function compareRef(a: string, b: string): number {
     return 0;
 }
 
+/** `answers` with the stop answer at `before`'s end moved to `after`'s end (a trimmed edge keeps its answer). */
+export function movedEdgeVerdicts(before: Segment, after: Segment, answers = before.join_verdicts ?? []): JoinVerdict[] {
+    const end = endRef(before.matched_ref);
+    return answers.map((j) => j.at_ms === before.time_end && j.after_ref === end && j.verdict === 'waqf'
+        ? { ...j, at_ms: after.time_end }
+        : j);
+}
+
 /** Keep answers whose word and audio coordinates still belong to this piece. */
 export function containedVerdicts(seg: Segment, answers = seg.join_verdicts ?? []): JoinVerdict[] {
     const start = seg.matched_ref.split('-')[0]!;

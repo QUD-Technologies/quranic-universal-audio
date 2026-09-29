@@ -39,6 +39,38 @@ def test_review_completion_requires_every_join_answer_across_live_pieces():
     assert item["resolved"] is True
 
 
+def test_a_cut_opened_to_its_silence_is_answered_by_its_word():
+    item = {
+        "segment_uid": "root",
+        "boundary": {"cursors": [300], "refs": ["2:1:1-2:1:2", "2:1:3-2:1:9"]},
+    }
+    left = {
+        "segment_uid": "root",
+        "time_end": 240,
+        "join_verdicts": [{"at_ms": 240, "after_ref": "2:1:2", "verdict": "waqf"}],
+    }
+    entries = [{"segments": [left, {"segment_uid": "right", "join_verdicts": []}]}]
+    resolve_join_reviews([item], entries, {"root": ["right"]})
+    assert item["resolved"] is True
+
+
+def test_a_piece_ending_on_the_cut_word_answers_it():
+    item = {
+        "segment_uid": "root",
+        "boundary": {"cursors": [300, 600], "refs": ["2:1:1-2:1:2", "2:1:3-2:1:5", "2:1:6-2:1:9"]},
+    }
+    pieces = [
+        {"segment_uid": "root", "time_end": 280, "matched_ref": "2:1:1-2:1:2"},
+        {"segment_uid": "mid", "time_end": 610, "matched_ref": "2:1:3-2:1:5"},
+        {"segment_uid": "right", "matched_ref": "2:1:6-2:1:9"},
+    ]
+    entries = [{"segments": pieces}]
+    resolve_join_reviews([item], entries, {"root": ["mid", "right"]}, ["mid"])
+    assert "resolved" not in item
+    resolve_join_reviews([item], entries, {"root": ["mid", "right"]})
+    assert item["resolved"] is True
+
+
 def test_history_resolution_stands_without_stored_answers():
     item = {
         "segment_uid": "root",
@@ -371,6 +403,12 @@ def test_missed_waqf_items_carry_boundary_and_validate():
         mode="json", exclude_unset=True
     )
     assert dumped["missed_waqf"][0]["boundary"]["cuts"][1]["word"] == "الرحمن"
+
+
+def test_an_entry_with_collapsed_cursors_is_not_listed():
+    entries = [{"ref": "1", "segments": [_seg("u1", "1:1:1-1:1:4")]}]
+    collapsed = {**MISSED_ENTRY, "cursors": [1200, 1200]}
+    assert _detail(entries, missed_waqf_map={"u1": collapsed})["missed_waqf"] == []
 
 
 def test_labelled_missed_waqf_stays_listed_as_resolved():

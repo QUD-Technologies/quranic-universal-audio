@@ -191,6 +191,13 @@ def missed_waqf_path(slug: str, version: int = 1) -> str:
     return reciter_file(slug, f"missed_waqf_v{version}.json")
 
 
+def cut_timing_path(slug: str) -> str:
+    """Measured silence at each proposed and abutting stop (``cut_timing_v1.json``),
+    from the timing engine's psil-seeded pass. Keyed by ``segment_uid``; read by
+    ``services/storage/cut_timing``."""
+    return reciter_file(slug, "cut_timing_v1.json")
+
+
 def false_split_path(slug: str) -> str:
     """Boundary-review sidecar — per-seg evidence that offline re-segmentation
     heard continuous speech across the segment's end. Keyed by ``segment_uid``;
@@ -277,6 +284,7 @@ PER_RECITER_FILES: tuple[str, ...] = (
     "hidden_pause_v1.json",
     "missed_waqf_v1.json",
     "missed_waqf_v2.json",
+    "cut_timing_v1.json",
     "false_split_v1.json",
     "unmarked_wasl_v1.json",
     "wasl_recheck_v1.json",

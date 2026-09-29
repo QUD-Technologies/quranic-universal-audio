@@ -101,6 +101,10 @@ def missed_waqf_path(slug: str, version: int = 1) -> str:
     return storage_paths.missed_waqf_path(slug, version)
 
 
+def cut_timing_path(slug: str) -> str:
+    return storage_paths.cut_timing_path(slug)
+
+
 def false_split_path(slug: str) -> str:
     return storage_paths.false_split_path(slug)
 
@@ -193,6 +197,14 @@ def read_missed_waqf_doc(slug: str) -> dict | None:
         except StorageNotFound:
             continue
     return None
+
+
+def read_cut_timing_doc(slug: str) -> dict | None:
+    """Return the parsed ``cut_timing_v1.json`` doc, or ``None`` if absent."""
+    try:
+        return get_backend().read_json(cut_timing_path(slug))  # type: ignore[return-value]
+    except StorageNotFound:
+        return None
 
 
 def read_false_split_doc(slug: str) -> dict | None:
