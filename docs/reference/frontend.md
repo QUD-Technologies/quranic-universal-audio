@@ -230,7 +230,9 @@ Waveform + native analysis for published reciters (plus owner preview of generat
 
 **"Open in Segments" redirect.** `TimestampsFooterOpenSegments` (the ↗ next to the footer download button) deep-links the focused reciter + verse into the Segments editor via `gotoSegments(slug, { focusVerse: { slug, chapter, verse } })` (`lib/utils/goto-segments.ts`). `SegmentsTab` consumes the `focusVerse` intent once the target reciter's corpus is resident (`segAllData !== null`, the `clearPerReciterState` null being the fresh-corpus barrier) — switching to the verse's chapter, loading it, then scrolling the verse's first segment row into view via `targetSegmentIndex` (the same path Go-To / verse-jump use). The `slug` guard + a post-`tick()` re-validation reject a stale corpus mid-switch.
 
-**Stores:** `verse.ts` (reciter/chapter/verse selection + `loadedVerse` + `validationData`), `display.ts` (view mode, granularity, show-tashkeel/phonemes; localStorage-persisted), `playback.ts` (auto-play, `currentTime`; defines `tsPort` but the tab plays through the shared `dashPort`), `zoom.ts` (slice-relative visible window).
+**Mushaf view.** `mushaf/` swaps the waveform + analysis row (and the shared NowReciting bar) for a two-page Madani mushaf with its own Repeat engine; Hafs only. See [`mushaf-view.md`](mushaf-view.md).
+
+**Stores:** `mushaf.ts` (Mushaf view mode + display prefs), `verse.ts` (reciter/chapter/verse selection + `loadedVerse` + `validationData`), `display.ts` (view mode, granularity, show-tashkeel/phonemes; localStorage-persisted), `playback.ts` (auto-play, `currentTime`; defines `tsPort` but the tab plays through the shared `dashPort`), `zoom.ts` (slice-relative visible window).
 
 ### `tabs/segments/`
 

@@ -23,6 +23,8 @@
     import { reportMode, reportModeActive } from '../stores/report-mode';
     import { loadedVerse } from '../stores/verse';
     import { findWordAt } from '../utils/loop-target';
+    import MushafFooter from '../mushaf/MushafFooter.svelte';
+    import { mushafActive } from '../stores/mushaf';
     import TajweedSettingsPanel from './TajweedSettingsPanel.svelte';
 
     let guideOpen = $state(false);
@@ -56,6 +58,11 @@
     const wordProfileTitle = $derived(
         (i18n.locale, m.ts_footer_word_profile_disabled_title()),
     );
+    // The Mushaf view has no waveform or analysis grid, so the analysis
+    // controls are inert there — greyed, not hidden, so the footer keeps its shape.
+    const mushafTitle = $derived((i18n.locale, m.ts_mushaf_disabled_title()));
+    /** Why an analysis control is inert right now, or '' when it isn't. */
+    const inertTitle = $derived($mushafActive ? mushafTitle : $wordProfile ? wordProfileTitle : '');
 
     function persist(key: string, v: boolean): void {
         try { localStorage.setItem(key, String(v)); } catch { /* ignore */ }
@@ -103,6 +110,7 @@
             { title: m.ts_shortcuts_section_display(), rows: [
                 { icon: 'letters', key: 'L', label: m.ts_shortcuts_label_letters() },
                 { icon: 'phonemes', key: 'P', label: m.ts_shortcuts_label_phonemes() },
+                { key: 'M', label: m.ts_shortcuts_label_mushaf() },
             ] },
             { title: m.ts_shortcuts_section_interactions(), rows: [
                 { key: 'Click', label: m.ts_shortcuts_label_seek_to_word() },
@@ -164,37 +172,40 @@
 </script>
 
 <div class="tfa" role="group" aria-label={groupAria}>
+    <MushafFooter />
+    <span class="tfa-sep" aria-hidden="true"></span>
     <button
         type="button" class="icon-btn" class:on={$loopTarget !== null}
-        aria-pressed={$loopTarget !== null} title={loopTitle} onclick={toggleLoop}
+        aria-pressed={$loopTarget !== null} disabled={$mushafActive}
+        title={$mushafActive ? mushafTitle : loopTitle} onclick={toggleLoop}
     ><img class="img-icon" src="/icons/loop.svg" alt="" aria-hidden="true" /></button>
     <button
         type="button" class="icon-btn" class:on={$showLetters && !$wordProfile}
         aria-pressed={$showLetters && !$wordProfile}
-        disabled={$wordProfile || ($reportModeActive && $reportMode.kind !== 'phonemes')}
-        title={$wordProfile ? wordProfileTitle : lettersTitle}
+        disabled={!!inertTitle || ($reportModeActive && $reportMode.kind !== 'phonemes')}
+        title={inertTitle || lettersTitle}
         onclick={toggleLetters}
     ><ControlIcon name="letters" /></button>
     <button
         type="button" class="icon-btn" class:on={$showPhonemes && !$wordProfile}
         aria-pressed={$showPhonemes && !$wordProfile}
-        disabled={$wordProfile || $reportModeActive}
-        title={$wordProfile ? wordProfileTitle : phonemesTitle}
+        disabled={!!inertTitle || $reportModeActive}
+        title={inertTitle || phonemesTitle}
         onclick={togglePhonemes}
     ><ControlIcon name="phonemes" /></button>
     <button
         type="button" class="icon-btn" class:on={$highlightWipe && !$wordProfile}
         aria-pressed={$highlightWipe && !$wordProfile}
-        disabled={$wordProfile}
-        title={$wordProfile ? wordProfileTitle : wipeTitle}
+        disabled={!!inertTitle}
+        title={inertTitle || wipeTitle}
         onclick={toggleWipe}
     ><ControlIcon name="wipe" /></button>
 
     <div class="guide-wrap" use:clickOutside={() => (tajweedOpen = false)}>
         <button
             type="button" class="icon-btn" class:on={tajweedOpen}
-            disabled={$wordProfile}
-            title={$wordProfile ? wordProfileTitle : tajweedSettingsTitle}
+            disabled={!!inertTitle}
+            title={inertTitle || tajweedSettingsTitle}
             aria-haspopup="dialog" aria-expanded={tajweedOpen}
             onclick={() => (tajweedOpen = !tajweedOpen)}
         ><ControlIcon name="tajweed" /></button>
@@ -242,6 +253,12 @@
         display: inline-flex;
         align-items: center;
         gap: 2px;
+    }
+    .tfa-sep {
+        width: 1px;
+        height: 14px;
+        margin-inline: 3px;
+        background: var(--border-quiet);
     }
     .icon-btn {
         display: inline-flex;

@@ -21,6 +21,7 @@
     import type { TsVerseData } from '../../../lib/types/ts-client';
     import type { TsReport } from '../../../lib/types/generated/schemas';
     import { getVerseReports } from '../services/reports-client';
+    import { mushafActive } from '../stores/mushaf';
     import {
         enterPhonemes,
         enterSilence,
@@ -46,7 +47,8 @@
 
     const curSlug = $derived($playerContext.delivery?.slug ?? '');
     const curVerse = $derived($selectedVerse);
-    const disabled = $derived(!curSlug || !curVerse);
+    // Reporting works against the waveform + analysis grid, which the Mushaf view hides.
+    const disabled = $derived(!curSlug || !curVerse || $mushafActive);
     const isReported = $derived(!!curVerse && $openReportedVerseKeys.has(curVerse));
 
     // Reading i18n.locale makes these re-run on switch.
@@ -54,7 +56,9 @@
         (i18n.locale,
         curVerse ? m.ts_footer_report_aria_label({ verse: curVerse }) : m.ts_footer_report_aria_label_plain()),
     );
-    const reportTitle = $derived((i18n.locale, m.ts_footer_report_title()));
+    const reportTitle = $derived(
+        (i18n.locale, $mushafActive ? m.ts_mushaf_disabled_title() : m.ts_footer_report_title()),
+    );
     const reportButtonLabel = $derived((i18n.locale, m.ts_footer_report_button()));
 
     // Keep the reciter-level reported-verse counts (button highlight) in sync
