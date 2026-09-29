@@ -169,7 +169,7 @@ describe('boundaryStates — missed_waqf', () => {
         expect(boundaryStates(mw, ctx(segs), 'missed_waqf')).toEqual(['wasl', 'wasl']);
     });
 
-    it('reads a split saved without verdicts as waqf at its cuts and wasl elsewhere', () => {
+    it('reads a split saved without verdicts as waqf at its cut word and wasl elsewhere', () => {
         const bare = (o: Partial<Segment>): Segment => ({
             index: 0, entry_idx: 0, chapter: 2, time_start: 0, time_end: 1000,
             matched_ref: '2:1:1-2:1:4', confidence: 1, ...o,
@@ -179,9 +179,9 @@ describe('boundaryStates — missed_waqf', () => {
             bare({ segment_uid: 'b', index: 1, time_start: 600, time_end: 1000, matched_ref: '2:1:6-2:1:9' }),
         ];
         const c = ctx(segs, { splitGroupIndex: { root: ['b'] } });
-        expect(boundaryStates({ ...mw, resolved: true } as SegValAnyItem, c, 'missed_waqf')).toEqual(['waqf', 'wasl']);
-        // a split the server did not resolve from this card (e.g. a verse-end auto split) is no answer
-        expect(boundaryStates(mw, c, 'missed_waqf')).toEqual(['unset', 'unset']);
+        expect(boundaryStates({ ...mw, resolved: true } as SegValAnyItem, c, 'missed_waqf')).toEqual(['wasl', 'waqf']);
+        // a boundary on the cut word answers it however it was made; the other cut stays asked
+        expect(boundaryStates(mw, c, 'missed_waqf')).toEqual(['unset', 'waqf']);
     });
 
     it('leaves cursors unset on a segment made by an earlier cross-verse split', () => {

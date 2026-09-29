@@ -16,13 +16,21 @@ export function reviewBoundary(item: SegValAnyItem): StagedSplit | null {
     return { cursors: b.cursors, refs: b.refs };
 }
 
+/**
+ * Each cut's answer, by its word: a verdict stored on any piece, else a piece ending
+ * on that word (a boundary already made there: WASL when marked so, else WAQF).
+ * A piece under WASL recheck answers nothing at its end.
+ */
 export function reviewStates(members: readonly Segment[], boundary: StagedSplit, recheck: ReadonlySet<string> = new Set()) {
-    return boundary.cursors.map((at, i) => {
-        const owner = reviewJoinOwner(members, boundary, i);
-        if (!owner) return 'unset';
-        const after = endRef(boundary.refs[i]!);
-        if (at >= owner.time_end && recheck.has(owner.segment_uid ?? '')) return 'unset';
-        return owner.join_verdicts?.find((j) => j.after_ref === after)?.verdict ?? 'unset';
+    return boundary.refs.slice(0, boundary.cursors.length).map((ref) => {
+        const after = endRef(ref);
+        for (const s of members) {
+            const answer = s.join_verdicts?.find((j) => j.after_ref === after);
+            if (answer && !(recheck.has(s.segment_uid ?? '') && answer.at_ms === s.time_end)) return answer.verdict;
+        }
+        const edge = members.find((s) => WORD_SPAN.test(s.matched_ref) && endRef(s.matched_ref) === after);
+        if (!edge || recheck.has(edge.segment_uid ?? '')) return 'unset';
+        return edge.is_wasl ? 'wasl' : 'waqf';
     });
 }
 

@@ -109,5 +109,13 @@ describe('a cut opened to its silence', () => {
         const right = root({ segment_uid: 'right', index: 1, time_start: 360, time_end: 1000, matched_ref: '2:1:3-2:1:9' });
         expect(reviewStates([left, right], one)).toEqual(['waqf']);
     });
+
+    it('a split made off the cursor answers the cut by its word', () => {
+        const left = root({ time_end: 280, matched_ref: '2:1:1-2:1:2' });
+        const right = root({ segment_uid: 'right', index: 1, time_start: 280, time_end: 1000, matched_ref: '2:1:3-2:1:9' });
+        expect(reviewStates([left, right], one)).toEqual(['waqf']);
+        expect(reviewStates([{ ...left, is_wasl: true }, right], one)).toEqual(['wasl']);
+        expect(reviewStates([left, right], one, new Set(['root']))).toEqual(['unset']);
+    });
 });
 

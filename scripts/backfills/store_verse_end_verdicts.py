@@ -185,11 +185,11 @@ def main(argv: list[str] | None = None) -> int:
 
     from qua_shared.schemas import Actor
     from qua_shared.schemas.config.access import Role
-    from qua_shared.riwayat import resolve_sdk_slug
+    from services.reference.delivery_edition import sdk_riwayah_for
     from services.segments.save import save_seg_data
     from services.state import state as state_service
     from services.storage import cache, data_dir
-    from services.storage.data_loader import get_word_counts, load_detailed, seg_meta
+    from services.storage.data_loader import get_word_counts, load_detailed
     from services.validation.detail import _verse_end_refs
     from utils.references import chapter_from_ref
     from utils.uuid7 import uuid7
@@ -197,10 +197,7 @@ def main(argv: list[str] | None = None) -> int:
     state_service.hydrate()
     doc = json.loads(Path(args.applied).read_text(encoding="utf-8"))
     applied = doc.get("by_uid") or {}
-    # The edition detailed.json was aligned in (absent for Hafs); the catalog lives in
-    # the Space's DB, which this process does not pull.
-    riwayah = (seg_meta(args.slug) or {}).get("riwayah") or "hafs_an_asim"
-    word_counts = get_word_counts(resolve_sdk_slug(riwayah))
+    word_counts = get_word_counts(sdk_riwayah_for(args.slug))
     entries = load_detailed(args.slug)
     if not entries:
         log.error("no detailed entries for slug=%s", args.slug)

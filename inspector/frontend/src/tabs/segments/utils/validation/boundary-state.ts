@@ -100,13 +100,16 @@ export function boundaryStates(
     if (category === 'missed_waqf') {
         const boundary = reviewBoundary(item);
         const own = reviewMembers(members, boundary);
-        const answered = _answeredMissedWaqf(item, own, root);
         if (boundary) {
-            const saved = reviewStates(own, boundary, ctx.waslRecheck);
+            // A settled item (resolved or ignored) left its uncut cursors joined.
+            const settled = (item as { resolved?: boolean }).resolved === true
+                || (root !== null && isIgnoredFor(root, 'missed_waqf'));
+            const saved = reviewStates(own, boundary, ctx.waslRecheck)
+                .map((s) => s === 'unset' && settled ? 'wasl' : s);
             const picks = ctx.stagedPicks[stagedPickKey(category, uid)] ?? [];
-            const base = answered && saved.every((s) => s === 'unset') ? answered : saved;
-            return base.map((s, i) => picks[i] === undefined ? s : picks[i] ? 'wasl' : 'waqf');
+            return saved.map((s, i) => picks[i] === undefined ? s : picks[i] ? 'wasl' : 'waqf');
         }
+        const answered = _answeredMissedWaqf(item, own, root);
         if (answered) return answered;
     }
     if (members.length >= 2) return _committedStates(members, ctx);

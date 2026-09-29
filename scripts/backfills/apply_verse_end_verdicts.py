@@ -33,6 +33,7 @@ import json
 import logging
 import os
 import sys
+import tempfile
 import time
 from collections import defaultdict
 from collections.abc import Callable
@@ -57,10 +58,26 @@ _OWNER_LOGIN = "hetchyy"
 
 
 def _setup_paths_and_env(bucket: str) -> None:
+    """Import the Inspector against ``bucket`` with a read-only copy of its state DB.
+
+    Saves read the delivery catalog (its riwayah) from the DB. The copy is pulled
+    to a private temp file and uploads are refused: the DB syncs whole-file, so a
+    local upload would overwrite the Space's newer state.
+    """
     repo = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(repo / "inspector"))
     sys.path.insert(0, str(repo))
     os.environ["INSPECTOR_BUCKET_REPO"] = _BUCKETS[bucket]
+    os.environ["INSPECTOR_DB_PATH"] = str(Path(tempfile.mkdtemp()) / "inspector.db")
+
+    from services.db import sync
+
+    def refuse(*_args, **_kwargs):
+        raise RuntimeError("backfills never upload the state DB")
+
+    sync.upload = refuse
+    sync.daily_snapshot = refuse
+    sync.pull()
 
 
 @dataclass(frozen=True)
