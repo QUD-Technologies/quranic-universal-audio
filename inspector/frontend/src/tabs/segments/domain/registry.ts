@@ -9,7 +9,7 @@
  * camelCase mirrors of the Python fields:
  *   kind / cardType / severity / accordionOrder / canIgnore /
  *   autoSuppress / persistsIgnore / scope / displayTitle / description /
- *   ownerOnly / retired.
+ *   ownerOnly.
  */
 
 import type { SortOption } from './sorting';
@@ -36,12 +36,6 @@ export interface IssueDefinition {
      * exist. Mirrors the Python registry's `owner_only`. Defaults to false.
      */
     ownerOnly?: boolean;
-    /**
-     * Retired category: offered to nobody (owners included) and never gates
-     * mark-ready, but still classified so its history and `is_wasl` data keep
-     * displaying. Mirrors the Python registry's `retired`. Defaults to false.
-     */
-    retired?: boolean;
     /**
      * Sort options the accordion offers (first = active default). FE-only
      * presentation concern — deliberately absent from the Python registry and
@@ -189,7 +183,6 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         sorts: [{ kind: 'quran_order', default: true }, { kind: 'verse_count' }],
         boundaryFilter: true,
         ownerOnly: true,
-        retired: true,
     },
     qalqala: {
         kind: 'qalqala',
@@ -303,13 +296,11 @@ export const PERSISTS_IGNORE_CATEGORIES: readonly string[] = _entries
     .filter(([, v]) => v.persistsIgnore).map(([k]) => k);
 export const OWNER_ONLY_CATEGORIES: readonly string[] = _entries
     .filter(([, v]) => v.ownerOnly).map(([k]) => k);
-export const RETIRED_CATEGORIES: readonly string[] = _entries
-    .filter(([, v]) => v.retired).map(([k]) => k);
 
-/** True iff `category` is retired, or owner-only for a non-owner, and so must be hidden. */
+/** True iff `category` is owner-only and the viewer is not an owner. */
 export function isCategoryHidden(category: string, isOwner: boolean): boolean {
     const defn = IssueRegistry[category];
-    return (defn?.retired ?? false) || (!isOwner && (defn?.ownerOnly ?? false));
+    return !isOwner && (defn?.ownerOnly ?? false);
 }
 
 /**

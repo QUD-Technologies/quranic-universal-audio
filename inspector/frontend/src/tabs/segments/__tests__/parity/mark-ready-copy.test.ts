@@ -22,7 +22,7 @@ import {
     isAllChecked,
     markReadyCopy,
 } from '../../copy/mark-ready';
-import { OWNER_ONLY_CATEGORIES, RETIRED_CATEGORIES } from '../../domain/registry';
+import { OWNER_ONLY_CATEGORIES } from '../../domain/registry';
 
 describe('mark-ready copy module', () => {
     it('exports exactly six checklist keys', () => {
@@ -49,13 +49,6 @@ describe('mark-ready copy module', () => {
         // An owner-only category is invisible to the reviewer, so it must never
         // appear in the blocking-count panel they cannot act on.
         for (const cat of OWNER_ONLY_CATEGORIES) {
-            expect(BLOCKING_COUNT_KEYS as readonly string[]).not.toContain(cat);
-        }
-    });
-
-    it('no retired validation category gates submission', () => {
-        expect(RETIRED_CATEGORIES).toContain('cross_verse');
-        for (const cat of RETIRED_CATEGORIES) {
             expect(BLOCKING_COUNT_KEYS as readonly string[]).not.toContain(cat);
         }
     });

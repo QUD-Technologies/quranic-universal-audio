@@ -633,13 +633,23 @@ class SegValBoundaryAdjItem(BaseModel):
     classified_issues: list[str] = Field(default_factory=list)
 
 
+class SegValVerseJoin(BaseModel):
+    """One verse end inside a cross-verse segment and its stored answer (``None`` = unanswered)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    after_ref: str
+    verdict: Literal["wasl", "waqf"] | None = None
+
+
 class SegValCrossVerseItem(BaseModel):
     """``cross_verse`` — a segment spanning a verse boundary.
 
-    ``resolved`` marks an item that no longer spans a boundary because it was
-    split from the cross-verse card (edit history carries the split); the
-    accordion keeps it so the WASL/WAQF picks stay reviewable. Resolved items
-    are excluded from ``category_counts`` and never block mark-ready.
+    ``verse_joins`` lists each verse end inside the segment with its stored
+    ``join_verdicts`` answer. ``resolved`` marks an item whose joins are all
+    answered, or one that no longer spans a boundary because it was split from
+    the cross-verse card (edit history carries the split). Resolved items are
+    excluded from ``category_counts`` and never block mark-ready.
     ``segment_uid`` is the split ROOT uid (the live first piece).
     """
 
@@ -651,6 +661,7 @@ class SegValCrossVerseItem(BaseModel):
     ref: Ref
     classified_issues: list[str] = Field(default_factory=list)
     resolved: bool = False
+    verse_joins: list[SegValVerseJoin] = Field(default_factory=list)
 
 
 class SegValAudioBleedingItem(BaseModel):

@@ -263,6 +263,7 @@ from .wire.seg import (
     SegValStats,
     SegValStructuralErrorItem,
     SegValUnmarkedWaslItem,
+    SegValVerseJoin,
 )
 from .wire.timestamps import (
     Letter,
@@ -312,6 +313,7 @@ __all__ = [
     "SegValBasmalaAminItem",
     "SegValBoundaryAdjItem",
     "SegValCrossVerseItem",
+    "SegValVerseJoin",
     "SegValBoundaryMeta",
     "SegValFailedItem",
     "SegValFalseSplitBoundary",

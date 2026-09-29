@@ -6,6 +6,7 @@
  * a three-verse item contributes two) and the filter that hides or shows
  * items by the states they contain.
  *
+ * A cross-verse segment reads each inner verse end from its item's `verse_joins`.
  * Join verdicts record the cut and ignore answers; a Missed Waqf item answered
  * before verdicts existed reads its cuts as waqf and its other cursors (or an
  * ignored root) as wasl. A pending recheck overrides
@@ -65,10 +66,15 @@ function _committedStates(
     return out.length ? out : ['unset'];
 }
 
-/** A Missed Waqf answer saved without verdicts: its cuts stop, the item's other cursors and an ignored root continue. */
+/**
+ * A Missed Waqf answer saved without verdicts: its cuts stop, the item's other cursors and an
+ * ignored root continue. A split counts only when the server resolved the item from its card —
+ * the split group also holds splits made elsewhere (verse-end auto splits).
+ */
 function _answeredMissedWaqf(item: SegValAnyItem, members: Segment[], root: Segment | null): BoundaryState[] | null {
     const n = Math.max(1, itemCursorCount(item));
-    if (members.length >= 2) {
+    const resolved = (item as { resolved?: boolean }).resolved === true;
+    if (members.length >= 2 && resolved) {
         const cuts = Math.min(members.length - 1, n);
         return [..._repeat('waqf', cuts), ..._repeat('wasl', n - cuts)];
     }
@@ -102,6 +108,8 @@ export function boundaryStates(
         if (answered) return answered;
     }
     if (members.length >= 2) return _committedStates(members, ctx);
+    const joins = (item as { verse_joins?: { verdict?: 'wasl' | 'waqf' | null }[] }).verse_joins;
+    if (category === 'cross_verse' && joins?.length) return joins.map((j) => j.verdict ?? 'unset');
     const staged = stagedSplitFor(category, root, item, ctx.autoSplitMap);
     if (staged) {
         const picks = ctx.stagedPicks[stagedPickKey(category, uid)] ?? [];

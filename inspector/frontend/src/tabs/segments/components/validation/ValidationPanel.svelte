@@ -402,8 +402,8 @@
             return _baseMemoResult;
         }
 
-        // Retired categories are dropped for everyone and owner-only ones for
-        // everyone else — no accordion, no count, no filter entry.
+        // Owner-only categories are dropped for everyone else — no accordion,
+        // no count, no filter entry.
         const ordered = Object.values(IssueRegistry)
             .filter((d) => !isCategoryHidden(d.kind, owner))
             .sort((a, b) => a.accordionOrder - b.accordionOrder);

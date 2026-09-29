@@ -220,9 +220,9 @@ def test_registry_accordion_order_is_complete():
     )
 
 
-def test_only_cross_verse_is_retired_and_it_never_gates_mark_ready():
+def test_cross_verse_is_an_owner_only_archive_that_never_gates_mark_ready():
     from qua_shared.schemas.wire.mark_ready import BLOCKING_COUNT_KEYS
-    from services.validation.registry import RETIRED_CATEGORIES
+    from services.validation.registry import OWNER_ONLY_CATEGORIES
 
-    assert RETIRED_CATEGORIES == ("cross_verse",)
-    assert not set(RETIRED_CATEGORIES) & set(BLOCKING_COUNT_KEYS)
+    assert "cross_verse" in OWNER_ONLY_CATEGORIES
+    assert "cross_verse" not in BLOCKING_COUNT_KEYS

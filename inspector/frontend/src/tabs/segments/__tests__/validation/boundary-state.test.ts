@@ -103,6 +103,14 @@ describe('boundaryStates', () => {
             .toEqual(['waqf', 'wasl']);
     });
 
+    it('reads a merged cross-verse segment from its verse_joins', () => {
+        const segs = [seg({ segment_uid: 'root', matched_ref: '2:1:1-2:3:2' })];
+        const it0 = item({ chapter: 2, seg_index: 0, segment_uid: 'root', verse_joins: [
+            { after_ref: '2:1:4', verdict: 'wasl' }, { after_ref: '2:2:3', verdict: null },
+        ] });
+        expect(boundaryStates(it0, ctx(segs))).toEqual(['wasl', 'unset']);
+    });
+
     it('is one unset boundary for an unsplit seg without a sidecar entry', () => {
         const segs = [seg({ segment_uid: 'root', matched_ref: '2:1:1-2:2:2' })];
         expect(boundaryStates(root, ctx(segs))).toEqual(['unset']);
@@ -169,7 +177,9 @@ describe('boundaryStates — missed_waqf', () => {
             bare({ segment_uid: 'b', index: 1, time_start: 600, time_end: 1000, matched_ref: '2:1:6-2:1:9' }),
         ];
         const c = ctx(segs, { splitGroupIndex: { root: ['b'] } });
-        expect(boundaryStates(mw, c, 'missed_waqf')).toEqual(['waqf', 'wasl']);
+        expect(boundaryStates({ ...mw, resolved: true } as SegValAnyItem, c, 'missed_waqf')).toEqual(['waqf', 'wasl']);
+        // a split the server did not resolve from this card (e.g. a verse-end auto split) is no answer
+        expect(boundaryStates(mw, c, 'missed_waqf')).toEqual(['unset', 'unset']);
     });
 
     it('drives the Unset · Wasl · Waqf chips across items', () => {

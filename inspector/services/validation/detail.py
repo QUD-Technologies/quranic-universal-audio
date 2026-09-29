@@ -187,6 +187,42 @@ def resolve_join_reviews(
             item["resolved"] = True
 
 
+def annotate_cross_verse_joins(
+    items: list[dict], entries: list[dict], word_counts: dict[tuple[int, int], int]
+) -> None:
+    """Attach each cross-verse item's verse joins and their stored verdicts.
+
+    ``verse_joins`` lists every verse end inside the segment as ``{after_ref, verdict}``
+    (``verdict`` ``None`` when unanswered); an item whose joins are all answered is resolved.
+    """
+    live = {s.get("segment_uid"): s for e in entries for s in e.get("segments", [])}
+    for item in items:
+        seg = live.get(item.get("segment_uid")) or {}
+        verdicts = {j["after_ref"]: j["verdict"] for j in seg.get("join_verdicts") or []}
+        joins = [
+            {"after_ref": ref, "verdict": verdicts.get(ref)}
+            for ref in _verse_end_refs(seg.get("matched_ref"), word_counts)
+        ]
+        item["verse_joins"] = joins
+        if joins and all(j["verdict"] for j in joins):
+            item["resolved"] = True
+
+
+def _verse_end_refs(ref: object, word_counts: dict[tuple[int, int], int]) -> list[str]:
+    """``s:a:last`` for every verse that ends inside ``ref`` (same-surah spans only)."""
+    if not isinstance(ref, str) or "-" not in ref:
+        return []
+    start, _, end = ref.partition("-")
+    try:
+        s1, a1, _w1 = (int(x) for x in start.split(":"))
+        s2, a2, _w2 = (int(x) for x in end.split(":"))
+    except ValueError:
+        return []
+    if s1 != s2:
+        return []
+    return [f"{s1}:{a}:{word_counts[(s1, a)]}" for a in range(a1, a2) if (s1, a) in word_counts]
+
+
 def _build_detail_lists(
     entries: list[dict],
     is_by_ayah: bool,
