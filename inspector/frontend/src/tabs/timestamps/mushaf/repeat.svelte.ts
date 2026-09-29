@@ -2,9 +2,11 @@
  * Mushaf Repeat — the runtime driver + its UI state.
  *
  * Plays a verse range as clean canonical takes (see `canonical.ts`): each
- * verse × `each`, the whole range × `rounds`, with a fixed 1 s pause before a
- * verse is replayed or the audio has to jump. Consecutive verses whose takes
- * are adjacent in the recording flow straight on, no pause.
+ * verse × `each`, the whole range × `rounds`. With no pause (the default) the
+ * recitation runs on: consecutive verses whose takes are adjacent in the
+ * recording flow straight through, replays and other jumps seek at once. A
+ * pause puts that much silence between every two plays — replays of a verse
+ * and the step from one verse to the next alike.
  *
  * The Mushaf view calls `tick()` every frame (and on `timeupdate`, so a hidden
  * tab still honours boundaries). A seek the driver didn't make — a footer
@@ -28,8 +30,6 @@ import {
     type VerseRef,
 } from './repeat-plan';
 
-/** Pause before a replay / a non-adjacent jump. */
-const REPEAT_GAP_MS = 1000;
 /** Next take starting within this of the current end plays on without a pause. */
 const ADJACENT_MS = 400;
 /** Ignore playhead drift this long after the driver's own seek. */
@@ -52,6 +52,8 @@ class MushafRepeat {
     steps = $state<RepeatStep[]>([]);
     each = $state(1);
     rounds = $state(1);
+    /** Silence between plays (ms), one of `REPEAT_PAUSES_MS`. */
+    pauseMs = $state(0);
     cursor = $state<RepeatCursor | null>(null);
     /** Range being edited in the popover. `to` null = just `from`. */
     from = $state<VerseRef | null>(null);
@@ -147,16 +149,19 @@ class MushafRepeat {
         }
         const nextStep = this.steps[next.verse]!;
         this.cursor = next;
+        if (this.pauseMs > 0) {
+            dashPort.pauseAndFlush();
+            this.waiting = true;
+            this.gapTimer = setTimeout(() => {
+                this.gapTimer = null;
+                this.waiting = false;
+                if (this.running) this.go(nextStep);
+            }, this.pauseMs);
+            return;
+        }
         const gap = nextStep.startMs - step.endMs;
-        const adjacent = nextStep !== step && nextStep.surah === step.surah && gap >= -ADJACENT_MS && gap <= ADJACENT_MS;
-        if (adjacent) return;
-        dashPort.pauseAndFlush();
-        this.waiting = true;
-        this.gapTimer = setTimeout(() => {
-            this.gapTimer = null;
-            this.waiting = false;
-            if (this.running) this.go(nextStep);
-        }, REPEAT_GAP_MS);
+        const adjacent = nextStep !== step && nextStep.surah === step.surah && Math.abs(gap) <= ADJACENT_MS;
+        if (!adjacent) this.go(nextStep);
     }
 
     private go(step: RepeatStep): void {

@@ -22,8 +22,14 @@ export const PAD_INLINE_EM = 1.1;
 export const PAD_BLOCK_EM = 0.9;
 /** Gap between the two pages at the spine, px. */
 export const SPINE_PX = 2;
-/** Outer margin around the spread, px. */
-export const OUTER_PX = 16;
+/** Margin beside the book (outside the page-turn buttons), px. */
+export const OUTER_INLINE_PX = 8;
+/** Page-turn button + its gap to the page, px — one sits on each side of the book. */
+export const NAV_SLOT_PX = 44;
+/** Space kept above / below the book, px. The book hugs the tab bar; the
+ *  bottom margin keeps the page off the player. */
+export const OUTER_TOP_PX = 0;
+export const OUTER_BOTTOM_PX = 12;
 /** Percentile of line widths the column is sized for (denser spreads shrink the font). */
 export const REF_PERCENTILE = 0.95;
 /** Show two pages only if they can be at least this large relative to one… */
@@ -62,13 +68,15 @@ export function percentile(values: number[], p: number): number {
 }
 
 function fitFor(vp: Viewport, pages: number, refEm: number): PageMetrics {
-    const heightFont = (vp.height - 2 * OUTER_PX) / (PAGE_ROWS * PITCH_MIN + 2 * PAD_BLOCK_EM);
-    const perPage = (vp.width - 2 * OUTER_PX - (pages - 1) * SPINE_PX) / pages;
+    const usableH = vp.height - OUTER_TOP_PX - OUTER_BOTTOM_PX;
+    const heightFont = usableH / (PAGE_ROWS * PITCH_MIN + 2 * PAD_BLOCK_EM);
+    const usableW = vp.width - 2 * (OUTER_INLINE_PX + NAV_SLOT_PX);
+    const perPage = (usableW - (pages - 1) * SPINE_PX) / pages;
     const widthFont = perPage / (refEm + 2 * PAD_INLINE_EM);
     const fontPx = Math.max(1, Math.min(heightFont, widthFont));
     // Height-bound: the pitch fills the height at PITCH_MIN. Width-bound: the
     // spare height goes to line spacing, capped so lines don't drift apart.
-    const pitchFromHeight = (vp.height - 2 * OUTER_PX - 2 * PAD_BLOCK_EM * fontPx) / PAGE_ROWS;
+    const pitchFromHeight = (usableH - 2 * PAD_BLOCK_EM * fontPx) / PAGE_ROWS;
     const pitchPx = Math.min(pitchFromHeight, fontPx * PITCH_MAX);
     const columnPx = refEm * fontPx;
     return {
@@ -89,7 +97,10 @@ export function fitPages(vp: Viewport, refEm: number): PageMetrics {
     return spreadOk ? two : one;
 }
 
+/** Headroom on the measured width: DOM glyph runs land a little wider than canvas `measureText`. */
+export const FIT_SLACK = 0.015;
+
 /** Font size for a spread whose densest justified line is `maxEm` wide. */
 export function spreadFontPx(m: PageMetrics, maxEm: number): number {
-    return maxEm > 0 ? Math.min(m.fontPx, m.columnPx / maxEm) : m.fontPx;
+    return maxEm > 0 ? Math.min(m.fontPx, m.columnPx / (maxEm * (1 + FIT_SLACK))) : m.fontPx;
 }

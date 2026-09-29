@@ -134,6 +134,7 @@
     .mp-num {
         flex: 0 0 calc(var(--mp-pitch) * 0.8);
         width: var(--mp-column);
+        margin: 0; /* the app's global header/footer margins would push the rows off the page */
         display: flex;
         align-items: center;
         color: var(--text-muted);

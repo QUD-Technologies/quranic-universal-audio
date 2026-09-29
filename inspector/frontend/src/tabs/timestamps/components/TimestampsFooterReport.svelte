@@ -47,8 +47,7 @@
 
     const curSlug = $derived($playerContext.delivery?.slug ?? '');
     const curVerse = $derived($selectedVerse);
-    // Reporting works against the waveform + analysis grid, which the Mushaf view hides.
-    const disabled = $derived(!curSlug || !curVerse || $mushafActive);
+    const disabled = $derived(!curSlug || !curVerse);
     const isReported = $derived(!!curVerse && $openReportedVerseKeys.has(curVerse));
 
     // Reading i18n.locale makes these re-run on switch.
@@ -57,7 +56,7 @@
         curVerse ? m.ts_footer_report_aria_label({ verse: curVerse }) : m.ts_footer_report_aria_label_plain()),
     );
     const reportTitle = $derived(
-        (i18n.locale, $mushafActive ? m.ts_mushaf_disabled_title() : m.ts_footer_report_title()),
+        (i18n.locale, m.ts_footer_report_title()),
     );
     const reportButtonLabel = $derived((i18n.locale, m.ts_footer_report_button()));
 
@@ -198,7 +197,8 @@
     }
 </script>
 
-{#if $canReport}
+<!-- Reporting works against the waveform + analysis grid, which the Mushaf view hides. -->
+{#if $canReport && !$mushafActive}
     <div class="report-wrap" use:clickOutside={() => (open = false)}>
         <button
             type="button"

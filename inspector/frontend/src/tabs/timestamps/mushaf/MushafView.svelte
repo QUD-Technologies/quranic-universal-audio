@@ -8,6 +8,10 @@
      * spread. Paging by hand stops following until "Back to reciting" or any
      * seek. Clicking a word seeks to it; a verse marker seeks to its verse.
      * Pages of surahs the reciter never recited are skipped and inert.
+     *
+     * A chapter switch turns straight to its page from the layout alone and
+     * holds the audio until the chapter's timings are in, so playback never
+     * runs ahead of the page it's read along on.
      */
     import { onMount, tick, untrack } from 'svelte';
     import { get } from 'svelte/store';
@@ -29,9 +33,17 @@
     import { shouldHandleKey } from '../../../lib/utils/keyboard-guard';
     import { mushafScope, mushafShowUpcoming, mushafYear } from '../stores/mushaf';
     import { fitPages, spreadFontPx, type PageMetrics } from './fit';
-    import { ensureMushafFont, SURAH_FRAME_FAMILY, SURAH_NAME_FAMILY, textFamily, textFontStack } from './fonts';
+    import {
+        ensureMushafFont,
+        SURAH_FRAME_FAMILY,
+        SURAH_NAME_FAMILY,
+        TEXT_FALLBACK_FAMILY,
+        textFamily,
+        textFontStack,
+    } from './fonts';
     import { PageHighlighter } from './highlight';
     import {
+        firstWordOfVerse,
         isVerseMarker,
         loadLayout,
         loadWordIndex,
@@ -44,7 +56,9 @@
     import { LineMeasurer } from './measure';
     import MushafBook, { type Leaf } from './MushafBook.svelte';
     import { indexChapter, positionAt, type ChapterIndex } from './position';
+    import { mushafFullscreen } from './fullscreen.svelte';
     import { mushafRepeat } from './repeat.svelte';
+    import { compareRefs, type VerseRef } from './repeat-plan';
 
     const DEFAULT_PLAYER_H = 72;
     const PLAYER_SELECTOR = '.player';
@@ -59,25 +73,38 @@
     // ---- data ----
     let layout = $state.raw<MushafLayout | null>(null);
     let words = $state.raw<WordIndex | null>(null);
-    let fontsReady = $state(false);
     let failed = $state(false);
     let tsChapters = $state.raw(new Set<number>());
     let chapterIx = $state.raw<ChapterIndex | null>(null);
+    /** "slug:chapter" `chapterIx` was built for. */
+    let ixKey = $state('');
+    /** "slug:chapter" whose timings are being fetched, '' when none. */
+    let loadingKey = '';
+    /** Text face the pages are set in: the year's own, or the fallback when it won't load. */
+    let textFace = $state(TEXT_FALLBACK_FAMILY);
 
     const slug = $derived($playerContext.delivery?.slug ?? '');
     const chapter = $derived($playerContext.surahNum ?? 0);
-    const live = $derived(chapterIx !== null && chapterIx.chapter === chapter);
-    const fontStack = $derived(textFontStack($mushafYear));
+    const live = $derived(chapterIx !== null && ixKey === `${slug}:${chapter}`);
+    const fontStack = $derived(textFontStack(textFace));
 
+    // Layout, its text face and the line measurements land together, so a
+    // year switch never renders the new layout against the old sizing.
     $effect(() => {
         const year = $mushafYear;
+        const w = words;
+        if (!w) return;
         let cancelled = false;
-        fontsReady = false;
         void Promise.all([loadLayout(year), ensureMushafFont(textFamily(year))])
-            .then(([l]) => {
+            .then(([l, ok]) => {
                 if (cancelled) return;
+                const face = ok ? textFamily(year) : TEXT_FALLBACK_FAMILY;
+                measurer = new LineMeasurer(`"${face}"`);
+                const em = measurer.referenceEm(l, w);
+                fontCache.clear();
+                textFace = face;
+                refEm = em;
                 layout = l;
-                fontsReady = true;
             })
             .catch((e: unknown) => {
                 console.error('Mushaf: layout load failed', e);
@@ -100,32 +127,82 @@
         const ch = chapter;
         const w = words;
         if (!s || !ch || !w) return;
+        const key = `${s}:${ch}`;
         const ctrl = new AbortController();
+        loadingKey = key;
+        holdAudio();
         void loadChapterRecitation(s, ch, ctrl.signal)
             .then((data) => {
                 if (ctrl.signal.aborted) return;
                 chapterIx = data ? indexChapter(ch, data.units, w) : null;
+                ixKey = key;
                 lastUnit = -1;
                 following = true;
-                applyPendingSeek();
             })
-            .catch((e: unknown) => console.error('Mushaf: chapter load failed', e));
+            .catch((e: unknown) => console.error('Mushaf: chapter load failed', e))
+            .finally(() => {
+                if (ctrl.signal.aborted) return;
+                loadingKey = '';
+                releaseAudio();
+            });
         return () => ctrl.abort();
     });
+
+    // ---- audio hold across a chapter switch ----
+    /** Playback we paused while the chapter's timings load; resumed after. */
+    let held = false;
+
+    function holdAudio(): void {
+        // Only a switch holds: opening the view on a playing chapter just follows it.
+        if (!loadingKey || !ixKey || mushafRepeat.running || dashPort.paused) return;
+        if (get(activeTab) !== TAB_NAMES.TIMESTAMPS) return;
+        dashPort.pause();
+        held = true;
+    }
+
+    function releaseAudio(): void {
+        if (pendingSeek) {
+            held = false;
+            applyPendingSeek();
+            return;
+        }
+        if (!held) return;
+        held = false;
+        dashPort.play();
+    }
+
+    // Turn to a newly chosen chapter at once, from the layout alone.
+    let shownChapter = 0;
+    $effect(() => {
+        const ch = chapter;
+        const l = layout;
+        const w = words;
+        if (!ch || !l || !w || !metrics) return;
+        untrack(() => {
+            if (ch === shownChapter) return;
+            const first = shownChapter === 0;
+            shownChapter = ch;
+            if (live) return; // already reading along in it
+            following = true;
+            openView(viewOfPage(pageOfWord(l, landingWord(ch, w))), !first);
+        });
+    });
+
+    /** The word a chapter switch lands on: the pending seek's, else the first. */
+    function landingWord(ch: number, w: WordIndex): number {
+        const t = pendingSeek?.chapter === ch ? pendingSeek.target : null;
+        if (t && 'loc' in t) return w.idOfLoc.get(t.loc) ?? firstWordOfVerse(w, ch, 1);
+        if (t) {
+            const [s, a] = t.verse.split(':').map(Number);
+            return firstWordOfVerse(w, s ?? ch, a ?? 1);
+        }
+        return firstWordOfVerse(w, ch, 1);
+    }
 
     // ---- sizing ----
     let vp = $state({ width: 0, height: 0 });
     let refEm = $state(0);
     let measurer: LineMeasurer | null = null;
-
-    $effect(() => {
-        const l = layout;
-        const w = words;
-        if (!l || !w || !fontsReady) return;
-        measurer = new LineMeasurer(`"${textFamily(l.year)}"`);
-        refEm = measurer.referenceEm(l, w);
-        fontCache.clear();
-    });
 
     const metrics = $derived<PageMetrics | null>(refEm > 0 && vp.width > 0 ? fitPages(vp, refEm) : null);
     const spread = $derived(metrics?.spread ?? true);
@@ -176,8 +253,8 @@
         return pagesOfView(v).some((p) => surahsOnPage(layout!, words!, p).some((s) => tsChapters.has(s)));
     }
 
-    /** Open view `v`, turning the page when it's a neighbour move. */
-    function openView(v: number): void {
+    /** Open view `v`, turning the page unless `animate` is off. */
+    function openView(v: number, animate = true): void {
         const target = Math.max(0, Math.min(viewCount - 1, v));
         const from = view;
         anchorPage = pagesOfView(target)[0]!;
@@ -188,7 +265,7 @@
         const dir: 1 | -1 = target > from ? 1 : -1;
         const a = pagesOfView(from);
         const b = pagesOfView(target);
-        if (reducedMotion || !metrics) {
+        if (reducedMotion || !metrics || !animate) {
             leaf = null;
             slotPages = b;
         } else if (spread) {
@@ -226,7 +303,8 @@
         let v = view + delta;
         while (v >= 0 && v < viewCount && !playableView(v)) v += delta;
         if (v < 0 || v >= viewCount) return;
-        following = false;
+        // Paging back onto the recited page is the same as "Back to reciting".
+        following = !!layout && lastAnchorId > 0 && v === viewOfPage(pageOfWord(layout, lastAnchorId));
         openView(v);
     }
 
@@ -234,12 +312,14 @@
     const highlighter = new PageHighlighter();
     let lastUnit = -1;
     let lastMs = 0;
+    /** Word the recitation is at (or last was), for "am I on the recited page?". */
+    let lastAnchorId = 0;
     let raf: number | null = null;
     /** A playhead jump larger than this between frames is a seek → follow again. */
     const SEEK_JUMP_MS = 1500;
 
     $effect(() => {
-        void slotPages; void metrics; void $mushafScope; void $mushafShowUpcoming;
+        void slotPages; void metrics; void layout; void $mushafScope; void $mushafShowUpcoming;
         const r = root;
         if (!r) return;
         void tick().then(() => highlighter.rebuild(r));
@@ -247,6 +327,7 @@
 
     function frame(): void {
         mushafRepeat.tick();
+        if (loadingKey && !dashPort.paused) holdAudio(); // the player autoplayed the new chapter
         const ix = chapterIx;
         const l = layout;
         const w = words;
@@ -256,13 +337,21 @@
         lastMs = ms;
         const { pos, unit } = positionAt(ix, ms / 1000, lastUnit);
         lastUnit = unit;
+        lastAnchorId = pos.anchorId;
+        // Picking a verse needs every verse visible and clickable.
+        const picking = mushafRepeat.picking !== null;
         highlighter.apply(
-            { ...pos, scope: get(mushafScope), showUpcoming: get(mushafShowUpcoming) },
+            {
+                ...pos,
+                scope: picking ? 'spread' : get(mushafScope),
+                showUpcoming: picking || get(mushafShowUpcoming),
+            },
             w,
         );
         if (following && pos.anchorId && !leaf) {
             const v = viewOfPage(pageOfWord(l, pos.anchorId));
-            if (v !== view) openView(v);
+            // Reading on turns one leaf; a jump (seek, first load) cuts straight there.
+            if (v !== view) openView(v, Math.abs(v - view) === 1);
         }
     }
 
@@ -322,8 +411,7 @@
         if (!tsChapters.has(surah)) return;
         const ayah = w.ayah[id] ?? 0;
         if (mushafRepeat.picking) {
-            mushafRepeat[mushafRepeat.picking] = { surah, ayah };
-            mushafRepeat.picking = null;
+            pickVerse({ surah, ayah });
             return;
         }
         mushafRepeat.stop();
@@ -339,6 +427,53 @@
         }
     }
 
+    /** "To" can't come before "From": such a verse isn't pickable as the end. */
+    function pickable(v: VerseRef): boolean {
+        const from = mushafRepeat.from;
+        return mushafRepeat.picking !== 'to' || !from || compareRefs(v, from) >= 0;
+    }
+
+    function pickVerse(v: VerseRef): void {
+        if (!pickable(v)) return;
+        const to = mushafRepeat.to;
+        // A new start past the old end leaves just that verse.
+        if (mushafRepeat.picking === 'from' && to && compareRefs(v, to) > 0) mushafRepeat.to = v;
+        mushafRepeat[mushafRepeat.picking!] = v;
+        mushafRepeat.picking = null;
+    }
+
+    /** Repeat pick: light up the verse under the pointer, or the range it would make. */
+    function onPageHover(e: MouseEvent): void {
+        const w = words;
+        const end = mushafRepeat.picking;
+        if (!w || !end) return;
+        const el = (e.target as HTMLElement).closest<HTMLElement>('.mv-slot [data-w]');
+        const id = el ? Number(el.dataset.w) : 0;
+        const surah = w.surah[id] ?? 0;
+        if (!id || !tsChapters.has(surah)) {
+            highlighter.spotlight(null, w);
+            return;
+        }
+        const here: VerseRef = { surah, ayah: w.ayah[id] ?? 0 };
+        if (!pickable(here)) {
+            highlighter.spotlight(null, w);
+            return;
+        }
+        const to = mushafRepeat.to;
+        const other = end === 'to'
+            ? mushafRepeat.from
+            : to && compareRefs(here, to) <= 0 ? to : null;
+        highlighter.spotlight([other ?? here, here], w);
+    }
+
+    function clearSpotlight(): void {
+        if (words) highlighter.spotlight(null, words);
+    }
+
+    $effect(() => {
+        if (mushafRepeat.picking === null) untrack(clearSpotlight);
+    });
+
     // Word clicks are delegated from the stage. The words themselves aren't tab
     // stops (a page holds ~150); keyboard users page with ←/→ and type verses
     // into Repeat instead.
@@ -346,15 +481,42 @@
         const el = stage;
         if (!el) return;
         el.addEventListener('click', onPageClick);
-        return () => el.removeEventListener('click', onPageClick);
+        el.addEventListener('mouseover', onPageHover);
+        el.addEventListener('mouseleave', clearSpotlight);
+        return () => {
+            el.removeEventListener('click', onPageClick);
+            el.removeEventListener('mouseover', onPageHover);
+            el.removeEventListener('mouseleave', clearSpotlight);
+        };
     });
 
     function onKeydown(e: KeyboardEvent): void {
         if (!shouldHandleKey(e, TAB_NAMES.TIMESTAMPS)) return;
+        if (e.code === 'KeyF') {
+            e.preventDefault();
+            mushafFullscreen.toggle();
+            return;
+        }
+        // Esc leaves real full screen by itself; this covers the chrome-less fallback.
+        if (e.code === 'Escape' && mushafFullscreen.on) {
+            mushafFullscreen.exit();
+            return;
+        }
         if (e.code !== 'ArrowLeft' && e.code !== 'ArrowRight') return;
         e.preventDefault();
         navigate(e.code === 'ArrowLeft' ? 1 : -1); // the book reads right to left
     }
+
+    // Full screen moves the book's top edge without resizing it — re-measure.
+    $effect(() => {
+        void mushafFullscreen.on;
+        void tick().then(measureViewport);
+    });
+
+    // Leaving the tab (or the view) leaves full screen.
+    $effect(() => {
+        if ($activeTab !== TAB_NAMES.TIMESTAMPS) untrack(() => mushafFullscreen.exit());
+    });
 
     // ---- theme-aware accent (the footer droplet colours the highlight) ----
     let theme = $state(themeStore.current);
@@ -381,6 +543,7 @@
             if (next) switchChapter(next, true);
         });
         const offTime = dashPort.onTimeUpdate(() => mushafRepeat.tick());
+        const offPlay = dashPort.onPlay(holdAudio);
 
         const ro = new ResizeObserver(() => {
             measureViewport();
@@ -395,10 +558,12 @@
         window.addEventListener(THEME_CHANGE_EVENT, onTheme);
         measureViewport();
         return () => {
+            mushafFullscreen.exit();
             if (leafTimer) clearTimeout(leafTimer);
             detachRepeat();
             offEnded();
             offTime();
+            offPlay();
             ro.disconnect();
             window.removeEventListener('resize', measureViewport);
             window.removeEventListener(THEME_CHANGE_EVENT, onTheme);
@@ -422,27 +587,32 @@
     {:else if !layout || !words || !metrics}
         <p class="mv-status">{L(m.ts_mushaf_loading())}</p>
     {:else}
-        <button
-            type="button" class="mv-nav mv-nav-left"
-            title={L(m.ts_mushaf_next())} aria-label={L(m.ts_mushaf_next())}
-            onclick={() => navigate(1)}
-        ><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" /></svg></button>
+        <div class="mv-row">
+            <button
+                type="button" class="mv-nav"
+                title={L(m.ts_mushaf_next())} aria-label={L(m.ts_mushaf_next())}
+                onclick={() => navigate(1)}
+            ><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" /></svg></button>
 
-        <div class="mv-stage" bind:this={stage}>
-            <MushafBook
-                {layout} {words} {metrics} {fontOf} {fontStack}
-                playable={tsChapters}
-                pages={slotPages}
-                {leaf}
-                onleafend={onLeafEnd}
-            />
+            <div class="mv-stage" bind:this={stage}>
+                <!-- Keyed by print year: a new layout gets fresh pages, never re-used spans. -->
+                {#key layout.year}
+                    <MushafBook
+                        {layout} {words} {metrics} {fontOf} {fontStack}
+                        playable={tsChapters}
+                        pages={slotPages}
+                        {leaf}
+                        onleafend={onLeafEnd}
+                    />
+                {/key}
+            </div>
+
+            <button
+                type="button" class="mv-nav"
+                title={L(m.ts_mushaf_prev())} aria-label={L(m.ts_mushaf_prev())}
+                onclick={() => navigate(-1)}
+            ><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5" /></svg></button>
         </div>
-
-        <button
-            type="button" class="mv-nav mv-nav-right"
-            title={L(m.ts_mushaf_prev())} aria-label={L(m.ts_mushaf_prev())}
-            onclick={() => navigate(-1)}
-        ><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5" /></svg></button>
 
         {#if !following}
             <button type="button" class="mv-back" onclick={() => (following = true)}>
@@ -456,12 +626,22 @@
     .mv {
         position: relative;
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: center;
         overflow: hidden;
     }
+    /* Page-turn buttons flank the book (fit.ts NAV_SLOT_PX = button + gap). */
+    .mv-row { display: flex; align-items: center; gap: 12px; }
     .mv-stage { display: flex; align-items: center; justify-content: center; }
     .mv.picking .mv-stage :global(.mp-w:not(.mp-inert)) { cursor: crosshair; }
+    /* Picking a verse: the page dims, the verse (or range) under the pointer lights up. */
+    .mv.picking .mv-stage :global(.mp-w) { opacity: 0.45; }
+    .mv.picking .mv-stage :global(.mp-w.is-pick) { opacity: 1; color: var(--accent); }
+    .mv.picking .mv-stage :global(.mp-band) { visibility: hidden; }
+
+    /* Full screen: only the book and the shell footer remain. */
+    :global(html.mushaf-full .container > header) { display: none; }
+    :global(html.mushaf-full .container) { padding-top: var(--s-2); }
 
     .mv-status {
         margin: 0;
@@ -470,9 +650,7 @@
     }
 
     .mv-nav {
-        position: absolute;
-        top: 50%;
-        transform: translateY(-50%);
+        flex: 0 0 auto;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -490,8 +668,6 @@
     .mv-nav:hover { color: var(--text-primary); background: var(--panel-2); }
     .mv-nav:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .mv-nav svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-    .mv-nav-left { left: var(--s-2); }
-    .mv-nav-right { right: var(--s-2); }
 
     .mv-back {
         position: absolute;

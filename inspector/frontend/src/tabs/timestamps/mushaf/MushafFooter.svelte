@@ -9,6 +9,7 @@
     import { mushafActive, mushafAvailable, mushafMode } from '../stores/mushaf';
     import MushafRepeatPanel from './MushafRepeatPanel.svelte';
     import MushafSettings from './MushafSettings.svelte';
+    import { mushafFullscreen } from './fullscreen.svelte';
     import { mushafRepeat } from './repeat.svelte';
 
     let open = $state<'repeat' | 'settings' | null>(null);
@@ -33,7 +34,12 @@
         if (open === which) open = null;
     }
 
+    const fullTitle = $derived(
+        (i18n.locale, mushafFullscreen.on ? m.ts_mushaf_fullscreen_exit() : m.ts_mushaf_fullscreen_enter()),
+    );
+
     function toggleView(): void {
+        mushafFullscreen.exit();
         mushafMode.update((v) => !v);
         mushafRepeat.stop();
         open = null;
@@ -114,6 +120,21 @@
                 </div>
             {/if}
         </div>
+
+        <button
+            type="button" class="icon-btn" class:on={mushafFullscreen.on}
+            aria-pressed={mushafFullscreen.on}
+            title={fullTitle} aria-label={fullTitle}
+            onclick={() => mushafFullscreen.toggle()}
+        >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+                {#if mushafFullscreen.on}
+                    <path d="M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4" />
+                {:else}
+                    <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" />
+                {/if}
+            </svg>
+        </button>
     {/if}
 </div>
 

@@ -29,6 +29,9 @@ export interface RepeatCursor {
 
 export const REPEAT_COUNTS = [1, 2, 3, 4, 5, 7, 10, Infinity] as const;
 
+/** Silence between plays, ms. 0 = none: replays and jumps run straight on. */
+export const REPEAT_PAUSES_MS = [0, 500, 1000, 2000, 3000, 5000, 10000] as const;
+
 export function firstCursor(req: RepeatRequest): RepeatCursor | null {
     return req.verses.length ? { verse: 0, rep: 1, round: 1 } : null;
 }

@@ -51,7 +51,10 @@ export function textFamily(year: MushafYear): string {
     return year === '1405' ? DK_V1_FAMILY : DK_V2_FAMILY;
 }
 
-/** CSS font stack for a print year. */
-export function textFontStack(year: MushafYear): string {
-    return `'${textFamily(year)}', 'DigitalKhatt', serif`;
+/** The text face used when a year's own font is unavailable. */
+export const TEXT_FALLBACK_FAMILY = DK_V2_FAMILY;
+
+/** CSS font stack for a text family. */
+export function textFontStack(family: string): string {
+    return `'${family}', '${TEXT_FALLBACK_FAMILY}', serif`;
 }

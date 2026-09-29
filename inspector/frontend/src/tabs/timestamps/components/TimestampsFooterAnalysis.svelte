@@ -58,11 +58,8 @@
     const wordProfileTitle = $derived(
         (i18n.locale, m.ts_footer_word_profile_disabled_title()),
     );
-    // The Mushaf view has no waveform or analysis grid, so the analysis
-    // controls are inert there — greyed, not hidden, so the footer keeps its shape.
-    const mushafTitle = $derived((i18n.locale, m.ts_mushaf_disabled_title()));
     /** Why an analysis control is inert right now, or '' when it isn't. */
-    const inertTitle = $derived($mushafActive ? mushafTitle : $wordProfile ? wordProfileTitle : '');
+    const inertTitle = $derived($wordProfile ? wordProfileTitle : '');
 
     function persist(key: string, v: boolean): void {
         try { localStorage.setItem(key, String(v)); } catch { /* ignore */ }
@@ -173,11 +170,14 @@
 
 <div class="tfa" role="group" aria-label={groupAria}>
     <MushafFooter />
+    <!-- The Mushaf view has no waveform, analysis grid or grid shortcuts: its
+         footer carries only the Mushaf controls. -->
+    {#if !$mushafActive}
     <span class="tfa-sep" aria-hidden="true"></span>
     <button
         type="button" class="icon-btn" class:on={$loopTarget !== null}
-        aria-pressed={$loopTarget !== null} disabled={$mushafActive}
-        title={$mushafActive ? mushafTitle : loopTitle} onclick={toggleLoop}
+        aria-pressed={$loopTarget !== null}
+        title={loopTitle} onclick={toggleLoop}
     ><img class="img-icon" src="/icons/loop.svg" alt="" aria-hidden="true" /></button>
     <button
         type="button" class="icon-btn" class:on={$showLetters && !$wordProfile}
@@ -245,6 +245,7 @@
             </div>
         {/if}
     </div>
+{/if}
 </div>
 
 <style>

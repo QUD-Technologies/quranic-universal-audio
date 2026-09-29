@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { fitPages, lineEm, MIN_WORD_GAP_EM, PITCH_MAX, PITCH_MIN, spreadFontPx } from '../fit';
+import { FIT_SLACK, fitPages, lineEm, MIN_WORD_GAP_EM, PITCH_MAX, PITCH_MIN, spreadFontPx } from '../fit';
 
 const REF_EM = 17;
 
@@ -37,9 +37,9 @@ describe('spreadFontPx', () => {
         expect(spreadFontPx(m, REF_EM - 1)).toBe(m.fontPx);
     });
 
-    it('shrinks just enough for a denser spread to fit the column', () => {
+    it('shrinks just enough (plus slack) for a denser spread to fit the column', () => {
         const f = spreadFontPx(m, REF_EM * 1.1);
-        expect(f * REF_EM * 1.1).toBeCloseTo(m.columnPx, 5);
+        expect(f * REF_EM * 1.1 * (1 + FIT_SLACK)).toBeCloseTo(m.columnPx, 5);
     });
 });
 

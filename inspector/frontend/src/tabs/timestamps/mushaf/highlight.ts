@@ -7,6 +7,7 @@
  */
 import type { MushafScope } from '../stores/mushaf';
 import type { WordIndex } from './layout';
+import { compareRefs, type VerseRef } from './repeat-plan';
 
 export interface HighlightState {
     /** DK id of the word being recited, 0 in silence. */
@@ -20,6 +21,7 @@ export interface HighlightState {
 }
 
 const BAND_CLASS = 'mp-band';
+const STATE_CLASSES = ['is-active', 'is-hidden', 'is-pick'];
 
 export class PageHighlighter {
     private els: HTMLElement[] = [];
@@ -27,13 +29,31 @@ export class PageHighlighter {
     private last: HighlightState | null = null;
     private activeEl: HTMLElement | null = null;
 
-    /** Re-read the live word spans (after the rendered pages changed). */
+    private spot = '';
+
+    /** Re-read the live word spans (after the rendered pages changed). Spans
+     *  the pages re-used keep their classes, so every state class is reset. */
     rebuild(root: HTMLElement): void {
         this.els = [...root.querySelectorAll<HTMLElement>('.mv-slot [data-w]')];
         this.byId = new Map(this.els.map((el) => [Number(el.dataset.w), el]));
+        for (const el of this.els) el.classList.remove(...STATE_CLASSES);
         for (const line of root.querySelectorAll('.mv-slot .' + BAND_CLASS)) line.remove();
         this.last = null;
         this.activeEl = null;
+        this.spot = '';
+    }
+
+    /** Light up the verses `from`..`to` (inclusive, either order); null clears. */
+    spotlight(range: [VerseRef, VerseRef] | null, words: WordIndex): void {
+        const key = range ? range.map((v) => `${v.surah}:${v.ayah}`).join('-') : '';
+        if (key === this.spot) return;
+        this.spot = key;
+        const [a, b] = range ? [...range].sort(compareRefs) : [null, null];
+        for (const el of this.els) {
+            const id = Number(el.dataset.w);
+            const v = { surah: words.surah[id] ?? 0, ayah: words.ayah[id] ?? 0 };
+            el.classList.toggle('is-pick', !!a && !!b && compareRefs(v, a) >= 0 && compareRefs(v, b) <= 0);
+        }
     }
 
     /** Force the next `apply` to redo everything (layout moved). */

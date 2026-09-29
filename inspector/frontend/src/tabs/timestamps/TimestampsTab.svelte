@@ -478,6 +478,13 @@
         } finally {
             tsLoading.set(false);
         }
+        // A switch that arrived mid-load was dropped by the guard above — catch
+        // up to where the player is now, or the tab stays on the old chapter.
+        const now = get(playerContext);
+        const nowKey = `${now.delivery?.slug ?? ''}:${now.surahNum ?? 0}`;
+        if (nowKey !== key && nowKey !== loadedChapterKey) {
+            void syncChapter(now.delivery?.slug ?? '', now.surahNum ?? 0);
+        }
     }
 
     /** Precompute the cross-verse waṣl group for each member occasion (by_surah

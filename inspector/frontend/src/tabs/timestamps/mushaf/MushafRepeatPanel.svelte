@@ -15,7 +15,15 @@
     import { mushafYear } from '../stores/mushaf';
     import { firstWordOfVerse, LINE_AYAH, loadLayout, loadWordIndex, pageOfWord } from './layout';
     import { mushafRepeat } from './repeat.svelte';
-    import { expandRange, parseRef, REPEAT_COUNTS, refKey, type VerseRef } from './repeat-plan';
+    import {
+        compareRefs,
+        expandRange,
+        parseRef,
+        REPEAT_COUNTS,
+        REPEAT_PAUSES_MS,
+        refKey,
+        type VerseRef,
+    } from './repeat-plan';
 
     const COUNTERS = [
         ['each', m.ts_mushaf_repeat_each],
@@ -30,7 +38,13 @@
     const slug = $derived($playerContext.delivery?.slug ?? '');
     const focus = $derived($recitationFocus);
     const fromValid = $derived(parseRef(fromText) !== null);
-    const toValid = $derived(!toText.trim() || parseRef(toText) !== null);
+    /** "To" typed before "From" — the range runs forwards only. */
+    const toBeforeFrom = $derived.by(() => {
+        const from = parseRef(fromText);
+        const to = toText.trim() ? parseRef(toText) : null;
+        return !!from && !!to && compareRefs(to, from) < 0;
+    });
+    const toValid = $derived((!toText.trim() || parseRef(toText) !== null) && !toBeforeFrom);
 
     // Picked on the page → mirror into the text fields.
     $effect(() => { if (mushafRepeat.from) fromText = refKey(mushafRepeat.from); });
@@ -86,8 +100,23 @@
         mushafRepeat[which] = next;
     }
 
+    function stepPause(delta: 1 | -1): void {
+        const i = REPEAT_PAUSES_MS.indexOf(mushafRepeat.pauseMs as (typeof REPEAT_PAUSES_MS)[number]);
+        mushafRepeat.pauseMs = REPEAT_PAUSES_MS[Math.max(0, Math.min(REPEAT_PAUSES_MS.length - 1, i + delta))]!;
+    }
+
+    function numberFmt(): Intl.NumberFormat {
+        return new Intl.NumberFormat(i18n.locale === 'ar' ? 'ar-EG' : 'en');
+    }
+
     function countLabel(n: number): string {
-        return n === Infinity ? '∞' : `×${new Intl.NumberFormat(i18n.locale === 'ar' ? 'ar-EG' : 'en').format(n)}`;
+        return n === Infinity ? '∞' : `×${numberFmt().format(n)}`;
+    }
+
+    function pauseLabel(ms: number): string {
+        return ms === 0
+            ? m.ts_mushaf_repeat_pause_none()
+            : m.ts_mushaf_repeat_pause_seconds({ n: numberFmt().format(ms / 1000) });
     }
 
     async function start(): Promise<void> {
@@ -156,6 +185,8 @@
     </div>
     {#if mushafRepeat.picking}
         <p class="mr-hint">{L(m.ts_mushaf_repeat_pick_hint())}</p>
+    {:else if toBeforeFrom}
+        <p class="mr-msg" role="alert">{L(m.ts_mushaf_repeat_to_before_from())}</p>
     {/if}
 
     <div class="mr-chips">
@@ -182,6 +213,24 @@
             </div>
         </div>
     {/each}
+
+    <!-- Pause can change mid-run: it only shapes the gap before the next play. -->
+    <div class="mr-count">
+        <span>{L(m.ts_mushaf_repeat_pause())}</span>
+        <div class="mr-stepper">
+            <button
+                type="button" aria-label={L(m.ts_mushaf_repeat_less())}
+                disabled={mushafRepeat.pauseMs === REPEAT_PAUSES_MS[0]}
+                onclick={() => stepPause(-1)}
+            >−</button>
+            <output>{L(pauseLabel(mushafRepeat.pauseMs))}</output>
+            <button
+                type="button" aria-label={L(m.ts_mushaf_repeat_more())}
+                disabled={mushafRepeat.pauseMs === REPEAT_PAUSES_MS.at(-1)}
+                onclick={() => stepPause(1)}
+            >+</button>
+        </div>
+    </div>
 
     {#if mushafRepeat.running}
         <p class="mr-progress" aria-live="polite">{progress}</p>
@@ -249,7 +298,7 @@
     .mr-stepper { display: inline-flex; align-items: center; gap: var(--s-1); }
     .mr-stepper button { width: 22px; height: 22px; padding: 0; line-height: 1; }
     .mr-stepper output {
-        min-width: 2.6em;
+        min-width: 3.2em;
         text-align: center;
         font-family: var(--font-mono);
         color: var(--text-primary);
