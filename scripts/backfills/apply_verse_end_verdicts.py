@@ -136,6 +136,8 @@ def _snapshot(seg: dict, index: int, chapter: int, entry: dict) -> dict:
         snap["ignored_categories"] = list(seg["ignored_categories"])
     if seg.get("is_wasl"):
         snap["is_wasl"] = True
+    if seg.get("join_verdicts"):
+        snap["join_verdicts"] = copy.deepcopy(seg["join_verdicts"])
     return snap
 
 
