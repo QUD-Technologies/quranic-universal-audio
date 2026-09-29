@@ -24,13 +24,14 @@
         fontOf: (_page: number) => number;
         playable: Set<number>;
         fontStack: string;
+        headerFonts: { name: boolean; frame: boolean };
         /** Slot pages in visual order right → left. */
         pages: number[];
         leaf: Leaf | null;
         onleafend: () => void;
     }
 
-    let { layout, words, metrics, fontOf, playable, fontStack, pages, leaf, onleafend }: Props = $props();
+    let { layout, words, metrics, fontOf, playable, fontStack, headerFonts, pages, leaf, onleafend }: Props = $props();
 </script>
 
 {#snippet page(p: number)}
@@ -45,6 +46,7 @@
         heightPx={metrics.pageHeightPx}
         {playable}
         {fontStack}
+        {headerFonts}
     />
 {/snippet}
 
