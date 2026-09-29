@@ -14,6 +14,7 @@ import {
     filterByBoundaryStates,
     isVerseBoundary,
 } from '../../utils/validation/boundary-state';
+import { reviewMembers } from '../../utils/validation/join-review';
 
 const seg = (o: Partial<Segment>): Segment => {
     const result: Segment = {
@@ -180,6 +181,16 @@ describe('boundaryStates — missed_waqf', () => {
         expect(boundaryStates({ ...mw, resolved: true } as SegValAnyItem, c, 'missed_waqf')).toEqual(['waqf', 'wasl']);
         // a split the server did not resolve from this card (e.g. a verse-end auto split) is no answer
         expect(boundaryStates(mw, c, 'missed_waqf')).toEqual(['unset', 'unset']);
+    });
+
+    it('leaves cursors unset on a segment made by an earlier cross-verse split', () => {
+        const segs = [
+            seg({ segment_uid: 'root', index: 0, time_start: 0, time_end: 1000, matched_ref: '2:1:1-2:1:9', is_wasl: false }),
+            seg({ segment_uid: 'sib', index: 1, time_start: 1000, time_end: 1500, matched_ref: '2:2:1-2:2:3' }),
+        ];
+        const c = ctx(segs, { splitGroupIndex: { root: ['sib'] } });
+        expect(boundaryStates(mw, c, 'missed_waqf')).toEqual(['unset', 'unset']);
+        expect(reviewMembers(segs, boundary).map((s) => s.segment_uid)).toEqual(['root']);
     });
 
     it('drives the Unset · Wasl · Waqf chips across items', () => {

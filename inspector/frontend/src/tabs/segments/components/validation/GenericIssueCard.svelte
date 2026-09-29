@@ -9,7 +9,7 @@
     import type { Segment } from '../../../../lib/types/view-models';
     import { IssueRegistry } from '../../domain/registry';
     import { resolvedVerdicts } from '../../domain/join-verdict';
-    import { reviewBoundary } from '../../utils/validation/join-review';
+    import { reviewBoundary, reviewMembers } from '../../utils/validation/join-review';
     import { autoSplitMap, ensureAutoSplitMap } from '../../stores/auto-split';
     import {
         getAdjacentSegments,
@@ -178,7 +178,11 @@
             _splitGroupMemoResult = [];
         }
     }
-    $: groupMembers = _splitGroupMemoResult;
+    // A missed-waqf card answers only its own words; the group's other pieces are
+    // the splits that made this segment.
+    $: groupMembers = category === 'missed_waqf'
+        ? reviewMembers(_splitGroupMemoResult, reviewBoundary(item))
+        : _splitGroupMemoResult;
 
     // ---- Staged pre-split (an offline pass names the cut) ----
     //

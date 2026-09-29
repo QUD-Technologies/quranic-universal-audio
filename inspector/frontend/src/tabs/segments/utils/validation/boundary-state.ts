@@ -7,6 +7,7 @@
  * items by the states they contain.
  *
  * A cross-verse segment reads each inner verse end from its item's `verse_joins`.
+ * A Missed Waqf item reads only the split pieces inside its own words.
  * Join verdicts record the cut and ignore answers; a Missed Waqf item answered
  * before verdicts existed reads its cuts as waqf and its other cursors (or an
  * ignored root) as wasl. A pending recheck overrides
@@ -21,7 +22,7 @@ import type { StagedPicks } from '../../stores/staged-split';
 import { parseSegRef } from '../data/references';
 import { isIgnoredFor } from './classified-issues';
 import { edgeState } from '../../domain/join-verdict';
-import { reviewBoundary, reviewStates } from './join-review';
+import { reviewBoundary, reviewMembers, reviewStates } from './join-review';
 import { getSplitGroupMembers } from './split-group';
 import { itemCursorCount, type StagedKind, stagedPickKey, stagedSplitFor } from './staged-split';
 
@@ -98,9 +99,10 @@ export function boundaryStates(
     const root = segs.find((s) => s.segment_uid === uid) ?? null;
     if (category === 'missed_waqf') {
         const boundary = reviewBoundary(item);
-        const answered = _answeredMissedWaqf(item, members, root);
+        const own = reviewMembers(members, boundary);
+        const answered = _answeredMissedWaqf(item, own, root);
         if (boundary) {
-            const saved = reviewStates(members, boundary, ctx.waslRecheck);
+            const saved = reviewStates(own, boundary, ctx.waslRecheck);
             const picks = ctx.stagedPicks[stagedPickKey(category, uid)] ?? [];
             const base = answered && saved.every((s) => s === 'unset') ? answered : saved;
             return base.map((s, i) => picks[i] === undefined ? s : picks[i] ? 'wasl' : 'waqf');

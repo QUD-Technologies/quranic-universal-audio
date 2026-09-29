@@ -20,6 +20,24 @@ export function reviewStates(members: readonly Segment[], boundary: StagedSplit,
     });
 }
 
+const WORD_SPAN = /^\d+:\d+:\d+-\d+:\d+:\d+$/;
+
+/**
+ * The split-group pieces inside the item's own words. The group also holds the
+ * splits that made the reviewed segment (a cross-verse or low-confidence cut),
+ * which are not answers to its cursors.
+ */
+export function reviewMembers(members: readonly Segment[], boundary: StagedSplit | null): Segment[] {
+    if (!boundary) return [...members];
+    const first = boundary.refs[0]!.split('-')[0]!;
+    const last = endRef(boundary.refs[boundary.refs.length - 1]!);
+    return members.filter((s) => {
+        if (!WORD_SPAN.test(s.matched_ref)) return false;
+        const [from, to] = s.matched_ref.split('-') as [string, string];
+        return compareRef(from, first) >= 0 && compareRef(to, last) <= 0;
+    });
+}
+
 function compareRef(a: string, b: string): number {
     const x = a.split(':').map(Number), y = b.split(':').map(Number);
     for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i]! - y[i]!;
