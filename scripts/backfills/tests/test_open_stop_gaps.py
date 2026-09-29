@@ -73,3 +73,18 @@ def test_untimed_moved_and_cramped_stops_are_skipped():
     apart = _entries()
     apart[0]["segments"][1]["time_start"] = 1050
     assert plan_gaps(apart, _timing(), _chapter) == ([], {"not_abutting": 1})
+
+
+def test_the_gap_spans_the_boundary_and_a_nearby_silence():
+    later = _timing(silence_start_ms=1150, silence_end_ms=1250)
+    gaps, tally = plan_gaps(_entries(), later, _chapter)
+    assert tally == {"ok": 1}
+    left, right = chapter_save(_entries(), 2, gaps, _uuid(), _chapter)["segments"]
+    assert (left["time_end"], right["time_start"]) == (1000, 1250)
+    earlier = _timing(silence_start_ms=750, silence_end_ms=820)
+    left, right = chapter_save(
+        _entries(), 2, plan_gaps(_entries(), earlier, _chapter)[0], _uuid(), _chapter
+    )["segments"]
+    assert (left["time_end"], right["time_start"]) == (750, 1000)
+    far = _timing(silence_start_ms=1400, silence_end_ms=1500)
+    assert plan_gaps(_entries(), far, _chapter) == ([], {"silence_far_from_boundary": 1})

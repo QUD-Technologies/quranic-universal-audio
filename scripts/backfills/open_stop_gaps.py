@@ -4,13 +4,17 @@ A split cuts at one cursor, so both pieces meet there and the pause is shared
 between them with no gap. The timing engine's cut-timing pass
 (``cut_timing_v1.json``, ``joins[]`` of ``kind`` ``stop`` keyed by the LEFT
 segment's uid) aligned each such pair with a seeded psil and measured the
-silence. This script trims each pair to it: the left segment ends where the
-pause starts, the right starts where it ends, and the left's WAQF verdict moves
-with its edge. Each pair is two ``trim_segment`` ops (``fix_kind`` ``auto_fix``)
+silence. This script opens the pause between each pair: the published boundary and the
+measured silence are both evidence of it, so the gap spans both — the left segment
+ends at the earlier of the two, the right starts at the later — and the left's WAQF
+verdict moves with its edge. A boundary on the next word's onset keeps it; one in the
+left word's echo tail yields to the silence. A silence farther than ``MAX_SHIFT_MS``
+from the boundary is not trusted. Each pair is two ``trim_segment`` ops (``fix_kind`` ``auto_fix``)
 chained through the uids, so the History panel shows one edit per stop.
 
 A pair is skipped when it no longer abuts, its word no longer ends the left
-segment, or the silence does not leave both pieces at least ``MIN_PIECE_MS``.
+segment, the silence lies farther than ``MAX_SHIFT_MS`` from the boundary, or it
+would not leave both pieces at least ``MIN_PIECE_MS``.
 Joins timed ``none`` (no measurable silence) are left alone. Each chapter save
 waits until both files read back. Dry run by default; restart the Space before
 and after ``--apply`` so its in-memory detailed.json matches the bucket.
@@ -49,6 +53,10 @@ STOP = "stop"
 TIMED_SOURCES = frozenset({"psil", "energy"})
 #: Shortest piece a trim may leave (the editor's own ``EDIT_MIN_DURATION_MS``).
 MIN_PIECE_MS = 50
+#: Farthest the silence may lie from the published boundary. The psil is measured
+#: at this exact word pair, so a nearby silence means the boundary was placed in a
+#: word's tail or onset; farther off, the alignment is not trusted.
+MAX_SHIFT_MS = 300
 
 
 @dataclass(frozen=True)
@@ -81,11 +89,14 @@ def _gap_for(join: dict, left: dict, right: dict) -> tuple[Gap | None, str]:
         return None, "not_abutting"
     if join.get("after_ref") != _end_ref(left.get("matched_ref") or ""):
         return None, "word_moved"
-    if a - left["time_start"] < MIN_PIECE_MS or right["time_end"] - b < MIN_PIECE_MS or a >= b:
+    if min(left["time_end"], a) - left["time_start"] < MIN_PIECE_MS or a >= b:
         return None, "too_short"
-    if not a <= left["time_end"] <= b:
-        return None, "silence_off_boundary"
-    return Gap(0, left["segment_uid"], right["segment_uid"], a, b), "ok"
+    if right["time_end"] - max(left["time_end"], b) < MIN_PIECE_MS:
+        return None, "too_short"
+    at = left["time_end"]
+    if max(a - at, at - b, 0) > MAX_SHIFT_MS:
+        return None, "silence_far_from_boundary"
+    return Gap(0, left["segment_uid"], right["segment_uid"], min(at, a), max(at, b)), "ok"
 
 
 def plan_gaps(
