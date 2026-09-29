@@ -102,7 +102,7 @@ def build_year(db_path: Path, verse_of: dict[int, tuple[int, int]], juz, hizb) -
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description="Build the compact Madani mushaf layouts.")
     ap.add_argument("--src", type=Path, required=True, help="quranic-universal-mushaf checkout")
     args = ap.parse_args()
     data = args.src / "data"
