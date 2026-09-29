@@ -61,6 +61,8 @@
     import { compareRefs, type VerseRef } from './repeat-plan';
 
     const DEFAULT_PLAYER_H = 72;
+    /** Room kept under the book for the docked-footer handle in full screen. */
+    const DOCK_HANDLE_PX = 22;
     const PLAYER_SELECTOR = '.player';
     /** Page-turn duration (keep in step with `.mv-leaf` in MushafBook). */
     const LEAF_MS = 620;
@@ -233,7 +235,11 @@
         // The shell player's real top edge — `--player-h` omits its progress rail.
         const player = document.querySelector<HTMLElement>(PLAYER_SELECTOR);
         const playerH = parseFloat(getComputedStyle(root).getPropertyValue('--player-h')) || DEFAULT_PLAYER_H;
-        const bottom = player ? player.getBoundingClientRect().top : window.innerHeight - playerH;
+        // Docked in full screen, the footer is off-screen or overlaid: the book
+        // keeps the whole height bar the handle's strip.
+        const bottom = mushafFullscreen.docked
+            ? window.innerHeight - DOCK_HANDLE_PX
+            : player ? player.getBoundingClientRect().top : window.innerHeight - playerH;
         const top = root.getBoundingClientRect().top;
         vp = { width: root.clientWidth, height: Math.max(0, bottom - top) };
     }
@@ -510,6 +516,7 @@
     // Full screen moves the book's top edge without resizing it — re-measure.
     $effect(() => {
         void mushafFullscreen.on;
+        void mushafFullscreen.docked;
         void tick().then(measureViewport);
     });
 
@@ -517,6 +524,9 @@
     $effect(() => {
         if ($activeTab !== TAB_NAMES.TIMESTAMPS) untrack(() => mushafFullscreen.exit());
     });
+
+    /** Surah-name + header-frame fonts loaded? Pages fall back to plain text / a ruled box. */
+    let headerFonts = $state({ name: true, frame: true });
 
     // ---- theme-aware accent (the footer droplet colours the highlight) ----
     let theme = $state(themeStore.current);
@@ -529,8 +539,8 @@
                 console.error('Mushaf: script load failed', e);
                 failed = true;
             });
-        void ensureMushafFont(SURAH_NAME_FAMILY);
-        void ensureMushafFont(SURAH_FRAME_FAMILY);
+        void ensureMushafFont(SURAH_NAME_FAMILY).then((ok) => { headerFonts = { ...headerFonts, name: ok }; });
+        void ensureMushafFont(SURAH_FRAME_FAMILY).then((ok) => { headerFonts = { ...headerFonts, frame: ok }; });
 
         const detachRepeat = mushafRepeat.attach({
             readyChapter: () => (live ? chapter : 0),
@@ -598,7 +608,7 @@
                 <!-- Keyed by print year: a new layout gets fresh pages, never re-used spans. -->
                 {#key layout.year}
                     <MushafBook
-                        {layout} {words} {metrics} {fontOf} {fontStack}
+                        {layout} {words} {metrics} {fontOf} {fontStack} {headerFonts}
                         playable={tsChapters}
                         pages={slotPages}
                         {leaf}
@@ -622,6 +632,21 @@
     {/if}
 </div>
 
+{#if mushafFullscreen.docked && !mushafFullscreen.revealed}
+    <button
+        type="button" class="mv-dock-handle"
+        title={L(m.ts_mushaf_show_controls())} aria-label={L(m.ts_mushaf_show_controls())}
+        onmouseenter={() => mushafFullscreen.reveal()}
+        onfocus={() => mushafFullscreen.reveal()}
+        onclick={() => mushafFullscreen.reveal()}
+    >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m6 15 6-6 6 6" />
+        </svg>
+    </button>
+{/if}
+
 <style>
     .mv {
         position: relative;
@@ -642,6 +667,33 @@
     /* Full screen: only the book and the shell footer remain. */
     :global(html.mushaf-full .container > header) { display: none; }
     :global(html.mushaf-full .container) { padding-top: var(--s-2); }
+    /* Docked: the footer slides off the bottom; the handle brings it back over the book. */
+    :global(html.mushaf-full .player) { transition: transform 240ms var(--ease-out-quart, ease-out); }
+    :global(html.mushaf-dock .player) { transform: translateY(100%); }
+    :global(html.mushaf-dock.mushaf-dock-open .player) { transform: none; box-shadow: var(--shadow-pop); }
+    :global(html.mushaf-dock #timestamps-panel) { padding-bottom: 0; }
+
+    .mv-dock-handle {
+        position: fixed;
+        bottom: 3px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 16px;
+        padding: 0;
+        color: var(--text-faint);
+        background: var(--panel-2);
+        border: 1px solid var(--border-quiet);
+        border-radius: var(--r-2);
+        cursor: pointer;
+        z-index: 111;
+        transition: color var(--t-fast), background var(--t-fast);
+    }
+    .mv-dock-handle:hover { color: var(--text-primary); background: var(--panel-3, var(--panel-2)); }
+    .mv-dock-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
     .mv-status {
         margin: 0;

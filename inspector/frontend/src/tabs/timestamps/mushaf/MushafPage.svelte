@@ -14,7 +14,8 @@
         type MushafLayout,
         type WordIndex,
     } from './layout';
-    import { MIN_WORD_GAP_EM } from './fit';
+    import { surahName } from '../../../lib/utils/surah-info';
+    import { CHROME_ROW_PITCH, MIN_WORD_GAP_EM, PAD_BLOCK_EM } from './fit';
     import { SURAH_FRAME_FAMILY, SURAH_NAME_FAMILY } from './fonts';
 
     /** Surah-header frame glyph (PUA) and its advance in em, for the stretch. */
@@ -35,9 +36,11 @@
         /** Surahs the reciter has — their words are clickable. */
         playable: Set<number>;
         fontStack: string;
+        /** Whether the surah-name / header-frame fonts loaded; else plain text / a ruled box. */
+        headerFonts: { name: boolean; frame: boolean };
     }
 
-    let { page, layout, words, fontPx, pitchPx, columnPx, widthPx, heightPx, playable, fontStack }: Props = $props();
+    let { page, layout, words, fontPx, pitchPx, columnPx, widthPx, heightPx, playable, fontStack, headerFonts }: Props = $props();
 
     const lines = $derived(layout.pages[page - 1] ?? []);
     const firstId = $derived(layout.pageFirstWord[page - 1] ?? 0);
@@ -50,9 +53,11 @@
     const short = $derived(lines.length < 15);
     const frameScale = $derived(columnPx / (pitchPx * FRAME_ADVANCE_EM));
 
-    function ligature(surah: number): string {
-        return `surah${String(surah).padStart(3, '0')}`;
+    /** The surah-name font's ligature key, or the name in plain Arabic when that font is missing. */
+    function surahLabel(surah: number): string {
+        return headerFonts.name ? `surah${String(surah).padStart(3, '0')}` : `سورة ${surahName(surah, 'ar')}`;
     }
+    const nameFamily = $derived(headerFonts.name ? `'${SURAH_NAME_FAMILY}', serif` : fontStack);
 
     function range(a: number, b: number): number[] {
         const out: number[] = [];
@@ -74,10 +79,12 @@
     style:--mp-pitch="{pitchPx}px"
     style:--mp-column="{columnPx}px"
     style:--mp-gap="{MIN_WORD_GAP_EM}em"
+    style:--mp-pad-block="{PAD_BLOCK_EM}em"
+    style:--mp-chrome-row={CHROME_ROW_PITCH}
     style:--mp-text-font={fontStack}
 >
     <header class="mp-head">
-        <span class="mp-head-surah" style:font-family="'{SURAH_NAME_FAMILY}', serif">{headerSurah ? ligature(headerSurah) : ''}</span>
+        <span class="mp-head-surah" style:font-family={nameFamily}>{headerSurah ? surahLabel(headerSurah) : ''}</span>
         <span class="mp-head-meta">
             {L(m.ts_mushaf_juz({ n: numberFmt.format(juz) }))}
             <span aria-hidden="true">·</span>
@@ -100,14 +107,16 @@
                     {/each}
                 </div>
             {:else if kind === LINE_SURAH}
-                <div class="mp-line mp-surah">
-                    <span
-                        class="mp-frame"
-                        aria-hidden="true"
-                        style:font-family="'{SURAH_FRAME_FAMILY}', serif"
-                        style:transform="translate(-50%, -50%) scaleX({frameScale})"
-                    >{FRAME_GLYPH}</span>
-                    <span class="mp-surah-name" style:font-family="'{SURAH_NAME_FAMILY}', serif">{ligature(a)}</span>
+                <div class="mp-line mp-surah" class:mp-surah-plain={!headerFonts.frame}>
+                    {#if headerFonts.frame}
+                        <span
+                            class="mp-frame"
+                            aria-hidden="true"
+                            style:font-family="'{SURAH_FRAME_FAMILY}', serif"
+                            style:transform="translate(-50%, -50%) scaleX({frameScale})"
+                        >{FRAME_GLYPH}</span>
+                    {/if}
+                    <span class="mp-surah-name" style:font-family={nameFamily}>{surahLabel(a)}</span>
                 </div>
             {:else if kind === LINE_BASMALLAH}
                 <div class="mp-line centered mp-basm">{basmallah}</div>
@@ -125,14 +134,14 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        padding: calc(var(--mp-font) * 0.9) 0;
+        padding: var(--mp-pad-block) 0;
         background: var(--mushaf-paper);
         color: var(--text-primary);
         font-size: var(--mp-font);
     }
     .mp-head,
     .mp-num {
-        flex: 0 0 calc(var(--mp-pitch) * 0.8);
+        flex: 0 0 calc(var(--mp-pitch) * var(--mp-chrome-row));
         width: var(--mp-column);
         margin: 0; /* the app's global header/footer margins would push the rows off the page */
         display: flex;
@@ -145,7 +154,6 @@
     .mp-head {
         justify-content: space-between;
         direction: rtl;
-        border-block-end: 1px solid var(--border-quiet);
     }
     .mp-head-surah {
         font-size: calc(var(--mp-font) * 0.9);
@@ -202,6 +210,14 @@
     }
 
     .mp-surah { justify-content: center; }
+    /* No frame font: a quiet ruled box stands in for the ornament. */
+    .mp-surah-plain::before {
+        content: '';
+        position: absolute;
+        inset: 10% 0;
+        border: 1px solid var(--border-default);
+        border-radius: var(--r-2);
+    }
     .mp-frame,
     .mp-surah-name {
         position: absolute;

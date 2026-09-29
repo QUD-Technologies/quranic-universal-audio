@@ -15,11 +15,13 @@ export const MIN_WORD_GAP_EM = 0.2;
 export const PITCH_MIN = 1.75;
 /** Upper bound on the pitch ratio, so a wide-but-short window doesn't space lines out. */
 export const PITCH_MAX = 2.3;
-/** Page rows: 15 text lines + a header and a page-number row (≈0.8 line each). */
-export const PAGE_ROWS = 15 + 1.6;
+/** Header / page-number row height, in line pitches. */
+export const CHROME_ROW_PITCH = 0.7;
+/** Page rows: 15 text lines + a header and a page-number row. */
+export const PAGE_ROWS = 15 + 2 * CHROME_ROW_PITCH;
 /** Page padding in em: inline each side, block each side. */
 export const PAD_INLINE_EM = 1.1;
-export const PAD_BLOCK_EM = 0.9;
+export const PAD_BLOCK_EM = 0.55;
 /** Gap between the two pages at the spine, px. */
 export const SPINE_PX = 2;
 /** Margin beside the book (outside the page-turn buttons), px. */
