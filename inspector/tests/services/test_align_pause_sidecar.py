@@ -53,6 +53,12 @@ def _build(doc, riwayah="hafs"):
 SPEECH_DB, FLOOR_DB = -20, -70
 
 
+@pytest.fixture(autouse=True)
+def _no_levels(monkeypatch):
+    """No chapter has levels unless a test bakes some (``quiet_at``)."""
+    monkeypatch.setattr(ChapterLevels, "load", lambda slug, ch: None)
+
+
 @pytest.fixture
 def quiet_at(monkeypatch):
     """Chapter levels: speech throughout, floor-level silence over the given ``(from_ms, to_ms)`` spans."""
