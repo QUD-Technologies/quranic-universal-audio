@@ -133,6 +133,14 @@ describe('boundaryStates', () => {
         expect(boundaryStates(root, c)).toEqual(['wasl', 'waqf']);
     });
 
+    it('counts nothing for a settled item whose pieces hold no verse end', () => {
+        const segs = [seg({ segment_uid: 'root', matched_ref: '2:1:1-2:1:4' })];
+        const settled = item({ chapter: 2, seg_index: 0, segment_uid: 'root', resolved: true });
+        expect(boundaryStates(settled, ctx(segs))).toEqual([]);
+        expect(countBoundaryStates([settled], ctx(segs))).toEqual({ unset: 0, wasl: 0, waqf: 0 });
+        expect(boundaryStates(root, ctx(segs))).toEqual(['unset']);
+    });
+
     it('reads an ignored cross-verse segment as all wasl', () => {
         const segs = [seg({ segment_uid: 'root', matched_ref: '2:1:1-2:3:2', ignored_categories: ['cross_verse'] })];
         expect(boundaryStates(root, ctx(segs))).toEqual(['wasl', 'wasl']);

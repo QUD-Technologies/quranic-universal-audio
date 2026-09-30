@@ -8,7 +8,8 @@
  *
  * A Missed Waqf item asks its cut words; a cross-verse item asks every verse end
  * across its pieces. Each word reads its answer by word (`wordAnswer`), so splits,
- * trims and merges on top of an answer never lose it.
+ * trims and merges on top of an answer never lose it. A settled item with no word
+ * left to ask has no boundary.
  */
 
 import type { SegValAnyItem } from '../../../../lib/types/generated/schemas';
@@ -87,9 +88,10 @@ export function boundaryStates(
     const members = getSplitGroupMembers(uid, segs, ctx.splitGroupIndex[uid], ctx.opLog(chapter));
     const own = category === 'missed_waqf' ? reviewMembers(members, reviewBoundary(item)) : members;
     const words = _askedWords(item, own, root, category);
-    if (!words.length) return ['unset'];
     const settled = (item as { resolved?: boolean }).resolved === true
         || (root !== null && isIgnoredFor(root, category));
+    // A settled item whose pieces no longer hold a verse end has nothing left to ask.
+    if (!words.length) return settled ? [] : ['unset'];
     const picks = _picksByWord(item, root, ctx, category, uid);
     const waiting = new Set([...ctx.waslRecheck, ...ctx.pendingWasl]);
     return words.map((word) => {
