@@ -79,6 +79,7 @@ def test_acquire_persists_singles_and_combined_slots_then_skips_on_rerun(mount):
     audio = _reciter(root) / "audio"
     assert sorted(p.name for p in audio.iterdir()) == ["201.mp3", "3.mp3"]
     assert (_reciter(root) / "peaks" / "3.json.gz").is_file()
+    assert (_reciter(root) / "levels" / "3.json.gz").is_file()
     assert not (_reciter(root) / "peaks" / "201.json.gz").exists()
 
     report = json.loads((root / "staging" / SLUG / "run-1" / "acquire.json").read_text("utf-8"))
@@ -110,6 +111,7 @@ def test_split_cuts_windows_and_removes_the_slot(mount):
     assert abs(report["cuts"]["1"]["duration_ms"] - 2500) < 150
     assert abs(report["cuts"]["2"]["duration_ms"] - 3500) < 150
     assert (_reciter(root) / "peaks" / "2.json.gz").is_file()
+    assert (_reciter(root) / "levels" / "2.json.gz").is_file()
 
 
 def test_split_reports_a_missing_slot_and_keeps_going(mount):

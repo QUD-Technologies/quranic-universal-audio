@@ -5,8 +5,9 @@ same adaptation assemble uses, so the sidecars index exactly the rows that get
 published) and streams ``POST /api/v1/extraction/sidecars``. Auto Split reuses
 the align stage's candidate-only interactive timings; Low Confidence keeps its
 independent MFA probe. The Space runs one sidecar job at a time; a 409 waits and
-retries. ``missed_waqf_v2`` (Low Confidence Waqf) is built here from the staged
-rows' lattice pauses and word timings, without the Space (``pause_sidecar``).
+retries. ``missed_waqf_v2`` (Low Confidence Waqf) and ``verse_ends_v1`` are built
+here from the staged rows' lattice pauses, word timings and the chapters' baked
+loudness levels, without the Space (``pause_sidecar``).
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ log = logging.getLogger("inspector")
 LOW_CONFIDENCE_FILE = "low_confidence_v2.json"
 AUTO_SPLIT_FILE = "auto_split_v1.json"
 MISSED_WAQF_FILE = pause_sidecar.SIDECAR_FILE
+VERSE_ENDS_FILE = pause_sidecar.VERSE_ENDS_FILE
 BUSY_RETRY_S = 60
 BUSY_MAX_WAIT_S = 6 * 3600
 TRANSIENT_ATTEMPTS = 3
@@ -109,9 +111,13 @@ def _stage_missed_waqf(
     docs = staging.read_chapters(slug, run_id, chapters)
     from services.storage.data_loader import load_detailed
 
-    doc = pause_sidecar.build(slug, docs, sources, params.riwayah, load_detailed(slug))
+    doc, verse_ends = pause_sidecar.build(slug, docs, sources, params.riwayah, load_detailed(slug))
+    staging.write_json(staging.sidecar_path(slug, run_id, VERSE_ENDS_FILE), verse_ends)
     staging.write_json(path, doc)
-    log.info("align %s: %s staged, %d item(s)", run_id, MISSED_WAQF_FILE, len(doc["by_uid"]))
+    log.info(
+        "align %s: %s staged, %d item(s); %d segment(s) with verse-end verdicts",
+        run_id, MISSED_WAQF_FILE, len(doc["by_uid"]), len(verse_ends["by_uid"]),
+    )  # fmt: skip
 
 
 def _call(run_id: str, body: dict) -> dict:

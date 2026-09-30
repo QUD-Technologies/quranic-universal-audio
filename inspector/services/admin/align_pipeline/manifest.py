@@ -26,7 +26,7 @@ log = logging.getLogger("inspector")
 CANONICAL_KBPS = 192
 CANONICAL_SAMPLE_RATE = 44100
 _MS = 1000
-_PIPELINE_ACTOR = Actor(hf_user_id="SYSTEM_ACTOR", login_at_time="align_pipeline", role=Role.OWNER)
+PIPELINE_ACTOR = Actor(hf_user_id="SYSTEM_ACTOR", login_at_time="align_pipeline", role=Role.OWNER)
 
 
 def _read(slug: str) -> dict:
@@ -136,7 +136,7 @@ def sync_delivery(slug: str) -> None:
         return
     try:
         catalog_service.edit_delivery_fields(
-            actor=_PIPELINE_ACTOR, slug=slug, fields=fields, reason="align pipeline audio probe"
+            actor=PIPELINE_ACTOR, slug=slug, fields=fields, reason="align pipeline audio probe"
         )
     except Exception as exc:  # noqa: BLE001 — metadata only; never fails the run
         log.warning("align: delivery rollup for %s not updated: %s", slug, exc)

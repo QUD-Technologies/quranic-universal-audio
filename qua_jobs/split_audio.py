@@ -10,7 +10,7 @@ once the aligner has placed every surah inside each slot file. Reads
 
 Each chapter is one or more *pieces* (a surah uploaded in parts), each a window
 of ``reciters/<slug>/audio/<slot>.mp3``; they are encoded end to end into the
-canonical ``audio/<ch>.mp3`` and its ``peaks/<ch>.json.gz``. The Inspector
+canonical ``audio/<ch>.mp3``, its ``peaks/<ch>.json.gz`` and ``levels/<ch>.json.gz``. The Inspector
 rebases the chapter's timestamps with the same windows, so cut and timings agree
 by construction.
 
@@ -81,6 +81,11 @@ def _cut_one(slug: str, chapter: int, pieces: list[list[int]]) -> dict:
         blob, duration_ms = audio_io.bake_peaks(encoded)
         _check_length(chapter, duration_ms, _expected_ms(pieces))
         bucket_io.put_bytes(blob, f"reciters/{slug}/peaks/{chapter}.json.gz", work / "peaks.gz")
+        bucket_io.put_bytes(
+            audio_io.bake_levels(encoded),
+            f"reciters/{slug}/levels/{chapter}.json.gz",
+            work / "lv.gz",
+        )
         bucket_io.put(encoded, _audio(slug, chapter))
         return {
             "bytes": encoded.stat().st_size,

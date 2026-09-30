@@ -1,19 +1,26 @@
-"""``missed_waqf_v2.json`` — Low Confidence Waqf items from the aligner's lattice pauses.
+"""``missed_waqf_v2.json`` (Low Confidence Waqf) and ``verse_ends_v1.json`` from the
+aligner's lattice pauses and the chapter's loudness levels.
 
-The aligner reports the stops its phoneme lattice heard inside a segment
-(``pauses``) and never cuts on them. Every mid-verse stop becomes one proposed
-cut the reviewer answers: WAQF splits there, WASL keeps the segment whole. A
-stop at a verse end is left out — the verse boundary is not this review's
-question.
+The aligner reports the stops its phoneme lattice heard inside a segment (``pauses``)
+and never cuts on them. Every join a segment holds is judged here by the boundary-head
+lab's rules (``hidden_pause.sidecar`` / ``hidden_pause.cross_verse``), with the silence
+measured at the join (:mod:`.join_silence`):
 
-The cursor is the midpoint between the end of the ``after_ref`` word and the
-start of the next word in the row's word timings, the rule Auto Split uses for
-its section boundaries. A pause on a row without word timings (or whose word
-is not in them) gets no cursor and is counted in ``_meta.untimed``.
+* **Mid-verse stop** (a lattice pause): asked when the reciter went quiet
+  (``MIN_SILENCE_MS`` under the speech level, ``MIN_DIP_DB`` deep) and either the
+  mushaf marks a pause after the word (ۖ ۗ ۘ ۚ) or the silence reaches the noise floor
+  for ``MIN_FLOOR_MS``; a non-Hafs join always needs ``MIN_EDITION_FLOOR_MS`` of floor.
+  A chapter without levels asks every pause.
+* **Verse end** inside a segment: the lattice (paused or not) and ``VERSE_END_FLOOR_MS``
+  of floor silence each read WAQF or WASL; when they agree the verdict goes to
+  ``verse_ends_v1`` and is applied after publish (``services.segments.verse_end_verdicts``),
+  otherwise it is asked. Non-Hafs verse ends, repetition segments, low-confidence
+  segments and chapters without levels are always asked.
 
-Items are keyed by the uid the published row derives —
-``derive_uid(chapter, index, time_start)`` over the chapter's kept rows — and
-share the ``missed_waqf_v1`` item shape with a single ``lattice`` axis.
+A cut sits at the middle of the silence (else the midpoint between the two words'
+timings). Items are keyed by ``derive_uid(chapter, index, time_start)`` over the
+chapter's kept rows, share the ``missed_waqf_v1`` item shape with a single ``lattice``
+axis, and ``gap_ms`` carries the floor silence.
 """
 
 from __future__ import annotations
@@ -21,16 +28,31 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
+from qua_shared.riwayat import DEFAULT_SDK_RIWAYAH
+
 from . import adapt
+from .join_silence import ChapterLevels, Silence
 from .params import AUTO_SPLIT_TIMING_SOURCE
 
 log = logging.getLogger("inspector")
 
 SIDECAR_FILE = "missed_waqf_v2.json"
+VERSE_ENDS_FILE = "verse_ends_v1.json"
 KIND = "missed_waqf"
 AXIS = "lattice"
-#: ``score`` is ``gain`` in thousandths, so the accordion sorts by it as an int.
+WAQF = "waqf"
+WASL = "wasl"
+#: ``score`` is ``gain`` in thousandths plus the floor silence (capped), as an int.
 SCORE_SCALE = 1000
+SCORE_SILENCE_CAP_MS = 999
+MIN_SILENCE_MS = 40
+MIN_DIP_DB = 10
+MIN_FLOOR_MS = 160
+MIN_EDITION_FLOOR_MS = 120
+VERSE_END_FLOOR_MS = 200
+#: The aligner reports no pause past its lattice cost ceiling (0.3); confidence is 1 - cost.
+MIN_CONFIDENCE = 0.7
+PAUSE_MARKS = frozenset("ۖۗۘۚ")
 
 
 def _ref_key(ref: str) -> tuple[int, ...] | None:
@@ -41,9 +63,9 @@ def _ref_key(ref: str) -> tuple[int, ...] | None:
     return parts if len(parts) == 3 else None
 
 
-def _same_verse(a: str, b: str) -> bool:
+def _verse_end(a: str, b: str) -> bool:
     ka, kb = _ref_key(a), _ref_key(b)
-    return ka is not None and kb is not None and ka[:2] == kb[:2]
+    return ka is not None and kb is not None and ka[:2] != kb[:2]
 
 
 def _midpoint_ms(prev_word: dict, next_word: dict) -> int | None:
@@ -51,10 +73,6 @@ def _midpoint_ms(prev_word: dict, next_word: dict) -> int | None:
     if end is None or start is None:
         return None
     return adapt.to_ms((float(end) + float(start)) / 2.0)
-
-
-def _gap_ms(prev_word: dict, next_word: dict) -> int:
-    return max(0, adapt.to_ms(float(next_word["start"]) - float(prev_word["end"])))
 
 
 def _pieces(matched_ref: str, joins: list[tuple[str, str]]) -> list[str] | None:
@@ -75,71 +93,135 @@ def _join_index(words: list[dict], after_ref: str, start: int) -> int | None:
     return None
 
 
-def _cut(pause: dict, prev_word: dict, next_word: dict, cursor: int, word: str) -> dict:
-    after_ref, next_ref = prev_word["location"], next_word["location"]
-    return {
-        "cursor_ms": cursor,
-        "axes": [AXIS],
-        "gap_ms": _gap_ms(prev_word, next_word),
-        "score": round(float(pause["gain"]) * SCORE_SCALE),
-        "word": word,
-        "verse_end": False,
-        "evidence": {
-            AXIS: {
-                "gain": pause["gain"],
-                "separability": pause["separability"],
-                "after_ref": after_ref,
-                "next_ref": next_ref,
-            }
-        },
-    }
-
-
-def item_for(chapter: int, seg: dict, row: dict, riwayah: str, tally: dict) -> dict | None:
-    """One sidecar item for a published ``seg`` (its aligner ``row`` alongside), or ``None``."""
-    from services.reference.quran_refs import dk_text_for_ref
-
-    row_words = row.get("words")
-    words = row_words if isinstance(row_words, list) else []
-    cuts: list[dict] = []
-    joins: list[tuple[str, str]] = []
+def _joins(words: list[dict], pauses: list[dict], tally: dict) -> list[tuple[int, dict | None]]:
+    """``(word index, pause or None)`` for every lattice pause and verse end, in order."""
+    held: dict[int, dict | None] = {}
     search_from = 0
-    last_cursor = seg["time_start"]
-    for pause in row.get("pauses") or []:
+    for pause in pauses:
         tally["pauses"] += 1
-        after_ref = pause["after_ref"]
-        index = _join_index(words, after_ref, search_from)
+        index = _join_index(words, pause["after_ref"], search_from)
         if index is None:
             tally["untimed"] += 1
             continue
-        prev_word, next_word = words[index], words[index + 1]
         search_from = index + 1
-        if not _same_verse(after_ref, str(next_word.get("location") or "")):
-            tally["verse_end"] += 1
-            continue
+        held[index] = pause
+    for i in range(len(words) - 1):
+        if _verse_end(str(words[i].get("location")), str(words[i + 1].get("location"))):
+            held.setdefault(i, None)
+    return sorted(held.items(), key=lambda kv: kv[0])
+
+
+def keep_stop(silence: Silence | None, marked: bool, hafs: bool) -> bool:
+    """Whether a mid-verse lattice pause is asked (see module doc)."""
+    if silence is None:
+        return True
+    if silence.silence_ms < MIN_SILENCE_MS or silence.dip_db < MIN_DIP_DB:
+        return False
+    if not hafs:
+        return silence.floor_ms >= MIN_EDITION_FLOOR_MS
+    return marked or silence.floor_ms >= MIN_FLOOR_MS
+
+
+def verse_end_verdict(paused: bool, silence: Silence | None) -> str | None:
+    """``WAQF`` / ``WASL`` when the lattice and the floor silence agree, else ``None``."""
+    if silence is None:
+        return None
+    stopped = silence.floor_ms >= VERSE_END_FLOOR_MS
+    if paused == stopped:
+        return WAQF if paused else WASL
+    return None
+
+
+def _cut(pause, prev_word, next_word, cursor, word, silence, verse_end) -> dict:
+    gain = float(pause["gain"]) if pause else 0.0
+    quiet = silence.floor_ms if silence else 0
+    lattice = {"paused": pause is not None, "after_ref": prev_word["location"],
+               "next_ref": next_word["location"]}  # fmt: skip
+    if pause:
+        lattice |= {"gain": pause["gain"], "separability": pause["separability"]}
+    if silence:
+        lattice |= {"floor_ms": silence.floor_ms, "silence_ms": silence.silence_ms,
+                    "dip_db": silence.dip_db}  # fmt: skip
+    return {
+        "cursor_ms": cursor,
+        "axes": [AXIS],
+        "gap_ms": quiet,
+        "score": round(gain * SCORE_SCALE) + min(quiet, SCORE_SILENCE_CAP_MS),
+        "word": word,
+        "verse_end": verse_end,
+        "evidence": {AXIS: lattice},
+    }
+
+
+def item_for(
+    chapter: int,
+    seg: dict,
+    row: dict,
+    riwayah: str,
+    tally: dict,
+    levels: ChapterLevels | None = None,
+) -> tuple[dict | None, dict | None]:
+    """The asked item and the verse-end verdicts for a published ``seg`` (its aligner ``row``)."""
+    from services.reference.quran_refs import dk_text_for_ref
+
+    raw_words = row.get("words")
+    words: list[dict] = raw_words if isinstance(raw_words, list) else []
+    hafs = riwayah == DEFAULT_SDK_RIWAYAH
+    judged = (
+        hafs and not seg.get("wrap_word_ranges") and (row.get("confidence") or 0) >= MIN_CONFIDENCE
+    )
+    answered = {j.get("after_ref") for j in seg.get("join_verdicts") or []}
+    cuts: list[dict] = []
+    pieces: list[tuple[str, str]] = []
+    verdicts: list[dict] = []
+    last = seg["time_start"]
+    for index, pause in _joins(words, row.get("pauses") or [], tally):
+        prev_word, next_word = words[index], words[index + 1]
+        after_ref, next_ref = prev_word["location"], next_word["location"]
+        verse_end = _verse_end(after_ref, next_ref)
+        tally["verse_end" if verse_end else "mid_verse"] += 1
         relative = _midpoint_ms(prev_word, next_word)
         cursor = None if relative is None else seg["time_start"] + relative
-        if cursor is None or not last_cursor < cursor < seg["time_end"]:
+        if cursor is None or not last < cursor < seg["time_end"]:
             tally["untimed"] += 1
             continue
-        last_cursor = cursor
-        if any(j["after_ref"] == after_ref for j in seg.get("join_verdicts") or []):
-            tally["answered"] = tally.get("answered", 0) + 1
+        if after_ref in answered:
+            tally["answered"] += 1
             continue
+        silence = levels.measure(cursor, seg["time_start"], seg["time_end"]) if levels else None
+        if silence and last < silence.at_ms < seg["time_end"]:
+            cursor = silence.at_ms
         word = dk_text_for_ref(f"{after_ref}-{after_ref}", riwayah)
-        cuts.append(_cut(pause, prev_word, next_word, cursor, word))
-        joins.append((after_ref, next_word["location"]))
-    if not cuts:
-        return None
-    refs = None if seg.get("wrap_word_ranges") else _pieces(seg["matched_ref"], joins)
-    return {
-        "kind": KIND,
-        "chapter": chapter,
-        "cursors": [c["cursor_ms"] for c in cuts],
-        "refs": refs,
-        "score": max(c["score"] for c in cuts),
-        "cuts": cuts,
-    }
+        if verse_end:
+            verdict = verse_end_verdict(pause is not None, silence) if judged else None
+            if verdict:
+                tally[verdict] += 1
+                verdicts.append({"after_ref": after_ref, "next_ref": next_ref, "verdict": verdict,
+                                 "cursor_ms": cursor})  # fmt: skip
+                last = cursor
+                continue
+        elif not keep_stop(silence, bool(PAUSE_MARKS & set(word)), hafs):
+            tally["dropped"] += 1
+            continue
+        last = cursor
+        cuts.append(_cut(pause, prev_word, next_word, cursor, word, silence, verse_end))
+        pieces.append((after_ref, next_ref))
+    item = None
+    if cuts:
+        refs = None if seg.get("wrap_word_ranges") else _pieces(seg["matched_ref"], pieces)
+        item = {
+            "kind": KIND,
+            "chapter": chapter,
+            "cursors": [c["cursor_ms"] for c in cuts],
+            "refs": refs,
+            "score": max(c["score"] for c in cuts),
+            "cuts": cuts,
+        }
+    applied = None
+    if verdicts:
+        applied = {"chapter": chapter, "start_ms": seg["time_start"], "end_ms": seg["time_end"],
+                   "joins": verdicts}  # fmt: skip
+    return item, applied
 
 
 def build(
@@ -148,12 +230,16 @@ def build(
     sources: dict[int, str],
     riwayah: str,
     live_entries: list[dict] | None = None,
-) -> dict:
-    """The whole ``missed_waqf_v2`` doc for the staged aligner results ``docs``."""
+) -> tuple[dict, dict]:
+    """The ``missed_waqf_v2`` and ``verse_ends_v1`` docs for the staged aligner results ``docs``."""
+    from collections import Counter
+
     from domain.identity import derive_uid
 
-    tally = {"pauses": 0, "verse_end": 0, "untimed": 0}
+    tally: Counter[str] = Counter()
     by_uid: dict[str, dict] = {}
+    applied: dict[str, dict] = {}
+    unmeasured: list[int] = []
     reviewed = {
         (int(e["ref"].split(":")[0]), s["time_start"], s["time_end"], s["matched_ref"]): s.get(
             "join_verdicts"
@@ -165,33 +251,44 @@ def build(
         candidate, _events, _basmala = adapt.adapt_chapter(
             chapter, docs[chapter], source_url=sources[chapter], riwayah=riwayah
         )
+        levels = ChapterLevels.load(reciter, chapter)
+        if levels is None:
+            unmeasured.append(chapter)
         kept = [r for r in docs[chapter].get("segments") or [] if not adapt.is_special(r)]
         for index, (seg, row) in enumerate(
             zip(candidate["entries"][0]["segments"], kept, strict=True)
         ):
-            if not row.get("pauses"):
-                continue
             answers = reviewed.get(
                 (chapter, seg["time_start"], seg["time_end"], seg["matched_ref"])
             )
             if answers:
                 seg = {**seg, "join_verdicts": answers}
-            item = item_for(chapter, seg, row, riwayah, tally)
+            item, verdicts = item_for(chapter, seg, row, riwayah, tally, levels)
+            uid = derive_uid(chapter, index, seg["time_start"])
             if item is not None:
-                by_uid[derive_uid(chapter, index, seg["time_start"])] = item
+                by_uid[uid] = item
+            if verdicts is not None:
+                applied[uid] = verdicts
     if tally["untimed"]:
-        log.warning(
-            "align %s: %d lattice pause(s) had no word timing, skipped", reciter, tally["untimed"]
-        )
-    return {
+        log.warning("align %s: %d join(s) had no word timing, skipped", reciter, tally["untimed"])
+    if unmeasured:
+        log.warning("align %s: no levels for chapter(s) %s, every join asked", reciter, unmeasured)
+    created = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    missed = {
         "_meta": {
-            "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "created_at": created,
             "reciter": reciter,
             "kind": KIND,
-            "arms": {AXIS: {"source": "aligner_pauses", "timing": AUTO_SPLIT_TIMING_SOURCE}},
+            "arms": {AXIS: {"source": "aligner_pauses+levels", "timing": AUTO_SPLIT_TIMING_SOURCE}},
             "segments": len(by_uid),
             "by_axes": {AXIS: len(by_uid)},
-            **tally,
+            "unmeasured_chapters": unmeasured,
+            **dict(sorted(tally.items())),
         },
         "by_uid": dict(sorted(by_uid.items())),
     }
+    verse_ends = {
+        "_meta": {"created_at": created, "reciter": reciter, "segments": len(applied)},
+        "by_uid": dict(sorted(applied.items())),
+    }
+    return missed, verse_ends

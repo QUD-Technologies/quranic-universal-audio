@@ -21,7 +21,7 @@ Where it lives:
 
 | Piece | Path |
 |---|---|
-| Service package | `inspector/services/admin/align_pipeline/` — `runs` (start/retry/cancel/status), `runner` (worker threads), `stage_acquire` · `stage_align` · `stage_split` · `stage_sidecars` · `stage_assemble`, `sources` (manifest → source groups + slots), `partition` (pure cut logic), `resolve` (which file each surah is taken from), `manifest` (writes acquired size/duration/offset + split coverage back to the audio manifest), `adapt` (aligner rows → staged shapes), `pause_sidecar` (lattice pauses → `missed_waqf_v2`), `aligner_client` (SSE), `staging` (bucket paths), `progress` (in-memory detail + cancel), `params` (knobs + env), `limits` (shared GPU/CPU budget) |
+| Service package | `inspector/services/admin/align_pipeline/` — `runs` (start/retry/cancel/status), `runner` (worker threads), `stage_acquire` · `stage_align` · `stage_split` · `stage_sidecars` · `stage_assemble`, `sources` (manifest → source groups + slots), `partition` (pure cut logic), `resolve` (which file each surah is taken from), `manifest` (writes acquired size/duration/offset + split coverage back to the audio manifest), `adapt` (aligner rows → staged shapes), `pause_sidecar` (lattice pauses + levels → `missed_waqf_v2` / `verse_ends_v1`), `join_silence` (silence at a join from the baked levels), `aligner_client` (SSE), `staging` (bucket paths), `progress` (in-memory detail + cancel), `params` (knobs + env), `limits` (shared GPU/CPU budget) |
 | Intake planner | `inspector/services/admin/intake_plan/` — `enumerate` (+ `drive`), `identity`, `plan`, `mint` |
 | Durable row | `align_runs` table — `services/db/migrations/0031_align_runs.sql`, `services/db/repo_align_runs.py` |
 | HF jobs | `qua_jobs/acquire_audio.py` (kind `acquire_audio`) and `qua_jobs/split_audio.py` (kind `split_audio`), both shown in the Jobs tab; shared fetch/encode/cut/peaks helpers in `qua_jobs/audio_io.py`; grouping in `qua_shared/audio/sources.py` |
@@ -64,7 +64,7 @@ align     per-file loop, aligner Space POST /api/v1/batches (alignment-only) +
           by detected surah (partition.cut_file) → resolve which file each surah comes
           from (resolve.py) → split_plan.json {chapters: {ch: [[slot,start,end], …]}}
           → CPU HF Job qua_jobs/split_audio.py (kind split_audio) encodes each chapter's
-          pieces end to end → audio/<ch>.mp3 + peaks, deletes the slots once every cut
+          pieces end to end → audio/<ch>.mp3 + peaks + levels, deletes the slots once every cut
           succeeded. The job never touches the bucket mount: qua_jobs/bucket_io.py
           moves files over the Hub HTTP API (job env BUCKET_REPO; size-checked,
           retried). Reading large files off the mount while writing to it hung and
@@ -79,17 +79,22 @@ sidecars  one reciter-wide POST /api/v1/extraction/sidecars (SSE) — the aligne
           → staging/<slug>/<run>/sidecars/{low_confidence_v2,auto_split_v1}.json
           Hafs only for the probe: a non-Hafs delivery gets `low_confidence_v2: null`
           (D12, editions.md) and nothing is staged for it; auto_split_v1 is always staged
-          + sidecars/missed_waqf_v2.json built in-process (pause_sidecar) from the rows'
-          lattice `pauses` + word timings — see Low Confidence Waqf below
+          + sidecars/{missed_waqf_v2,verse_ends_v1}.json built in-process (pause_sidecar)
+          from the rows' lattice `pauses`, word timings and the chapters' levels — see
+          Low Confidence Waqf below
 assemble  in-process: adapt → promote_build.build_artifacts (peaks from the acquired blobs,
           no ffmpeg) → reciters/<slug>/{detailed,segments,pipeline_meta,chapter_sources,
           coverage_report,edit_history*.jsonl,low_confidence_v2,auto_split_v1,
-          missed_waqf_v2}.json
+          missed_waqf_v2,verse_ends_v1}.json
           chapter_sources carries each chapter's offset inside its source file;
           coverage_report lists split drops as missing; mislabelled files, suspect cuts and
           files with no recitation as unresolved
           low_confidence_v2 is required staged on Hafs, absent by contract off Hafs
-          detailed.json written last; staging deleted
+          detailed.json written last, then staging/<run>/published.json; the
+          verse_ends_v1 verdicts are applied to the published delivery
+          (services/segments/verse_end_verdicts: WAQF splits, WASL answers, one
+          cross_verse/auto_fix op per segment; a retry re-applies idempotently);
+          staging deleted
 auto_detect  sees detailed.json → reciter.alignment_completed → awaiting_review
 ```
 
@@ -251,20 +256,38 @@ so the sidecars index exactly the rows that get published. A row's lattice `paus
 row and never split on) persist as `DetailedSegment.pauses` without `token_pos`; the
 save flow keeps them only while the row's time and ref are unchanged.
 
-## Low Confidence Waqf (`missed_waqf_v2.json`)
+## Low Confidence Waqf (`missed_waqf_v2.json`) and verse ends (`verse_ends_v1.json`)
 
-`pause_sidecar.build` turns every **mid-verse** lattice pause (after_ref and the
-next timed word in the same verse; verse-end pauses are skipped) into a proposed
-cut of the `missed_waqf` review category. Cursor = midpoint between the end of the
-`after_ref` word and the start of the next word in the row's `words`, plus the
-segment start (the Auto Split rule). `refs` = the pieces the cursors cut
+The acquire and split jobs bake `reciters/<slug>/levels/<ch>.json.gz` next to the
+peaks: whole-dB RMS per 20 ms frame (`qua_shared/audio/levels.py`, the boundary-head
+lab's envelope). `join_silence` measures two silences within 300 ms of a join's
+cursor, each followed outward up to 25 frames: `floor_ms`, the run within 10 dB of
+the chapter's noise floor (its 2nd-percentile level), and `silence_ms` / `dip_db`,
+the run 10 dB under the segment's speech level (its 90th percentile).
+
+`pause_sidecar.build` judges every join a row holds with the lab's rules
+(`hidden_pause.sidecar.keep` v5 and `hidden_pause.cross_verse.verdict`):
+
+- **Mid-verse lattice pause** → a Low Confidence Waqf cut when `silence_ms ≥ 40`,
+  `dip_db ≥ 10` and either the mushaf marks a pause after the word (ۖ ۗ ۘ ۚ) or
+  `floor_ms ≥ 160`; a non-Hafs join always needs `floor_ms ≥ 120`. A chapter
+  without levels asks every pause.
+- **Verse end** inside a row → the lattice (paused or not) and `floor_ms ≥ 200`
+  each read WAQF / WASL; agreement goes to `verse_ends_v1.json` and is applied
+  after publish, disagreement becomes a `verse_end: true` cut. Non-Hafs, repetition
+  and low-confidence (< 0.7, the lattice's cost ceiling) rows, and chapters
+  without levels, are always asked.
+
+Cursor = middle of the floor run (else the speech-level run, else the midpoint of the
+two words' timings), plus the segment start. `refs` = the pieces the cursors cut
 `matched_ref` into (`null` on a repetition row); each cut carries `axes: ["lattice"]`,
-`gap_ms`, `score = round(gain × 1000)`, `word` (Arabic of `after_ref`) and
-`evidence.lattice = {gain, separability, after_ref, next_ref}`. Keys are
-`derive_uid(chapter, index, time_start)` over the chapter's kept rows — the uid the
-published row gets. A pause on a row without word timings is skipped and counted in
-`_meta.untimed` (also `pauses`, `verse_end`). The Inspector reads v2 in preference
-to the lab's `missed_waqf_v1.json`.
+`gap_ms` (= `floor_ms`), `score = round(gain × 1000) + min(floor_ms, 999)`, `word`,
+`verse_end` and `evidence.lattice = {paused, gain?, separability?, after_ref, next_ref,
+floor_ms?, silence_ms?, dip_db?}`. Keys are `derive_uid(chapter, index, time_start)`
+over the chapter's kept rows. `_meta` counts `pauses`, `mid_verse`, `verse_end`,
+`dropped`, `waqf`, `wasl`, `untimed`, `answered` and lists `unmeasured_chapters`.
+On Khalid al-Qahtani's 187 reviewed lattice pauses the rule keeps all 13 WAQF and 7 of
+171 WASL. The Inspector reads v2 in preference to the lab's `missed_waqf_v1.json`.
 
 ## Scope and what is refused at start
 

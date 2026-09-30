@@ -5,6 +5,9 @@ chapter sources, sidecars, coverage), synthesises the run manifest the shared
 ``promote_build`` reads, and writes every artifact to the bucket — peaks come
 from the blobs acquire already baked, so no audio is decoded in-process.
 ``auto_detect`` then sees ``detailed.json`` and fires ``alignment_completed``.
+The staged verse-end verdicts are then applied to the published delivery
+(``services.segments.verse_end_verdicts``); a ``published.json`` marker lets a
+retry skip straight to them.
 
 Guarded: the slug must still be awaiting alignment (or merely catalogued) and
 have no ``detailed.json`` — a delivery that got content some other way is never
@@ -22,19 +25,22 @@ from pathlib import Path
 from qua_shared.riwayat import DEFAULT_SDK_RIWAYAH
 from qua_shared.schemas import ReciterState
 from qua_shared.schemas.bucket.staged_run import RunInputsDoc, RunManifestDoc
+from services.segments import verse_end_verdicts
 from services.state import state as state_service
 from services.storage import cache, storage_paths
 from services.storage.hf_bucket import StorageNotFound, get_backend
 
 from . import adapt, staging
 from . import params as _params
+from .manifest import PIPELINE_ACTOR
 from .params import AlignParams
-from .stage_sidecars import AUTO_SPLIT_FILE, LOW_CONFIDENCE_FILE, MISSED_WAQF_FILE
+from .stage_sidecars import AUTO_SPLIT_FILE, LOW_CONFIDENCE_FILE, MISSED_WAQF_FILE, VERSE_ENDS_FILE
 
 log = logging.getLogger("inspector")
 
 _ASSEMBLABLE_STATES = (ReciterState.CATALOGUED, ReciterState.AWAITING_ALIGNMENT)
 _SOURCE_COMMIT = "inspector-native"
+PUBLISHED_FILE = "published.json"
 
 
 class AssembleError(RuntimeError):
@@ -60,6 +66,20 @@ def run(
     *,
     started_at: str,
 ) -> dict[str, int]:
+    published = staging.run_file(slug, run_id, PUBLISHED_FILE)
+    built_count = 0
+    if staging.read_json(published) is None:
+        built_count = _publish(slug, run_id, params, chapters, sources, started_at)
+        staging.write_json(published, {"artifacts": built_count})
+    verse_ends = staging.read_json(staging.sidecar_path(slug, run_id, VERSE_ENDS_FILE)) or {}
+    applied = verse_end_verdicts.apply(slug, verse_ends.get("by_uid") or {}, PIPELINE_ACTOR)
+    if not _params.keep_staging():
+        staging.delete_run(slug, run_id)
+    log.info("align %s: verse ends applied for %s: %s", run_id, slug, applied)
+    return {"artifacts": built_count, "chapters": len(chapters)}
+
+
+def _publish(slug, run_id, params, chapters, sources, started_at) -> int:
     from services.segments import promote_build
 
     guard(slug)
@@ -80,10 +100,8 @@ def run(
     for name in sorted(built, key=lambda n: n == "detailed.json"):
         backend.write_bytes_atomic(storage_paths.reciter_file(slug, name), built[name])
     cache.invalidate_seg_caches(slug)
-    if not _params.keep_staging():
-        staging.delete_run(slug, run_id)
     log.info("align %s: assembled %d artifact(s) for %s", run_id, len(built), slug)
-    return {"artifacts": len(built), "chapters": len(chapters)}
+    return len(built)
 
 
 def _materialise(run_dir, docs, chapters, sources, riwayah) -> list[int]:
@@ -115,13 +133,13 @@ def _materialise_sidecars(run_dir: Path, slug: str, run_id: str, riwayah: str | 
     ``auto_split_v1`` is always owed. ``low_confidence_v2`` is owed only on Hafs:
     a non-Hafs delivery never gets the probe (D12 — its question is Hafs-only),
     so its absence there is the contract, not a stage that failed to stage.
-    ``missed_waqf_v2`` is published whenever it was staged.
+    ``missed_waqf_v2`` and ``verse_ends_v1`` are published whenever staged.
     """
     (run_dir / "sidecars").mkdir()
     required = [AUTO_SPLIT_FILE]
     if (riwayah or DEFAULT_SDK_RIWAYAH) == DEFAULT_SDK_RIWAYAH:
         required.append(LOW_CONFIDENCE_FILE)
-    for name in (LOW_CONFIDENCE_FILE, AUTO_SPLIT_FILE, MISSED_WAQF_FILE):
+    for name in (LOW_CONFIDENCE_FILE, AUTO_SPLIT_FILE, MISSED_WAQF_FILE, VERSE_ENDS_FILE):
         doc = staging.read_json(staging.sidecar_path(slug, run_id, name))
         if doc is None:
             if name in required:

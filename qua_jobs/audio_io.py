@@ -271,6 +271,13 @@ def encode_pieces(pieces: list[tuple[Path, int, int]], dest: Path, channels: int
         raise RuntimeError("ffmpeg produced an empty mp3")
 
 
+def bake_levels(mp3: Path) -> bytes:
+    """Packed 20 ms loudness levels (``qua_shared.audio.levels``) for a canonical chapter mp3."""
+    from qua_shared.audio import levels
+
+    return levels.pack(levels.compute_levels(str(mp3)))
+
+
 def bake_peaks(mp3: Path) -> tuple[bytes, int]:
     """``(slim peaks blob, duration_ms)`` for a canonical chapter mp3."""
     from qua_shared.audio.peaks import compute_audio_peaks, pack_slim

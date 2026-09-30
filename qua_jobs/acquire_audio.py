@@ -6,8 +6,8 @@ Reads the delivery's audio manifest (``catalog/audio_manifest/<slug>.json``) and
 groups its chapters by source file (``qua_shared.audio.sources``):
 
 * a **single-chapter** source is fetched, encoded to the canonical chapter mp3
-  (``qua_jobs/audio_io.encode``) and its peaks baked →
-  ``reciters/<slug>/audio/<ch>.mp3`` + ``peaks/<ch>.json.gz``;
+  (``qua_jobs/audio_io.encode``) and its peaks and loudness levels baked →
+  ``reciters/<slug>/audio/<ch>.mp3`` + ``peaks/<ch>.json.gz`` + ``levels/<ch>.json.gz``;
 * a **combined** source (several chapters in one Drive mp3 / YouTube video) is
   fetched and encoded ONCE into its source slot ``reciters/<slug>/audio/<slot>.mp3``
   — the align stage aligns it whole and ``split_audio.py`` cuts it per chapter.
@@ -17,7 +17,8 @@ overrides, 8 max); every step releases the GIL (socket waits, ffmpeg subprocesse
 yt-dlp fetches are capped at ``YTDLP_WORKERS`` at once, and after YouTube's first
 bot-check refusal the remaining yt-dlp sources fail fast with the same reason.
 Idempotent: a chapter whose mp3 + peaks exist, or a slot whose mp3 exists (or
-whose chapters were already split), is skipped. Writes the report
+whose chapters were already split), is skipped; a persisted chapter without
+levels gets them baked from its mp3. Writes the report
 ``staging/<slug>/<run_id>/acquire.json`` and exits non-zero when any source failed.
 
 Env:
@@ -123,6 +124,18 @@ def _paths(slug: str, number: int) -> tuple[Path, Path]:
     return reciter / "audio" / f"{number}.mp3", reciter / "peaks" / f"{number}.json.gz"
 
 
+def _levels_path(slug: str, number: int) -> Path:
+    return _bucket_root() / "reciters" / slug / "levels" / f"{number}.json.gz"
+
+
+def _fill_levels(slug: str, group: SourceGroup) -> None:
+    """Bake levels for persisted chapters of ``group`` that lack them."""
+    for ch in group.chapters:
+        mp3, dest = _paths(slug, ch)[0], _levels_path(slug, ch)
+        if mp3.is_file() and not dest.is_file():
+            audio_io.atomic_write_bytes(dest, audio_io.bake_levels(mp3))
+
+
 def _already_done(slug: str, group: SourceGroup) -> bool:
     if group.chapters and all(all(p.is_file() for p in _paths(slug, ch)) for ch in group.chapters):
         return True  # every chapter persisted (a combined one: already split)
@@ -133,6 +146,7 @@ def acquire_group(slug: str, group: SourceGroup, channels_override: int | None) 
     """Fetch + encode one source (and bake peaks for a single chapter)."""
     mp3_dest, peaks_dest = _paths(slug, group.item)
     if _already_done(slug, group):
+        _fill_levels(slug, group)
         log.info("%s: already persisted, skipped", _label(group))
         return {"url": group.url, "skipped": True}
     with tempfile.TemporaryDirectory(prefix=f"acq_{group.item}_") as tmp:
@@ -152,6 +166,9 @@ def acquire_group(slug: str, group: SourceGroup, channels_override: int | None) 
         else:
             blob, outcome["duration_ms"] = audio_io.bake_peaks(encoded)
             audio_io.atomic_write_bytes(peaks_dest, blob)
+            audio_io.atomic_write_bytes(
+                _levels_path(slug, group.item), audio_io.bake_levels(encoded)
+            )
         audio_io.atomic_write(mp3_dest, encoded)
     return outcome
 
