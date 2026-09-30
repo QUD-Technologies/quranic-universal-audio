@@ -174,16 +174,21 @@ def resolve_join_reviews(
     items: list[dict],
     entries: list[dict],
     recheck: list[str] | tuple[str, ...] = (),
+    groups: dict[str, list[str]] | None = None,
 ) -> None:
-    """Mark items whose every cut word is answered (``WordAnswers``) resolved, or whose
-    root is ignored for ``missed_waqf``; history resolution stays."""
-    answer = WordAnswers(entries, recheck)
+    """Mark items whose every cut word is answered (``WordAnswers``, over the item's
+    own pieces) resolved, or whose root is ignored for ``missed_waqf``; history
+    resolution stays."""
+    answer = WordAnswers(entries, recheck, groups)
     live = {s.get("segment_uid"): s for e in entries for s in e.get("segments", [])}
     for item in items:
         refs = (item.get("boundary") or {}).get("refs") or []
         cuts = [ref.split("-")[-1] for ref in refs[:-1]]
         root = live.get(item.get("segment_uid"), {})
-        if (cuts and all(answer(cut) for cut in cuts)) or is_ignored_for(root, "missed_waqf"):
+        pieces = answer.pieces(item.get("segment_uid"))
+        if (cuts and all(answer(cut, pieces) for cut in cuts)) or is_ignored_for(
+            root, "missed_waqf"
+        ):
             item["resolved"] = True
 
 
@@ -192,20 +197,23 @@ def annotate_cross_verse_joins(
     entries: list[dict],
     word_counts: dict[tuple[int, int], int],
     recheck: list[str] | tuple[str, ...] = (),
+    groups: dict[str, list[str]] | None = None,
 ) -> None:
-    """Attach each cross-verse item's verse joins and their answers (``WordAnswers``).
+    """Attach each cross-verse item's verse joins and their answers (``WordAnswers``,
+    over the item's own pieces).
 
     ``verse_joins`` lists every verse end inside the item's ref as ``{after_ref, verdict}``
     (``verdict`` ``None`` when unanswered; an ignored segment reads WASL); an item whose
     joins are all answered is resolved.
     """
-    answer = WordAnswers(entries, recheck)
+    answer = WordAnswers(entries, recheck, groups)
     live = {s.get("segment_uid"): s for e in entries for s in e.get("segments", [])}
     for item in items:
         seg = live.get(item.get("segment_uid")) or {}
         ignored = is_ignored_for(seg, "cross_verse")
+        pieces = answer.pieces(item.get("segment_uid"))
         joins = [
-            {"after_ref": ref, "verdict": answer(ref) or (WASL if ignored else None)}
+            {"after_ref": ref, "verdict": answer(ref, pieces) or (WASL if ignored else None)}
             for ref in _verse_end_refs(item.get("ref"), word_counts)
         ]
         item["verse_joins"] = joins

@@ -221,14 +221,16 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
         unmarked_wasl_map=unmarked_wasl_map,
         riwayah=riwayah,
     )
-    resolve_join_reviews(detail["missed_waqf"], entries, wasl_recheck)
+    resolve_join_reviews(detail["missed_waqf"], entries, wasl_recheck, split_group_index)
     missing_words = _build_missing_words(
         detail["verse_segments"], word_counts, detail["sequence_gaps"], riwayah
     )
     # Resolved cross-verse items: split roots from edit history whose pieces
     # carry the WASL/WAQF picks. Shipped in the same list (``resolved: True``)
     # but excluded from the count so they never gate mark-ready.
-    annotate_cross_verse_joins(detail["cross_verse"], entries, word_counts, wasl_recheck)
+    annotate_cross_verse_joins(
+        detail["cross_verse"], entries, word_counts, wasl_recheck, split_group_index
+    )
     unresolved_cross_verse = sum(1 for it in detail["cross_verse"] if not it.get("resolved"))
     detail["cross_verse"] = detail["cross_verse"] + resolved_cross_verse_items(
         reciter,

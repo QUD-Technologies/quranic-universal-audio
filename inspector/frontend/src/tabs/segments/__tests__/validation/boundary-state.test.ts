@@ -122,6 +122,14 @@ describe('boundaryStates', () => {
         expect(boundaryStates(root, ctx(segs, { autoSplitMap, stagedPicks: { root: [undefined, false] } }))).toEqual(['wasl', 'waqf']);
     });
 
+    it('never reads an answer from another rendition of the same words', () => {
+        const segs = [
+            seg({ segment_uid: 'earlier', index: 0, time_start: 0, time_end: 400, matched_ref: '2:1:1-2:1:4', is_wasl: false }),
+            seg({ segment_uid: 'root', index: 1, time_start: 900, time_end: 1800, matched_ref: '2:1:1-2:2:3' }),
+        ];
+        expect(boundaryStates(root, ctx(segs))).toEqual(['unset']);
+    });
+
     it('asks a verse end left inside a piece beside an earlier split', () => {
         const segs = [
             seg({ segment_uid: 'root', index: 0, time_start: 0, time_end: 600, matched_ref: '2:1:1-2:2:3', is_wasl: false }),

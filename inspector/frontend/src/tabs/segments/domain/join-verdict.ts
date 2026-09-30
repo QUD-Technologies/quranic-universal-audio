@@ -4,6 +4,8 @@
  * An answer belongs to its word (`after_ref`), not its audio position: a piece
  * ending on the word is a boundary (WASL when `is_wasl`, else WAQF), and an inner
  * word reads the WASL stored for it. Every edit keeps answers on their words.
+ * An item reads its words only among its own pieces (`occurrencePieces`), so a
+ * repeated passage never answers another rendition.
  */
 import type { JoinVerdict } from '../../../lib/types/generated/schemas';
 import type { Segment } from '../../../lib/types/view-models';
@@ -85,6 +87,15 @@ export function wordAnswer(segs: readonly Segment[], after: string, recheck: Rea
         if (s.join_verdicts?.some((j) => j.after_ref === after && j.verdict === 'wasl')) return 'wasl';
     }
     return 'unset';
+}
+
+/** Segments of `members`' audio entry overlapping their time span: one rendition's pieces. */
+export function occurrencePieces(segs: readonly Segment[], members: readonly Segment[]): Segment[] {
+    if (!members.length) return [];
+    const entry = members[0]!.entry_idx;
+    const lo = Math.min(...members.map((s) => s.time_start));
+    const hi = Math.max(...members.map((s) => s.time_end));
+    return segs.filter((s) => s.entry_idx === entry && s.time_start < hi && s.time_end > lo);
 }
 
 /** Resolving an item answers all its cursors: cuts stop, the rest continue. */

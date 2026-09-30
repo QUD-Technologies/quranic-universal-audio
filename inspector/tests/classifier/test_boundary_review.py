@@ -23,9 +23,9 @@ ITEM = {
 }
 
 
-def _resolve(pieces, recheck=()):
+def _resolve(pieces, recheck=(), groups=None):
     item = {**ITEM}
-    resolve_join_reviews([item], [{"segments": pieces}], recheck)
+    resolve_join_reviews([item], [{"segments": pieces}], recheck, groups)
     return item.get("resolved") is True
 
 
@@ -40,27 +40,42 @@ def test_every_cut_word_needs_an_answer():
 
 def test_a_piece_ending_on_the_cut_word_answers_it():
     pieces = [
-        {"segment_uid": "root", "time_end": 280, "matched_ref": "2:1:1-2:1:2"},
-        {"segment_uid": "mid", "time_end": 610, "matched_ref": "2:1:3-2:1:5"},
-        {"segment_uid": "right", "matched_ref": "2:1:6-2:1:9"},
+        {"segment_uid": "root", "time_start": 0, "time_end": 280, "matched_ref": "2:1:1-2:1:2"},
+        {"segment_uid": "mid", "time_start": 280, "time_end": 610, "matched_ref": "2:1:3-2:1:5"},
+        {"segment_uid": "right", "time_start": 610, "time_end": 900, "matched_ref": "2:1:6-2:1:9"},
     ]
-    assert not _resolve(pieces, ["mid"])
-    assert _resolve(pieces)
+    groups = {"root": ["mid", "right"]}
+    assert not _resolve(pieces, ["mid"], groups)
+    assert _resolve(pieces, groups=groups)
 
 
 def test_answers_follow_the_word_not_the_lineage():
-    """A piece re-split or re-timed elsewhere still answers its words."""
+    """A piece re-merged under a new uid still answers the words in the item's span."""
     pieces = [
+        {"segment_uid": "root", "time_start": 0, "time_end": 100, "matched_ref": "2:1:1-2:1:1"},
         {
             "segment_uid": "other",
-            "time_start": 0,
+            "time_start": 100,
             "time_end": 610,
-            "matched_ref": "2:1:1-2:1:5",
+            "matched_ref": "2:1:2-2:1:5",
             "join_verdicts": [{"at_ms": 5, "after_ref": "2:1:2", "verdict": "wasl"}],
         },
-        {"segment_uid": "right", "matched_ref": "2:1:6-2:1:9"},
+        {"segment_uid": "right", "time_start": 610, "time_end": 900, "matched_ref": "2:1:6-2:1:9"},
     ]
-    assert _resolve(pieces)
+    assert not _resolve(pieces)
+    pieces[0]["matched_ref"] = "2:1:1-2:1:2"
+    pieces[0]["is_wasl"] = True
+    assert _resolve(pieces, groups={"root": ["right"]})
+
+
+def test_another_rendition_never_answers():
+    """A repeated passage ending on the cut word elsewhere in the audio is not an answer."""
+    pieces = [
+        {"segment_uid": "earlier", "time_start": 0, "time_end": 200, "matched_ref": "2:1:1-2:1:2"},
+        {"segment_uid": "again", "time_start": 200, "time_end": 400, "matched_ref": "2:1:3-2:1:5"},
+        {"segment_uid": "root", "time_start": 500, "time_end": 1400, "matched_ref": "2:1:1-2:1:9"},
+    ]
+    assert not _resolve(pieces)
 
 
 def test_an_inner_waqf_record_is_not_an_answer():

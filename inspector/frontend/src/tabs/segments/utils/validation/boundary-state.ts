@@ -7,7 +7,8 @@
  * items by the states they contain.
  *
  * A Missed Waqf item asks its cut words; a cross-verse item asks every verse end
- * across its pieces. Each word reads its answer by word (`wordAnswer`), so splits,
+ * across its pieces. Each word reads its answer by word among the item's own
+ * rendition (`occurrencePieces`, `wordAnswer`), so splits,
  * trims and merges on top of an answer never lose it. A settled item with no word
  * left to ask has no boundary.
  */
@@ -18,7 +19,7 @@ import type { AutoSplitMap } from '../../stores/auto-split';
 import type { StagedPicks } from '../../stores/staged-split';
 import { getVerseWordCounts, parseSegRef, verseEndsIn } from '../data/references';
 import { isIgnoredFor } from './classified-issues';
-import { endRef, wordAnswer } from '../../domain/join-verdict';
+import { endRef, occurrencePieces, wordAnswer } from '../../domain/join-verdict';
 import { reviewBoundary, reviewMembers } from './join-review';
 import { getSplitGroupMembers } from './split-group';
 import { type StagedKind, stagedPickKey, stagedSplitFor } from './staged-split';
@@ -71,8 +72,8 @@ function _picksByWord(item: SegValAnyItem, root: Segment | null, ctx: BoundaryCt
 }
 
 /**
- * One state per asked word: a session pick, else the word's answer among the chapter's
- * pieces (`wordAnswer`). A settled item (resolved, or its root ignored) reads its
+ * One state per asked word: a session pick, else the word's answer among the item's
+ * own pieces (`occurrencePieces`, `wordAnswer`). A settled item (resolved, or its root ignored) reads its
  * unanswered words WASL. Pieces awaiting a WASL confirmation answer nothing at their end.
  */
 export function boundaryStates(
@@ -94,10 +95,11 @@ export function boundaryStates(
     if (!words.length) return settled ? [] : ['unset'];
     const picks = _picksByWord(item, root, ctx, category, uid);
     const waiting = new Set([...ctx.waslRecheck, ...ctx.pendingWasl]);
+    const pieces = occurrencePieces(segs, members);
     return words.map((word) => {
         const pick = picks.get(word);
         if (pick !== undefined) return pick ? 'wasl' : 'waqf';
-        const state = wordAnswer(segs, word, waiting);
+        const state = wordAnswer(pieces, word, waiting);
         return state === 'unset' && settled ? 'wasl' : state;
     });
 }
