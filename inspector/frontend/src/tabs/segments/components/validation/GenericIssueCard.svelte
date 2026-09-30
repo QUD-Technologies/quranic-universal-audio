@@ -204,7 +204,9 @@
     // `getSplitGroupMembers` always returns at least the root itself, so
     // "no split has touched the seg" is a group of ≤1.
     $: isSplitMissedWaqf = isMissedWaqfCard && groupMembers.length > 1;
-    $: staged = groupMembers.length <= 1
+    // A cross-verse seg still holding verse ends stages them even beside the pieces
+    // an earlier split made, so every unanswered verse end gets a picker.
+    $: staged = groupMembers.length <= 1 || (!isMissedWaqfCard && resolvedSeg != null && isCrossVerseSeg(resolvedSeg))
         ? stagedSplitFor(stagedCategory, resolvedSeg, item, $autoSplitMap)
         : null;
     $: stagedUid = staged && resolvedSeg?.segment_uid ? resolvedSeg.segment_uid : null;
@@ -228,10 +230,17 @@
         : [];
 
     $: mainMembers = stagedChildren.length > 0
-        ? stagedChildren
+        ? withStaged(groupMembers, resolvedSeg, stagedChildren)
         : groupMembers.length > 0
             ? groupMembers
             : (resolvedSeg ? [resolvedSeg] : []);
+    // Index of the first staged piece: picker `i` asks the staged cut `i - stagedOffset`.
+    $: stagedOffset = Math.max(0, mainMembers.findIndex((mem) => isStagedSegment(mem)));
+
+    function withStaged(group: Segment[], seg: Segment | null, children: Segment[]): Segment[] {
+        const at = group.findIndex((mem) => mem.segment_uid === seg?.segment_uid);
+        return at < 0 ? children : [...group.slice(0, at), ...children, ...group.slice(at + 1)];
+    }
     // Real (store-backed) members — what Ignore and dirty checks act on.
     $: realMembers = mainMembers.filter((mem) => !isStagedSegment(mem));
 
@@ -423,7 +432,7 @@
      *  in the store yet, so the seg itself takes the ignore. */
     function handleIgnore(): void {
         if (!resolvedSeg) return;
-        const targets = realMembers.length > 0 ? realMembers : [resolvedSeg];
+        const targets = staged || realMembers.length === 0 ? [resolvedSeg] : realMembers;
         try {
             let any = false;
             for (const mem of targets) {
@@ -495,12 +504,12 @@
             />
             {#if boundaryAt[i]}
                 {@const next = mainMembers[i + 1]}
-                {#if next && memStaged}
+                {#if next && memStaged && isStagedSegment(next)}
                     <WaslBoundary
                         leftSeg={mem}
                         rightSeg={next}
-                        stagedValue={stagedPicks[i]}
-                        onPick={(v) => onStagedPick(i, v)}
+                        stagedValue={stagedPicks[i - stagedOffset]}
+                        onPick={(v) => onStagedPick(i - stagedOffset, v)}
                         onCommitReady={takeWaslCommit}
                     />
                 {:else if next && isSplitMissedWaqf}
@@ -512,7 +521,8 @@
                         onCommitReady={takeWaslCommit}
                     />
                 {:else if next}
-                    <WaslBoundary leftSeg={mem} rightSeg={next} onCommitReady={takeWaslCommit} />
+                    <!-- The last staged piece's edge is the staged seg's own edge. -->
+                    <WaslBoundary leftSeg={memStaged && resolvedSeg ? resolvedSeg : mem} rightSeg={next} onCommitReady={takeWaslCommit} />
                 {/if}
             {/if}
         {/each}

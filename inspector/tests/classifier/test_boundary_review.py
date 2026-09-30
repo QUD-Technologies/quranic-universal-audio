@@ -17,68 +17,69 @@ from services.validation import (
 )
 from services.validation.detail import _build_detail_lists, resolve_join_reviews
 
-
-def test_review_completion_requires_every_join_answer_across_live_pieces():
-    item = {
-        "segment_uid": "root",
-        "boundary": {
-            "cursors": [300, 600],
-            "refs": ["2:1:1-2:1:2", "2:1:3-2:1:5", "2:1:6-2:1:9"],
-        },
-    }
-    left = {
-        "segment_uid": "root",
-        "join_verdicts": [{"at_ms": 300, "after_ref": "2:1:2", "verdict": "waqf"}],
-    }
-    right = {"segment_uid": "right", "join_verdicts": []}
-    entries = [{"segments": [left, right]}]
-    resolve_join_reviews([item], entries, {"root": ["right"]})
-    assert "resolved" not in item
-    right["join_verdicts"].append({"at_ms": 600, "after_ref": "2:1:5", "verdict": "wasl"})
-    resolve_join_reviews([item], entries, {"root": ["right"]})
-    assert item["resolved"] is True
+ITEM = {
+    "segment_uid": "root",
+    "boundary": {"cursors": [300, 600], "refs": ["2:1:1-2:1:2", "2:1:3-2:1:5", "2:1:6-2:1:9"]},
+}
 
 
-def test_a_cut_opened_to_its_silence_is_answered_by_its_word():
-    item = {
-        "segment_uid": "root",
-        "boundary": {"cursors": [300], "refs": ["2:1:1-2:1:2", "2:1:3-2:1:9"]},
-    }
-    left = {
-        "segment_uid": "root",
-        "time_end": 240,
-        "join_verdicts": [{"at_ms": 240, "after_ref": "2:1:2", "verdict": "waqf"}],
-    }
-    entries = [{"segments": [left, {"segment_uid": "right", "join_verdicts": []}]}]
-    resolve_join_reviews([item], entries, {"root": ["right"]})
-    assert item["resolved"] is True
+def _resolve(pieces, recheck=()):
+    item = {**ITEM}
+    resolve_join_reviews([item], [{"segments": pieces}], recheck)
+    return item.get("resolved") is True
+
+
+def test_every_cut_word_needs_an_answer():
+    whole = {"segment_uid": "root", "time_start": 0, "time_end": 900, "matched_ref": "2:1:1-2:1:9"}
+    assert not _resolve([whole])
+    whole["join_verdicts"] = [{"at_ms": 300, "after_ref": "2:1:2", "verdict": "wasl"}]
+    assert not _resolve([whole])
+    whole["join_verdicts"].append({"at_ms": 600, "after_ref": "2:1:5", "verdict": "wasl"})
+    assert _resolve([whole])
 
 
 def test_a_piece_ending_on_the_cut_word_answers_it():
-    item = {
-        "segment_uid": "root",
-        "boundary": {"cursors": [300, 600], "refs": ["2:1:1-2:1:2", "2:1:3-2:1:5", "2:1:6-2:1:9"]},
-    }
     pieces = [
         {"segment_uid": "root", "time_end": 280, "matched_ref": "2:1:1-2:1:2"},
         {"segment_uid": "mid", "time_end": 610, "matched_ref": "2:1:3-2:1:5"},
         {"segment_uid": "right", "matched_ref": "2:1:6-2:1:9"},
     ]
-    entries = [{"segments": pieces}]
-    resolve_join_reviews([item], entries, {"root": ["mid", "right"]}, ["mid"])
-    assert "resolved" not in item
-    resolve_join_reviews([item], entries, {"root": ["mid", "right"]})
-    assert item["resolved"] is True
+    assert not _resolve(pieces, ["mid"])
+    assert _resolve(pieces)
+
+
+def test_answers_follow_the_word_not_the_lineage():
+    """A piece re-split or re-timed elsewhere still answers its words."""
+    pieces = [
+        {
+            "segment_uid": "other",
+            "time_start": 0,
+            "time_end": 610,
+            "matched_ref": "2:1:1-2:1:5",
+            "join_verdicts": [{"at_ms": 5, "after_ref": "2:1:2", "verdict": "wasl"}],
+        },
+        {"segment_uid": "right", "matched_ref": "2:1:6-2:1:9"},
+    ]
+    assert _resolve(pieces)
+
+
+def test_an_inner_waqf_record_is_not_an_answer():
+    whole = {
+        "segment_uid": "root",
+        "time_start": 0,
+        "time_end": 900,
+        "matched_ref": "2:1:1-2:1:9",
+        "join_verdicts": [
+            {"at_ms": 300, "after_ref": "2:1:2", "verdict": "waqf"},
+            {"at_ms": 600, "after_ref": "2:1:5", "verdict": "wasl"},
+        ],
+    }
+    assert not _resolve([whole])
 
 
 def test_history_resolution_stands_without_stored_answers():
-    item = {
-        "segment_uid": "root",
-        "resolved": True,
-        "boundary": {"cursors": [300], "refs": ["2:1:1-2:1:2", "2:1:3-2:1:9"]},
-    }
-    entries = [{"segments": [{"segment_uid": "root"}, {"segment_uid": "right"}]}]
-    resolve_join_reviews([item], entries, {"root": ["right"]})
+    item = {**ITEM, "resolved": True}
+    resolve_join_reviews([item], [{"segments": [{"segment_uid": "root"}]}])
     assert item["resolved"] is True
 
 

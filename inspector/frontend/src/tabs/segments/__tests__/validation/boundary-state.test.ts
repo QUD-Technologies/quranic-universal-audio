@@ -2,8 +2,10 @@
  * Boundary states (cross-verse, missed-waqf) — committed members, ignored,
  * staged picks, unsplit — plus the chip counts and the filter built on them.
  */
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { _resetQuranRefs, quranRefs } from '../../../../lib/refs/quran-refs';
 import { edgeAnswer } from '../../domain/join-verdict';
-import { describe, expect, it } from 'vitest';
 
 import type { SegValAnyItem } from '../../../../lib/types/generated/schemas';
 import type { EditOp, Segment } from '../../../../lib/types/view-models';
@@ -25,6 +27,14 @@ const seg = (o: Partial<Segment>): Segment => {
     return result;
 };
 const item = (o: Record<string, unknown>): SegValAnyItem => o as unknown as SegValAnyItem;
+
+beforeAll(() => {
+    (quranRefs as unknown as { set: (v: unknown) => void }).set({
+        riwayah: 'hafs', dk_words: {}, verse_marker_prefix: '',
+        verse_word_counts: { '2:1': 4, '2:2': 3, '2:3': 2, '2:4': 5 },
+    });
+});
+afterAll(_resetQuranRefs);
 
 function ctx(segs: Segment[], over: Partial<BoundaryCtx> = {}): BoundaryCtx {
     return {
@@ -96,7 +106,7 @@ describe('boundaryStates', () => {
 
     it('reads the session picks for a staged split', () => {
         const segs = [seg({ segment_uid: 'root', matched_ref: '2:1:1-2:3:2' })];
-        const autoSplitMap = { root: { cursors: [300, 600], refs: ['a', 'b', 'c'], kind: 'cross_verse' as const } };
+        const autoSplitMap = { root: { cursors: [300, 600], refs: ['2:1:1-2:1:4', '2:2:1-2:2:3', '2:3:1-2:3:2'], kind: 'cross_verse' as const } };
         expect(boundaryStates(root, ctx(segs, { autoSplitMap }))).toEqual(['unset', 'unset']);
         expect(boundaryStates(root, ctx(segs, { autoSplitMap, stagedPicks: { root: [true, undefined] } })))
             .toEqual(['wasl', 'unset']);
@@ -104,13 +114,28 @@ describe('boundaryStates', () => {
             .toEqual(['waqf', 'wasl']);
     });
 
-    it('reads a merged cross-verse segment from its verse_joins', () => {
-        const segs = [seg({ segment_uid: 'root', matched_ref: '2:1:1-2:3:2' })];
-        const it0 = item({ chapter: 2, seg_index: 0, segment_uid: 'root', verse_joins: [
-            { after_ref: '2:1:4', verdict: 'wasl' }, { after_ref: '2:2:3', verdict: null },
-        ] });
-        expect(boundaryStates(it0, ctx(segs))).toEqual(['wasl', 'unset']);
-        expect(boundaryStates(it0, ctx(segs, { stagedPicks: { root: [undefined, false] } }))).toEqual(['wasl', 'waqf']);
+    it('reads a merged cross-verse segment by word, under the session picks', () => {
+        const segs = [seg({ segment_uid: 'root', matched_ref: '2:1:1-2:3:2',
+            join_verdicts: [{ at_ms: 300, after_ref: '2:1:4', verdict: 'wasl' }] })];
+        const autoSplitMap = { root: { cursors: [300, 600], refs: ['2:1:1-2:1:4', '2:2:1-2:2:3', '2:3:1-2:3:2'], kind: 'cross_verse' as const } };
+        expect(boundaryStates(root, ctx(segs))).toEqual(['wasl', 'unset']);
+        expect(boundaryStates(root, ctx(segs, { autoSplitMap, stagedPicks: { root: [undefined, false] } }))).toEqual(['wasl', 'waqf']);
+    });
+
+    it('asks a verse end left inside a piece beside an earlier split', () => {
+        const segs = [
+            seg({ segment_uid: 'root', index: 0, time_start: 0, time_end: 600, matched_ref: '2:1:1-2:2:3', is_wasl: false }),
+            seg({ segment_uid: 'b', index: 1, time_start: 600, time_end: 1000, matched_ref: '2:3:1-2:3:2' }),
+        ];
+        const c = ctx(segs, { splitGroupIndex: { root: ['b'] } });
+        expect(boundaryStates(root, c)).toEqual(['unset', 'waqf']);
+        segs[0]!.join_verdicts = [...segs[0]!.join_verdicts!, { at_ms: 300, after_ref: '2:1:4', verdict: 'wasl' }];
+        expect(boundaryStates(root, c)).toEqual(['wasl', 'waqf']);
+    });
+
+    it('reads an ignored cross-verse segment as all wasl', () => {
+        const segs = [seg({ segment_uid: 'root', matched_ref: '2:1:1-2:3:2', ignored_categories: ['cross_verse'] })];
+        expect(boundaryStates(root, ctx(segs))).toEqual(['wasl', 'wasl']);
     });
 
     it('is one unset boundary for an unsplit seg without a sidecar entry', () => {

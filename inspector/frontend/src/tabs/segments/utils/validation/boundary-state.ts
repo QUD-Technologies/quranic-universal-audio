@@ -6,25 +6,21 @@
  * a three-verse item contributes two) and the filter that hides or shows
  * items by the states they contain.
  *
- * A cross-verse segment reads each inner verse end from its item's `verse_joins`.
- * A Missed Waqf item reads only the split pieces inside its own words.
- * Join verdicts record the cut and ignore answers; a Missed Waqf item answered
- * before verdicts existed reads its cuts as waqf and its other cursors (or an
- * ignored root) as wasl. A pending recheck overrides
- * an edge answer. Cross-verse session picks apply before committing; saved
- * boundaries use their verdict or the segment's is_wasl flag.
+ * A Missed Waqf item asks its cut words; a cross-verse item asks every verse end
+ * across its pieces. Each word reads its answer by word (`wordAnswer`), so splits,
+ * trims and merges on top of an answer never lose it.
  */
 
 import type { SegValAnyItem } from '../../../../lib/types/generated/schemas';
 import type { EditOp, Segment } from '../../../../lib/types/view-models';
 import type { AutoSplitMap } from '../../stores/auto-split';
 import type { StagedPicks } from '../../stores/staged-split';
-import { parseSegRef } from '../data/references';
+import { getVerseWordCounts, parseSegRef, verseEndsIn } from '../data/references';
 import { isIgnoredFor } from './classified-issues';
-import { edgeState } from '../../domain/join-verdict';
-import { reviewBoundary, reviewMembers, reviewStates } from './join-review';
+import { endRef, wordAnswer } from '../../domain/join-verdict';
+import { reviewBoundary, reviewMembers } from './join-review';
 import { getSplitGroupMembers } from './split-group';
-import { itemCursorCount, type StagedKind, stagedPickKey, stagedSplitFor } from './staged-split';
+import { type StagedKind, stagedPickKey, stagedSplitFor } from './staged-split';
 
 export type BoundaryState = 'unset' | 'wasl' | 'waqf';
 export const BOUNDARY_STATES: readonly BoundaryState[] = ['unset', 'wasl', 'waqf'];
@@ -48,44 +44,36 @@ export function isVerseBoundary(a: Segment, b: Segment): boolean {
     return pa.surah !== pb.surah || pa.ayah_to !== pb.ayah_from;
 }
 
-function _memberState(left: Segment, ctx: BoundaryCtx): BoundaryState {
-    const uid = left.segment_uid;
-    if (uid && (ctx.pendingWasl.has(uid) || ctx.waslRecheck.has(uid))) return 'unset';
-    const explicit = edgeState(left);
-    return explicit === 'unset' ? (left.is_wasl === true ? 'wasl' : 'waqf') : explicit;
+/** Every word end a `category` item asks, in order: a Missed Waqf item's cut words, a
+ *  cross-verse item's verse ends across its pieces. */
+function _askedWords(item: SegValAnyItem, members: readonly Segment[], root: Segment | null, category: StagedKind): string[] {
+    if (category === 'missed_waqf') {
+        const boundary = reviewBoundary(item);
+        return boundary ? boundary.refs.slice(0, boundary.cursors.length).map(endRef) : [];
+    }
+    const pieces = members.length ? members : root ? [root] : [];
+    const ref = pieces.length
+        ? `${pieces[0]!.matched_ref.split('-')[0]}-${endRef(pieces[pieces.length - 1]!.matched_ref)}`
+        : (item as { ref?: string }).ref;
+    return verseEndsIn(ref, getVerseWordCounts());
 }
 
-function _committedStates(
-    members: Segment[],
-    ctx: BoundaryCtx,
-): BoundaryState[] {
-    const out: BoundaryState[] = [];
-    for (let i = 0; i < members.length - 1; i++) {
-        if (!isVerseBoundary(members[i]!, members[i + 1]!)) continue;
-        out.push(_memberState(members[i]!, ctx));
-    }
-    return out.length ? out : ['unset'];
+/** Session picks on the card's staged cuts, by word. */
+function _picksByWord(item: SegValAnyItem, root: Segment | null, ctx: BoundaryCtx, category: StagedKind, uid: string) {
+    const picks = ctx.stagedPicks[stagedPickKey(category, uid)] ?? [];
+    const staged = stagedSplitFor(category, root, item, ctx.autoSplitMap);
+    const out = new Map<string, boolean>();
+    staged?.refs.slice(0, staged.cursors.length).forEach((ref, i) => {
+        if (picks[i] !== undefined) out.set(endRef(ref), picks[i]!);
+    });
+    return out;
 }
 
 /**
- * A Missed Waqf answer saved without verdicts: its cuts stop, the item's other cursors and an
- * ignored root continue. A split counts only when the server resolved the item from its card —
- * the split group also holds splits made elsewhere (verse-end auto splits).
+ * One state per asked word: a session pick, else the word's answer among the chapter's
+ * pieces (`wordAnswer`). A settled item (resolved, or its root ignored) reads its
+ * unanswered words WASL. Pieces awaiting a WASL confirmation answer nothing at their end.
  */
-function _answeredMissedWaqf(item: SegValAnyItem, members: Segment[], root: Segment | null): BoundaryState[] | null {
-    const n = Math.max(1, itemCursorCount(item));
-    const resolved = (item as { resolved?: boolean }).resolved === true;
-    if (members.length >= 2 && resolved) {
-        const cuts = Math.min(members.length - 1, n);
-        return [..._repeat('waqf', cuts), ..._repeat('wasl', n - cuts)];
-    }
-    return root && isIgnoredFor(root, 'missed_waqf') ? _repeat('wasl', n) : null;
-}
-
-function _repeat(state: BoundaryState, n: number): BoundaryState[] {
-    return new Array<BoundaryState>(n).fill(state);
-}
-
 export function boundaryStates(
     item: SegValAnyItem,
     ctx: BoundaryCtx,
@@ -95,38 +83,21 @@ export function boundaryStates(
     const chapter = (item as { chapter?: number }).chapter;
     if (!uid || chapter == null) return ['unset'];
     const segs = ctx.chapterSegs(chapter);
-    const members = getSplitGroupMembers(uid, segs, ctx.splitGroupIndex[uid], ctx.opLog(chapter));
     const root = segs.find((s) => s.segment_uid === uid) ?? null;
-    if (category === 'missed_waqf') {
-        const boundary = reviewBoundary(item);
-        const own = reviewMembers(members, boundary);
-        if (boundary) {
-            // A settled item (resolved or ignored) left its uncut cursors joined.
-            const settled = (item as { resolved?: boolean }).resolved === true
-                || (root !== null && isIgnoredFor(root, 'missed_waqf'));
-            const saved = reviewStates(own, boundary, ctx.waslRecheck)
-                .map((s) => s === 'unset' && settled ? 'wasl' : s);
-            const picks = ctx.stagedPicks[stagedPickKey(category, uid)] ?? [];
-            return saved.map((s, i) => picks[i] === undefined ? s : picks[i] ? 'wasl' : 'waqf');
-        }
-        const answered = _answeredMissedWaqf(item, own, root);
-        if (answered) return answered;
-    }
-    if (members.length >= 2) return _committedStates(members, ctx);
-    const joins = (item as { verse_joins?: { verdict?: 'wasl' | 'waqf' | null }[] }).verse_joins;
-    if (category === 'cross_verse' && joins?.length) {
-        const picks = ctx.stagedPicks[stagedPickKey(category, uid)] ?? [];
-        return joins.map((j, i) => picks[i] === undefined ? j.verdict ?? 'unset' : picks[i] ? 'wasl' : 'waqf');
-    }
-    const staged = stagedSplitFor(category, root, item, ctx.autoSplitMap);
-    if (staged) {
-        const picks = ctx.stagedPicks[stagedPickKey(category, uid)] ?? [];
-        return staged.cursors.map((_, i) => {
-            const p = picks[i];
-            return p === undefined ? 'unset' : p ? 'wasl' : 'waqf';
-        });
-    }
-    return ['unset'];
+    const members = getSplitGroupMembers(uid, segs, ctx.splitGroupIndex[uid], ctx.opLog(chapter));
+    const own = category === 'missed_waqf' ? reviewMembers(members, reviewBoundary(item)) : members;
+    const words = _askedWords(item, own, root, category);
+    if (!words.length) return ['unset'];
+    const settled = (item as { resolved?: boolean }).resolved === true
+        || (root !== null && isIgnoredFor(root, category));
+    const picks = _picksByWord(item, root, ctx, category, uid);
+    const waiting = new Set([...ctx.waslRecheck, ...ctx.pendingWasl]);
+    return words.map((word) => {
+        const pick = picks.get(word);
+        if (pick !== undefined) return pick ? 'wasl' : 'waqf';
+        const state = wordAnswer(segs, word, waiting);
+        return state === 'unset' && settled ? 'wasl' : state;
+    });
 }
 
 /** Boundary totals over `items`. */

@@ -23,6 +23,7 @@ def _patch_sidecar(monkeypatch, by_uid: dict[str, object]) -> None:
     )
     monkeypatch.setattr(auto_split, "load_hidden_pause", lambda _r: ({}, None))
     monkeypatch.setattr(auto_split, "load_missed_waqf", lambda _r: ({}, None))
+    monkeypatch.setattr(auto_split, "load_detailed", lambda _r: [])
 
 
 def _patch_missed_waqf(monkeypatch, by_uid: dict[str, object]) -> None:

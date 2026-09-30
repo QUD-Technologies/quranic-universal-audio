@@ -1,4 +1,10 @@
-/** One answer convention for internal joins and segment edges. Absence = unset. */
+/**
+ * One answer convention for internal joins and segment edges. Absence = unset.
+ *
+ * An answer belongs to its word (`after_ref`), not its audio position: a piece
+ * ending on the word is a boundary (WASL when `is_wasl`, else WAQF), and an inner
+ * word reads the WASL stored for it. Every edit keeps answers on their words.
+ */
 import type { JoinVerdict } from '../../../lib/types/generated/schemas';
 import type { Segment } from '../../../lib/types/view-models';
 
@@ -24,8 +30,8 @@ export function putVerdicts(
     current: readonly JoinVerdict[] | null | undefined,
     answers: readonly JoinVerdict[],
 ): JoinVerdict[] {
-    const byJoin = new Map((current ?? []).map((j) => [`${j.at_ms}:${j.after_ref}`, { ...j }]));
-    for (const j of answers) byJoin.set(`${j.at_ms}:${j.after_ref}`, { ...j });
+    const byJoin = new Map((current ?? []).map((j) => [j.after_ref, { ...j }]));
+    for (const j of answers) byJoin.set(j.after_ref, { ...j });
     return [...byJoin.values()].sort((a, b) => a.at_ms - b.at_ms || a.after_ref.localeCompare(b.after_ref));
 }
 
@@ -57,15 +63,28 @@ export function movedEdgeVerdicts(before: Segment, after: Segment, answers = bef
         : j);
 }
 
-/** Keep answers whose word and audio coordinates still belong to this piece. */
+/** Answers whose word this piece holds: a WAQF on its last word at its end, a WASL on an inner word inside its audio. */
 export function containedVerdicts(seg: Segment, answers = seg.join_verdicts ?? []): JoinVerdict[] {
     const start = seg.matched_ref.split('-')[0]!;
     const end = endRef(seg.matched_ref);
-    return answers.filter((j) => j.at_ms > seg.time_start && j.at_ms <= seg.time_end
-        && compareRef(start, j.after_ref) <= 0 && compareRef(j.after_ref, end) <= 0
-        && (j.verdict === 'waqf'
-            ? j.at_ms === seg.time_end && j.after_ref === end
-            : j.at_ms < seg.time_end && compareRef(j.after_ref, end) < 0));
+    const lo = seg.time_start, hi = seg.time_end;
+    return answers.flatMap((j) => {
+        if (compareRef(start, j.after_ref) > 0 || compareRef(j.after_ref, end) > 0) return [];
+        if (j.after_ref === end) return j.verdict === 'waqf' ? [{ ...j, at_ms: hi }] : [];
+        if (j.verdict !== 'wasl' || hi - lo <= 1) return [];
+        return [{ ...j, at_ms: Math.min(Math.max(j.at_ms, lo + 1), hi - 1) }];
+    });
+}
+
+/** The answer at word `after` among `segs` (see module doc); a piece under recheck answers nothing at its end. */
+export function wordAnswer(segs: readonly Segment[], after: string, recheck: ReadonlySet<string> = new Set()): JoinState {
+    for (const s of segs) {
+        const [from, to] = s.matched_ref?.split('-') ?? [];
+        if (!from || !to || compareRef(from, after) > 0 || compareRef(after, to) > 0) continue;
+        if (to === after) return recheck.has(s.segment_uid ?? '') ? 'unset' : s.is_wasl ? 'wasl' : 'waqf';
+        if (s.join_verdicts?.some((j) => j.after_ref === after && j.verdict === 'wasl')) return 'wasl';
+    }
+    return 'unset';
 }
 
 /** Resolving an item answers all its cursors: cuts stop, the rest continue. */

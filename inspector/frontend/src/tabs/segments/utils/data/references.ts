@@ -55,6 +55,18 @@ export function parseSegRef(ref: Ref | null | undefined): ParsedSegRef | null {
     return { surah: +s[0], ayah_from: +s[1], word_from: +s[2], ayah_to: +e[1], word_to: +e[2] };
 }
 
+/** `s:a:last` for every verse that ends inside `ref` (same-surah spans only). */
+export function verseEndsIn(ref: Ref | null | undefined, vwc?: VerseWordCounts): string[] {
+    const p = parseSegRef(ref);
+    if (!p || !ref || ref.split('-')[0]!.split(':')[0] !== ref.split('-')[1]!.split(':')[0]) return [];
+    const out: string[] = [];
+    for (let a = p.ayah_from; a < p.ayah_to; a++) {
+        const last = vwc?.[`${p.surah}:${a}`];
+        if (last) out.push(`${p.surah}:${a}:${last}`);
+    }
+    return out;
+}
+
 export function countSegWords(ref: Ref | null | undefined, vwc?: VerseWordCounts): number {
     const p = parseSegRef(ref);
     if (!p) return 0;

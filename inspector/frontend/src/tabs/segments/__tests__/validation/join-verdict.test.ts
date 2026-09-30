@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import type { Segment } from '../../../../lib/types/view-models';
 import { applyCommand } from '../../domain/apply-command';
 import { applyInversePatchToSegments } from '../../domain/inverse-patch';
-import { edgeState, joinState, resolvedVerdicts } from '../../domain/join-verdict';
+import { edgeState, endRef, joinState, resolvedVerdicts, wordAnswer } from '../../domain/join-verdict';
 import { snapshotSeg } from '../../stores/dirty';
-import { reviewStates } from '../../utils/validation/join-review';
+
+const reviewStates = (members: Segment[], b: { cursors: number[]; refs: string[] }, recheck?: Set<string>) =>
+    b.refs.slice(0, b.cursors.length).map((ref) => wordAnswer(members, endRef(ref), recheck));
 
 const root = (extra: Partial<Segment> = {}): Segment => ({
     index: 0, entry_idx: 0, chapter: 2, segment_uid: 'root',
@@ -56,7 +58,7 @@ describe('one join verdict convention', () => {
             joinVerdicts: [{ at_ms: 600, after_ref: '2:1:5', verdict: 'wasl' }] });
         const next = result.nextState.byId.root!;
         expect(next.is_wasl).toBe(true);
-        expect(edgeState(next)).toBe('wasl');
+        expect(wordAnswer([next], '2:1:9')).toBe('wasl');
         expect(reviewStates([next], boundary)).toEqual(['wasl', 'wasl']);
         expect(left.join_verdicts![1]!.verdict).toBe('waqf');
         const undone = applyInversePatchToSegments([next], result.patch!);
@@ -79,16 +81,37 @@ describe('one join verdict convention', () => {
     it('trim and reference edits retain only answers in the resulting range', () => {
         const seg = root({ join_verdicts: resolvedVerdicts(boundary, []) });
         const trimmed = applyCommand(state(seg), { type: 'trim', segmentUid: 'root', delta: { time_start: 350 } }).nextState.byId.root!;
-        expect(trimmed.join_verdicts!.map((j) => j.at_ms)).toEqual([600]);
+        // the words stay in the piece, so their answers stay, inside its audio
+        expect(trimmed.join_verdicts!.map((j) => j.at_ms)).toEqual([351, 600]);
         const edited = applyCommand(state(seg), { type: 'editReference', segmentUid: 'root', matched_ref: '2:1:3-2:1:9' }).nextState.byId.root!;
         expect(edited.join_verdicts!.map((j) => j.at_ms)).toEqual([600]);
     });
 
-    it('ordinary merge drops the waqf answer at its seam', () => {
+    it('a merge answers its seam WASL', () => {
         const a = root({ time_end: 300, matched_ref: boundary.refs[0], join_verdicts: [{ at_ms: 300, after_ref: '2:1:2', verdict: 'waqf' }] });
         const b = root({ segment_uid: 'b', index: 1, time_start: 300, matched_ref: '2:1:3-2:1:9' });
         const next = applyCommand(state(a, b), { type: 'merge', fromUid: 'root', toUid: 'b' }).nextState.byId.root!;
-        expect(next.join_verdicts).toEqual([]);
+        expect(next.join_verdicts).toEqual([{ at_ms: 300, after_ref: '2:1:2', verdict: 'wasl' }]);
+        expect(wordAnswer([next], '2:1:2')).toBe('wasl');
+    });
+
+    it('marking an edge WASL or WAQF moves its recorded answer with it', () => {
+        const a = root({ time_end: 300, matched_ref: '2:1:1-2:1:2', is_wasl: false,
+            join_verdicts: [{ at_ms: 300, after_ref: '2:1:2', verdict: 'waqf' }] });
+        const wasl = applyCommand(state(a), { type: 'setIsWasl', segmentUid: 'root', is_wasl: true }).nextState.byId.root!;
+        expect(wasl.join_verdicts).toEqual([]);
+        expect(wordAnswer([wasl], '2:1:2')).toBe('wasl');
+        const waqf = applyCommand(state(wasl), { type: 'setIsWasl', segmentUid: 'root', is_wasl: false }).nextState.byId.root!;
+        expect(waqf.join_verdicts).toEqual([{ at_ms: 300, after_ref: '2:1:2', verdict: 'waqf' }]);
+    });
+
+    it('an answer follows its word through a re-split elsewhere', () => {
+        const seg = root({ join_verdicts: [{ at_ms: 300, after_ref: '2:1:2', verdict: 'wasl' }] });
+        const r = applyCommand(state(seg), { type: 'split', segmentUid: 'root', splitMs: [700], newUids: ['right'],
+            refs: ['2:1:1-2:1:6', '2:1:7-2:1:9'], wasls: [undefined] });
+        const pieces = Object.values(r.nextState.byId);
+        expect(wordAnswer(pieces, '2:1:2')).toBe('wasl');
+        expect(wordAnswer(pieces, '2:1:6')).toBe('waqf');
     });
 
 });

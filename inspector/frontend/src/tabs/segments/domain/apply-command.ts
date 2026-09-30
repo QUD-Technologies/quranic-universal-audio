@@ -41,7 +41,7 @@ import type {
     SplitCommand,
     TrimCommand,
 } from './command';
-import { containedVerdicts, edgeAnswer, movedEdgeVerdicts, pickedVerdicts, putVerdicts } from './join-verdict';
+import { containedVerdicts, edgeAnswer, endRef, movedEdgeVerdicts, pickedVerdicts, putVerdicts } from './join-verdict';
 import { IssueRegistry } from './registry';
 
 const HISTORY_NEUTRAL_CONTEXT_CATEGORIES = new Set(['muqattaat']);
@@ -389,10 +389,11 @@ function _reduceMerge(state: ApplyCommandState, cmd: MergeCommand, ctx?: ApplyCo
         confidence: 1.0,
     };
     merged.is_wasl = second.is_wasl === true;
-    merged.join_verdicts = putVerdicts(
-        putVerdicts(first.join_verdicts, second.join_verdicts ?? []).filter((j) => !(j.verdict === 'waqf' && j.at_ms === first.time_end)),
-        cmd.joinVerdicts ?? ((cmd.sourceCategory ?? cmd.contextCategory) === 'missed_waqf' ? [edgeAnswer(first, true)] : []),
-    );
+    // Merging joins the two words: the seam is answered WASL.
+    merged.join_verdicts = containedVerdicts(merged, putVerdicts(
+        putVerdicts(first.join_verdicts, second.join_verdicts ?? []),
+        cmd.joinVerdicts ?? [edgeAnswer(first, true)],
+    ));
     merged.ignored_categories = mergedIc.size ? [...mergedIc] : undefined;
     // Merging changes the seg's matched_ref + geometry; any wrap that was
     // scoped to ``first`` may not apply to the merged span. Drop wrap for
@@ -601,6 +602,11 @@ function _reduceSetIsWasl(
 
     const next = _cloneSeg(target);
     next.is_wasl = !!cmd.is_wasl;
+    // The edge answer follows the flag: WAQF is recorded, WASL is the flag alone.
+    next.join_verdicts = containedVerdicts(next, putVerdicts(
+        (target.join_verdicts ?? []).filter((j) => j.after_ref !== endRef(next.matched_ref)),
+        next.is_wasl ? [] : [edgeAnswer(next, false)],
+    ));
 
     const op = _baseOperation(cmd, target, chapter, target.index, ctx);
     op.fix_kind = cmd.fixKind ?? 'manual';

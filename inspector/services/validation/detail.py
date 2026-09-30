@@ -24,6 +24,7 @@ from services.validation.classifier import (
     is_ignored_for,
     is_suppressed_for,
 )
+from services.validation.join_answers import WASL, WordAnswers
 from services.validation.registry import PER_SEGMENT_CATEGORIES
 from utils.formatting import format_ms
 from utils.references import chapter_from_ref, seg_belongs_to_entry
@@ -172,53 +173,40 @@ def false_split_boundary(entry: dict) -> dict:
 def resolve_join_reviews(
     items: list[dict],
     entries: list[dict],
-    split_groups: dict,
     recheck: list[str] | tuple[str, ...] = (),
 ) -> None:
-    """Mark items whose every cut is answered resolved; history resolution stays.
-
-    A cut is answered by its word (``after_ref``): a verdict stored on any piece of
-    the item's split group (a WAQF cut opened to its silence stores it at the left
-    piece's end, not at the cursor), or a piece that ends on that word, which is a
-    boundary already made there. A piece under WASL recheck answers nothing at its end.
-    """
+    """Mark items whose every cut word is answered (``WordAnswers``) resolved, or whose
+    root is ignored for ``missed_waqf``; history resolution stays."""
+    answer = WordAnswers(entries, recheck)
     live = {s.get("segment_uid"): s for e in entries for s in e.get("segments", [])}
     for item in items:
-        uid = item.get("segment_uid")
-        root = live.get(uid, {})
         refs = (item.get("boundary") or {}).get("refs") or []
-        members = [live[m] for m in [uid, *split_groups.get(uid, [])] if m in live]
-        answered = {
-            j["after_ref"]
-            for member in members
-            for j in member.get("join_verdicts") or []
-            if not (member.get("segment_uid") in recheck and j["at_ms"] == member.get("time_end"))
-        }
-        answered |= {
-            str(member.get("matched_ref") or "").rpartition("-")[2]
-            for member in members
-            if member.get("segment_uid") not in recheck
-        }
         cuts = [ref.split("-")[-1] for ref in refs[:-1]]
-        if (cuts and all(cut in answered for cut in cuts)) or is_ignored_for(root, "missed_waqf"):
+        root = live.get(item.get("segment_uid"), {})
+        if (cuts and all(answer(cut) for cut in cuts)) or is_ignored_for(root, "missed_waqf"):
             item["resolved"] = True
 
 
 def annotate_cross_verse_joins(
-    items: list[dict], entries: list[dict], word_counts: dict[tuple[int, int], int]
+    items: list[dict],
+    entries: list[dict],
+    word_counts: dict[tuple[int, int], int],
+    recheck: list[str] | tuple[str, ...] = (),
 ) -> None:
-    """Attach each cross-verse item's verse joins and their stored verdicts.
+    """Attach each cross-verse item's verse joins and their answers (``WordAnswers``).
 
-    ``verse_joins`` lists every verse end inside the segment as ``{after_ref, verdict}``
-    (``verdict`` ``None`` when unanswered); an item whose joins are all answered is resolved.
+    ``verse_joins`` lists every verse end inside the item's ref as ``{after_ref, verdict}``
+    (``verdict`` ``None`` when unanswered; an ignored segment reads WASL); an item whose
+    joins are all answered is resolved.
     """
+    answer = WordAnswers(entries, recheck)
     live = {s.get("segment_uid"): s for e in entries for s in e.get("segments", [])}
     for item in items:
         seg = live.get(item.get("segment_uid")) or {}
-        verdicts = {j["after_ref"]: j["verdict"] for j in seg.get("join_verdicts") or []}
+        ignored = is_ignored_for(seg, "cross_verse")
         joins = [
-            {"after_ref": ref, "verdict": verdicts.get(ref)}
-            for ref in _verse_end_refs(seg.get("matched_ref"), word_counts)
+            {"after_ref": ref, "verdict": answer(ref) or (WASL if ignored else None)}
+            for ref in _verse_end_refs(item.get("ref"), word_counts)
         ]
         item["verse_joins"] = joins
         if joins and all(j["verdict"] for j in joins):

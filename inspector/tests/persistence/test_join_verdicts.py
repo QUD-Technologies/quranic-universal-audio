@@ -30,10 +30,14 @@ def test_full_replace_preserves_explicit_false_answer():
     assert result.get("is_wasl", False) is False
 
 
-def test_legacy_payload_preserves_answers_only_for_unchanged_geometry():
+def test_legacy_payload_keeps_answers_on_their_words():
     existing = seg(join_verdicts=[ANSWER])
     assert make_seg(seg(), {}, {"root": existing}, {})["join_verdicts"] == [ANSWER]
-    assert make_seg(seg(time_end=600), {}, {"root": existing}, {})["join_verdicts"] == []
+    moved = make_seg(seg(time_end=600), {}, {"root": existing}, {})["join_verdicts"]
+    assert moved == [{**ANSWER, "at_ms": 600}]
+    assert (
+        make_seg(seg(matched_ref="1:3:1-1:3:1"), {}, {"root": existing}, {})["join_verdicts"] == []
+    )
     assert make_seg(seg(join_verdicts=[]), {}, {"root": existing}, {})["join_verdicts"] == []
 
 

@@ -1,8 +1,4 @@
-/**
- * Project candidate joins onto live pieces; resolved cuts and uncut cursors carry answers.
- * A cut opened to its silence leaves the cursor in the gap: its owner is the piece
- * ending on the cut's word, and answers are matched by that word, not the cursor.
- */
+/** A Missed Waqf item's proposed cuts and the live pieces inside its words. */
 import type { SegValAnyItem } from '../../../../lib/types/generated/schemas';
 import type { Segment } from '../../../../lib/types/view-models';
 import { endRef } from '../../domain/join-verdict';
@@ -14,24 +10,6 @@ export function reviewBoundary(item: SegValAnyItem): StagedSplit | null {
     if (b.refs.some((ref) => !/^\d+:\d+:\d+-\d+:\d+:\d+$/.test(ref))) return null;
     if (b.cursors.some((c, i) => !Number.isFinite(c) || (i > 0 && c <= b.cursors![i - 1]!))) return null;
     return { cursors: b.cursors, refs: b.refs };
-}
-
-/**
- * Each cut's answer, by its word: a verdict stored on any piece, else a piece ending
- * on that word (a boundary already made there: WASL when marked so, else WAQF).
- * A piece under WASL recheck answers nothing at its end.
- */
-export function reviewStates(members: readonly Segment[], boundary: StagedSplit, recheck: ReadonlySet<string> = new Set()) {
-    return boundary.refs.slice(0, boundary.cursors.length).map((ref) => {
-        const after = endRef(ref);
-        for (const s of members) {
-            const answer = s.join_verdicts?.find((j) => j.after_ref === after);
-            if (answer && !(recheck.has(s.segment_uid ?? '') && answer.at_ms === s.time_end)) return answer.verdict;
-        }
-        const edge = members.find((s) => WORD_SPAN.test(s.matched_ref) && endRef(s.matched_ref) === after);
-        if (!edge || recheck.has(edge.segment_uid ?? '')) return 'unset';
-        return edge.is_wasl ? 'wasl' : 'waqf';
-    });
 }
 
 const WORD_SPAN = /^\d+:\d+:\d+-\d+:\d+:\d+$/;
