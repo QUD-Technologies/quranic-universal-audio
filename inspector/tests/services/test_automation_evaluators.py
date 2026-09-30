@@ -264,6 +264,56 @@ def test_stale_ts_regen_launches_when_edits_are_newer_than_last_job(monkeypatch)
     assert stale_ts_state["last_status"] == "launched"
 
 
+def test_stale_ts_regen_waits_while_any_timestamps_run_is_in_flight(monkeypatch):
+    """The timing Space runs one at a time: another reciter's run blocks launching."""
+    launched: list[str] = []
+    _seed_stale_slug(monkeypatch, last_edit="2026-06-09T10:00:00Z", watermark={})
+    monkeypatch.setattr(evaluators, "_in_flight_slugs", lambda kinds: {"rec_other"})
+    monkeypatch.setattr(
+        evaluators.timestamps_jobs, "launch", lambda slug, **k: launched.append(slug)
+    )
+
+    evaluators.eval_stale_ts_regen(
+        AutomationConfig(stale_ts_regen=StaleTsRegenConfig(enabled=True)), _now()
+    )
+
+    assert launched == []
+
+
+def test_stale_ts_regen_launches_only_the_longest_stale(monkeypatch):
+    launched: list[tuple[str, list[int] | None]] = []
+    _seed_stale_slug(monkeypatch, last_edit="2026-06-09T10:00:00Z", watermark={})
+    monkeypatch.setattr(evaluators, "_delivery_slugs", lambda: ["rec_a", "rec_b", "rec_c"])
+    since = {
+        "rec_a": "2026-06-09T10:00:00Z",
+        "rec_b": "2026-06-09T08:00:00Z",
+        "rec_c": "2026-06-09T09:00:00Z",
+    }
+    monkeypatch.setattr(
+        evaluators.ts_staleness,
+        "ts_stale_info",
+        lambda slug, produced_at: {
+            "stale_since": since[slug],
+            "last_edit_at": since[slug],
+            "edits_since": 1,
+            "affected_chapters": [2],
+        },
+    )
+    monkeypatch.setattr(
+        evaluators.timestamps_jobs,
+        "launch",
+        lambda slug, settings, **k: launched.append((slug, settings.chapters)),
+    )
+
+    evaluators.eval_stale_ts_regen(
+        AutomationConfig(stale_ts_regen=StaleTsRegenConfig(enabled=True)), _now()
+    )
+
+    assert launched == [("rec_b", [2])]
+    state = repo_automation.get_state("stale_ts_regen")
+    assert state is not None and "2 waiting" in state["last_detail"]
+
+
 # --- auto-release inactive claims -------------------------------------------
 
 
