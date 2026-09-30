@@ -16,7 +16,7 @@ import {
     stagedCommit,
     stagedPickKey,
     stagedSplitFor,
-    storedJoinPicks,
+    savedPicks,
     waqfOnlySplit,
 } from '../../utils/validation/staged-split';
 
@@ -222,16 +222,22 @@ describe('stagedCommit', () => {
     });
 });
 
-describe('storedJoinPicks', () => {
+describe('savedPicks', () => {
     const staged = { cursors: [2000, 3500], refs: ['2:1:1-2:1:7', '2:2:1-2:2:5', '2:3:1-2:3:4'] };
+    const seg = (join_verdicts: { at_ms: number; after_ref: string; verdict: 'wasl' | 'waqf' }[] = []) => ({
+        index: 0, entry_idx: 0, chapter: 2, segment_uid: 'u', time_start: 0, time_end: 5000,
+        matched_ref: '2:1:1-2:3:4', confidence: 1, join_verdicts,
+    }) as Segment;
 
-    it('starts each cut from its stored verse-join verdict', () => {
-        const item = { verse_joins: [{ after_ref: '2:1:7', verdict: 'wasl' }, { after_ref: '2:2:5', verdict: null }] };
-        expect(storedJoinPicks(staged, item as unknown as SegValAnyItem)).toEqual([true, undefined]);
+    it('starts each cut from its live answer', () => {
+        expect(savedPicks(staged, seg([{ at_ms: 2000, after_ref: '2:1:7', verdict: 'wasl' }]), false)).toEqual([true, undefined]);
     });
 
-    it('is empty without joins', () => {
-        expect(storedJoinPicks(staged, {} as SegValAnyItem)).toEqual([]);
-        expect(storedJoinPicks(null, null)).toEqual([]);
+    it('reads an ignored seg as all WASL', () => {
+        expect(savedPicks(staged, seg(), true)).toEqual([true, true]);
+    });
+
+    it('is empty without a staged split', () => {
+        expect(savedPicks(null, null, false)).toEqual([]);
     });
 });

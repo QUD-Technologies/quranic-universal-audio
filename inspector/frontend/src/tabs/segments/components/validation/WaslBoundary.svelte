@@ -197,6 +197,8 @@
                 setIsWaslOnSegment(leftSeg, value);
             }
             resolveWaslRecheck(leftUid);
+            // The dispatchers mutate the seg in place; repaint the picker from it.
+            leftSeg = leftSeg;
         } catch (err) {
             console.warn('WaslBoundary: commit failed:', err);
         } finally {

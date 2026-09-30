@@ -8,7 +8,7 @@
     import type { SegValAnyItem } from '../../../../lib/types/generated/schemas';
     import type { Segment } from '../../../../lib/types/view-models';
     import { IssueRegistry } from '../../domain/registry';
-    import { resolvedVerdicts } from '../../domain/join-verdict';
+    import { resolvedVerdicts, wordAnswer } from '../../domain/join-verdict';
     import { reviewBoundary, reviewMembers } from '../../utils/validation/join-review';
     import { cutSilences, openCutGaps } from '../../utils/edit/gap-split';
     import { autoSplitMap, ensureAutoSplitMap } from '../../stores/auto-split';
@@ -48,7 +48,7 @@
         stagedCommit,
         stagedPickKey,
         stagedSplitFor,
-        storedJoinPicks,
+        savedPicks,
     } from '../../utils/validation/staged-split';
     import SegmentRow from '../list/SegmentRow.svelte';
     import BoundaryEvidence from './BoundaryEvidence.svelte';
@@ -211,14 +211,13 @@
         : null;
     $: stagedUid = staged && resolvedSeg?.segment_uid ? resolvedSeg.segment_uid : null;
     $: stagedKey = stagedUid ? stagedPickKey(stagedCategory, stagedUid) : null;
-    // An ignored missed-waqf item had every cut answered WASL: show it so
-    // until a pick relabels it.
-    $: ignoredAsWasl = isMissedWaqfCard && resolvedSeg != null
-        && (void segStoreTick, isIgnoredFor(resolvedSeg, category));
+    // Picks start from the seg's live answers (an ignored item answered all WASL),
+    // so a committed answer shows before it is saved.
+    $: ignoredAsWasl = resolvedSeg != null
+        && (void segStoreTick, void $dirtyTick, isIgnoredFor(resolvedSeg, category));
     $: stagedPicks = stagedKey
-        ? ($stagedWaslPicks[stagedKey] ?? (ignoredAsWasl && staged
-            ? staged.cursors.map(() => true)
-            : storedJoinPicks(staged, item)))
+        ? ($stagedWaslPicks[stagedKey]
+            ?? (void segStoreTick, void $dirtyTick, savedPicks(staged, resolvedSeg, ignoredAsWasl)))
         : [];
     $: stagedChildren = staged && resolvedSeg && stagedKey
         ? buildStagedChildren(
@@ -445,9 +444,20 @@
     }
 
     // A merged cross-verse segment with no staged cut still shows its stored verdicts.
+    // Its answers read live from the pieces, so an unsaved answer shows at once.
     $: storedJoins = category === 'cross_verse' && !staged
-        ? ((item as { verse_joins?: { after_ref: string; verdict?: 'wasl' | 'waqf' | null }[] }).verse_joins ?? [])
+        ? (void segStoreTick, void $dirtyTick, liveJoins(
+            (item as { verse_joins?: { after_ref: string; verdict?: 'wasl' | 'waqf' | null }[] }).verse_joins ?? [],
+            realMembers.length > 0 ? realMembers : (resolvedSeg ? [resolvedSeg] : []),
+        ))
         : [];
+
+    function liveJoins(joins: { after_ref: string; verdict?: 'wasl' | 'waqf' | null }[], pieces: Segment[]) {
+        return joins.map((j) => {
+            const state = wordAnswer(pieces, j.after_ref);
+            return { ...j, verdict: state === 'unset' ? j.verdict ?? null : state };
+        });
+    }
     $: joinLabels = {
         wasl: tr($localeStore, m.segments_validation_boundary_wasl()),
         waqf: tr($localeStore, m.segments_validation_boundary_waqf()),

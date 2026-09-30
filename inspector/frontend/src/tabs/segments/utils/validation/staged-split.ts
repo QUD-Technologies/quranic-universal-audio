@@ -24,6 +24,7 @@ import type { Segment } from '../../../../lib/types/view-models';
 import type { AutoSplitMap } from '../../stores/auto-split';
 import type { StagedPick } from '../../stores/staged-split';
 import { dkTextForRef, getVerseWordCounts, isCrossVerse } from '../data/references';
+import { endRef, wordAnswer } from '../../domain/join-verdict';
 
 export interface StagedSplit {
     cursors: number[];
@@ -96,17 +97,16 @@ export function stagedSplitFor(
 }
 
 /**
- * Picks a cross-verse card starts from: each staged cut's stored verse-join
- * verdict (`true` = WASL), so saved answers show on the card.
+ * Picks a staged card starts from: each cut's live answer on the seg (`wordAnswer`,
+ * `true` = WASL), so an answer shows as soon as it is made, before any save. An
+ * ignored seg answered every cut WASL.
  */
-export function storedJoinPicks(staged: StagedSplit | null, item: SegValAnyItem | null): StagedPick[] {
-    const joins = (item as { verse_joins?: { after_ref: string; verdict?: 'wasl' | 'waqf' | null }[] } | null)
-        ?.verse_joins;
-    if (!staged || !joins?.length) return [];
-    const byRef = new Map(joins.map((j) => [j.after_ref, j.verdict ?? null]));
-    return staged.cursors.map((_, i) => {
-        const verdict = byRef.get(staged.refs[i]!.split('-').pop()!);
-        return verdict ? verdict === 'wasl' : undefined;
+export function savedPicks(staged: StagedSplit | null, seg: Segment | null, ignored: boolean): StagedPick[] {
+    if (!staged || !seg) return [];
+    return staged.refs.slice(0, staged.cursors.length).map((ref) => {
+        const state = wordAnswer([seg], endRef(ref));
+        if (state === 'unset') return ignored ? true : undefined;
+        return state === 'wasl';
     });
 }
 
