@@ -20,7 +20,10 @@ def _stub_launch(monkeypatch):
     monkeypatch.setattr(
         ts_jobs,
         "launch",
-        lambda slug, settings=None, webhook_base=None: {"job_id": "j_test", "url": None},
+        lambda slug, settings=None, full=False, webhook_base=None: {
+            "job_id": "j_test",
+            "url": None,
+        },
     )
 
 
@@ -85,9 +88,10 @@ def test_generate_ts_scopes_to_affected_chapters(signed_in_client, monkeypatch, 
     monkeypatch.setattr(ts_jobs, "running_job_for", lambda slug: None)
     captured: dict = {}
 
-    def _capture(slug, settings=None, webhook_base=None):
+    def _capture(slug, settings=None, full=False, webhook_base=None):
         assert settings is not None
         captured["chapters"] = settings.chapters
+        captured["full"] = full
         return {"job_id": "j_test", "url": None}
 
     monkeypatch.setattr(ts_jobs, "launch", _capture)
@@ -95,7 +99,22 @@ def test_generate_ts_scopes_to_affected_chapters(signed_in_client, monkeypatch, 
     resp = client.post(f"{_URL}/rec_a", headers=_HEADERS, json={"chapters": [12, 5, 5]})
 
     assert resp.status_code == 202, resp.get_data(as_text=True)
-    assert captured["chapters"] == [5, 12]  # deduped + sorted
+    assert captured == {"chapters": [5, 12], "full": False}  # deduped + sorted
+
+    resp = client.post(f"{_URL}/rec_a", headers=_HEADERS, json={"full": True})
+
+    assert resp.status_code == 202, resp.get_data(as_text=True)
+    assert captured == {"chapters": None, "full": True}
+
+
+def test_generate_ts_rejects_a_non_boolean_full(signed_in_client, monkeypatch, seed_state):
+    client, _user = signed_in_client(role="maintainer")
+    _stub_launch(monkeypatch)
+    seed_state("rec_a", state="released")
+
+    resp = client.post(f"{_URL}/rec_a", headers=_HEADERS, json={"full": "yes"})
+
+    assert resp.status_code == 400
 
 
 def test_generate_ts_rejects_out_of_range_chapters(signed_in_client, monkeypatch, seed_state):

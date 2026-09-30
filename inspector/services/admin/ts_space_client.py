@@ -113,6 +113,7 @@ def start_run(
     chapters: list[int] | None = None,
     beams: list[int] | None = None,
     riwayah: str = DEFAULT_SDK_RIWAYAH,
+    full: bool = False,
 ) -> str:
     """POST a timestamps run for ``slug``; return the Space ``run_id``.
 
@@ -122,6 +123,10 @@ def start_run(
 
     ``riwayah`` is the SDK slug the delivery is recited in. It is omitted from
     the body for Hafs to retain the established request shape.
+
+    Inside ``chapters`` the Space re-aligns only the verses whose segments moved
+    since the existing shard; ``full`` re-aligns every verse (of every chapter
+    when ``chapters`` is empty).
     """
     from huggingface_hub import get_token
 
@@ -136,6 +141,8 @@ def start_run(
         body["beams"] = list(beams)
     if riwayah != DEFAULT_SDK_RIWAYAH:
         body["riwayah"] = riwayah
+    if full:
+        body["full"] = True
 
     hf_token = get_token()
     if not hf_token:

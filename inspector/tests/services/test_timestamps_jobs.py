@@ -72,8 +72,8 @@ def test_launch_posts_space_and_links_run(monkeypatch):
     monkeypatch.setattr(state_service, "get_row", lambda slug: object())
     posted = {}
 
-    def _fake_start(slug, *, chapters=None, beams=None, riwayah="hafs"):
-        posted.update(slug=slug, chapters=chapters, beams=beams, riwayah=riwayah)
+    def _fake_start(slug, *, chapters=None, beams=None, riwayah="hafs", full=False):
+        posted.update(slug=slug, chapters=chapters, beams=beams, riwayah=riwayah, full=full)
         return "run-xyz"
 
     monkeypatch.setattr(ts_space_client, "start_run", _fake_start)
@@ -93,6 +93,7 @@ def test_launch_posts_space_and_links_run(monkeypatch):
         "chapters": [108],
         "beams": [50, 5],
         "riwayah": "hafs",
+        "full": False,
     }
     assert linked == [("r", "run-xyz")]
 

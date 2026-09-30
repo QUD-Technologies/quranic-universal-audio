@@ -44,6 +44,11 @@ def test_hafs_request_sends_body_and_only_hf_auth(posted):
     }
 
 
+def test_full_regen_is_named_only_when_asked(posted):
+    ts_space_client.start_run("some-reciter", full=True)
+    assert json.loads(posted[0]["raw"])["full"] is True
+
+
 def test_non_hafs_request_names_riwayah(posted):
     ts_space_client.start_run("some-reciter", chapters=[108], riwayah="warsh")
     assert json.loads(posted[0]["raw"])["riwayah"] == "warsh"

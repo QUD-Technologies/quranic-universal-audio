@@ -109,13 +109,16 @@ def generate_timestamps(user, slug):
         settings = _parse_ts_settings(body)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
+    full = body.get("full", False)
+    if not isinstance(full, bool):
+        return jsonify({"error": "full must be a boolean"}), 400
     # Public URL root for the job's completion callback. Deployed: ProxyFix
     # makes this the real https Space URL; dev: localhost (unreachable by the
     # job — the poll fallback releases instead). launch() only uses it when a
     # webhook secret is configured.
     webhook_base = request.url_root
     try:
-        result = ts_jobs.launch(slug, settings=settings, webhook_base=webhook_base)
+        result = ts_jobs.launch(slug, settings=settings, full=full, webhook_base=webhook_base)
     except Exception as exc:  # surfaced to the drawer
         return jsonify({"error": str(exc)}), 502
     return jsonify(result), 202

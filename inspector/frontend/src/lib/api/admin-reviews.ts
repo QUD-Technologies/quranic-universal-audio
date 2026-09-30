@@ -151,8 +151,10 @@ export interface TimestampsJobLaunch {
  * All TS tunables come from the shared owner-wide "Timestamps generation"
  * defaults; the request carries only the per-launch chapter scope. */
 export interface TimestampsJobLaunchBody {
-    // Affected-only regen scope (omitted/null → full reciter).
+    // Affected-only regen scope: only verses whose segments changed re-align.
     chapters?: number[] | null;
+    // Re-align every verse (of every chapter when ``chapters`` is null).
+    full?: boolean;
 }
 
 export interface AlignerModel {

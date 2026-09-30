@@ -8,10 +8,11 @@
      * "Timestamps generation" accordion — this row carries no setting inputs.
      * The only per-launch choice is the Full-vs-Affected scope: when the row's
      * timestamps are behind specific chapters (``ts.affected_chapters``) the
-     * chooser folds in inline.
+     * chooser folds in inline. Affected re-aligns only the changed verses of
+     * those chapters; Full re-aligns every verse of the reciter.
      *
      * Launches via the shared ``generateTimestamps`` route (same endpoint for
-     * gen + regen) sending only the chapter scope; the parent switches the row's
+     * gen + regen) sending only the scope; the parent switches the row's
      * expansion to "Past jobs" on success so the live log is immediately visible.
      */
     import { generateTimestamps } from '../../../../../lib/api/admin-reviews';
@@ -55,6 +56,7 @@
         try {
             const { job_id } = await generateTimestamps(row.slug, {
                 chapters: chapters ?? null,
+                full: isRegen && !chapters,
             });
             onlaunched(job_id);
         } catch (e) {
@@ -78,7 +80,7 @@
         <div class="scope-row">
             <label class="radio" class:active={scope === 'affected'}>
                 <input type="radio" value="affected" bind:group={scope} />
-                <span>Affected only</span>
+                <span>Changed verses only</span>
             </label>
             <label class="radio" class:active={scope === 'full'}>
                 <input type="radio" value="full" bind:group={scope} />

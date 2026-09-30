@@ -227,13 +227,17 @@ def in_flight_runs() -> list[dict]:
     return out
 
 
-def launch(slug: str, *, settings: TsJobSettings, webhook_base: str | None = None) -> dict:
+def launch(
+    slug: str, *, settings: TsJobSettings, full: bool = False, webhook_base: str | None = None
+) -> dict:
     """Fire the whole-verse timestamps run for ``slug`` on the batch timing
     Space and link its run id to the reciter.
 
     ``settings`` carries the admin's form choices; the Space owns the model,
     method and padding now, so only ``beams`` + ``chapters`` (affected-only
-    regen scope) reach it. The Space writes the ``running`` run-log record
+    regen scope) reach it. Inside that scope the Space re-aligns only the
+    verses whose segments changed; ``full`` re-aligns everything (the whole
+    reciter when ``chapters`` is empty). The Space writes the ``running`` run-log record
     synchronously before it returns the run id, so the panel can show the run
     immediately; there is no HF Job to stage code for. ``webhook_base`` is
     unused (completion is the polled run-log, not a callback) and kept only for
@@ -258,6 +262,7 @@ def launch(slug: str, *, settings: TsJobSettings, webhook_base: str | None = Non
         chapters=settings.chapters,
         beams=settings.beams,
         riwayah=sdk_riwayah_for(slug),
+        full=full,
     )
     state_service.record_timestamps_job(slug, run_id)
     # Bust the in-flight cache so the next /releases/status fetch shows the
