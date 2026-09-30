@@ -270,13 +270,19 @@ the run 10 dB under the segment's speech level (its 90th percentile).
 
 - **Mid-verse lattice pause** → a Low Confidence Waqf cut when `silence_ms ≥ 40`,
   `dip_db ≥ 10` and either the mushaf marks a pause after the word (ۖ ۗ ۘ ۚ) or
-  `floor_ms ≥ 160`; a non-Hafs join always needs `floor_ms ≥ 120`. A chapter
+  `floor_ms ≥ 160`; a non-Hafs join also needs `floor_ms ≥ 120`. A chapter
   without levels asks every pause.
 - **Verse end** inside a row → the lattice (paused or not) and `floor_ms ≥ 200`
   each read WAQF / WASL; agreement goes to `verse_ends_v1.json` and is applied
-  after publish, disagreement becomes a `verse_end: true` cut. Non-Hafs, repetition
-  and low-confidence (< 0.7, the lattice's cost ceiling) rows, and chapters
-  without levels, are always asked.
+  after publish, disagreement becomes a `verse_end: true` cut. Repetition and
+  low-confidence (< 0.7, the lattice's cost ceiling) rows, and chapters without
+  levels, are always asked.
+- **Non-Hafs**: the aligner decodes on Hafs, so a row's word timings and pauses are
+  Hafs while its ref is the edition's. Each join is projected onto the edition's
+  words (`editions.projection`, the lab's `hidden_pause.edition`); verse ends are
+  judged on the edition's numbering by the same rule, cuts and verdicts are written
+  in edition refs, the pause mark is read off the Hafs word, and a join the edition
+  does not have (inside a merged word) is skipped (`_meta.unprojected`).
 
 Cursor = middle of the floor run (else the speech-level run, else the midpoint of the
 two words' timings), plus the segment start. `refs` = the pieces the cursors cut

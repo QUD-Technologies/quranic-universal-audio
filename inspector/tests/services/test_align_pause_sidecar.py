@@ -3,6 +3,8 @@ from the aligner's lattice pauses and the chapter's loudness levels."""
 
 from __future__ import annotations
 
+from collections import Counter
+
 import numpy as np
 import pytest
 
@@ -59,15 +61,20 @@ def _no_levels(monkeypatch):
     monkeypatch.setattr(ChapterLevels, "load", lambda slug, ch: None)
 
 
+def _levels(*spans):
+    lv = np.full(1000, SPEECH_DB, dtype=np.int16)  # 20 s
+    lv[:50] = FLOOR_DB  # the chapter pads set the noise floor
+    for a, b in spans:
+        lv[a // 20 : b // 20] = FLOOR_DB
+    return lv
+
+
 @pytest.fixture
 def quiet_at(monkeypatch):
     """Chapter levels: speech throughout, floor-level silence over the given ``(from_ms, to_ms)`` spans."""
 
     def make(*spans):
-        lv = np.full(1000, SPEECH_DB, dtype=np.int16)  # 20 s
-        lv[:50] = FLOOR_DB  # the chapter pads set the noise floor
-        for a, b in spans:
-            lv[a // 20 : b // 20] = FLOOR_DB
+        lv = _levels(*spans)
         monkeypatch.setattr(ChapterLevels, "load", lambda slug, ch: ChapterLevels(lv))
 
     return make
@@ -129,11 +136,26 @@ def test_disagreeing_readings_ask_the_verse_end(quiet_at):
     assert cut["verse_end"] is True and cut["gap_ms"] == 400
 
 
-def test_non_hafs_and_low_confidence_verse_ends_are_always_asked(quiet_at):
+def test_low_confidence_verse_ends_are_always_asked(quiet_at):
     quiet_at()
     row = _row(10.0, 15.0, "2:2:1", "2:3:1", words=WORDS)
-    assert _build(_doc(row), "warsh")["by_uid"]
     assert _build(_doc({**row, "confidence": 0.5}))["by_uid"]
+
+
+def test_non_hafs_joins_are_judged_in_the_editions_numbering(quiet_at):
+    """An edition that ends the verse one word later: the Hafs verse end is inner, the
+    edition's is judged and written in edition refs."""
+    quiet_at()
+    shifted = {f"2:2:{w}": f"2:2:{w}" for w in range(1, 6)} | {"2:3:1": "2:2:6"}
+    project = lambda ref, _last: shifted.get(ref)  # noqa: E731
+    row = _row(10.0, 15.0, "2:2:1", "2:2:6", words=WORDS)
+    seg = {"time_start": 10000, "time_end": 15000, "matched_ref": "2:2:1-2:2:6"}
+    tally: Counter = Counter()
+    item, verdicts = pause_sidecar.item_for(
+        2, seg, row, "warsh", tally, ChapterLevels(_levels()), project
+    )
+    assert item is None and verdicts is None
+    assert tally["verse_end"] == 0 and tally["mid_verse"] == 0
 
 
 def test_a_voiced_unmarked_pause_is_dropped_a_silent_one_asked(quiet_at):
@@ -153,7 +175,8 @@ def test_keep_stop_rule():
     assert pause_sidecar.keep_stop(Silence(160, 60, 12, 0), marked=False, hafs=True)
     assert not pause_sidecar.keep_stop(Silence(160, 30, 12, 0), marked=True, hafs=True)
     assert not pause_sidecar.keep_stop(quiet, marked=True, hafs=False)
-    assert pause_sidecar.keep_stop(Silence(120, 60, 12, 0), marked=False, hafs=False)
+    assert pause_sidecar.keep_stop(Silence(120, 60, 12, 0), marked=True, hafs=False)
+    assert not pause_sidecar.keep_stop(Silence(120, 60, 12, 0), marked=False, hafs=False)
 
 
 def test_an_untimed_pause_is_skipped_and_counted():
@@ -191,3 +214,19 @@ def test_builder_skips_live_reviewed_joins_but_not_a_different_geometry():
     assert result["_meta"]["answered"] == 1
     live[0]["segments"][0]["time_start"] = 9999
     assert pause_sidecar.build("rec", {2: _doc(row)}, {2: "u"}, "hafs", live)[0]["by_uid"]
+
+
+def test_an_edition_verse_end_inside_a_hafs_verse_is_judged():
+    early = {"2:2:1": "2:2:1", "2:2:2": "2:2:2", "2:2:3": "2:2:3",
+             "2:2:4": "2:3:1", "2:2:5": "2:3:2", "2:3:1": "2:3:3"}  # fmt: skip
+    row = _row(10.0, 15.0, "2:2:1", "2:3:3", words=WORDS)
+    seg = {"time_start": 10000, "time_end": 15000, "matched_ref": "2:2:1-2:3:3"}
+    tally: Counter = Counter()
+    item, verdicts = pause_sidecar.item_for(
+        2, seg, row, "warsh", tally, ChapterLevels(_levels()), lambda ref, _last: early.get(ref)
+    )
+    assert item is None
+    assert verdicts is not None
+    assert [(j["after_ref"], j["next_ref"], j["verdict"]) for j in verdicts["joins"]] == [
+        ("2:2:3", "2:3:1", "wasl")
+    ]

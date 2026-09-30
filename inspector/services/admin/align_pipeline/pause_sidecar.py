@@ -9,13 +9,19 @@ measured at the join (:mod:`.join_silence`):
 * **Mid-verse stop** (a lattice pause): asked when the reciter went quiet
   (``MIN_SILENCE_MS`` under the speech level, ``MIN_DIP_DB`` deep) and either the
   mushaf marks a pause after the word (ۖ ۗ ۘ ۚ) or the silence reaches the noise floor
-  for ``MIN_FLOOR_MS``; a non-Hafs join always needs ``MIN_EDITION_FLOOR_MS`` of floor.
+  for ``MIN_FLOOR_MS``; a non-Hafs join also needs ``MIN_EDITION_FLOOR_MS`` of floor.
   A chapter without levels asks every pause.
 * **Verse end** inside a segment: the lattice (paused or not) and ``VERSE_END_FLOOR_MS``
   of floor silence each read WAQF or WASL; when they agree the verdict goes to
   ``verse_ends_v1`` and is applied after publish (``services.segments.verse_end_verdicts``),
-  otherwise it is asked. Non-Hafs verse ends, repetition segments, low-confidence
-  segments and chapters without levels are always asked.
+  otherwise it is asked. Repetition segments, low-confidence segments and chapters
+  without levels are always asked.
+
+Non-Hafs rows carry edition refs but Hafs word timings and pauses (the aligner decodes
+on Hafs): each join is projected onto the edition's words (``hidden_pause.edition``),
+verse ends are judged on the edition's numbering, and cuts and verdicts are written in
+edition refs; the pause mark is read off the Hafs word. A join the edition does not
+have (inside a merged word, or a word it does not recite) is skipped.
 
 A cut sits at the middle of the silence (else the midpoint between the two words'
 timings). Items are keyed by ``derive_uid(chapter, index, time_start)`` over the
@@ -26,6 +32,7 @@ axis, and ``gap_ms`` carries the floor silence.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from qua_shared.riwayat import DEFAULT_SDK_RIWAYAH
@@ -93,7 +100,37 @@ def _join_index(words: list[dict], after_ref: str, start: int) -> int | None:
     return None
 
 
-def _joins(words: list[dict], pauses: list[dict], tally: dict) -> list[tuple[int, dict | None]]:
+Project = Callable[[str, bool], "str | None"]
+
+
+def _projector(riwayah: str) -> Project:
+    """Hafs word -> the delivery edition's first / last word for it (identity on Hafs)."""
+    if riwayah == DEFAULT_SDK_RIWAYAH:
+        return lambda ref, _last: ref
+    from services.reference import editions
+
+    projection = editions.projection(riwayah)
+
+    def to_edition(ref: str, last: bool) -> str | None:
+        try:
+            targets = projection.relation_for_source(ref).target_refs
+        except (KeyError, ValueError):
+            return None
+        return (targets[-1] if last else targets[0]) if targets else None
+
+    return to_edition
+
+
+def _join_refs(words: list[dict], i: int, project: Project) -> tuple[str, str] | None:
+    """The join after word ``i`` in the delivery's refs, or ``None`` when it has none."""
+    after = project(str(words[i].get("location")), True)
+    nxt = project(str(words[i + 1].get("location")), False)
+    return (after, nxt) if after and nxt and after != nxt else None
+
+
+def _joins(
+    words: list[dict], pauses: list[dict], tally: dict, project: Project
+) -> list[tuple[int, dict | None]]:
     """``(word index, pause or None)`` for every lattice pause and verse end, in order."""
     held: dict[int, dict | None] = {}
     search_from = 0
@@ -106,7 +143,8 @@ def _joins(words: list[dict], pauses: list[dict], tally: dict) -> list[tuple[int
         search_from = index + 1
         held[index] = pause
     for i in range(len(words) - 1):
-        if _verse_end(str(words[i].get("location")), str(words[i + 1].get("location"))):
+        refs = _join_refs(words, i, project)
+        if refs and _verse_end(*refs):
             held.setdefault(i, None)
     return sorted(held.items(), key=lambda kv: kv[0])
 
@@ -117,8 +155,8 @@ def keep_stop(silence: Silence | None, marked: bool, hafs: bool) -> bool:
         return True
     if silence.silence_ms < MIN_SILENCE_MS or silence.dip_db < MIN_DIP_DB:
         return False
-    if not hafs:
-        return silence.floor_ms >= MIN_EDITION_FLOOR_MS
+    if not hafs and silence.floor_ms < MIN_EDITION_FLOOR_MS:
+        return False
     return marked or silence.floor_ms >= MIN_FLOOR_MS
 
 
@@ -132,11 +170,10 @@ def verse_end_verdict(paused: bool, silence: Silence | None) -> str | None:
     return None
 
 
-def _cut(pause, prev_word, next_word, cursor, word, silence, verse_end) -> dict:
+def _cut(pause, refs, cursor, word, silence, verse_end) -> dict:
     gain = float(pause["gain"]) if pause else 0.0
     quiet = silence.floor_ms if silence else 0
-    lattice = {"paused": pause is not None, "after_ref": prev_word["location"],
-               "next_ref": next_word["location"]}  # fmt: skip
+    lattice = {"paused": pause is not None, "after_ref": refs[0], "next_ref": refs[1]}
     if pause:
         lattice |= {"gain": pause["gain"], "separability": pause["separability"]}
     if silence:
@@ -160,6 +197,7 @@ def item_for(
     riwayah: str,
     tally: dict,
     levels: ChapterLevels | None = None,
+    project: Project | None = None,
 ) -> tuple[dict | None, dict | None]:
     """The asked item and the verse-end verdicts for a published ``seg`` (its aligner ``row``)."""
     from services.reference.quran_refs import dk_text_for_ref
@@ -167,17 +205,20 @@ def item_for(
     raw_words = row.get("words")
     words: list[dict] = raw_words if isinstance(raw_words, list) else []
     hafs = riwayah == DEFAULT_SDK_RIWAYAH
-    judged = (
-        hafs and not seg.get("wrap_word_ranges") and (row.get("confidence") or 0) >= MIN_CONFIDENCE
-    )
+    project = project or _projector(riwayah)
+    judged = not seg.get("wrap_word_ranges") and (row.get("confidence") or 0) >= MIN_CONFIDENCE
     answered = {j.get("after_ref") for j in seg.get("join_verdicts") or []}
     cuts: list[dict] = []
     pieces: list[tuple[str, str]] = []
     verdicts: list[dict] = []
     last = seg["time_start"]
-    for index, pause in _joins(words, row.get("pauses") or [], tally):
+    for index, pause in _joins(words, row.get("pauses") or [], tally, project):
         prev_word, next_word = words[index], words[index + 1]
-        after_ref, next_ref = prev_word["location"], next_word["location"]
+        refs = _join_refs(words, index, project)
+        if refs is None:
+            tally["unprojected"] += 1
+            continue
+        after_ref, next_ref = refs
         verse_end = _verse_end(after_ref, next_ref)
         tally["verse_end" if verse_end else "mid_verse"] += 1
         relative = _midpoint_ms(prev_word, next_word)
@@ -192,6 +233,10 @@ def item_for(
         if silence and last < silence.at_ms < seg["time_end"]:
             cursor = silence.at_ms
         word = dk_text_for_ref(f"{after_ref}-{after_ref}", riwayah)
+        hafs_word = str(prev_word["location"])
+        marked = bool(
+            PAUSE_MARKS & set(dk_text_for_ref(f"{hafs_word}-{hafs_word}", DEFAULT_SDK_RIWAYAH))
+        )
         if verse_end:
             verdict = verse_end_verdict(pause is not None, silence) if judged else None
             if verdict:
@@ -200,11 +245,11 @@ def item_for(
                                  "cursor_ms": cursor})  # fmt: skip
                 last = cursor
                 continue
-        elif not keep_stop(silence, bool(PAUSE_MARKS & set(word)), hafs):
+        elif not keep_stop(silence, marked, hafs):
             tally["dropped"] += 1
             continue
         last = cursor
-        cuts.append(_cut(pause, prev_word, next_word, cursor, word, silence, verse_end))
+        cuts.append(_cut(pause, refs, cursor, word, silence, verse_end))
         pieces.append((after_ref, next_ref))
     item = None
     if cuts:
@@ -240,6 +285,7 @@ def build(
     by_uid: dict[str, dict] = {}
     applied: dict[str, dict] = {}
     unmeasured: list[int] = []
+    project = _projector(riwayah)
     reviewed = {
         (int(e["ref"].split(":")[0]), s["time_start"], s["time_end"], s["matched_ref"]): s.get(
             "join_verdicts"
@@ -263,7 +309,7 @@ def build(
             )
             if answers:
                 seg = {**seg, "join_verdicts": answers}
-            item, verdicts = item_for(chapter, seg, row, riwayah, tally, levels)
+            item, verdicts = item_for(chapter, seg, row, riwayah, tally, levels, project)
             uid = derive_uid(chapter, index, seg["time_start"])
             if item is not None:
                 by_uid[uid] = item
