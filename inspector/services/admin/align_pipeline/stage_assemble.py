@@ -40,7 +40,6 @@ log = logging.getLogger("inspector")
 
 _ASSEMBLABLE_STATES = (ReciterState.CATALOGUED, ReciterState.AWAITING_ALIGNMENT)
 _SOURCE_COMMIT = "inspector-native"
-PUBLISHED_FILE = "published.json"
 
 
 class AssembleError(RuntimeError):
@@ -66,7 +65,7 @@ def run(
     *,
     started_at: str,
 ) -> dict[str, int]:
-    published = staging.run_file(slug, run_id, PUBLISHED_FILE)
+    published = staging.run_file(slug, run_id, staging.PUBLISHED_FILE)
     built_count = 0
     if staging.read_json(published) is None:
         built_count = _publish(slug, run_id, params, chapters, sources, started_at)

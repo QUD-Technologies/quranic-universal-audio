@@ -24,6 +24,7 @@ SPLIT_REPORT_FILE = "split.json"
 SPLIT_OUTCOME_FILE = "split_outcome.json"
 SPLIT_JOB_FILE = "split_job.json"
 GROUPS_FILE = "groups.json"
+PUBLISHED_FILE = "published.json"
 _RUN_FILES = (
     ACQUIRE_FILE,
     GROUPS_FILE,
@@ -31,6 +32,7 @@ _RUN_FILES = (
     SPLIT_REPORT_FILE,
     SPLIT_OUTCOME_FILE,
     SPLIT_JOB_FILE,
+    PUBLISHED_FILE,
 )
 
 

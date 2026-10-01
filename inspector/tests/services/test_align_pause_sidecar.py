@@ -142,29 +142,50 @@ def test_low_confidence_verse_ends_are_always_asked(quiet_at):
     assert _build(_doc({**row, "confidence": 0.5}))["by_uid"]
 
 
-def test_non_hafs_joins_are_judged_in_the_editions_numbering(quiet_at):
-    """An edition that ends the verse one word later: the Hafs verse end is inner, the
-    edition's is judged and written in edition refs."""
-    quiet_at()
-    shifted = {f"2:2:{w}": f"2:2:{w}" for w in range(1, 6)} | {"2:3:1": "2:2:6"}
-    project = lambda ref, _last: shifted.get(ref)  # noqa: E731
-    row = _row(10.0, 15.0, "2:2:1", "2:2:6", words=WORDS)
-    seg = {"time_start": 10000, "time_end": 15000, "matched_ref": "2:2:1-2:2:6"}
+def _edition_words(*pairs):
+    """Words in edition refs over the Hafs words they cover: ``(edition, [hafs...], start, end)``."""
+    return [
+        {"location": ed, "reference_locations": hafs, "start": t0, "end": t1}
+        for ed, hafs, t0, t1 in pairs
+    ]
+
+
+#: An edition whose verse 2:2 ends one word later than Hafs (it takes Hafs 2:3:1),
+#: and whose 2:2:3 merges Hafs 2:2:3-2:2:4.
+EDITION_WORDS = _edition_words(
+    ("2:2:1", ["2:2:1"], 0.0, 0.5),
+    ("2:2:2", ["2:2:2"], 0.6, 1.2),
+    ("2:2:3", ["2:2:3", "2:2:4"], 1.8, 2.5),
+    ("2:2:4", ["2:2:5"], 2.6, 3.0),
+    ("2:2:5", ["2:3:1"], 3.4, 3.9),
+    ("2:3:1", ["2:3:2"], 4.0, 4.5),
+)
+
+
+def test_non_hafs_judges_verse_ends_on_the_editions_words():
+    row = _row(10.0, 15.0, "2:2:1", "2:3:1", words=EDITION_WORDS)
+    seg = {"time_start": 10000, "time_end": 15000, "matched_ref": "2:2:1-2:3:1"}
     tally: Counter = Counter()
-    item, verdicts = pause_sidecar.item_for(
-        2, seg, row, "warsh", tally, ChapterLevels(_levels()), project
+    item, verdicts = pause_sidecar.item_for(2, seg, row, "warsh", tally, ChapterLevels(_levels()))
+    assert item is None
+    assert verdicts is not None
+    assert [(j["after_ref"], j["next_ref"], j["verdict"]) for j in verdicts["joins"]] == [
+        ("2:2:5", "2:3:1", "wasl")
+    ]
+
+
+def test_non_hafs_pause_is_placed_after_the_edition_word_ending_on_its_hafs_word():
+    pauses = [_pause("2:2:2"), _pause("2:2:3"), _pause("2:3:1")]
+    row = _row(10.0, 15.0, "2:2:1", "2:2:5", pauses=pauses, words=EDITION_WORDS[:5])
+    seg = {"time_start": 10000, "time_end": 15000, "matched_ref": "2:2:1-2:2:5"}
+    tally: Counter = Counter()
+    item, _ = pause_sidecar.item_for(
+        2, seg, row, "warsh", tally, ChapterLevels(_levels((11300, 11700)))
     )
-    assert item is None and verdicts is None
-    assert tally["verse_end"] == 0 and tally["mid_verse"] == 0
-
-
-def test_a_voiced_unmarked_pause_is_dropped_a_silent_one_asked(quiet_at):
-    quiet_at()
-    row = _row(10.0, 15.0, "2:2:1", "2:2:5", pauses=[_pause("2:2:2")], words=WORDS[:5])
-    assert _build(_doc(row))["by_uid"] == {}
-    quiet_at((11300, 11700))
-    (cut,) = _build(_doc(row))["by_uid"][derive_uid(2, 0, 10000)]["cuts"]
-    assert cut["cursor_ms"] == 11500 and cut["gap_ms"] == 400
+    assert item is not None
+    # 2:2:3 sits inside the merged edition word: no join there; 2:3:1 is the row's last word.
+    assert [c["evidence"]["lattice"]["after_ref"] for c in item["cuts"]] == ["2:2:2"]
+    assert tally["untimed"] == 2
 
 
 def test_keep_stop_rule():
@@ -214,19 +235,3 @@ def test_builder_skips_live_reviewed_joins_but_not_a_different_geometry():
     assert result["_meta"]["answered"] == 1
     live[0]["segments"][0]["time_start"] = 9999
     assert pause_sidecar.build("rec", {2: _doc(row)}, {2: "u"}, "hafs", live)[0]["by_uid"]
-
-
-def test_an_edition_verse_end_inside_a_hafs_verse_is_judged():
-    early = {"2:2:1": "2:2:1", "2:2:2": "2:2:2", "2:2:3": "2:2:3",
-             "2:2:4": "2:3:1", "2:2:5": "2:3:2", "2:3:1": "2:3:3"}  # fmt: skip
-    row = _row(10.0, 15.0, "2:2:1", "2:3:3", words=WORDS)
-    seg = {"time_start": 10000, "time_end": 15000, "matched_ref": "2:2:1-2:3:3"}
-    tally: Counter = Counter()
-    item, verdicts = pause_sidecar.item_for(
-        2, seg, row, "warsh", tally, ChapterLevels(_levels()), lambda ref, _last: early.get(ref)
-    )
-    assert item is None
-    assert verdicts is not None
-    assert [(j["after_ref"], j["next_ref"], j["verdict"]) for j in verdicts["joins"]] == [
-        ("2:2:3", "2:3:1", "wasl")
-    ]

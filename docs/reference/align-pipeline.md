@@ -277,12 +277,13 @@ the run 10 dB under the segment's speech level (its 90th percentile).
   after publish, disagreement becomes a `verse_end: true` cut. Repetition and
   low-confidence (< 0.7, the lattice's cost ceiling) rows, and chapters without
   levels, are always asked.
-- **Non-Hafs**: the aligner decodes on Hafs, so a row's word timings and pauses are
-  Hafs while its ref is the edition's. Each join is projected onto the edition's
-  words (`editions.projection`, the lab's `hidden_pause.edition`); verse ends are
-  judged on the edition's numbering by the same rule, cuts and verdicts are written
-  in edition refs, the pause mark is read off the Hafs word, and a join the edition
-  does not have (inside a merged word) is skipped (`_meta.unprojected`).
+- **Non-Hafs**: the aligner decodes on Hafs and projects. A row's `words` carry the
+  edition's `location` plus the Hafs words each covers (`reference_locations`);
+  its `pauses` name the Hafs word they follow. A pause is placed after the edition
+  word whose last Hafs word it follows (one inside a merged word has no join and is
+  counted `untimed`); verse ends are judged on the edition words' numbering by the
+  same rule, cuts and verdicts are written in edition refs, and the pause mark is
+  read off the Hafs word.
 
 Cursor = middle of the floor run (else the speech-level run, else the midpoint of the
 two words' timings), plus the segment start. `refs` = the pieces the cursors cut
