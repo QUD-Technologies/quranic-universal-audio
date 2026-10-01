@@ -12,7 +12,7 @@ one op through the same full-replace save a reviewer's edit takes, logged with
 
 A segment that is gone, moved, already answered, or whose cursors do not fall inside
 it is skipped, so a re-run applies nothing twice.
-Chapters save one at a time, each waiting until its history reads back.
+Chapters save one at a time, each waiting until its segments and history read back.
 """
 
 from __future__ import annotations
@@ -201,10 +201,14 @@ def apply(slug: str, by_uid: dict[str, dict], actor: Actor) -> dict[str, int]:
     chapters: dict[int, dict[str, dict]] = defaultdict(dict)
     for uid, item in by_uid.items():
         chapters[int(item["chapter"])][uid] = item
-    for chapter, items in sorted(chapters.items()):
+
+    def load_fresh() -> list[dict]:
         cache.pop_seg_caches_affected_by_segment_edit(slug)
+        return load_detailed(slug)
+
+    for chapter, items in sorted(chapters.items()):
         payload = chapter_save(
-            load_detailed(slug), chapter, items,
+            load_fresh(), chapter, items,
             lambda ref: _verse_end_refs(ref, word_counts), chapter_from_ref, uuid7, tally,
         )  # fmt: skip
         if not payload["operations"]:
@@ -212,23 +216,45 @@ def apply(slug: str, by_uid: dict[str, dict], actor: Actor) -> dict[str, int]:
         result = save_seg_data(slug, chapter, payload, actor=actor)
         if isinstance(result, tuple):
             raise RuntimeError(f"{slug} ch {chapter}: verse-end save failed {result}")
-        _await_history(slug, [op["op_id"] for op in payload["operations"]], data_dir)
-        tally["segments"] += len(payload["operations"])
+        ops = payload["operations"]
+        _await(lambda ops=ops: _saved(load_fresh(), ops), f"{slug} ch {chapter} detailed.json")
+        _await(lambda ops=ops: _logged(data_dir, slug, ops), f"{slug} ch {chapter} edit history")
+        tally["segments"] += len(ops)
     cache.pop_seg_caches_affected_by_segment_edit(slug)
     cache.pop_seg_split_group_index(slug)
     log.info("verse ends %s: %s", slug, dict(tally))
     return dict(tally)
 
 
-def _await_history(slug: str, op_ids: list[str], data_dir) -> None:
+def _saved(entries: list[dict], ops: list[dict]) -> bool:
+    """Every op's resulting segments read back with their bounds and answers."""
+    live = {seg.get("segment_uid"): seg for e in entries for seg in e.get("segments", [])}
+    for op in ops:
+        for snap in op["targets_after"]:
+            seg = live.get(snap["segment_uid"])
+            if seg is None or (seg["time_start"], seg["time_end"]) != (
+                snap["time_start"],
+                snap["time_end"],
+            ):
+                return False
+            if len(seg.get("join_verdicts") or []) < len(snap.get("join_verdicts") or []):
+                return False
+    return True
+
+
+def _logged(data_dir, slug: str, ops: list[dict]) -> bool:
+    try:
+        raw = data_dir.get_backend().read_bytes(data_dir.edit_history_path(slug)) or b""
+    except Exception:  # noqa: BLE001 — absent or mid-write; the poll retries
+        return False
+    return all(op["op_id"].encode() in raw for op in ops)
+
+
+def _await(ready: Callable[[], bool], what: str) -> None:
+    """Block until ``ready()``: the next chapter's save re-reads detailed.json whole,
+    so a lagging read would drop this chapter's write."""
     deadline = time.monotonic() + VISIBLE_TIMEOUT_S
-    while True:
-        try:
-            raw = data_dir.get_backend().read_bytes(data_dir.edit_history_path(slug)) or b""
-        except Exception:  # noqa: BLE001 — absent or mid-write; the poll retries
-            raw = b""
-        if all(op.encode() in raw for op in op_ids):
-            return
+    while not ready():
         if time.monotonic() > deadline:
-            raise TimeoutError(f"{slug}: verse-end history not visible after {VISIBLE_TIMEOUT_S}s")
+            raise TimeoutError(f"{what}: write not visible after {VISIBLE_TIMEOUT_S}s")
         time.sleep(VISIBLE_POLL_S)
