@@ -324,6 +324,11 @@ aborts the batch) and re-renders the dataset catalog/card **once** at the end. T
    `per_recitation_releases(track='hf')` insert + `released` event) and leaves failures in the
    record. The 120 s poll fallback reconciles by reading the same record (no webhook payload).
 
+Every slug in a batch shares one container and one `JOB_ID`, so each publish builds its `Dataset` in
+a private temp `cache_dir` with a per-slug `fingerprint` (`<job>-<riwayah>-<slug>`). An explicit
+fingerprint replaces the `gen_kwargs` hash as the `from_generator` cache key — keyed on the bare job id,
+every later slug silently re-pushed the first slug's rows (issue #279).
+
 Global single-flight: one batch at a time; a single publish or a cut is rejected while a batch is in
 flight, and vice-versa (labels `task=hf_publish_batch`, `reciter=_batch`).
 

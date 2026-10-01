@@ -35,6 +35,7 @@ import logging
 import os
 import sqlite3
 import sys
+import tempfile
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -506,19 +507,22 @@ def _iter_hf_records(rows: list[dict], audio_bytes: list[bytes | None]):
         }
 
 
-def _push_to_hf(slug: str, riwayah: str, rows: list[dict], audio_bytes: list[bytes | None]) -> str:
-    """Build the parquet split and push to HF. Returns the dataset commit SHA.
+def _build_hf_dataset(
+    slug: str,
+    riwayah: str,
+    rows: list[dict],
+    audio_bytes: list[bytes | None],
+    *,
+    cache_dir: str,
+):
+    """Build one recitation's disk-backed parquet-ready ``Dataset``.
 
-    ``riwayah`` is the INSPECTOR slug. It becomes ``config_name``, which is the
-    dataset's top-level parquet folder — every published split already lives
-    under ``hafs_an_asim/``, and switching vocabularies here would strand them.
+    The explicit ``fingerprint`` REPLACES the gen_kwargs hash as the builder's
+    cache key, so it must name this recitation — a key shared across slugs
+    (e.g. the bare batch JOB_ID) makes ``from_generator`` hand back the first
+    slug's cached rows for every later slug (issue #279).
     """
     from datasets import Audio, Dataset, Features, Sequence, Value
-    from huggingface_hub import HfApi
-
-    repo_id = _resolve_dataset_repo_id()
-    api = HfApi(token=os.environ.get("HF_TOKEN"))
-    api.create_repo(repo_id=repo_id, repo_type="dataset", exist_ok=True)
 
     # Audio(decode=True) matches the existing splits on the hub (consumers
     # expect ``ds[i]["audio"]["array"]``). Torch + torchcodec are installed
@@ -536,28 +540,52 @@ def _push_to_hf(slug: str, riwayah: str, rows: list[dict], audio_bytes: list[byt
             "source_offset_ms": Value("int32"),
         }
     )
+    job_id = os.environ.get("JOB_ID") or "local"
     # Dataset.from_dict constructs each column as one Arrow array. Embedded
     # audio for a full mushaf can exceed Arrow binary's 32-bit offset ceiling
     # before push_to_hub gets a chance to shard it. Build disk-backed record
     # batches instead so each binary array stays comfortably below 2 GiB.
-    ds = Dataset.from_generator(
+    return Dataset.from_generator(
         _iter_hf_records,
         features=features,
         gen_kwargs={"rows": rows, "audio_bytes": audio_bytes},
+        cache_dir=cache_dir,
         keep_in_memory=False,
         writer_batch_size=64,
-        fingerprint=os.environ.get("JOB_ID") or slug,
+        fingerprint=f"{job_id}-{riwayah}-{slug}",
     )
 
-    log.info("pushing %d rows to %s/%s/%s", len(ds), repo_id, riwayah, slug)
-    ds.push_to_hub(
-        repo_id,
-        config_name=riwayah,
-        split=slug,
-        token=os.environ.get("HF_TOKEN"),
-        max_shard_size="500MB",
-        commit_message=f"publish {riwayah}/{slug}",
-    )
+
+def _push_to_hf(slug: str, riwayah: str, rows: list[dict], audio_bytes: list[bytes | None]) -> str:
+    """Build the parquet split and push to HF. Returns the dataset commit SHA.
+
+    ``riwayah`` is the INSPECTOR slug. It becomes ``config_name``, which is the
+    dataset's top-level parquet folder — every published split already lives
+    under ``hafs_an_asim/``, and switching vocabularies here would strand them.
+    """
+    from huggingface_hub import HfApi
+
+    repo_id = _resolve_dataset_repo_id()
+    api = HfApi(token=os.environ.get("HF_TOKEN"))
+    api.create_repo(repo_id=repo_id, repo_type="dataset", exist_ok=True)
+
+    # A private, throwaway Arrow cache per publish. A batch runs every slug in
+    # one container under one JOB_ID, so a shared ~/.cache would let a later
+    # slug load an earlier slug's prepared dataset (issue #279).
+    with tempfile.TemporaryDirectory(
+        prefix=f"hf_publish_{slug}_", ignore_cleanup_errors=True
+    ) as cache_dir:
+        ds = _build_hf_dataset(slug, riwayah, rows, audio_bytes, cache_dir=cache_dir)
+        log.info("pushing %d rows to %s/%s/%s", len(ds), repo_id, riwayah, slug)
+        ds.push_to_hub(
+            repo_id,
+            config_name=riwayah,
+            split=slug,
+            token=os.environ.get("HF_TOKEN"),
+            max_shard_size="500MB",
+            commit_message=f"publish {riwayah}/{slug}",
+        )
+        del ds
     # Resolve the dataset's HEAD commit sha — the version the row landed at.
     try:
         info = api.repo_info(repo_id=repo_id, repo_type="dataset")
