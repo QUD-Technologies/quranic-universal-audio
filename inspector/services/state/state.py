@@ -985,14 +985,6 @@ def _h_marked_ready(slug, before, actor, payload, reason):
                 details={"validation_errors": e.errors()},
             ) from e
 
-        unchecked = [k for k, v in submission.checklist.model_dump().items() if not v]
-        if unchecked:
-            raise InvalidTransition(
-                "Please check every box in the list before marking ready.",
-                code=Codes.MARK_READY_CHECKLIST,
-                details={"unchecked": unchecked},
-            )
-
         # Authoritative: re-compute live category counts against on-disk segs.
         # The FE applies the same gate as a UX layer, but the server is the
         # source of truth — a race against unsaved edits or a stale snapshot
@@ -1006,6 +998,17 @@ def _h_marked_ready(slug, before, actor, payload, reason):
             raise InvalidTransition(
                 "Can't mark ready — this reciter has no saved segments yet.",
                 code=Codes.MARK_READY_NO_SEGMENTS,
+            )
+
+        # Only the boxes whose categories ever had an item are shown, so only
+        # those are required.
+        checked = submission.checklist.model_dump()
+        unchecked = [k for k in result.get("checklist_keys") or [] if not checked.get(k)]
+        if unchecked:
+            raise InvalidTransition(
+                "Please check every box in the list before marking ready.",
+                code=Codes.MARK_READY_CHECKLIST,
+                details={"unchecked": unchecked},
             )
 
         # ``category_counts.low_confidence`` is the length of the DETAIL list

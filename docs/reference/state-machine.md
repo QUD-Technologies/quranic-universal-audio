@@ -72,7 +72,7 @@ Force-claim columns (`force_assignee_*`, leases) do **not** exist — force-clai
 | `reciter.alignment_completed` | `awaiting_alignment` | `awaiting_review` | applies + clears pending catalog edits; if pending had `auto_claim`, folds a `reciter.claimed` into the same txn. Fired by `auto_detect` when `reciters/<slug>/detailed.json` exists (the folder alone is not enough — the native align pipeline persists `audio/`+`peaks/` hours earlier; see [align-pipeline.md](align-pipeline.md)) | system |
 | `reciter.claimed` | `awaiting_review` (`public`) | `under_review` | opens claim: `assignee_*`, `marked_ready=0` | contributor+ |
 | `reciter.released` | `under_review` (`not marked_ready` when actor is claim holder) | `awaiting_review` | closes claim | claim-holder OR maintainer+ |
-| `reciter.marked_ready` | `under_review` (+ all 5 checklist attestations True + 5 blocking validation counts == 0) | (same) | `marked_ready=1`; persists `mark_ready_checklist` + `mark_ready_comment_checks` + `mark_ready_comment_issues` onto the open claim | claim-holder |
+| `reciter.marked_ready` | `under_review` (+ every shown checklist attestation True + 5 blocking validation counts == 0) | (same) | `marked_ready=1`; persists `mark_ready_checklist` + `mark_ready_comment_checks` + `mark_ready_comment_issues` onto the open claim | claim-holder |
 | `reciter.unmarked_ready` | `under_review` | (same) | `marked_ready=0`; clears the three submission columns on the open claim | claim-holder |
 | `reciter.merge_rejected` | `under_review` (`marked_ready=1`) | (same) | `marked_ready=0` | maintainer+, reason ≥10 |
 | `reciter.published` | `under_review` (`marked_ready=1`) | `released` | closes claim; `marked_ready=0`; `revision_in_progress=None`; appends `job_id`→`timestamps_job_ids` | maintainer+ (gate `reciter.publish`); fired by the system (`SYSTEM_ACTOR`, role OWNER) on timestamps-job success |
@@ -111,12 +111,12 @@ Wire shape (`qua_shared/schemas/wire/mark_ready.py::MarkReadyRequest`):
 }
 ```
 
-The five checklist keys mirror to the FE copy module at `inspector/frontend/src/tabs/segments/copy/mark-ready/index.ts`. The labels themselves live in sibling `.md` files (`form.md`, `checklist.md`, `comments.md`) so wording edits don't require touching components. Parity is asserted by `inspector/frontend/src/tabs/segments/__tests__/parity/mark-ready-copy.test.ts` and by the schema codegen guard.
+The six checklist keys mirror to the FE copy module at `inspector/frontend/src/tabs/segments/copy/mark-ready/index.ts`. The labels themselves live in sibling `.md` files (`form.md`, `checklist.md`, `comments.md`) so wording edits don't require touching components. Parity is asserted by `inspector/frontend/src/tabs/segments/__tests__/parity/mark-ready-copy.test.ts` and by the schema codegen guard.
 
 Two gates run inside `_h_marked_ready` before the transition is accepted:
 
-1. **Checklist completeness.** All five values MUST be `True`. Any `False` → `InvalidTransition("checklist incomplete", details={unchecked: [...]})`.
-2. **Blocking validation counts.** The handler calls `services.validation.validate_reciter_segments(slug)` and checks the four keys in `BLOCKING_COUNT_KEYS` (`qua_shared/schemas/wire/mark_ready.py`) against the live `category_counts` (`boundary_adj` is owner-only; `cross_verse` and `missed_waqf` are review aids — all deliberately absent):
+1. **Checklist completeness.** Every key in the live validate result's `checklist_keys` MUST be `True`; the others are not shown and may be `False`. A box is shown only when one of its categories (`CHECKLIST_CATEGORIES` in `qua_shared/schemas/wire/mark_ready.py`) ever had an item for the reciter — listed now (resolved included; low confidence only under the strict cutoff), in a segment's `ignored_categories`, or edited from its card (`op_context_category`; failed also counts an edit of a segment with no `matched_ref`) — see `services/validation/checklist_scope.py`. Any shown key `False` → `InvalidTransition("checklist incomplete", details={unchecked: [...]})`. `splits_wasl_waqf` now attests that every Low Confidence Waqf cut is tagged wasl or waqf.
+2. **Blocking validation counts.** The handler calls `services.validation.validate_reciter_segments(slug)` and checks the five keys in `BLOCKING_COUNT_KEYS` (`qua_shared/schemas/wire/mark_ready.py`) against the live `category_counts` — `missed_waqf` counts items with an unlabelled cut (`boundary_adj` is owner-only and `cross_verse` a review aid — both deliberately absent):
 
    | Key | Accordion |
    |---|---|

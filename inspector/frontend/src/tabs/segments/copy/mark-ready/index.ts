@@ -51,6 +51,7 @@ export const CHECKLIST_ORDER: readonly ChecklistKey[] = [
 export const BLOCKING_COUNT_KEYS = [
     'low_confidence',
     'low_confidence_v2',
+    'missed_waqf',
     'basmala_amin',
     'repetitions',
 ] as const;
@@ -62,6 +63,7 @@ export type BlockingCountKey = (typeof BLOCKING_COUNT_KEYS)[number];
 export const BLOCKING_LABELS: Record<BlockingCountKey, string> = {
     low_confidence: 'Low confidence',
     low_confidence_v2: 'Low confidence v2',
+    missed_waqf: 'Low Confidence Waqf',
     basmala_amin: 'Basmala + amin',
     repetitions: 'Repetitions',
 };
@@ -205,6 +207,12 @@ export function emptyChecklist(): MarkReadyChecklist {
     };
 }
 
-export function isAllChecked(checklist: MarkReadyChecklist): boolean {
-    return CHECKLIST_ORDER.every((k) => checklist[k]);
+/** True when every shown box is ticked. `keys` is the reciter's
+ *  `checklist_keys` from validation — only boxes whose categories ever had an
+ *  item are shown; defaults to all six. */
+export function isAllChecked(
+    checklist: MarkReadyChecklist,
+    keys: readonly ChecklistKey[] = CHECKLIST_ORDER,
+): boolean {
+    return keys.every((k) => checklist[k]);
 }

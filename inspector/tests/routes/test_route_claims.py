@@ -52,10 +52,12 @@ def clean_validation(monkeypatch):
             "category_counts": {
                 "low_confidence": 0,
                 "low_confidence_v2": 0,
+                "missed_waqf": 0,
                 "boundary_adj": 0,
                 "cross_verse": 0,
                 "basmala_amin": 0,
-            }
+            },
+            "checklist_keys": list(_FULL_CHECKLIST_BODY["checklist"]),
         }
 
     # The handler does ``from services.validation import …`` lazily inside
@@ -370,6 +372,61 @@ def test_mark_ready_rejects_unchecked_checklist(
     payload = json.loads(resp.data)
     assert payload["code"] == "MARK_READY_CHECKLIST"
     assert payload["details"]["unchecked"] == ["failed_alignments"]
+
+
+def test_mark_ready_accepts_an_unchecked_box_whose_categories_never_had_items(
+    signed_in_client,
+    state_persistence,
+    monkeypatch,
+):
+    """A box missing from ``checklist_keys`` is never shown, so it may be sent False."""
+    _replace_state([_row("test_slug", state="under_review", assignee_hf_id="u-1")])
+
+    def _only_lc(_reciter):
+        return {"category_counts": {}, "checklist_keys": ["low_confidence"]}
+
+    from services import validation as _validation
+
+    monkeypatch.setattr(_validation, "validate_reciter_segments", _only_lc)
+    client, _ = signed_in_client(hf_user_id="u-1", login="alice")
+    body = {
+        **_FULL_CHECKLIST_BODY,
+        "checklist": {k: k == "low_confidence" for k in _FULL_CHECKLIST_BODY["checklist"]},
+    }
+    resp = client.post(
+        "/api/mark-ready/test_slug",
+        headers={"Origin": "http://localhost"},
+        json=body,
+    )
+    assert resp.status_code == 200, resp.data
+    assert json.loads(resp.data)["marked_ready"] is True
+
+
+def test_mark_ready_rejects_unlabelled_low_confidence_waqf(
+    signed_in_client,
+    state_persistence,
+    monkeypatch,
+):
+    """An unlabelled Low Confidence Waqf cut blocks mark-ready."""
+    _replace_state([_row("test_slug", state="under_review", assignee_hf_id="u-1")])
+
+    def _open_waqf(_reciter):
+        return {
+            "category_counts": {"missed_waqf": 2},
+            "checklist_keys": list(_FULL_CHECKLIST_BODY["checklist"]),
+        }
+
+    from services import validation as _validation
+
+    monkeypatch.setattr(_validation, "validate_reciter_segments", _open_waqf)
+    client, _ = signed_in_client(hf_user_id="u-1", login="alice")
+    resp = client.post(
+        "/api/mark-ready/test_slug",
+        headers={"Origin": "http://localhost"},
+        json=_FULL_CHECKLIST_BODY,
+    )
+    assert resp.status_code == 400
+    assert json.loads(resp.data)["details"]["blocking_counts"] == {"missed_waqf": 2}
 
 
 def test_mark_ready_rejects_nonzero_blocking_counts(

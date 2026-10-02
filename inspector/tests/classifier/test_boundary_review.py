@@ -464,7 +464,7 @@ def test_labelled_missed_waqf_stays_listed_as_resolved():
     SegValidateResponse.model_validate({"missed_waqf": detail["missed_waqf"]})
 
 
-def test_validate_counts_open_missed_waqf_only_and_gates(monkeypatch, tmp_reciter_dir):
+def test_validate_counts_open_missed_waqf_only_for_every_viewer(monkeypatch, tmp_reciter_dir):
     from services import validation as val
     from services.storage.data_loader import load_detailed
 
@@ -489,8 +489,9 @@ def test_validate_counts_open_missed_waqf_only_and_gates(monkeypatch, tmp_recite
     assert full["missed_waqf"][1]["resolved"] is True
     assert full["missed_waqf_meta"] == {"kind": "missed_waqf"}
 
+    assert "splits_wasl_waqf" in full["checklist_keys"]
+
     gated = val.validate_reciter_segments(reciter, include_boundary_review=False)
     assert gated is not None
-    assert "missed_waqf" not in gated
-    assert "missed_waqf_meta" not in gated
-    assert gated["category_counts"]["missed_waqf"] == 0
+    assert [it["segment_uid"] for it in gated["missed_waqf"]] == [first, second]
+    assert gated["category_counts"]["missed_waqf"] == 1

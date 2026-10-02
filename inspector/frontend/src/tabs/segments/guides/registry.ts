@@ -127,10 +127,10 @@ export const ALL_GUIDE_KEYS: readonly string[] = Object.freeze([
 ]);
 
 /**
- * Guides of review-only categories — readable and recorded but never required
- * of everyone: `missed_waqf` is served only to holders of
- * `segments.view_boundary_review`, and `cross_verse` asks nothing (its verse
- * ends are auto-classified or flagged in `missed_waqf`).
+ * Guides that are readable and recorded but never required before a first
+ * edit: `cross_verse` asks nothing (its verse ends are auto-classified or
+ * flagged in `missed_waqf`), and `missed_waqf` is new work for reviewers
+ * already mid-way, so it must not lock them out of editing.
  */
 const REVIEW_ONLY_GUIDE_KEYS: ReadonlySet<string> = new Set(['cross_verse', 'missed_waqf']);
 
