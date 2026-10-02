@@ -21,6 +21,9 @@
     "structural_errors": 0,
     "unmarked_wasl": 0
   },
+  "checklist_keys": [
+    "low_confidence"
+  ],
   "cross_verse": [],
   "errors": [],
   "failed": [],
@@ -38,6 +41,7 @@
     }
   ],
   "low_confidence_v2": [],
+  "missed_waqf": [],
   "missing_verses": [],
   "missing_words": [],
   "muqattaat": [],
