@@ -1,7 +1,8 @@
 """Pieces an edit made or reshaped inherit their ancestor's cross-verse cuts by word."""
 
 from qua_shared.join_verdicts import contained_verdicts
-from services.segments.auto_split import _cursor_by_word, _fits, _inherited
+from services.segments.auto_split import _cursor_by_word, _inherited
+from services.validation.sidecar_fit import entry_fits_segment
 
 WORD_COUNTS = {(20, 29): 5, (20, 30): 2, (20, 31): 3}
 PARENT = {
@@ -18,8 +19,8 @@ PIECE = {
 
 
 def test_a_piece_keeping_its_parents_uid_no_longer_fits_the_parent_entry():
-    assert not _fits(PARENT, PIECE)
-    assert _fits({**PARENT, "kind": "missed_waqf"}, PIECE)
+    assert not entry_fits_segment(PARENT, PIECE)
+    assert not entry_fits_segment({**PARENT, "kind": "missed_waqf"}, PIECE)
 
 
 def test_a_piece_takes_the_cut_at_each_of_its_verse_ends():
@@ -29,7 +30,7 @@ def test_a_piece_takes_the_cut_at_each_of_its_verse_ends():
         "refs": ["20:29:1-20:29:5", "20:30:1-20:30:2"],
         "kind": "cross_verse",
     }
-    assert _fits(hit, PIECE)
+    assert entry_fits_segment(hit, PIECE)
 
 
 def test_no_entry_when_a_verse_end_has_no_cut_inside_the_piece():

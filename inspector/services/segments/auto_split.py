@@ -40,6 +40,7 @@ from services.storage.data_loader import (
     load_hidden_pause,
     load_missed_waqf,
 )
+from services.validation.sidecar_fit import entry_fits_segment, fitting_entries
 from utils.references import chapter_from_ref
 
 logger = logging.getLogger(__name__)
@@ -120,32 +121,17 @@ def _with_inherited(reciter: str, by_uid: dict[str, dict]) -> dict[str, dict]:
             uid = seg.get("segment_uid")
             if (
                 uid
-                and not _fits(out.get(uid), seg)
+                and not entry_fits_segment(out.get(uid), seg)
                 and (hit := _inherited(seg, cursors, word_counts))
             ):
                 out[uid] = hit
     return out
 
 
-def _fits(hit: dict | None, seg: dict) -> bool:
-    """True when ``hit`` still cuts ``seg`` as it is (a piece keeps its parent's uid)."""
-    if not isinstance(hit, dict):
-        return False
-    if hit.get("kind") != "cross_verse":
-        return True
-    refs, at = hit.get("refs") or [], hit.get("cursors") or []
-    return (
-        bool(refs)
-        and refs[0].partition("-")[0] == str(seg.get("matched_ref")).partition("-")[0]
-        and refs[-1].rpartition("-")[2] == str(seg.get("matched_ref")).rpartition("-")[2]
-        and all(seg["time_start"] < c < seg["time_end"] for c in at)
-    )
-
-
 def _merged_by_uid(reciter: str) -> dict[str, dict]:
     """``auto_split_v1`` entries (plus the entries pieces inherit from them) and the
     ``missed_waqf_v1`` and ``hidden_pause_v1`` entries that have refs, first source
-    winning per uid."""
+    winning per uid. An entry that no longer fits its segment is dropped."""
     by_uid, _meta = load_auto_split(reciter)
     merged = _with_inherited(reciter, dict(by_uid))
     for kind, loader in (("missed_waqf", load_missed_waqf), ("hidden_pause", load_hidden_pause)):
@@ -154,7 +140,8 @@ def _merged_by_uid(reciter: str) -> dict[str, dict]:
             if uid in merged or not isinstance(hit, dict) or not hit.get("refs"):
                 continue
             merged[uid] = {"cursors": hit.get("cursors"), "refs": hit["refs"], "kind": kind}
-    return merged
+    entries = load_detailed(reciter) if merged else []
+    return fitting_entries(merged, entries) if entries else merged
 
 
 def compute_auto_split(reciter: str, chapter: int, segment_uid: str) -> dict:

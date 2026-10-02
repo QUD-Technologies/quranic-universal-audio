@@ -201,6 +201,18 @@ def _seg(uid: str, ref: str, **extra) -> dict:
     }
 
 
+def _fitted(entry: dict, seg: dict) -> dict:
+    """``entry`` re-cut to ``seg``: its first/last pieces on the seg's ref ends and
+    its cursors spread inside the seg's audio, so the stale-entry gate keeps it."""
+    start, _, end = seg["matched_ref"].partition("-")
+    refs = [*entry["refs"]]
+    refs[0], refs[-1] = f"{start}-{start}", f"{end}-{end}"
+    n, t0, t1 = len(entry["cursors"]), seg["time_start"], seg["time_end"]
+    cursors = [t0 + (t1 - t0) * (i + 1) // (n + 1) for i in range(n)]
+    cuts = [{**c, "cursor_ms": at} for c, at in zip(entry.get("cuts", []), cursors, strict=False)]
+    return {**entry, "refs": refs, "cursors": cursors, "cuts": cuts}
+
+
 def _flags(seg: dict, **kw) -> dict:
     return classify_flags(seg, "1", False, 1, 1, 1, 1, 4, set(), None, **kw)
 
@@ -362,9 +374,11 @@ def test_validate_reciter_segments_gate(monkeypatch, tmp_reciter_dir):
 
     reciter = "fixture_reciter"
     tmp_reciter_dir.install(reciter, "112-ikhlas")
-    first = load_detailed(reciter)[0]["segments"][0]["segment_uid"]
+    seg0 = load_detailed(reciter)[0]["segments"][0]
+    first = seg0["segment_uid"]
+    hidden = _fitted(HIDDEN_ENTRY, seg0)
     monkeypatch.setattr(
-        val, "load_hidden_pause", lambda _r: ({first: HIDDEN_ENTRY}, {"kind": "hidden_pause"})
+        val, "load_hidden_pause", lambda _r: ({first: hidden}, {"kind": "hidden_pause"})
     )
     monkeypatch.setattr(
         val, "load_false_split", lambda _r: ({first: FALSE_ENTRY}, {"kind": "false_split"})
@@ -462,7 +476,10 @@ def test_validate_counts_open_missed_waqf_only_and_gates(monkeypatch, tmp_recite
     monkeypatch.setattr(
         val,
         "load_missed_waqf",
-        lambda _r: ({first: MISSED_ENTRY, second: MISSED_ENTRY}, {"kind": "missed_waqf"}),
+        lambda _r: (
+            {first: _fitted(MISSED_ENTRY, segs[0]), second: _fitted(MISSED_ENTRY, segs[1])},
+            {"kind": "missed_waqf"},
+        ),
     )
 
     full = val.validate_reciter_segments(reciter)

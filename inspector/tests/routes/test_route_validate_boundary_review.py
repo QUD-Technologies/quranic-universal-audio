@@ -14,9 +14,15 @@ from tests.classifier.test_boundary_review import (
     HIDDEN_ENTRY,
     MISSED_ENTRY,
     WASL_ENTRY,
+    _fitted,
 )
 
 RECITER = "fixture_reciter"
+
+
+def _fitted_on(entry: dict, index: int) -> dict:
+    """``entry`` re-cut to the fixture's segment at ``index`` (see ``_fitted``)."""
+    return _fitted(entry, load_detailed(RECITER)[0]["segments"][index])
 
 
 @pytest.fixture
@@ -29,7 +35,7 @@ def with_sidecars(tmp_path, tmp_reciter_dir):
     segs = load_detailed(RECITER)[0]["segments"]
     uid, wasl_uid, waqf_uid = (s["segment_uid"] for s in segs[:3])
     (d / "hidden_pause_v1.json").write_text(
-        json.dumps({"_meta": {"kind": "hidden_pause"}, "by_uid": {uid: HIDDEN_ENTRY}}), "utf-8"
+        json.dumps({"_meta": {"kind": "hidden_pause"}, "by_uid": {uid: _fitted(HIDDEN_ENTRY, segs[0])}}), "utf-8"
     )
     (d / "false_split_v1.json").write_text(
         json.dumps({"_meta": {"kind": "false_split"}, "by_uid": {uid: FALSE_ENTRY}}), "utf-8"
@@ -39,7 +45,7 @@ def with_sidecars(tmp_path, tmp_reciter_dir):
         "utf-8",
     )
     (d / "missed_waqf_v1.json").write_text(
-        json.dumps({"_meta": {"kind": "missed_waqf"}, "by_uid": {waqf_uid: MISSED_ENTRY}}),
+        json.dumps({"_meta": {"kind": "missed_waqf"}, "by_uid": {waqf_uid: _fitted(MISSED_ENTRY, segs[2])}}),
         "utf-8",
     )
     return uid
@@ -96,7 +102,7 @@ def test_maintainer_and_owner_see_boundary_review(
     assert body["category_counts"]["false_split"] == 1
     assert body["category_counts"]["unmarked_wasl"] == 1
     assert body["hidden_pause"][0]["segment_uid"] == with_sidecars
-    assert body["hidden_pause"][0]["boundary"]["refs"] == HIDDEN_ENTRY["refs"]
+    assert body["hidden_pause"][0]["boundary"]["refs"] == _fitted_on(HIDDEN_ENTRY, 0)["refs"]
     assert body["false_split"][0]["boundary"]["next_uid"] == "u2"
     assert body["unmarked_wasl"][0]["segment_uid"] == second_uid
     assert body["unmarked_wasl"][0]["boundary"]["axes"] == WASL_ENTRY["axes"]
@@ -105,7 +111,7 @@ def test_maintainer_and_owner_see_boundary_review(
     assert body["unmarked_wasl_meta"] == {"kind": "unmarked_wasl"}
     assert body["category_counts"]["missed_waqf"] == 1
     assert body["missed_waqf"][0]["segment_uid"] == third_uid
-    assert body["missed_waqf"][0]["boundary"]["cursors"] == MISSED_ENTRY["cursors"]
+    assert body["missed_waqf"][0]["boundary"]["cursors"] == _fitted_on(MISSED_ENTRY, 2)["cursors"]
     assert body["missed_waqf_meta"] == {"kind": "missed_waqf"}
 
 
@@ -123,14 +129,15 @@ def test_auto_split_map_merges_hidden_pause_refs_not_unmarked_wasl(
     res = client.get(f"/api/seg/auto-split/{RECITER}")
     assert res.status_code == 200
     by_uid = res.get_json()["by_uid"]
+    hidden, missed = _fitted_on(HIDDEN_ENTRY, 0), _fitted_on(MISSED_ENTRY, 2)
     assert by_uid[with_sidecars] == {
-        "cursors": [1500],
-        "refs": HIDDEN_ENTRY["refs"],
+        "cursors": hidden["cursors"],
+        "refs": hidden["refs"],
         "kind": "hidden_pause",
     }
     assert second_uid not in by_uid
     assert by_uid[third_uid] == {
-        "cursors": MISSED_ENTRY["cursors"],
-        "refs": MISSED_ENTRY["refs"],
+        "cursors": missed["cursors"],
+        "refs": missed["refs"],
         "kind": "missed_waqf",
     }
