@@ -8,7 +8,7 @@
   <br>
   <img src="https://img.shields.io/badge/%F0%9F%94%89%20Catalog-64748b" alt="🔉 Catalog"> <img src="https://img.shields.io/badge/Reciters-1%2C214-d4842a" alt="Reciters: 1,214"> <img src="https://img.shields.io/badge/Riwayat-19-f0ad4e" alt="Riwayat: 19"> <img src="https://img.shields.io/badge/Hours-47%2C500h%2B-d4842a" alt="Hours: 47,500h+">
   <br>
-  <img src="https://img.shields.io/badge/%F0%9F%8E%AF%20Aligned-64748b" alt="🎯 Aligned"> <img src="https://img.shields.io/badge/Mushafs-85-d4842a" alt="Mushafs: 85"> <img src="https://img.shields.io/badge/Riwayat-4-f0ad4e" alt="Riwayat: 4"> <img src="https://img.shields.io/badge/Hours-2%2C450h%2B-d4842a" alt="Hours: 2,450h+">
+  <img src="https://img.shields.io/badge/%F0%9F%8E%AF%20Aligned-64748b" alt="🎯 Aligned"> <img src="https://img.shields.io/badge/Mushafs-90-d4842a" alt="Mushafs: 90"> <img src="https://img.shields.io/badge/Riwayat-4-f0ad4e" alt="Riwayat: 4"> <img src="https://img.shields.io/badge/Hours-2%2C600h%2B-d4842a" alt="Hours: 2,600h+">
   <!-- stats-badges:end -->
   <br>
   <a href="https://github.com/QUD-Technologies/quranic-universal-audio/releases/latest"><img src="https://img.shields.io/github/v/release/QUD-Technologies/quranic-universal-audio?label=Release&color=4a5568" alt="Latest Release"></a>
