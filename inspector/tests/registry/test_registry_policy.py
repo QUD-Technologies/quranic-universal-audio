@@ -220,9 +220,14 @@ def test_registry_accordion_order_is_complete():
     )
 
 
-def test_cross_verse_is_an_owner_only_archive_that_never_gates_mark_ready():
+def test_cross_verse_is_visible_to_everyone_but_never_gates_mark_ready():
     from qua_shared.schemas.wire.mark_ready import BLOCKING_COUNT_KEYS
     from services.validation.registry import OWNER_ONLY_CATEGORIES
 
-    assert "cross_verse" in OWNER_ONLY_CATEGORIES
+    assert "cross_verse" not in OWNER_ONLY_CATEGORIES
     assert "cross_verse" not in BLOCKING_COUNT_KEYS
+
+
+def test_low_confidence_waqf_sits_right_under_low_confidence_v2():
+    reg = _registry()
+    assert reg["missed_waqf"].accordion_order == reg["low_confidence_v2"].accordion_order + 1

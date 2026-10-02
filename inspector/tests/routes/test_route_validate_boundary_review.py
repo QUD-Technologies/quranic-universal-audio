@@ -35,7 +35,10 @@ def with_sidecars(tmp_path, tmp_reciter_dir):
     segs = load_detailed(RECITER)[0]["segments"]
     uid, wasl_uid, waqf_uid = (s["segment_uid"] for s in segs[:3])
     (d / "hidden_pause_v1.json").write_text(
-        json.dumps({"_meta": {"kind": "hidden_pause"}, "by_uid": {uid: _fitted(HIDDEN_ENTRY, segs[0])}}), "utf-8"
+        json.dumps(
+            {"_meta": {"kind": "hidden_pause"}, "by_uid": {uid: _fitted(HIDDEN_ENTRY, segs[0])}}
+        ),
+        "utf-8",
     )
     (d / "false_split_v1.json").write_text(
         json.dumps({"_meta": {"kind": "false_split"}, "by_uid": {uid: FALSE_ENTRY}}), "utf-8"
@@ -45,7 +48,9 @@ def with_sidecars(tmp_path, tmp_reciter_dir):
         "utf-8",
     )
     (d / "missed_waqf_v1.json").write_text(
-        json.dumps({"_meta": {"kind": "missed_waqf"}, "by_uid": {waqf_uid: _fitted(MISSED_ENTRY, segs[2])}}),
+        json.dumps(
+            {"_meta": {"kind": "missed_waqf"}, "by_uid": {waqf_uid: _fitted(MISSED_ENTRY, segs[2])}}
+        ),
         "utf-8",
     )
     return uid
@@ -74,9 +79,6 @@ def test_anonymous_viewer_gets_no_boundary_review(flask_client, with_sidecars):
     assert "hidden_pause_meta" not in body
     assert "unmarked_wasl" not in body
     assert "unmarked_wasl_meta" not in body
-    assert "missed_waqf" not in body
-    assert "missed_waqf_meta" not in body
-    assert body["category_counts"]["missed_waqf"] == 0
     assert body["category_counts"]["hidden_pause"] == 0
     assert body["category_counts"]["false_split"] == 0
     assert body["category_counts"]["unmarked_wasl"] == 0
@@ -87,9 +89,19 @@ def test_contributor_gets_no_boundary_review(signed_in_client, with_sidecars):
     body = _get(client)
     assert "hidden_pause" not in body
     assert "unmarked_wasl" not in body
-    assert "missed_waqf" not in body
     assert body["category_counts"]["false_split"] == 0
     assert body["category_counts"]["unmarked_wasl"] == 0
+
+
+@pytest.mark.parametrize("role", ["anon", "contributor"])
+def test_low_confidence_waqf_reaches_every_viewer(
+    flask_client, signed_in_client, with_sidecars, third_uid, role
+):
+    """Low Confidence Waqf gates mark-ready, so every reviewer must see it."""
+    client = flask_client if role == "anon" else signed_in_client(role=role)[0]
+    body = _get(client)
+    assert body["category_counts"]["missed_waqf"] == 1
+    assert body["missed_waqf"][0]["segment_uid"] == third_uid
 
 
 @pytest.mark.parametrize("role", ["maintainer", "owner"])

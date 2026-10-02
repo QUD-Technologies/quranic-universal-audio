@@ -41,6 +41,12 @@ describe('REQUIRED_GUIDE_KEYS', () => {
         expect(REQUIRED_GUIDE_KEYS).not.toContain('missed_waqf');
     });
 
+    it('records the Cross-verse guide but never requires it, though everyone sees the category', () => {
+        expect(OWNER_ONLY_CATEGORIES).not.toContain('cross_verse');
+        expect(ALL_GUIDE_KEYS).toContain('cross_verse');
+        expect(REQUIRED_GUIDE_KEYS).not.toContain('cross_verse');
+    });
+
     it('never contains the low_confidence_v2 alias', () => {
         expect(REQUIRED_GUIDE_KEYS).not.toContain('low_confidence_v2');
         expect(REQUIRED_GUIDE_KEYS).toContain('low_confidence');

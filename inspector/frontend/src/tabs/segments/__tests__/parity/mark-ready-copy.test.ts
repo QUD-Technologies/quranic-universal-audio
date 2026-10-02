@@ -81,13 +81,13 @@ describe('mark-ready copy module', () => {
     it('blocking count keys exactly match the backend list', () => {
         // The backend enforces the same keys via BLOCKING_COUNT_KEYS in
         // qua_shared/schemas/wire/mark_ready.py — these must stay aligned.
-        // `boundary_adj` and `cross_verse` are deliberately absent: both are
-        // owner-only categories (see the owner-only test above), so a reviewer
-        // can neither see nor resolve them.
+        // `boundary_adj` is owner-only (see the owner-only test above) and
+        // `cross_verse` is a review aid with nothing to do, so neither gates.
         expect([...BLOCKING_COUNT_KEYS].sort()).toEqual([
             'basmala_amin',
             'low_confidence',
             'low_confidence_v2',
+            'missed_waqf',
             'repetitions',
         ]);
     });
@@ -110,5 +110,12 @@ describe('mark-ready copy module', () => {
             basmala_amin_intros: true,
         };
         expect(isAllChecked(full)).toBe(true);
+    });
+
+    it('isAllChecked asks only for the shown boxes', () => {
+        const some = { ...emptyChecklist(), low_confidence: true };
+        expect(isAllChecked(some, ['low_confidence'])).toBe(true);
+        expect(isAllChecked(some, ['low_confidence', 'splits_wasl_waqf'])).toBe(false);
+        expect(isAllChecked(emptyChecklist(), [])).toBe(true);
     });
 });

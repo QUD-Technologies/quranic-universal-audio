@@ -163,6 +163,7 @@ from .wire.intake_requests import (
 )
 from .wire.mark_ready import (
     BLOCKING_COUNT_KEYS,
+    CHECKLIST_CATEGORIES,
     ChecklistKey,
     MarkReadyChecklist,
     MarkReadyRequest,
@@ -426,6 +427,7 @@ __all__ = [
     "SegmentFlag",
     "SegmentsDoc",
     "BLOCKING_COUNT_KEYS",
+    "CHECKLIST_CATEGORIES",
     "ChecklistKey",
     "IntakeAttestations",
     "IntakeSource",

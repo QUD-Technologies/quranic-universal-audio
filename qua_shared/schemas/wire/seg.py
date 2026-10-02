@@ -36,6 +36,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 from ..bucket.segment import JoinVerdict
+from .mark_ready import ChecklistKey
 
 # ===========================================================================
 # Shared scalar aliases (documentation-only; TS sees ``string`` / ``number``)
@@ -831,12 +832,14 @@ class SegValidateResponse(BaseModel):
     its transitive split-descendant uids. ``low_confidence_v2_meta`` /
     ``hidden_pause_meta`` / ``missed_waqf_meta`` / ``false_split_meta`` /
     ``unmarked_wasl_meta`` are present only when the sidecar carried a
-    ``_meta`` block. ``hidden_pause`` / ``missed_waqf`` / ``false_split`` /
+    ``_meta`` block. ``hidden_pause`` / ``false_split`` /
     ``unmarked_wasl`` (and their metas) are omitted for
     viewers without ``segments.view_boundary_review``. ``wasl_recheck`` lists
     the left-piece uids of cross-verse boundaries whose WASL / WAQF answer is
     re-asked (open until answered after the sidecar was written); it is shown
-    to every viewer. Each item carries a ``classified_issues`` field.
+    to every viewer. ``checklist_keys`` names the mark-ready attestations
+    whose categories ever had an item for the reciter — the only boxes shown
+    and required. Each item carries a ``classified_issues`` field.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -868,6 +871,7 @@ class SegValidateResponse(BaseModel):
     false_split_meta: SegValBoundaryMeta | None = None
     unmarked_wasl_meta: SegValBoundaryMeta | None = None
     wasl_recheck: list[str] = Field(default_factory=list)
+    checklist_keys: list[ChecklistKey] = Field(default_factory=list)
 
 
 # ===========================================================================

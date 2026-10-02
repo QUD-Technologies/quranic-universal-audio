@@ -6,7 +6,7 @@ then ``repo_claims.set_marked_ready`` persists it on the open claim. The
 admin Reviews drawer surfaces both checklist + comments back to the
 maintainer reviewing the submission.
 
-The five checklist keys MUST stay in lockstep with the FE copy module at
+The six checklist keys MUST stay in lockstep with the FE copy module at
 ``inspector/frontend/src/tabs/segments/copy/mark-ready/index.ts`` — both
 sides declare them as a literal union and a parity test in the FE
 ``__tests__`` guards drift.
@@ -39,23 +39,40 @@ ChecklistKey = Literal[
 # authoritative against the live segs on disk. ``repetitions`` is an
 # ignorable category like ``low_confidence``: any detected rep must be
 # split or marked ignored before the reviewer can mark ready.
+# ``missed_waqf`` (Low Confidence Waqf) counts items with an unlabelled cut.
 #
 # An owner-only category (registry ``owner_only``) must never appear here:
 # it is invisible to the reviewer, so blocking on it would leave them
 # staring at a count they cannot open, let alone resolve. That is why
-# ``boundary_adj`` and ``cross_verse`` are absent despite still being
-# classified and surfaced to owners. ``mark-ready-copy.test.ts`` asserts the rule.
+# ``boundary_adj`` is absent despite still being classified and surfaced to
+# owners; ``cross_verse`` is a review aid with nothing to do.
+# ``mark-ready-copy.test.ts`` asserts the rule.
 BLOCKING_COUNT_KEYS: tuple[str, ...] = (
     "low_confidence",
     "low_confidence_v2",
+    "missed_waqf",
     "basmala_amin",
     "repetitions",
 )
 
+# The validation categories each checklist attestation covers. A checkbox is
+# shown (and required) only when one of its categories had an item for the
+# reciter — now, ignored, or edited away (``services/validation/checklist_scope.py``).
+# The FE reads the result from the validate response's ``checklist_keys``.
+CHECKLIST_CATEGORIES: dict[str, tuple[str, ...]] = {
+    "failed_alignments": ("failed",),
+    "missing_words": ("missing_words", "missing_verses"),
+    "low_confidence": ("low_confidence", "low_confidence_v2", "boundary_adj"),
+    "repetitions": ("repetitions",),
+    "splits_wasl_waqf": ("missed_waqf",),
+    "basmala_amin_intros": ("basmala_amin",),
+}
+
 
 class MarkReadyChecklist(BaseModel):
-    """The six attestation checkboxes. All MUST be True at submit time —
-    the handler raises ``InvalidTransition`` otherwise.
+    """The six attestation checkboxes. Every key the reciter's validation
+    lists in ``checklist_keys`` MUST be True at submit time — the handler
+    raises ``InvalidTransition`` otherwise; the rest are sent False.
 
     Keys are repeated in the FE copy module as a literal union; if you
     add one here, update the copy module, the markdown file, and the

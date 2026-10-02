@@ -458,8 +458,9 @@ export interface MarkReadySubmission {
   [k: string]: unknown;
 }
 /**
- * The six attestation checkboxes. All MUST be True at submit time —
- * the handler raises ``InvalidTransition`` otherwise.
+ * The six attestation checkboxes. Every key the reciter's validation
+ * lists in ``checklist_keys`` MUST be True at submit time — the handler
+ * raises ``InvalidTransition`` otherwise; the rest are sent False.
  *
  * Keys are repeated in the FE copy module as a literal union; if you
  * add one here, update the copy module, the markdown file, and the
@@ -2290,12 +2291,14 @@ export interface SegValBasmalaAminItem {
  * its transitive split-descendant uids. ``low_confidence_v2_meta`` /
  * ``hidden_pause_meta`` / ``missed_waqf_meta`` / ``false_split_meta`` /
  * ``unmarked_wasl_meta`` are present only when the sidecar carried a
- * ``_meta`` block. ``hidden_pause`` / ``missed_waqf`` / ``false_split`` /
+ * ``_meta`` block. ``hidden_pause`` / ``false_split`` /
  * ``unmarked_wasl`` (and their metas) are omitted for
  * viewers without ``segments.view_boundary_review``. ``wasl_recheck`` lists
  * the left-piece uids of cross-verse boundaries whose WASL / WAQF answer is
  * re-asked (open until answered after the sidecar was written); it is shown
- * to every viewer. Each item carries a ``classified_issues`` field.
+ * to every viewer. ``checklist_keys`` names the mark-ready attestations
+ * whose categories ever had an item for the reciter — the only boxes shown
+ * and required. Each item carries a ``classified_issues`` field.
  */
 export interface SegValidateResponse {
   errors?: SegValStructuralErrorItem[];
@@ -2329,6 +2332,14 @@ export interface SegValidateResponse {
   false_split_meta?: SegValBoundaryMeta | null;
   unmarked_wasl_meta?: SegValBoundaryMeta | null;
   wasl_recheck?: string[];
+  checklist_keys?: (
+    | "failed_alignments"
+    | "missing_words"
+    | "low_confidence"
+    | "repetitions"
+    | "splits_wasl_waqf"
+    | "basmala_amin_intros"
+  )[];
 }
 /**
  * ``stats`` — per-reciter structural segmentation statistics.

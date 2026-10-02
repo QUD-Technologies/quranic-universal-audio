@@ -2,8 +2,9 @@
     /**
      * MarkReadyModal — the reviewer's attestation form.
      *
-     * Five checkboxes (all required) + two optional textareas. Submit is
-     * blocked when any of five validation `category_counts` is non-zero;
+     * Up to six checkboxes — only those whose categories ever had an item for
+     * the reciter (`checklist_keys`), all required — + two optional textareas.
+     * Submit is blocked when any blocking validation `category_counts` is non-zero;
      * the offending categories are listed inline with links into the
      * accordion. Once submitted the reciter is locked from further edits
      * by the reviewer; only an admin can send back or move forward.
@@ -20,6 +21,7 @@
         BLOCKING_COUNT_KEYS,
         BLOCKING_LABELS,
         type BlockingCountKey,
+        CHECKLIST_ORDER,
         emptyChecklist,
         getMarkReadyCopy,
         isAllChecked,
@@ -76,7 +78,11 @@
             .filter((row) => row.count > 0);
     });
 
-    const allChecked = $derived(isAllChecked(checklist));
+    // Only the boxes whose categories ever had an item for this reciter are
+    // shown (and required); every box until validation has loaded.
+    const shownKeys = $derived($segValidation?.checklist_keys ?? CHECKLIST_ORDER);
+    const shownChecklist = $derived(markReadyCopy.checklist.filter((item) => shownKeys.includes(item.key)));
+    const allChecked = $derived(isAllChecked(checklist, shownKeys));
     const canSubmit = $derived(allChecked && blockingNonZero.length === 0 && !busy);
 
     function jumpToCategory(key: BlockingCountKey): void {
@@ -159,7 +165,7 @@
             {/if}
 
             <section class="checklist">
-                {#each markReadyCopy.checklist as item (item.key)}
+                {#each shownChecklist as item (item.key)}
                     <label class="check-row" class:checked={checklist[item.key]}>
                         <input
                             type="checkbox"

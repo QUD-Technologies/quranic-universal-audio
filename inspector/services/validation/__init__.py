@@ -15,9 +15,11 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 
+from config import LOW_CONFIDENCE_THRESHOLDS
 from services.activity.history_query import (
     build_resolved_by_edit_index,
     build_split_group_index,
+    load_edit_history,
 )
 from services.reference.delivery_edition import sdk_riwayah_for
 from services.storage import cache
@@ -39,6 +41,7 @@ from services.validation._structural import _check_structural_errors
 # The phonemic side of boundary_adj is persisted as ``is_boundary_adj`` at
 # extraction / backfill time (``scripts/backfills/backfill_boundary_adj.py``);
 # the classifier reads it, so canonical=None throughout the runtime path.
+from services.validation.checklist_scope import applicable_checklist_keys
 from services.validation.classifier import (
     _check_boundary_adj,
     classify_entry,
@@ -106,7 +109,6 @@ def _read_deleted_basmala_chapters(reciter: str) -> set[int]:
 
 BOUNDARY_REVIEW_CATEGORIES: tuple[str, ...] = (
     "hidden_pause",
-    "missed_waqf",
     "false_split",
     "unmarked_wasl",
 )
@@ -131,7 +133,7 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
     reciter has no saved segments (callers surface this as a 404 / block).
 
     ``include_boundary_review=False`` omits the ``hidden_pause`` /
-    ``missed_waqf`` / ``false_split`` / ``unmarked_wasl`` arrays and metas and zeroes their
+    ``false_split`` / ``unmarked_wasl`` arrays and metas and zeroes their
     counts (the viewer lacks ``segments.view_boundary_review``). None of them
     is in ``BLOCKING_COUNT_KEYS``, so the mark-ready gate is unaffected
     either way.
@@ -295,6 +297,9 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
         "split_group_index": split_group_index,
         "wasl_recheck": wasl_recheck,
     }
+    result["checklist_keys"] = applicable_checklist_keys(
+        result, entries, load_edit_history(reciter), LOW_CONFIDENCE_THRESHOLDS[riwayah]
+    )
     if probe_meta is not None:
         result["low_confidence_v2_meta"] = probe_meta
     if hidden_pause_meta is not None:
