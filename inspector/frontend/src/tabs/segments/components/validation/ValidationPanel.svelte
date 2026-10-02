@@ -44,7 +44,7 @@
     import { VALIDATION_TITLE } from '../../i18n/validation-labels';
     import { accordionPin, clearAccordionPin, pinAccordion } from '../../stores/accordion-pin';
     import { autoSplitMap, ensureAutoSplitMap } from '../../stores/auto-split';
-    import { toggleBoundaryState, valBoundaryFilter } from '../../stores/boundary-filter';
+    import { resetBoundaryFilter, toggleBoundaryState, valBoundaryFilter } from '../../stores/boundary-filter';
     import { getChapterSegments, segAllData, selectedReciter } from '../../stores/chapter';
     import { segConfig } from '../../stores/config';
     import { dirtyTick, getChapterOpsSnapshot } from '../../stores/dirty';
@@ -260,9 +260,12 @@
 
     // Reset scroll position and measured height when the open category changes
     // so the new category starts at the top and re-measures its own card sizes.
+    // A boundary accordion (Cross-verse, Low Confidence Waqf) also opens on
+    // Unset only, whatever the chips were left at last time.
     let _prevOpenCategory: string | null = openCategory;
     $: if (openCategory !== _prevOpenCategory) {
         _prevOpenCategory = openCategory;
+        if (openCategory && IssueRegistry[openCategory]?.boundaryFilter) resetBoundaryFilter();
         cardsScrollTop = 0;
         estCardHeight = FALLBACK_CARD_HEIGHT;
         if (cardsContainerEl) {

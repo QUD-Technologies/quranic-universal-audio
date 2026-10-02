@@ -30,7 +30,7 @@ VALIDATION_CATEGORIES = (
 # the two in lockstep when adding a guide. It is a SUPERSET of the FE's
 # ``REQUIRED_GUIDE_KEYS`` onboarding set: an owner-only category (registry
 # ``owner_only``) keeps its guide readable and recordable but never gates a
-# first edit, nor does a review-only one (``missed_waqf``).
+# first edit, nor does a review-only one (``cross_verse``, ``missed_waqf``).
 # ``GUIDE_VIEW_KEY_ALIASES`` maps any raw category the FE might post to its
 # stored key.
 GUIDE_VIEW_KEYS = (

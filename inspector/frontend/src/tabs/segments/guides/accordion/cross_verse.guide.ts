@@ -3,9 +3,9 @@ const source = `
 
 A cross-verse segment spans a verse boundary. We split it because the published dataset stores one row per verse, so each verse can be searched and played on its own. How you split depends on what the reciter did, and the boundary tag is kept as metadata either way.
 
-When the aligner already knows the cut, the card shows the pieces up front with a WASL · WAQF picker between them. Labelling is the whole edit: the split saves on the last label. If the suggested cut is off, use **Adjust** on the piece — any edit on a piece applies the split first, then runs as usual. The header chips (Unset · Wasl · Waqf) count boundaries and filter the list, so labelled items stay reviewable.
+> Nothing to do here. Every verse end is either auto-classified WAQF / WASL or flagged in **Low Confidence Waqf**, and this category never blocks Mark Ready. It is useful for checking and reviewing the WASL / WAQF verdicts.
 
-> By the end Unset should be zero. Auto-split is mostly accurate, but cursors might need adjusting in some cases, especially in Wasl.
+The card shows the pieces with a WASL · WAQF picker between them. To correct a verdict, pick the other label; if a cut is off, use **Adjust** on the piece. The header chips (Unset · Wasl · Waqf) count boundaries and filter the list; it opens on Unset.
 
 ## Waqf — the reciter paused
 
