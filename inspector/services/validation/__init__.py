@@ -68,6 +68,7 @@ from services.validation.registry import (
     IssueRegistry,
     filter_persistent_ignores,
 )
+from services.validation.sidecar_fit import fitting_entries
 from services.validation.snapshot_classifier import classify_snapshot
 from services.validation.wasl_recheck import open_wasl_recheck_uids
 from utils.references import is_by_ayah_source
@@ -166,6 +167,11 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
 
     if not entries:
         return None
+
+    # An edit that keeps a segment's uid (ref edit, trim) leaves its offline
+    # boundary entry describing a segment that no longer exists.
+    hidden_pause_map = fitting_entries(hidden_pause_map, entries)
+    missed_waqf_map = fitting_entries(missed_waqf_map, entries)
 
     # Every coordinate table, script lookup and confidence cutoff below is read
     # in the delivery's own edition. Raises rather than defaulting to Hafs: a
