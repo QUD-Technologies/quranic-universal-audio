@@ -37,6 +37,16 @@ def active_for_slug(slug: str) -> dict | None:
     return dict(row) if row else None
 
 
+def active_slugs() -> set[str]:
+    """Slugs with a pending or running run — their bucket content is mid-write."""
+    rows = (
+        get_conn()
+        .execute("SELECT DISTINCT slug FROM align_runs WHERE status IN ('pending','running')")
+        .fetchall()
+    )
+    return {r[0] for r in rows}
+
+
 def latest_for_slug(slug: str) -> dict | None:
     row = (
         get_conn()

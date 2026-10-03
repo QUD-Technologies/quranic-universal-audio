@@ -134,6 +134,21 @@ def dismiss_by_source_key(source_key: str, *, at: datetime | None = None) -> int
     return cur.rowcount
 
 
+def active_source_keys(event: str) -> list[tuple[str, str | None]]:
+    """Distinct ``(source_key, slug)`` of every active notification for ``event``,
+    across all users — what an emitter needs to archive the ones it has resolved."""
+    rows = (
+        get_conn()
+        .execute(
+            "SELECT DISTINCT source_key, slug FROM notifications "
+            "WHERE event = ? AND dismissed_at IS NULL",
+            (event,),
+        )
+        .fetchall()
+    )
+    return [(r[0], r[1]) for r in rows]
+
+
 def restore(notification_id: int, hf_user_id: str) -> bool:
     """Move one archived notification back to active. Returns False if the id
     doesn't exist, isn't theirs, or wasn't dismissed."""

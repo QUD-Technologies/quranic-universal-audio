@@ -57,6 +57,14 @@ notifies the data-integrity recipients ([notifications.md](notifications.md)
   into an empty list, which here would read as "every shard is gone". A delivery
   whose listing fails is reported as *unreadable* in the run detail, never as
   findings.
+- **Busy deliveries are skipped.** A delivery with a pending/running align run
+  (`repo_align_runs.active_slugs`) or an in-flight timestamps run has audio for
+  every chapter but shards for only some while it writes them — progress, not a
+  loss. Before this guard each day's sweep flagged whichever reciter happened to
+  be mid-timestamps (up to 113 cards at once).
+- **Cards resolve themselves.** After notifying, the sweep archives every active
+  `shard.missing` card for a slug it just listed whose finding is gone
+  (`emit.resolve_shard_integrity`); skipped or unreadable slugs are left alone.
 
 ## Engine
 
