@@ -122,6 +122,32 @@ def notify_owners_shard_integrity(findings: list) -> int:
         return 0
 
 
+def resolve_shard_integrity(scanned: list[str], findings: list) -> int:
+    """Archive shard-missing cards the latest sweep no longer finds.
+
+    Only cards for ``scanned`` slugs are judged — a slug that was skipped or could
+    not be listed proves nothing. Returns the number of cards archived;
+    best-effort, like the emitter.
+    """
+    try:
+        from services.db import sync as _sync
+
+        looked = set(scanned)
+        still = {f.source_key for f in findings}
+        stale = [
+            key
+            for key, slug in repo_notifications.active_source_keys("shard.missing")
+            if slug in looked and key not in still
+        ]
+        if not stale:
+            return 0
+        with _sync.durable_transaction():
+            return sum(repo_notifications.dismiss_by_source_key(key) for key in stale)
+    except Exception:  # noqa: BLE001 — best-effort; never break the sweep
+        logger.exception("notifications.resolve_shard_integrity failed")
+        return 0
+
+
 def _owner_targets(title: str, body: str | None, payload: dict[str, Any] | None) -> list[_Target]:
     """One ``_Target`` per review-alert recipient, all sharing the frozen
     title/body/payload. Per-target self-suppression (drop the acting user) is

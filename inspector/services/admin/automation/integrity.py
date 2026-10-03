@@ -20,7 +20,8 @@ import logging
 from datetime import datetime, timedelta
 
 from qua_shared.schemas import AutomationConfig
-from services.db import _serde, get_conn, repo_automation
+from services.admin.jobs import base as jobs_base
+from services.db import _serde, get_conn, repo_align_runs, repo_automation
 from services.db.sync import durable_transaction
 from services.notifications import emit as notifications_emit
 from services.storage import shard_integrity
@@ -39,6 +40,14 @@ def _delivery_slugs() -> list[str]:
     return [r[0] for r in rows]
 
 
+def _busy_slugs() -> set[str]:
+    """Deliveries whose shards are still being written: an align run in progress
+    or a timestamps run on the Space. Mid-run, audio exists for every chapter but
+    shards for only some — progress, not a lost shard."""
+    running_ts = {j["slug"] for j in jobs_base.list_in_flight_jobs(("timestamps",)) if j.get("slug")}
+    return running_ts | repo_align_runs.active_slugs()
+
+
 def _due(now: datetime) -> bool:
     st = repo_automation.get_state(SHARD_INTEGRITY)
     last_run = _serde.from_iso(st["last_run_at"]) if st else None
@@ -46,7 +55,8 @@ def _due(now: datetime) -> bool:
 
 
 def eval_shard_integrity(_cfg: AutomationConfig, now: datetime) -> None:
-    """Sweep every delivery for vanished timestamps shards; notify on findings.
+    """Sweep every idle delivery for vanished timestamps shards; notify on new
+    findings and archive the cards of shards that have come back.
 
     Always enabled — see the module docstring. Records the run (advancing the
     cadence) whether or not anything was found, so a clean sweep still shows a
@@ -55,8 +65,13 @@ def eval_shard_integrity(_cfg: AutomationConfig, now: datetime) -> None:
     if not _due(now):
         return
 
-    findings, unreadable = shard_integrity.scan(_delivery_slugs())
+    busy = _busy_slugs()
+    slugs = [s for s in _delivery_slugs() if s not in busy]
+    findings, unreadable = shard_integrity.scan(slugs)
     notifications_emit.notify_owners_shard_integrity(findings)
+    notifications_emit.resolve_shard_integrity(
+        scanned=[s for s in slugs if s not in unreadable], findings=findings
+    )
 
     if findings:
         recoverable = sum(1 for f in findings if f.kind == "orphan_temp")

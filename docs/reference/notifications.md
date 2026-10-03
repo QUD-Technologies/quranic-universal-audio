@@ -124,6 +124,8 @@ watchdog), not from any transition. One card per (delivery, chapter, kind);
 that stays unrepaired notifies **once**, not on every sweep. The body says
 whether an interrupted-write temp still holds the payload (recoverable) or the
 chapter needs a re-align; `payload` carries `chapter` / `kind` / `orphan_path`.
+`emit.resolve_shard_integrity(scanned, findings)` archives a card (for every
+recipient) once a later sweep lists its slug and no longer finds the gap.
 
 ## Owner review alerts
 
