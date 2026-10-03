@@ -44,7 +44,9 @@ def _busy_slugs() -> set[str]:
     """Deliveries whose shards are still being written: an align run in progress
     or a timestamps run on the Space. Mid-run, audio exists for every chapter but
     shards for only some — progress, not a lost shard."""
-    running_ts = {j["slug"] for j in jobs_base.list_in_flight_jobs(("timestamps",)) if j.get("slug")}
+    running_ts = {
+        j["slug"] for j in jobs_base.list_in_flight_jobs(("timestamps",)) if j.get("slug")
+    }
     return running_ts | repo_align_runs.active_slugs()
 
 
