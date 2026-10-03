@@ -191,3 +191,48 @@ def test_split_refuses_a_short_cut_and_keeps_the_slot(mount, monkeypatch):
     assert "the plan says 6.0s" in report["failures"]["1"]
     assert (_reciter(root) / "audio" / "201.mp3").is_file()
     assert not (_reciter(root) / "audio" / "1.mp3").exists()
+
+
+def _drop_levels(root: Path) -> Path:
+    levels = _reciter(root) / "levels" / "3.json.gz"
+    levels.unlink()
+    return levels
+
+
+def _flaky_bake(monkeypatch, failures: int) -> list[int]:
+    """``bake_levels`` raising ffmpeg's mount-read error ``failures`` times first."""
+    real, calls = audio_io.bake_levels, []
+
+    def bake(mp3):
+        calls.append(1)
+        if len(calls) <= failures:
+            raise subprocess.CalledProcessError(251, ["ffmpeg", "-i", str(mp3)])
+        return real(mp3)
+
+    monkeypatch.setattr(audio_io, "bake_levels", bake)
+    monkeypatch.setattr(acquire_audio, "LEVELS_RETRY_S", 0)
+    return calls
+
+
+def test_acquire_retries_a_transient_levels_read_error(mount, monkeypatch):
+    root, _ = mount
+    assert acquire_audio.main() == 0
+    levels = _drop_levels(root)
+    calls = _flaky_bake(monkeypatch, failures=1)
+
+    assert acquire_audio.main() == 0
+    assert levels.is_file()
+    assert len(calls) == 2
+
+
+def test_acquire_keeps_going_when_levels_cannot_be_baked(mount, monkeypatch):
+    root, _ = mount
+    assert acquire_audio.main() == 0
+    levels = _drop_levels(root)
+    _flaky_bake(monkeypatch, failures=acquire_audio.LEVELS_ATTEMPTS)
+
+    assert acquire_audio.main() == 0
+    assert not levels.exists()
+    report = json.loads((root / "staging" / SLUG / "run-1" / "acquire.json").read_text("utf-8"))
+    assert report["failures"] == {}
+    assert report["chapters"]["3"]["levels_missing"] == [3]

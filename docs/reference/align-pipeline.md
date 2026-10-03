@@ -259,7 +259,10 @@ save flow keeps them only while the row's time and ref are unchanged.
 ## Low Confidence Waqf (`missed_waqf_v2.json`) and verse ends (`verse_ends_v1.json`)
 
 The acquire and split jobs bake `reciters/<slug>/levels/<ch>.json.gz` next to the
-peaks: whole-dB RMS per 20 ms frame (`qua_shared/audio/levels.py`, the boundary-head
+peaks (on a re-run, acquire bakes them for already-persisted chapters straight off the
+bucket mount; a bake that still fails after `LEVELS_ATTEMPTS` is reported as the source's
+`levels_missing` in `acquire.json` instead of failing the run — that chapter's joins are
+all asked): whole-dB RMS per 20 ms frame (`qua_shared/audio/levels.py`, the boundary-head
 lab's envelope). `join_silence` measures two silences within 300 ms of a join's
 cursor, each followed outward up to 25 frames: `floor_ms`, the run within 10 dB of
 the chapter's noise floor (its 2nd-percentile level), and `silence_ms` / `dip_db`,

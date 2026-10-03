@@ -18,7 +18,8 @@ yt-dlp fetches are capped at ``YTDLP_WORKERS`` at once, and after YouTube's firs
 bot-check refusal the remaining yt-dlp sources fail fast with the same reason.
 Idempotent: a chapter whose mp3 + peaks exist, or a slot whose mp3 exists (or
 whose chapters were already split), is skipped; a persisted chapter without
-levels gets them baked from its mp3. Writes the report
+levels gets them baked from its mp3 (retried, then reported as ``levels_missing``
+without failing the source). Writes the report
 ``staging/<slug>/<run_id>/acquire.json`` and exits non-zero when any source failed.
 
 Env:
@@ -38,6 +39,7 @@ import os
 import sys
 import tempfile
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from pathlib import Path
@@ -60,6 +62,11 @@ MAX_WORKERS = 8
 #: yt-dlp fetches in flight at once: one account hammering YouTube from a
 #: datacenter IP is what trips its bot check.
 YTDLP_WORKERS = 2
+
+#: Baking levels decodes a persisted chapter straight off the bucket mount, which
+#: drops reads of large files under concurrent load (ffmpeg exits 251, ``EIO``).
+LEVELS_ATTEMPTS = 3
+LEVELS_RETRY_S = 10
 
 _log_lock = threading.Lock()
 _ytdlp_gate = threading.Semaphore(YTDLP_WORKERS)
@@ -128,12 +135,33 @@ def _levels_path(slug: str, number: int) -> Path:
     return _bucket_root() / "reciters" / slug / "levels" / f"{number}.json.gz"
 
 
-def _fill_levels(slug: str, group: SourceGroup) -> None:
-    """Bake levels for persisted chapters of ``group`` that lack them."""
+def _fill_levels(slug: str, group: SourceGroup) -> list[int]:
+    """Bake levels for persisted chapters of ``group`` that lack them.
+
+    Best-effort: the audio is already persisted, and a chapter without levels
+    only makes the pause sidecar ask every pause, so a bake that keeps failing
+    is logged and returned rather than failing the source.
+    """
+    missing = []
     for ch in group.chapters:
         mp3, dest = _paths(slug, ch)[0], _levels_path(slug, ch)
-        if mp3.is_file() and not dest.is_file():
+        if mp3.is_file() and not dest.is_file() and not _bake_levels_to(mp3, dest):
+            missing.append(ch)
+    return missing
+
+
+def _bake_levels_to(mp3: Path, dest: Path) -> bool:
+    for attempt in range(1, LEVELS_ATTEMPTS + 1):
+        try:
             audio_io.atomic_write_bytes(dest, audio_io.bake_levels(mp3))
+            return True
+        except Exception as exc:  # noqa: BLE001 — a mount read error, retried then reported
+            log.warning(
+                "%s: levels attempt %d/%d failed: %s", mp3.name, attempt, LEVELS_ATTEMPTS, exc
+            )
+            if attempt < LEVELS_ATTEMPTS:
+                time.sleep(LEVELS_RETRY_S)
+    return False
 
 
 def _already_done(slug: str, group: SourceGroup) -> bool:
@@ -146,9 +174,12 @@ def acquire_group(slug: str, group: SourceGroup, channels_override: int | None) 
     """Fetch + encode one source (and bake peaks for a single chapter)."""
     mp3_dest, peaks_dest = _paths(slug, group.item)
     if _already_done(slug, group):
-        _fill_levels(slug, group)
+        missing = _fill_levels(slug, group)
         log.info("%s: already persisted, skipped", _label(group))
-        return {"url": group.url, "skipped": True}
+        outcome: dict = {"url": group.url, "skipped": True}
+        if missing:
+            outcome["levels_missing"] = missing
+        return outcome
     with tempfile.TemporaryDirectory(prefix=f"acq_{group.item}_") as tmp:
         work = Path(tmp)
         raw = _fetch(group.url, work / "src.bin")
