@@ -16,6 +16,7 @@ node_modules/
 .claude/launch.json
 .claude/worktrees/
 .worktrees/
+.claude/skills/intake-prefetch/SKILL.md
 
 # envs
 .env
