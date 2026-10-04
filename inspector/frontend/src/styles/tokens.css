@@ -237,6 +237,8 @@
     --brand-hf:            #ffd21e;
     --brand-discord:       #5865f2;
     --brand-rel:           #f0a500;
+    --brand-qud:           #fc7659;   /* QUD³ accent (qud.dev ink) — the D³ */
+    --brand-qud-fg:        #e6edf3;   /* the Q and U on hover */
     --brand-rail-fg:       oklch(0.560 0.010 268);   /* = text-muted on dark */
 
     /* dev-only chrome (DevRoleSwitcher) */

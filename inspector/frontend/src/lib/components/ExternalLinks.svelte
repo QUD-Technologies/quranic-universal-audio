@@ -1,18 +1,20 @@
 <script lang="ts">
     // External link rail (top-left of the header). Brand marks render muted
     // and reveal their true brand color + a sliding label on hover.
-    // Order is deliberate: source -> builds -> published data -> community.
+    // Order is deliberate: the ecosystem this belongs to (QUD³, set off by a
+    // hairline) -> source -> builds -> published data -> community.
     import { localeStore, tr } from '$lib/i18n/locale-store';
     import * as m from '$lib/paraglide/messages';
 
     const DISCORD_URL = 'https://discord.gg/cZ3V2FynXz';
 
-    type Brand = 'gh' | 'rel' | 'hf' | 'discord';
+    type Brand = 'qud' | 'gh' | 'rel' | 'hf' | 'discord';
     type Link = { key: Brand; label: string; href: string };
 
     // `gh`/`discord` are brand names (data — not translated); `rel`/`hf` are
     // chrome labels keyed to common_*. The base `label` holds the brand fallback.
     const links: Link[] = [
+        { key: 'qud', label: 'QUD³', href: 'https://qud.dev' },
         { key: 'gh', label: 'GitHub', href: 'https://github.com/QUD-Technologies/quranic-universal-audio' },
         { key: 'rel', label: 'Releases', href: 'https://github.com/QUD-Technologies/quranic-universal-audio/releases' },
         { key: 'hf', label: 'Dataset', href: 'https://huggingface.co/datasets/QUD-Technologies/quranic-universal-ayahs' },
@@ -39,7 +41,10 @@
             aria-label={linkLabel(link)}
             title={linkLabel(link)}
         >
-            {#if link.key === 'gh'}
+            {#if link.key === 'qud'}
+                <!-- The QUD³ mark, outlined from qud.dev's brand kit (npm run brand). -->
+                <svg class="qud-mark" viewBox="0 -830.0 2324.7 1000.0" fill="currentColor" aria-hidden="true"><path transform="translate(0.0 0.0)" d="M618 140Q553 154 507 157.5Q461 161 425 157.5Q389 154 354.5 147.5Q320 141 279 134Q238 127 182 123.5Q126 120 46 124L46 17Q79 18 117 17Q155 16 194 13Q233 10 271.5 4Q310 -2 344 -11.5Q378 -21 405 -36L405 -42Q332 -21 273.5 -24.5Q215 -28 169.5 -51.5Q124 -75 93.5 -116Q63 -157 47.5 -211.5Q32 -266 32 -331Q32 -407 52 -469.5Q72 -532 110 -578Q148 -624 203.5 -649Q259 -674 331 -674Q422 -674 488 -633Q554 -592 589.5 -515Q625 -438 625 -330Q625 -243 601 -180Q577 -117 532 -74.5Q487 -32 424.5 -7Q362 18 284 30L285 36Q341 44 384.5 49.5Q428 55 465 55Q502 55 539 49.5Q576 44 618 30ZM329 -88Q374 -88 411 -112Q448 -136 470.5 -188.5Q493 -241 493 -326Q493 -406 473 -459.5Q453 -513 416 -540Q379 -567 328 -567Q283 -567 246 -542Q209 -517 187 -464Q165 -411 165 -326Q165 -242 186.5 -189.5Q208 -137 245 -112.5Q282 -88 329 -88Z"/><path transform="translate(717.0 0.0)" d="M311 14Q258 14 215 2Q172 -10 140 -33.5Q108 -57 86.5 -89.5Q65 -122 54 -164.5Q43 -207 43 -257L43 -660L170 -660L170 -264Q170 -212 186 -175Q202 -138 233 -119Q264 -100 311 -100Q359 -100 390 -119Q421 -138 437 -174.5Q453 -211 453 -264L453 -660L579 -660L579 -257Q579 -127 509.5 -56.5Q440 14 311 14Z"/><path class="d3" transform="translate(1399.3 0.0)" d="M107 0L107 -108L285 -108Q336 -108 373.5 -131Q411 -154 432.5 -202.5Q454 -251 454 -328Q454 -384 442.5 -426Q431 -468 408 -496Q385 -524 349.5 -538Q314 -552 264 -552L107 -552L107 -660L259 -660Q373 -660 445 -621Q517 -582 551 -509.5Q585 -437 585 -336Q585 -258 568 -201Q551 -144 521 -105Q491 -66 453 -43Q415 -20 372.5 -10Q330 0 289 0ZM46 0L46 -660L173 -660L173 0Z"/><path class="d3" transform="translate(2045.3 -490.0)" d="M134 7Q101.5 7 77.2 0.2Q53 -6.5 37 -19.2Q21 -32 13.7 -51Q6.5 -70 8.5 -95L68.5 -104Q66.5 -88.5 71.2 -77.2Q76 -66 86 -58.7Q96 -51.5 109.2 -48Q122.5 -44.5 137.5 -44.5Q156.5 -44.5 172 -49.7Q187.5 -55 196.7 -66.7Q206 -78.5 206 -97Q206 -121.5 191.5 -135.2Q177 -149 147.7 -153.7Q118.5 -158.5 74 -155L74 -194.5L178.5 -274.5L178.5 -277L23.5 -277L23.5 -330.5L252.5 -330.5L252.5 -276L143 -191.5L143 -189Q188.5 -190.5 216.7 -177.7Q245 -165 258.2 -143Q271.5 -121 271.5 -92.5Q271.5 -62.5 256.2 -40.2Q241 -18 210.5 -5.5Q180 7 134 7Z"/></svg>
+            {:else if link.key === 'gh'}
                 <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
             {:else if link.key === 'rel'}
                 <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>
@@ -58,7 +63,7 @@
             {:else}
                 <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/></svg>
             {/if}
-            <span class="lbl">{linkLabel(link)}</span>
+            {#if link.key !== 'qud'}<span class="lbl">{linkLabel(link)}</span>{/if}
         </a>
     {/each}
 </nav>
@@ -88,6 +93,32 @@
     .link[data-brand='rel'] { --c: var(--brand-rel); }
     .link[data-brand='hf'] { --c: var(--brand-hf); }
     .link[data-brand='discord'] { --c: var(--brand-discord); }
+    /* QUD³ is a wordmark, not an icon: no sliding label. At rest it is muted like
+       the rest of the rail; on hover the Q and U take the text colour and only the
+       D³ takes the brand accent, as the mark is drawn everywhere else. */
+    .link[data-brand='qud'] {
+        --c: var(--brand-qud-fg);
+        margin-inline-end: 8px;
+    }
+    .link[data-brand='qud']::after {
+        content: '';
+        position: absolute;
+        inset-inline-end: -5px;
+        inset-block: 9px;
+        border-inline-end: 1px solid var(--brand-rail-fg);
+        opacity: 0.45;
+    }
+    .link .qud-mark {
+        width: auto;
+        height: 15px;
+    }
+    .link .qud-mark .d3 {
+        transition: fill 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .link:hover .qud-mark .d3,
+    .link:focus-visible .qud-mark .d3 {
+        fill: var(--brand-qud);
+    }
 
     .link svg {
         width: 18px;

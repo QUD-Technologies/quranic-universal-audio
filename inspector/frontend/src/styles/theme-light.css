@@ -209,6 +209,8 @@
     --brand-hf:            oklch(0.800 0.160 85);
     --brand-discord:       oklch(0.520 0.200 268);
     --brand-rel:           oklch(0.700 0.150 72);
+    --brand-qud:           #be260b;   /* QUD³ accent (qud.dev paper) */
+    --brand-qud-fg:        oklch(0.300 0.010 268);
     /* Softer, recessive resting rail on paper — text-muted (0.51) reads too
        heavy on near-white; this is the light peer of the dark muted mark. */
     --brand-rail-fg:       oklch(0.680 0.010 268);
