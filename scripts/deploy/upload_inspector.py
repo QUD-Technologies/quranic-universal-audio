@@ -2,10 +2,9 @@
 """Upload the Inspector to its target Hugging Face Space.
 
 Usage::
-https://huggingface.co/hetchyy
 
-    python scripts/deploy/upload_inspector.py dev   # → hetchyy/quranic-inspector-dev
-    python scripts/deploy/upload_inspector.py prod  # → hetchyy/quranic-universal-audio
+    python scripts/deploy/upload_inspector.py dev   # → QUD-Technologies/quranic-inspector-dev
+    python scripts/deploy/upload_inspector.py prod  # → QUD-Technologies/quranic-universal-audio
 
 Build steps:
 
@@ -75,8 +74,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from qua_shared._env import load_repo_env, repo_root  # noqa: E402
 
 SPACE_REPOS = {
-    "dev": "hetchyy/quranic-inspector-dev",
-    "prod": "hetchyy/quranic-universal-audio",
+    "dev": "QUD-Technologies/quranic-inspector-dev",
+    "prod": "QUD-Technologies/quranic-universal-audio",
 }
 
 # README frontmatter shipped to the Space. Mirrors the runbook §1 setup.

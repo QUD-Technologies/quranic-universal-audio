@@ -45,7 +45,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Public dataset holding the minimal seed (db + sample reciters, JSON only).
 FIXTURES_DATASET = os.environ.get(
-    "INSPECTOR_FIXTURES_DATASET", "hetchyy/quranic-inspector-fixtures"
+    "INSPECTOR_FIXTURES_DATASET", "QUD-Technologies/quranic-inspector-fixtures"
 )
 # Gitignored local root the filesystem backend reads from.
 FIXTURES_ROOT = _REPO_ROOT / "inspector" / ".fixtures"

@@ -64,7 +64,7 @@ def _do_launch(a, ctx) -> int:
         _print("DRY RUN — not launching"); return 0
     result = timestamps_jobs.launch(
         a.slug, settings=settings,
-        webhook_base="https://hetchyy-quranic-universal-audio.hf.space",
+        webhook_base="https://qud-technologies-quranic-universal-audio.hf.space",
     )
     _print(f"launched job_id={result.get('job_id')}")
     _print(f"  URL: {result.get('url')}")

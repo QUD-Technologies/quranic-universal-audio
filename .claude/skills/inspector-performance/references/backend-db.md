@@ -94,7 +94,7 @@ The bench/drift harness (below) is the only guarantee that save/extraction/backf
 
 **Storage bench — the only committed bench in-tree** (`scripts/diagnostics/bench_storage.py`). Cold (fresh `hffs` cache, `invalidate_hffs()` each iter) vs warm bucket read/write latency on real hot-path files, p50/p95/max + payload sizes:
 ```
-INSPECTOR_BUCKET_REPO=hetchyy/quranic-inspector-bucket-dev \
+INSPECTOR_BUCKET_REPO=QUD-Technologies/quranic-inspector-bucket-dev \
   python3 scripts/diagnostics/bench_storage.py [--mount /path/to/mount] [--skip-writes] [--warm N]
 ```
 Run with **and** without `--mount` to quantify the mount-vs-`hffs.cat_file` gap before trusting any bucket-I/O number. Benches `state/`, catalog, `detailed.json`, `segments.json`, `edit_history.jsonl`, a TS shard, plus `list_dir`/`exists`/write/append.

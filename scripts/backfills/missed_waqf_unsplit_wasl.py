@@ -30,8 +30,8 @@ log = logging.getLogger("missed_waqf_unsplit_wasl")
 
 CATEGORY = "missed_waqf"
 _BUCKETS = {
-    "dev": "hetchyy/quranic-inspector-bucket-dev",
-    "prod": "hetchyy/quranic-inspector-bucket",
+    "dev": "QUD-Technologies/quranic-inspector-bucket-dev",
+    "prod": "QUD-Technologies/quranic-inspector-bucket",
 }
 _OWNER_ID = "684abe5b6327ae8863d106d2"
 _OWNER_LOGIN = "hetchyy"

@@ -23,7 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import _bootstrap as bs  # noqa: E402
 
-PROD_WEBHOOK_BASE = "https://hetchyy-quranic-universal-audio.hf.space"
+PROD_WEBHOOK_BASE = "https://qud-technologies-quranic-universal-audio.hf.space"
 TERMINAL = {
     "succeeded",
     "completed",

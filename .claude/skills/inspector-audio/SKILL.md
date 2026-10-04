@@ -59,7 +59,7 @@ chapter URL (CDN, in catalog/audio_manifest/<slug>.json)
 | Knob | Dev (`python3 inspector/app.py`) | Deployed (HF Space, gunicorn) |
 |---|---|---|
 | Audio source | bucket if mounted, else CDN stream-through every play | bucket NFS-mounted, sendfile via Path |
-| Bucket | `hetchyy/quranic-inspector-bucket-dev` | bucket-dev (dev Space) / bucket (prod Space) |
+| Bucket | `QUD-Technologies/quranic-inspector-bucket-dev` | bucket-dev (dev Space) / bucket (prod Space) |
 | ffmpeg HTTPS reachability | full network | full network — image compiled with `--enable-openssl` + `file,pipe,http,https,tcp,tls` |
 | Web Audio kill-switch | only fires once `ctx.state === 'running'` (post-warmup) | same |
 

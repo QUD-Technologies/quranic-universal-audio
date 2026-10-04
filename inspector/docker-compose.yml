@@ -1,7 +1,7 @@
 # Inspector — local Docker run.
 #
 # The container reads reciter content from the HF bucket
-# (`hetchyy/quranic-inspector-bucket-dev` by default — set via
+# (`QUD-Technologies/quranic-inspector-bucket-dev` by default — set via
 # INSPECTOR_BUCKET_REPO in the Dockerfile). Supply an HF token with
 # write access to that bucket via `.env` (`INSPECTOR_HF_TOKEN=...`)
 # alongside this file.

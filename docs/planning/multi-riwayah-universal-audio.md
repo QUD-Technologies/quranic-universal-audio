@@ -779,8 +779,8 @@ guarantee comes from three cheaper, real gates:
 
 ## 11. Verification plan
 
-Everything runs against the **dev** Space (`hetchyy/quranic-inspector-dev` / bucket
-`hetchyy/quranic-inspector-bucket-dev`). Prod is untouched.
+Everything runs against the **dev** Space (`QUD-Technologies/quranic-inspector-dev` / bucket
+`QUD-Technologies/quranic-inspector-bucket-dev`). Prod is untouched.
 
 ### 11.1 Deploy
 

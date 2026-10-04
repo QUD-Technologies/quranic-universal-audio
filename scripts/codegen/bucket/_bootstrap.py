@@ -7,8 +7,8 @@ through to prod when the caller forgot a flag. Centralised so a new
 script is ~20 lines.
 
 Bucket ids (mirror ``inspector/services/storage/hf_bucket.py``):
-  dev      → hetchyy/quranic-inspector-bucket-dev   (default everywhere off-Space)
-  prod     → hetchyy/quranic-inspector-bucket        (live; mutating ops need --yes-prod)
+  dev      → QUD-Technologies/quranic-inspector-bucket-dev   (default everywhere off-Space)
+  prod     → QUD-Technologies/quranic-inspector-bucket        (live; mutating ops need --yes-prod)
   aligner  → hetchyy/aligner-bucket                  (private; MFA stack + staged code)
 
 Public surface used by sibling scripts:
@@ -29,8 +29,8 @@ from pathlib import Path
 
 # Match resolve_bucket_repo in inspector/services/storage/hf_bucket.py.
 BUCKETS = {
-    "dev": "hetchyy/quranic-inspector-bucket-dev",
-    "prod": "hetchyy/quranic-inspector-bucket",
+    "dev": "QUD-Technologies/quranic-inspector-bucket-dev",
+    "prod": "QUD-Technologies/quranic-inspector-bucket",
     "aligner": "hetchyy/aligner-bucket",
 }
 

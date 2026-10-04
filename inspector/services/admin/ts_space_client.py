@@ -18,8 +18,8 @@ from qua_shared.riwayat import DEFAULT_SDK_RIWAYAH
 _ROUTE = "/internal/v1/timestamps"
 _PROFILE_ID = "timing.timestamps@v1"
 
-DEFAULT_SPACE_URL = "https://hetchyy-qua-batch-timing-prod.hf.space"
-DEFAULT_SPACE_REPO = "hetchyy/qua-batch-timing-prod"
+DEFAULT_SPACE_URL = "https://qud-technologies-qua-batch-timing-prod.hf.space"
+DEFAULT_SPACE_REPO = "QUD-Technologies/qua-batch-timing-prod"
 
 _WAKEABLE_STAGES = {"PAUSED", "SLEEPING"}
 _STARTING_STAGES = {

@@ -2,28 +2,28 @@
 
 Reproducible commands for inspecting the audio subsystem from outside. Backend probes are read-only and safe to run unprompted; frontend probes require a running dev server (`python3 inspector/app.py` + optionally `cd frontend && npm run dev`).
 
-Replace `<slug>` / `<reciter>` / `<chapter>` / `<urlencoded>` per case. Bucket commands assume the dev bucket `hetchyy/quranic-inspector-bucket-dev` unless explicitly otherwise.
+Replace `<slug>` / `<reciter>` / `<chapter>` / `<urlencoded>` per case. Bucket commands assume the dev bucket `QUD-Technologies/quranic-inspector-bucket-dev` unless explicitly otherwise.
 
 ## Bucket inspection
 
 ```bash
 # Manifest sidecar — what the backend thinks about a reciter's encoding mix
-hf bucket cat hetchyy/quranic-inspector-bucket-dev/catalog/audio_manifest/<slug>.json \
+hf bucket cat QUD-Technologies/quranic-inspector-bucket-dev/catalog/audio_manifest/<slug>.json \
   | jq '.chapters | to_entries
         | map({k:.key, mode:.value.bitrate_mode, kbps:.value.bitrate_kbps, dur:.value.duration_sec})'
 
 # Bucket-audio state for a reciter (written by Katana extraction, not the Space)
-hf bucket ls hetchyy/quranic-inspector-bucket-dev/reciters/<slug>/audio/
-hf bucket cat hetchyy/quranic-inspector-bucket-dev/reciters/<slug>/audio/_done.json
+hf bucket ls QUD-Technologies/quranic-inspector-bucket-dev/reciters/<slug>/audio/
+hf bucket cat QUD-Technologies/quranic-inspector-bucket-dev/reciters/<slug>/audio/_done.json
 
 # Peaks blob for a chapter (slim int8, gzipped — must gunzip before jq)
-hf bucket cat hetchyy/quranic-inspector-bucket-dev/reciters/<slug>/peaks/<chapter>.json.gz \
+hf bucket cat QUD-Technologies/quranic-inspector-bucket-dev/reciters/<slug>/peaks/<chapter>.json.gz \
   | gzip -d | jq '{duration_ms, bps, n, q}'
 
 # Sample multiple reciters' encoding modes at once (run after listing)
 for slug in alghazali alhusary minshawi; do
   echo "== $slug ==";
-  hf bucket cat hetchyy/quranic-inspector-bucket-dev/catalog/audio_manifest/$slug.json \
+  hf bucket cat QUD-Technologies/quranic-inspector-bucket-dev/catalog/audio_manifest/$slug.json \
     | jq -r '.chapters | to_entries | map(.value.bitrate_mode) | group_by(.) | map({mode:.[0], n:length})';
 done
 ```
@@ -97,7 +97,7 @@ python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=
 # All `audio_prefetch.*` events are HISTORIC — the prefetch worker and the GC
 # sweeper have both been removed, so no new ones are emitted. Old entries stay
 # queryable.
-hf bucket cat hetchyy/quranic-inspector-bucket-dev/audit/$(date +%Y-%m).jsonl \
+hf bucket cat QUD-Technologies/quranic-inspector-bucket-dev/audit/$(date +%Y-%m).jsonl \
   | jq -c "select(.slug == \"<slug>\" and (.event | startswith(\"audio_prefetch\")))"
 ```
 
@@ -164,7 +164,7 @@ Audio bugs frequently reproduce on one codec/bitrate combo and not another. Samp
 
 ```bash
 # Pull a small sample of slugs across the encoding axis
-hf bucket ls hetchyy/quranic-inspector-bucket-dev/catalog/audio_manifest/ | head -20
+hf bucket ls QUD-Technologies/quranic-inspector-bucket-dev/catalog/audio_manifest/ | head -20
 # Then for each, check the encoding mix per the jq snippet above.
 ```
 

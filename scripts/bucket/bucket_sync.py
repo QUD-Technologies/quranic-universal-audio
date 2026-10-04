@@ -1,10 +1,10 @@
 """Sync a local directory to/from a bucket prefix (plan-and-apply).
 
   # Pull a slug folder to disk for local inspection
-  bucket_sync.py hf://buckets/hetchyy/quranic-inspector-bucket/reciters/husary ./_scratch/husary
+  bucket_sync.py hf://buckets/QUD-Technologies/quranic-inspector-bucket/reciters/husary ./_scratch/husary
 
   # Push edits back
-  bucket_sync.py ./_scratch/husary hf://buckets/hetchyy/quranic-inspector-bucket-dev/reciters/husary
+  bucket_sync.py ./_scratch/husary hf://buckets/QUD-Technologies/quranic-inspector-bucket-dev/reciters/husary
 
 Use --dry-run first to see what would change; ``--yes-prod`` required when the
 destination is the prod bucket.

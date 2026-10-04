@@ -7,8 +7,8 @@ through to prod when the caller forgot a flag. Centralised so a new
 script is ~20 lines.
 
 Bucket ids (mirror ``inspector/services/storage/hf_bucket.py``):
-  dev      → hetchyy/quranic-inspector-bucket-dev   (default everywhere off-Space)
-  prod     → hetchyy/quranic-inspector-bucket        (live; mutating ops need --yes-prod)
+  dev      → QUD-Technologies/quranic-inspector-bucket-dev   (default everywhere off-Space)
+  prod     → QUD-Technologies/quranic-inspector-bucket        (live; mutating ops need --yes-prod)
   aligner  → hetchyy/aligner-bucket                  (private; MFA stack + staged code)
 
 Public surface used by sibling scripts:
@@ -33,8 +33,8 @@ from pathlib import Path
 
 # Match resolve_bucket_repo in inspector/services/storage/hf_bucket.py.
 BUCKETS = {
-    "dev": "hetchyy/quranic-inspector-bucket-dev",
-    "prod": "hetchyy/quranic-inspector-bucket",
+    "dev": "QUD-Technologies/quranic-inspector-bucket-dev",
+    "prod": "QUD-Technologies/quranic-inspector-bucket",
     "aligner": "hetchyy/aligner-bucket",
 }
 
@@ -184,7 +184,7 @@ def add_notify_args(parser: argparse.ArgumentParser) -> None:
         "--inspector-url",
         default=os.environ.get("INSPECTOR_URL"),
         help="Inspector root URL to POST the ts-refreshed callback to after a "
-        "successful write (e.g. https://hetchyy-quranic-universal-audio.hf.space); "
+        "successful write (e.g. https://qud-technologies-quranic-universal-audio.hf.space); "
         "needs INSPECTOR_WEBHOOK_SECRET in env. Omitted = silent update.",
     )
 

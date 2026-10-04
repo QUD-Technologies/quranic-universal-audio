@@ -17,8 +17,8 @@ def test_timestamp_space_defaults_to_production(monkeypatch):
 
     monkeypatch.delenv("INSPECTOR_TS_SPACE_URL", raising=False)
     monkeypatch.delenv("INSPECTOR_TS_SPACE_REPO", raising=False)
-    assert ts_space_client.space_url() == "https://hetchyy-qua-batch-timing-prod.hf.space"
-    assert ts_space_client.space_repo() == "hetchyy/qua-batch-timing-prod"
+    assert ts_space_client.space_url() == "https://qud-technologies-qua-batch-timing-prod.hf.space"
+    assert ts_space_client.space_repo() == "QUD-Technologies/qua-batch-timing-prod"
 
 
 def test_job_status_reads_record_and_fires_success(monkeypatch):

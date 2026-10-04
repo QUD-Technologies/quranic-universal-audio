@@ -26,5 +26,5 @@ Deploy the Inspector to its Hugging Face Space straight from the **current check
 ## Notes
 
 - **Local — no remote branch required.** It stages the tracked files of the checkout you run it from; run it from the worktree on the branch you want live. Untracked files are not staged.
-- Targets: `dev` → `hetchyy/quranic-inspector-dev`, `prod` → `hetchyy/quranic-universal-audio`.
+- Targets: `dev` → `QUD-Technologies/quranic-inspector-dev`, `prod` → `QUD-Technologies/quranic-universal-audio`.
 - CI path instead (runs the full check suite, deploys a pushed ref): `gh workflow run inspector-deploy.yml --ref <branch> -f env=dev`.

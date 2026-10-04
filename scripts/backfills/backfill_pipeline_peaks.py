@@ -39,8 +39,8 @@ from pathlib import Path
 log = logging.getLogger("backfill_pipeline_peaks")
 
 _BUCKETS = {
-    "dev": "hetchyy/quranic-inspector-bucket-dev",
-    "prod": "hetchyy/quranic-inspector-bucket",
+    "dev": "QUD-Technologies/quranic-inspector-bucket-dev",
+    "prod": "QUD-Technologies/quranic-inspector-bucket",
 }
 
 # Mirror of ``.local/extraction/segments/audio_persist.py::_encode_peaks_b64``

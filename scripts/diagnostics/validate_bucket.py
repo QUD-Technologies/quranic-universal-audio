@@ -50,8 +50,8 @@ from pathlib import Path
 log = logging.getLogger("validate_bucket")
 
 _BUCKETS = {
-    "dev": "hetchyy/quranic-inspector-bucket-dev",
-    "prod": "hetchyy/quranic-inspector-bucket",
+    "dev": "QUD-Technologies/quranic-inspector-bucket-dev",
+    "prod": "QUD-Technologies/quranic-inspector-bucket",
 }
 
 _AUDIO_MANIFEST_PREFIX = "catalog/audio_manifest"

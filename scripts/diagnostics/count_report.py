@@ -35,8 +35,8 @@ import sys
 from pathlib import Path
 
 _BUCKETS = {
-    "dev": "hetchyy/quranic-inspector-bucket-dev",
-    "prod": "hetchyy/quranic-inspector-bucket",
+    "dev": "QUD-Technologies/quranic-inspector-bucket-dev",
+    "prod": "QUD-Technologies/quranic-inspector-bucket",
 }
 
 # A reciter absent from the bucket is a caller mistake to fix, not a report.

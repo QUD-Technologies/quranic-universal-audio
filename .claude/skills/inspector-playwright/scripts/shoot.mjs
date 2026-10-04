@@ -36,7 +36,7 @@ const { values } = parseArgs({
         ref: { type: 'string', multiple: true },
         words: { type: 'string' },
         out: { type: 'string', default: '.' },
-        api: { type: 'string', default: 'https://hetchyy-quranic-inspector-dev.hf.space' },
+        api: { type: 'string', default: 'https://qud-technologies-quranic-inspector-dev.hf.space' },
         port: { type: 'string', default: '5199' },
         width: { type: 'string', default: '1600' },
         alltj: { type: 'boolean', default: false },

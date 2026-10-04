@@ -55,7 +55,7 @@ _INSPECTOR = _REPO_ROOT / "inspector"
 if str(_INSPECTOR) not in sys.path:
     sys.path.insert(0, str(_INSPECTOR))
 
-DEFAULT_DATASET = os.environ.get("INSPECTOR_FIXTURES_DATASET", "hetchyy/quranic-inspector-fixtures")
+DEFAULT_DATASET = os.environ.get("INSPECTOR_FIXTURES_DATASET", "QUD-Technologies/quranic-inspector-fixtures")
 
 # Vocabulary tables — copied wholesale (small, no PII, needed for catalog FKs).
 _VOCAB_TABLES = ("riwayahs", "styles", "sources", "channels", "recording_contexts")
@@ -344,8 +344,8 @@ def main(argv: list[str] | None = None) -> int:
 
     load_repo_env()
     buckets = {
-        "dev": "hetchyy/quranic-inspector-bucket-dev",
-        "prod": "hetchyy/quranic-inspector-bucket",
+        "dev": "QUD-Technologies/quranic-inspector-bucket-dev",
+        "prod": "QUD-Technologies/quranic-inspector-bucket",
     }
     os.environ["INSPECTOR_BUCKET_REPO"] = buckets[args.bucket]
     if args.bucket == "prod":

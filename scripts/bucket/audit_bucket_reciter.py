@@ -142,8 +142,8 @@ from pathlib import Path
 log = logging.getLogger("audit_bucket_reciter")
 
 _BUCKETS = {
-    "dev": "hetchyy/quranic-inspector-bucket-dev",
-    "prod": "hetchyy/quranic-inspector-bucket",
+    "dev": "QUD-Technologies/quranic-inspector-bucket-dev",
+    "prod": "QUD-Technologies/quranic-inspector-bucket",
 }
 
 

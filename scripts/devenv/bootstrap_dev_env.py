@@ -68,7 +68,7 @@ if str(_REPO_ROOT) not in sys.path:
 from qua_shared._env import load_repo_env  # noqa: E402
 
 FIXTURES_DATASET = os.environ.get(
-    "INSPECTOR_FIXTURES_DATASET", "hetchyy/quranic-inspector-fixtures"
+    "INSPECTOR_FIXTURES_DATASET", "QUD-Technologies/quranic-inspector-fixtures"
 )
 
 

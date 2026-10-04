@@ -1,6 +1,6 @@
 """Integration smoke against the actual dev bucket.
 
-Reads + writes under a ``_smoke/`` prefix on ``hetchyy/quranic-inspector-bucket-dev``
+Reads + writes under a ``_smoke/`` prefix on ``QUD-Technologies/quranic-inspector-bucket-dev``
 to verify the BucketBackend wiring end-to-end. Requires ``HF_TOKEN`` in the
 environment (loaded from repo-root ``.env`` by ``inspector/app.py`` at runtime;
 this smoke loads it manually for direct module invocation).
@@ -48,7 +48,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 
 def smoke() -> int:
-    bucket_id = os.environ.get("INSPECTOR_BUCKET_REPO", "hetchyy/quranic-inspector-bucket-dev")
+    bucket_id = os.environ.get("INSPECTOR_BUCKET_REPO", "QUD-Technologies/quranic-inspector-bucket-dev")
 
     from .hf_bucket import BucketBackend, StorageNotFound
 

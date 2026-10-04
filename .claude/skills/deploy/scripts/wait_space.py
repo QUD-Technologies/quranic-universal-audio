@@ -24,8 +24,8 @@ import time
 import urllib.request
 
 SPACE_REPOS = {
-    "dev": "hetchyy/quranic-inspector-dev",
-    "prod": "hetchyy/quranic-universal-audio",
+    "dev": "QUD-Technologies/quranic-inspector-dev",
+    "prod": "QUD-Technologies/quranic-universal-audio",
 }
 POLL_SECONDS = 10
 TIMEOUT_SECONDS = 15 * 60

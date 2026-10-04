@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
 
-PROD_BUCKET_ID = "hetchyy/quranic-inspector-bucket"
+PROD_BUCKET_ID = "QUD-Technologies/quranic-inspector-bucket"
 DB_BUCKET_PATH = "db/inspector.db"
 DEFAULT_README = Path(__file__).resolve().parents[2] / "README.md"
 DEFAULT_STATS = Path(__file__).resolve().parents[2] / "data" / "stats.json"

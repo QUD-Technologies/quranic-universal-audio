@@ -45,10 +45,10 @@ logger = logging.getLogger(__name__)
 # The production bucket holds live state. The SQLite substrate syncs
 # full-file (see services/db/sync.py), so a single stray write from a
 # local/dev process clobbers production — there is no row-level merge.
-PROD_BUCKET_REPO = "hetchyy/quranic-inspector-bucket"
+PROD_BUCKET_REPO = "QUD-Technologies/quranic-inspector-bucket"
 # Default for every NON-deployed process: local dev, scripts, the dev Space
 # image. Prod is opt-in only (see ``resolve_bucket_repo``).
-DEV_BUCKET_REPO = "hetchyy/quranic-inspector-bucket-dev"
+DEV_BUCKET_REPO = "QUD-Technologies/quranic-inspector-bucket-dev"
 
 
 def is_deployed() -> bool:
@@ -772,7 +772,7 @@ def get_backend() -> StorageBackend:
     - ``INSPECTOR_BACKEND`` — ``bucket`` (default) | ``filesystem``
     - ``INSPECTOR_FILESYSTEM_ROOT`` — root path for ``FilesystemBackend``
     - ``INSPECTOR_BUCKET_REPO`` — HF repo id. Defaults to the **dev** bucket
-      (``hetchyy/quranic-inspector-bucket-dev``) for every non-deployed
+      (``QUD-Technologies/quranic-inspector-bucket-dev``) for every non-deployed
       process; the prod bucket is refused locally unless
       ``INSPECTOR_ALLOW_PROD_BUCKET=1`` (see ``resolve_bucket_repo``). The
       prod Space sets this var explicitly and runs behind the proxy.

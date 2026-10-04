@@ -19,7 +19,7 @@ Same code, two profiles selected by env:
 | Audio | URL-templated via catalog, proxied through `/api/seg/audio-proxy/` (streams from CDN when bucket has no chapter) | same; bucket audio is populated offline by katana extraction (`.local/extraction/upload_to_bucket.py`) |
 | Workers | flask dev server | gunicorn-gthread, **`-w 1`** (single-worker invariant) |
 
-The prod Space is the only thing that uses `hetchyy/quranic-inspector-bucket` (prod) — it sets `INSPECTOR_BUCKET_REPO` explicitly. Every **non-deployed** process (local dev, scripts) defaults to the dev bucket `hetchyy/quranic-inspector-bucket-dev`.
+The prod Space is the only thing that uses `QUD-Technologies/quranic-inspector-bucket` (prod) — it sets `INSPECTOR_BUCKET_REPO` explicitly. Every **non-deployed** process (local dev, scripts) defaults to the dev bucket `QUD-Technologies/quranic-inspector-bucket-dev`.
 
 Contributors get their own isolated bucket/Space via `scripts/devenv/bootstrap_dev_env.py`, or run fully offline against fixtures via `scripts/devenv/seed_fixtures.py` (`INSPECTOR_BACKEND=filesystem`). See `inspector/README.md` for the three-tier dev workflow.
 

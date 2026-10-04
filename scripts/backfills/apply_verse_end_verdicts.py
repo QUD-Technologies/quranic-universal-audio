@@ -46,8 +46,8 @@ CATEGORY = "cross_verse"
 FIX_KIND = "auto_fix"
 WAQF = "waqf"
 _BUCKETS = {
-    "dev": "hetchyy/quranic-inspector-bucket-dev",
-    "prod": "hetchyy/quranic-inspector-bucket",
+    "dev": "QUD-Technologies/quranic-inspector-bucket-dev",
+    "prod": "QUD-Technologies/quranic-inspector-bucket",
 }
 #: Local runs write through the bucket API and read back through a cache that can lag,
 #: so each save waits until it reads back before the next one reads the files.

@@ -7,7 +7,7 @@ description: Run the first part of an online intake (listing + audio acquire) lo
 
 The align pipeline is: plan (list the source) → mint → **acquire** (HF Job) → align → split → sidecars → assemble. Ref: `docs/reference/align-pipeline.md`. This skill covers doing **plan listing** and **acquire** on this machine, then resuming online.
 
-Env for every snippet: `HF_TOKEN` from the main checkout's `.env`; prod bucket `hetchyy/quranic-inspector-bucket`; prod API `https://hetchyy-quranic-universal-audio.hf.space`. In Git Bash prefix curl calls to `/api/...` with `MSYS_NO_PATHCONV=1`. Work in the session scratchpad, never the repo.
+Env for every snippet: `HF_TOKEN` from the main checkout's `.env`; prod bucket `QUD-Technologies/quranic-inspector-bucket`; prod API `https://qud-technologies-quranic-universal-audio.hf.space`. In Git Bash prefix curl calls to `/api/...` with `MSYS_NO_PATHCONV=1`. Work in the session scratchpad, never the repo.
 
 ## When to use
 
