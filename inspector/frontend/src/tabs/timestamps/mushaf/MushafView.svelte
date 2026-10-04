@@ -498,7 +498,10 @@
 
     function onKeydown(e: KeyboardEvent): void {
         if (!shouldHandleKey(e, TAB_NAMES.TIMESTAMPS)) return;
-        if (e.code === 'KeyF') {
+        // F11 goes through the same full screen as the in-app button; out of an
+        // OS full screen it stays the browser's (the resize then leaves the mode).
+        if (e.code === 'F11' && mushafFullscreen.on && mushafFullscreen.windowFull()) return;
+        if (e.code === 'KeyF' || e.code === 'F11') {
             e.preventDefault();
             mushafFullscreen.toggle();
             return;
@@ -542,6 +545,7 @@
         void ensureMushafFont(SURAH_NAME_FAMILY).then((ok) => { headerFonts = { ...headerFonts, name: ok }; });
         void ensureMushafFont(SURAH_FRAME_FAMILY).then((ok) => { headerFonts = { ...headerFonts, frame: ok }; });
 
+        const detachWindowFull = mushafFullscreen.attachWindow();
         const detachRepeat = mushafRepeat.attach({
             readyChapter: () => (live ? chapter : 0),
             switchChapter: (s) => switchChapter(s, false),
@@ -568,6 +572,7 @@
         window.addEventListener(THEME_CHANGE_EVENT, onTheme);
         measureViewport();
         return () => {
+            detachWindowFull();
             mushafFullscreen.exit();
             if (leafTimer) clearTimeout(leafTimer);
             detachRepeat();
@@ -640,10 +645,12 @@
         onfocus={() => mushafFullscreen.reveal()}
         onclick={() => mushafFullscreen.reveal()}
     >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="m6 15 6-6 6 6" />
-        </svg>
+        <span class="mv-dock-pill">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m6 15 6-6 6 6" />
+            </svg>
+        </span>
     </button>
 {/if}
 
@@ -673,27 +680,38 @@
     :global(html.mushaf-dock.mushaf-dock-open .player) { transform: none; box-shadow: var(--shadow-pop); }
     :global(html.mushaf-dock #timestamps-panel) { padding-bottom: 0; }
 
+    /* The whole strip the footer docked into is the hover target; the pill marks it. */
     .mv-dock-handle {
         position: fixed;
-        bottom: 3px;
-        left: 50%;
-        transform: translateX(-50%);
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 22px; /* DOCK_HANDLE_PX */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        color: var(--text-faint);
+        background: transparent;
+        border: 0;
+        cursor: pointer;
+        z-index: 111;
+    }
+    .mv-dock-pill {
         display: inline-flex;
         align-items: center;
         justify-content: center;
         width: 40px;
         height: 16px;
-        padding: 0;
-        color: var(--text-faint);
         background: var(--panel-2);
         border: 1px solid var(--border-quiet);
         border-radius: var(--r-2);
-        cursor: pointer;
-        z-index: 111;
         transition: color var(--t-fast), background var(--t-fast);
     }
-    .mv-dock-handle:hover { color: var(--text-primary); background: var(--panel-3, var(--panel-2)); }
-    .mv-dock-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .mv-dock-handle:hover { color: var(--text-primary); }
+    .mv-dock-handle:hover .mv-dock-pill { background: var(--panel-3, var(--panel-2)); }
+    .mv-dock-handle:focus-visible { outline: none; }
+    .mv-dock-handle:focus-visible .mv-dock-pill { outline: 2px solid var(--accent); outline-offset: 2px; }
 
     .mv-status {
         margin: 0;

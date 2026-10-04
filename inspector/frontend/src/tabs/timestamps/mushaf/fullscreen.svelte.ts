@@ -12,6 +12,11 @@
  * it is in use (focus, an open drop-up, a verse being picked).
  *
  * Leaving the browser's full screen (Esc) leaves the mode too.
+ *
+ * OS / browser full screen (F11, the window's maximise-to-full-screen, the
+ * browser menu) takes the same path: F11 is intercepted into `toggle()`, and
+ * any other way the window goes full screen enters the mode without asking
+ * the Fullscreen API; the window leaving full screen leaves it.
  */
 import { mushafRepeat } from './repeat.svelte';
 
@@ -23,6 +28,7 @@ const PLAYER_SELECTOR = '.player';
 const DOCK_DELAY_MS = 1200;
 /** Revealed footer hides this long after the pointer leaves it. */
 const HIDE_DELAY_MS = 1200;
+const DISPLAY_FULL_QUERY = '(display-mode: fullscreen)';
 
 class MushafFullscreen {
     on = $state(false);
@@ -35,6 +41,11 @@ class MushafFullscreen {
     private dockTimer: ReturnType<typeof setTimeout> | null = null;
     private hideTimer: ReturnType<typeof setTimeout> | null = null;
     private player: HTMLElement | null = null;
+    /** Mode entered because the window itself went full screen. */
+    private osDriven = false;
+    /** User left the mode while the window stayed full screen: don't re-enter. */
+    private osSuppressed = false;
+    private displayQuery: MediaQueryList | null = null;
 
     toggle(): void {
         if (this.on) this.exit();
@@ -45,13 +56,15 @@ class MushafFullscreen {
         if (this.on) return;
         this.listen();
         this.on = true;
+        this.osSuppressed = false;
         document.documentElement.classList.add(FULL_CLASS);
+        this.dockTimer = setTimeout(() => this.dock(), DOCK_DELAY_MS);
+        if (this.windowFull()) return; // already full screen — nothing to ask for
         const req = document.documentElement.requestFullscreen?.bind(document.documentElement);
         req?.().catch((e: unknown) => {
             // Chrome-less mode still applies; only the screen takeover failed.
             console.warn('Mushaf: browser full screen refused', e);
         });
-        this.dockTimer = setTimeout(() => this.dock(), DOCK_DELAY_MS);
     }
 
     exit(): void {
@@ -61,6 +74,8 @@ class MushafFullscreen {
         this.on = false;
         this.docked = false;
         this.revealed = false;
+        if (this.windowFull()) this.osSuppressed = true;
+        this.osDriven = false;
         document.documentElement.classList.remove(FULL_CLASS, DOCK_CLASS, OPEN_CLASS);
         if (document.fullscreenElement) {
             document.exitFullscreen().catch((e: unknown) => console.warn('Mushaf: exit full screen failed', e));
@@ -135,6 +150,39 @@ class MushafFullscreen {
         this.dockTimer = null;
         this.hideTimer = null;
     }
+
+    /** Follow the window's own full screen while the view is mounted. Returns the detach. */
+    attachWindow(): () => void {
+        this.displayQuery = window.matchMedia?.(DISPLAY_FULL_QUERY) ?? null;
+        this.displayQuery?.addEventListener('change', this.onWindowChange);
+        window.addEventListener('resize', this.onWindowChange);
+        this.onWindowChange();
+        return () => {
+            this.displayQuery?.removeEventListener('change', this.onWindowChange);
+            window.removeEventListener('resize', this.onWindowChange);
+            this.displayQuery = null;
+            this.osSuppressed = false;
+        };
+    }
+
+    /** The window fills the screen without the Fullscreen API (F11, OS full screen). */
+    windowFull(): boolean {
+        if (document.fullscreenElement) return false;
+        if (this.displayQuery?.matches) return true;
+        return window.innerWidth >= screen.width && window.innerHeight >= screen.height;
+    }
+
+    private readonly onWindowChange = (): void => {
+        const full = this.windowFull();
+        if (!full) {
+            this.osSuppressed = false;
+            if (this.osDriven && this.on) this.exit();
+            return;
+        }
+        if (this.on || this.osSuppressed) return;
+        this.enter();
+        this.osDriven = true;
+    };
 
     private listen(): void {
         if (this.listening) return;

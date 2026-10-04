@@ -183,7 +183,7 @@
         line-height: 1;
     }
     .mp-line.centered { justify-content: center; }
-    .mp-basm { font-feature-settings: 'basm'; }
+    .mp-basm { font-feature-settings: 'basm'; font-size: 0.75em; }
 
     .mp-w {
         position: relative;
