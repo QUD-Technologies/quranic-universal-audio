@@ -1,4 +1,7 @@
-<h1 align="center">Qur'anic Universal Audio</h1>
+<a href="https://audio.qud.dev"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/banner-ink.png">
+  <img alt="Quranic Universal Audio: Every provider. Every recitation. One consistent catalog, timed down to the letter." src=".github/banner-paper.png">
+</picture></a>
 
 <p align="center">
   <a href="https://aligner.qud.dev/"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Tool-Qur'anic%20Universal%20Aligner-E8C32E" alt="Demo - Qur'anic Universal Aligner"></a>
