@@ -448,10 +448,19 @@ def _audio_sources_from_manifest(
         for key, chapter in sorted(chapters.items()):
             if not (key.isdigit() or ":" in key) or not isinstance(chapter, dict):
                 continue
-            url = chapter.get("source_url") or chapter.get("url")
-            if not isinstance(url, str) or not url.strip():
+            # Only remote http(s) URLs are consumer-actionable; offline-intake
+            # manifests can carry a local scratch path here (never ship it).
+            url = next(
+                (
+                    c.strip()
+                    for c in (chapter.get("source_url"), chapter.get("url"))
+                    if isinstance(c, str) and c.strip().lower().startswith(("http://", "https://"))
+                ),
+                None,
+            )
+            if url is None:
                 continue
-            urls[key] = url.strip()
+            urls[key] = url
             offset = int(chapter.get("source_offset_ms") or 0)
             if offset > 0:
                 offsets[key] = offset

@@ -422,6 +422,28 @@ def test_combined_source_surfaces_native_url_and_offset():
     assert offsets == {"2": 215000}  # only the non-zero offset is emitted
 
 
+def test_local_filesystem_paths_never_leak_as_chapter_urls():
+    # Offline-intake manifests can carry a scratch path in ``url`` / ``source_url``
+    # (issue #285); only remote http(s) URLs are consumer-actionable.
+    sidecar = {
+        "_meta": {"checksum": "abc", "chapter_count": 3, "category": "by_surah"},
+        "chapters": {
+            "1": {"url": "/srv/scratch/qua_offline/intake/audio/x/001.mp3"},
+            "2": {
+                "url": "/srv/scratch/qua_offline/intake/audio/x/002.mp3",
+                "source_url": "https://youtu.be/AAA",
+            },
+            "3": {
+                "url": "https://cdn.example/3.mp3",
+                "source_url": "/srv/scratch/qua_offline/intake/audio/x/003.mp3",
+            },
+        },
+    }
+
+    urls, _ = cut_release._audio_sources_from_manifest("offline_reciter", sidecar)
+    assert urls == {"2": "https://youtu.be/AAA", "3": "https://cdn.example/3.mp3"}
+
+
 def test_single_file_offset_emitted_without_source_url():
     # A unique-per-chapter source whose recitation starts after a lead-in: the
     # URL is already native (no ``source_url``) but the offset must still ship.
