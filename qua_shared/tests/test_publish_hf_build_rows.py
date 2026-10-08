@@ -365,3 +365,20 @@ def test_an_unknown_riwayah_is_refused_rather_than_given_a_folder():
 
     with pytest.raises(UnsupportedRiwayah):
         publish_hf._config_riwayah({"_meta": {"riwayah": "duri_an_abi_amr"}}, {})
+
+
+def test_manifest_chapter_sources_never_emit_local_paths():
+    # Issue #285: an offline-intake manifest carried a scratch path as ``url``;
+    # the dataset's ``source_url`` must be a public link or empty, never a path.
+    manifest = {
+        "chapters": {
+            "1": {"url": "/srv/scratch/qua_offline/intake/audio/x/001.mp3"},
+            "2": {"url": "/srv/scratch/x/002.mp3", "source_url": "https://youtu.be/AAA"},
+            "3": {"url": "https://cdn.example/3.mp3", "source_offset_ms": 1200},
+        }
+    }
+
+    urls, offsets = publish_hf._manifest_chapter_sources(manifest)
+
+    assert urls == {"1": "", "2": "https://youtu.be/AAA", "3": "https://cdn.example/3.mp3"}
+    assert offsets == {"1": 0, "2": 0, "3": 1200}

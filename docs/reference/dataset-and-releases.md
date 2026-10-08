@@ -230,6 +230,9 @@ resolution) so the release never leaks an internal bucket URL. When one source s
 (or a single file has a trimmed lead-in), `audio.chapter_offsets_ms[ch]` carries that chapter's start
 offset inside its source — the same value the HF dataset persists as `source_offset_ms`. Map a release
 tier-file timestamp into the source file with `source_ms = chapter_offsets_ms.get(ch, 0) + tier_ms`.
+Both adapters resolve the link through `qua_shared.audio.sources.public_source_url`, which accepts only
+remote `http(s)` URLs: a chapter whose manifest holds a local path (an offline-intake leftover, #285) is
+omitted from `chapter_urls` and gets an empty `source_url` in the dataset — repair the manifest, never ship the path.
 `chapter_offsets_ms` is **omitted from the JSON when empty** (model_serializer on `ReleaseCatalogAudio`),
 so CDN by-surah catalogs stay byte-stable and their `content_hash` doesn't churn.
 

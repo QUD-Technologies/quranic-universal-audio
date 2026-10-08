@@ -52,6 +52,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from qua_shared.audio.sources import public_source_url  # noqa: E402
 from qua_shared.digital_khatt import (  # noqa: E402
     DIGITAL_KHATT_FONT_FILENAME,
     DIGITAL_KHATT_SCRIPT_FILENAME,
@@ -448,16 +449,7 @@ def _audio_sources_from_manifest(
         for key, chapter in sorted(chapters.items()):
             if not (key.isdigit() or ":" in key) or not isinstance(chapter, dict):
                 continue
-            # Only remote http(s) URLs are consumer-actionable; offline-intake
-            # manifests can carry a local scratch path here (never ship it).
-            url = next(
-                (
-                    c.strip()
-                    for c in (chapter.get("source_url"), chapter.get("url"))
-                    if isinstance(c, str) and c.strip().lower().startswith(("http://", "https://"))
-                ),
-                None,
-            )
+            url = public_source_url(chapter)
             if url is None:
                 continue
             urls[key] = url

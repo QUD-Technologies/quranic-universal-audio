@@ -26,6 +26,19 @@ SLOT_BASE = 201
 MAX_SLOT = 999
 
 
+def public_source_url(entry: dict) -> str | None:
+    """The consumer-facing link for a manifest chapter: its ``source_url`` (the
+    original file of a combined source), else its ``url`` — whichever is a
+    remote http(s) URL. ``None`` when neither is (e.g. an offline-intake
+    manifest that recorded a local scratch path), so releases never ship one."""
+    for candidate in (entry.get("source_url"), entry.get("url")):
+        if isinstance(candidate, str) and candidate.strip().lower().startswith(
+            ("http://", "https://")
+        ):
+            return candidate.strip()
+    return None
+
+
 @dataclass(frozen=True)
 class SourceGroup:
     url: str
