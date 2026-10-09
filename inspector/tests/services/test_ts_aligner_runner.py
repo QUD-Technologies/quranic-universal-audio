@@ -53,6 +53,7 @@ def _serve(monkeypatch, sent: list, *, fail: int | None = None):
             "shards": {str(ch): base64.b64encode(f"shard-{ch}".encode()).decode()},
             "timed": 1, "kept": 0, "failed": 0,
             "failed_segments": [{"seg": 0}] if ch == 113 else [],
+            "lazim_ms": [400.0 + ch],
         })  # fmt: skip
 
     monkeypatch.setattr(requests, "post", post)
@@ -68,13 +69,18 @@ def test_a_run_times_each_chapter_and_writes_times_shards_and_record(delivery, m
     record = runner.TsJobRecord(job_id="run1", slug="r", settings=TsJobSettings())
     runner._run(record, "hafs", False)
 
-    assert [body["chapter"] for _, body, _ in sent] == [112, 113]
+    # Times for every chapter, then shards for the chapters without a failed segment.
+    assert [(b["chapter"], b["shards"]) for _, b, _ in sent] == [
+        (112, False), (113, False), (112, True)
+    ]  # fmt: skip
     url, body, headers = sent[0]
     assert url == "https://aligner/api/v1/extraction/timing"
     assert headers == {"Authorization": "Bearer tok", "X-Extraction-Secret": "sec"}
     assert base64.b64decode(body["times"]) == b"stored-112"
     assert sent[1][1]["times"] is None
-    assert body["shards"] is True
+    assert body["delivery_lazim_ms"] is None
+    assert sent[2][1]["delivery_lazim_ms"] == [512.0, 513.0]
+    assert base64.b64decode(sent[2][1]["times"]) == b"times-112"
     assert body["audio_refs"] == {"112": "hf://buckets/o/b/reciters/r/audio/112.mp3"}
     assert delivery.read_bytes("reciters/r/timing/113.json.br") == b"times-113"
     assert delivery.read_bytes("reciters/r/timestamps/112.json.br") == b"shard-112"
@@ -107,7 +113,9 @@ def test_a_scoped_run_keeps_other_chapters_failures(delivery, monkeypatch):
     record = runner.TsJobRecord(job_id="run2", slug="r", settings=TsJobSettings(chapters=[112]))
     runner._run(record, "hafs", True)
 
-    assert [(b["chapter"], b["full"]) for _, b, _ in sent] == [(112, True)]
+    assert [(b["chapter"], b["full"], b["shards"]) for _, b, _ in sent] == [
+        (112, True, False), (112, False, True)
+    ]  # fmt: skip
     validation = json.loads(delivery.read_bytes("reciters/r/ts_validation.json"))
     assert validation["failed_segments"] == {"113": [{"seg": 9}]}
 
@@ -117,9 +125,11 @@ def test_an_aligner_failure_fails_the_run(delivery, monkeypatch):
     record = runner.TsJobRecord(job_id="run3", slug="r", settings=TsJobSettings())
     runner._run(record, "hafs", False)
 
+    # Its times are kept; no shard is built without the whole delivery's basis.
     stored = _record(delivery, "run3")
     assert stored["status"] == "failed" and "502" in stored["error"]
-    assert delivery.read_bytes("reciters/r/timestamps/112.json.br") == b"shard-112"
+    assert delivery.read_bytes("reciters/r/timing/112.json.br") == b"times-112"
+    assert not delivery.exists("reciters/r/timestamps/112.json.br")
 
 
 def test_launch_starts_an_aligner_run_by_default(monkeypatch):

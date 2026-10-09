@@ -13,9 +13,11 @@ time whose segment is unchanged and times the rest.
   (`services/timing/retime_queue.py`); only the changed segments are timed.
 - **Segment cards** read them back (`GET /api/seg/word-times/<reciter>/<chapter>`) and
   light the sounding word while a card plays.
-- **A timestamps run** (`services/admin/ts_aligner_runner.py`) asks for the chapter's
-  native v13 shards as well; with the times already current it only builds them. A
-  chapter with a failed segment keeps its previous shards and fails the run. The run
+- **A timestamps run** (`services/admin/ts_aligner_runner.py`) calls twice per chapter:
+  first for its times (current already, normally, so nothing is timed), then for its native
+  shards, sending the madd lāzim lengths of the whole delivery as the basis of the shards'
+  reading-variant picks. A chapter with a failed segment keeps its previous shards and fails
+  the run; so does a failed call, before any shard is built. The run
   writes the same run-log record (`reciters/<slug>/jobs/ts/<run_id>.json`) the batch
   Space wrote, so completion, releases and the automations
   (`services/admin/timestamps_jobs.py`) are unchanged.

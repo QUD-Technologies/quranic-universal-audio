@@ -3,9 +3,11 @@
 The Inspector's timestamps stage. Each chapter's times live beside its shard
 (``reciters/<slug>/timing/<ch>.json.br``, one entry per segment uid), stored at the end of
 the align run and kept current after every save (:mod:`services.timing`). A run sends each
-chapter to the aligner (:func:`services.timing.aligner_timing.time_chapter`), which times
-only what is still stale (nothing, normally; every segment with ``full``) and returns the
-chapter's times and shards, written as returned.
+chapter to the aligner (:func:`services.timing.aligner_timing.time_chapter`) twice: first
+for its times alone, timing only what is still stale (nothing, normally; every segment with
+``full``), then for its shards, with the madd lāzim lengths of the whole delivery
+(:func:`~services.timing.aligner_timing.delivery_lazim`) as the basis of their reading-variant
+picks. Times and shards are written as returned.
 
 ``start_run`` writes the ``running`` run record (``jobs/ts/<run_id>.json``, the shape the
 batch Space wrote) and works on a daemon thread, stamping the record ``succeeded`` or
@@ -108,25 +110,20 @@ def _run(record: TsJobRecord, riwayah: str, full: bool) -> None:
 
 
 def _time_chapters(record: TsJobRecord, riwayah, full, emit) -> tuple[dict[str, list], str]:
-    """Each wanted chapter timed and its shards written, unless a segment failed: that
-    chapter's shards stay as they were. Stops before a chapter once the run is canceled."""
+    """Each wanted chapter's times brought current, then its shards built and written, unless
+    a segment failed: that chapter's shards stay as they were. Stops before a chapter once
+    the run is canceled."""
     slug, chapters = record.slug, record.settings.chapters
     wanted = [c for c in aligner_timing.chapters_of(slug) if not chapters or c in chapters]
     emit(f"{len(wanted)} chapter(s), {riwayah}, full={full}")
+    timed = _pass(record, wanted, emit, riwayah=riwayah, full=full)
+    failed = {str(c): r["failed_segments"] for c, r in timed.items() if r["failed_segments"]}
+    lazim = aligner_timing.delivery_lazim(slug, timed)
+    emit(f"variant basis: {len(lazim)} madd lazim")
+    ready = [c for c in timed if str(c) not in failed]
+    built = _pass(record, ready, emit, riwayah=riwayah, shards=True, delivery_lazim_ms=lazim)
     backend = get_backend()
-    failed: dict[str, list] = {}
-    model = ""
-    for chapter in wanted:
-        if _canceled(record):
-            raise _Canceled
-        reply = aligner_timing.time_chapter(slug, chapter, riwayah=riwayah, full=full, shards=True)
-        if reply is None:
-            continue
-        model = reply["model"]
-        emit(
-            f"ch{chapter}: timed {reply['timed']}, kept {reply['kept']}, failed {reply['failed']}"
-            f" ({reply['model']})"
-        )
+    for chapter, reply in built.items():
         if reply["failed_segments"]:
             failed[str(chapter)] = reply["failed_segments"]
             continue
@@ -134,7 +131,26 @@ def _time_chapters(record: TsJobRecord, riwayah, full, emit) -> tuple[dict[str, 
             backend.write_bytes_atomic(
                 storage_paths.timestamps_path_br(slug, shard_chapter), base64.b64decode(shard)
             )
+    model = next((r["model"] for r in (*built.values(), *timed.values())), "")
     return failed, model
+
+
+def _pass(record: TsJobRecord, chapters: list[int], emit, **kwargs) -> dict[int, dict]:
+    """One aligner call per chapter; ``{chapter: reply}`` for the chapters that still exist."""
+    step = "shards" if kwargs.get("shards") else "times"
+    out = {}
+    for chapter in chapters:
+        if _canceled(record):
+            raise _Canceled
+        reply = aligner_timing.time_chapter(record.slug, chapter, **kwargs)
+        if reply is None:
+            continue
+        out[chapter] = reply
+        emit(
+            f"ch{chapter} {step}: timed {reply['timed']}, kept {reply['kept']}, "
+            f"failed {reply['failed']} ({reply['model']})"
+        )
+    return out
 
 
 def _write_validation(

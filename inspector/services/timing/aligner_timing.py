@@ -94,12 +94,14 @@ def time_chapter(
     riwayah: str,
     full: bool = False,
     shards: bool = False,
+    delivery_lazim_ms: list[float] | None = None,
 ) -> dict | None:
     """Bring ``chapter``'s stored times up to date with its current segments and write them;
     returns the aligner's reply (``timed``/``kept``/``failed``, ``failed_segments``,
-    ``model``, ``shards``), or ``None`` when the chapter has no segments any more. The
-    segments are read under the chapter's lock, so a later save's re-time always runs
-    after this one and writes last."""
+    ``model``, ``shards``, ``lazim_ms``), or ``None`` when the chapter has no segments any
+    more. ``delivery_lazim_ms`` (:func:`delivery_lazim`) is the basis of the shards' variant
+    picks. The segments are read under the chapter's lock, so a later save's re-time always
+    runs after this one and writes last."""
     with chapter_lock(slug, chapter):
         detailed = read_detailed(slug)
         entries = entries_by_chapter(detailed).get(int(chapter))
@@ -117,6 +119,7 @@ def time_chapter(
                 "times": base64.b64encode(times).decode() if times else None,
                 "full": full,
                 "shards": shards,
+                "delivery_lazim_ms": delivery_lazim_ms,
             },
             chapter,
         )
@@ -142,6 +145,23 @@ def retime(slug: str, chapters: list[int] | None = None, *, full: bool = False) 
             "[timing %s] ch%s: timed %s, kept %s, failed %s",
             slug, chapter, reply["timed"], reply["kept"], reply["failed"],
         )  # fmt: skip
+    return out
+
+
+def delivery_lazim(slug: str, replies: dict[int, dict]) -> list[float]:
+    """Every madd lāzim length of ``slug``: from ``replies`` (chapter → aligner reply) where
+    a chapter was just timed, else from its stored times."""
+    from services.timing.word_times import read_doc
+
+    out: list[float] = []
+    for chapter in chapters_of(slug):
+        if chapter in replies:
+            out.extend(replies[chapter].get("lazim_ms") or [])
+            continue
+        doc = read_doc(slug, chapter) or {}
+        for held in (doc.get("segments") or {}).values():
+            if held.get("status") == "ok":
+                out.extend((held.get("faces") or {}).get("lazim") or [])
     return out
 
 
