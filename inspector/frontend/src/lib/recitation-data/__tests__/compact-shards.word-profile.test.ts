@@ -12,9 +12,9 @@ describe('decodeTimestampShard — word profile', () => {
     });
 
     it('treats an absent profile as native', () => {
-        // A schema-13 object predates the discriminator entirely; it must not
-        // be mistaken for a word shard (it would render as an empty verse).
-        expect(() => decodeTimestampShard({ _meta: { schema_version: 13 }, readings: [] }))
+        // A native object carries no discriminator; it must not be mistaken
+        // for a word shard (it would render as an empty verse).
+        expect(() => decodeTimestampShard({ _meta: { schema_version: 15 }, readings: [] }))
             .toThrowError(/Native schema is not v2/);
     });
 

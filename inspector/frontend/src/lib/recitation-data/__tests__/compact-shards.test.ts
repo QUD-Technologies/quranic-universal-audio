@@ -29,7 +29,7 @@ function reading(
 }
 
 const meta = {
-    schema_version: 13,
+    schema_version: 15,
     native_schema_version: 2,
     renderer_codec_version: 1,
 };
@@ -104,7 +104,7 @@ describe('compact timestamp shard variants (v15)', () => {
         anchor: 'boundary', boundary: 1, by: 'scored', score: 4.0,
         affected: { sakt: { c: [5, 6], s: [1], b: [1] } },
     };
-    const v15 = { ...meta, schema_version: 15, variant_catalogue: catalogue, variant_policy: '2026-10-05' };
+    const v15 = { ...meta, variant_catalogue: catalogue, variant_policy: '2026-10-05' };
 
     it('copies a reading\'s variants with the chapter definitions', () => {
         const withVariants = {
@@ -121,11 +121,10 @@ describe('compact timestamp shard variants (v15)', () => {
         expect(second).not.toHaveProperty('variantCatalogue');
     });
 
-    it('reads native 13 and 15 and rejects a native 14', () => {
+    it.each([13, 14])('rejects a native schema %i', (version) => {
         const one = [reading('r1', ['1:1'], [[100, 200, 0, 1]], [[100, 200]])];
-        expect(() => decodeTimestampShard({ _meta: meta, readings: one })).not.toThrow();
         expect(() => decodeTimestampShard({ _meta: v15, readings: one })).not.toThrow();
-        expect(() => decodeTimestampShard({ _meta: { ...meta, schema_version: 14 }, readings: one }))
-            .toThrow('schema 14 is unsupported');
+        expect(() => decodeTimestampShard({ _meta: { ...meta, schema_version: version }, readings: one }))
+            .toThrow(`schema ${version} is unsupported`);
     });
 });

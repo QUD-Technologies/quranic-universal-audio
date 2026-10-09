@@ -88,7 +88,7 @@ export function nativeReading(id: string, parts: FixturePart[]): TsShardReading 
 export function nativeShard(readings: TsShardReading[]): TsShardResponse {
     return {
         _meta: {
-            schema_version: 13,
+            schema_version: 15,
             native_schema_version: 2,
             renderer_codec_version: 1,
             native_profile: {
