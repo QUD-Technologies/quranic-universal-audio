@@ -2074,8 +2074,8 @@ export interface SegValLowConfidenceItem {
   classified_issues?: string[];
 }
 /**
- * ``low_confidence_v2`` — a segment flagged by the extraction-time MFA
- * tight-beam probe. No confidence score; the signal is binary.
+ * ``low_confidence_v2`` — a segment the neural timing checks found fitting its
+ * text poorly (``low_confidence_v2.json``). No confidence score; the signal is binary.
  */
 export interface SegValLowConfidenceV2Item {
   ref: string;
@@ -2114,8 +2114,9 @@ export interface SegValHiddenPauseBoundary {
  * ``axes`` names the offline arms that agree on the cut (``trio`` = collar
  * boundary head, ``lite`` = lite student, ...). ``evidence`` is the
  * per-axis raw measurement block, passed through for the card. ``silence_*_ms``
- * is the pause the cut-timing pass measured around the cursor (``timing_source``
- * names how): a WAQF answer splits with that gap.
+ * is the pause around the cursor (``timing_source`` names how it was measured: the
+ * cut-timing pass's ``psil`` / ``energy``, or the ``neural`` timing head's decoded
+ * pause): a WAQF answer splits with that gap.
  */
 export interface SegValHiddenPauseCut {
   cursor_ms?: number | null;
@@ -2130,7 +2131,7 @@ export interface SegValHiddenPauseCut {
   };
   silence_start_ms?: number | null;
   silence_end_ms?: number | null;
-  timing_source?: ("psil" | "energy") | null;
+  timing_source?: ("psil" | "energy" | "neural") | null;
 }
 /**
  * ``missed_waqf`` — an offline phoneme + silence detector heard the
@@ -2377,9 +2378,9 @@ export interface SegValStats {
   pause_dur_max: number;
 }
 /**
- * ``low_confidence_v2_meta`` — provenance of the MFA tight-beam probe
- * sidecar. Open shape: the ``_meta`` block of ``low_confidence_v2.json`` is
- * passed through verbatim from the extraction stage.
+ * ``low_confidence_v2_meta`` — provenance of the Low Confidence sidecar.
+ * Open shape: the ``_meta`` block of ``low_confidence_v2.json`` is passed through
+ * verbatim from the extraction stage.
  */
 export interface SegValProbeMeta {
   [k: string]: unknown;

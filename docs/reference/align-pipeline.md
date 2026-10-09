@@ -73,15 +73,17 @@ align     per-file loop, aligner Space POST /api/v1/batches (alignment-only) +
           every chapter is cut on every run, overwriting stale cuts → rows rebased onto each cut, staged as chapters/<ch>.json; outcome →
           split_outcome.json + manifest (chapters written, sources cleared).
           From here a cut chapter is indistinguishable from a single one.
-sidecars  one reciter-wide POST /api/v1/extraction/sidecars (SSE) — the aligner runs
-          qua_timing_batch low_confidence against the phoneme MFA Space and builds
-          auto_split from interactive word timings returned by the align stage
+sidecars  one reciter-wide POST /api/v1/extraction/sidecars (SSE) — the aligner times
+          every segment with the neural head, runs the review policy over its checks
+          (qua_timing_batch.retime.review) for low_confidence_v2, and builds auto_split
+          from the align stage's word timings (else the same neural rows)
           → staging/<slug>/<run>/sidecars/{low_confidence_v2,auto_split_v1}.json
           Hafs only for the probe: a non-Hafs delivery gets `low_confidence_v2: null`
           (D12, editions.md) and nothing is staged for it; auto_split_v1 is always staged
           + sidecars/{missed_waqf_v2,verse_ends_v1}.json built in-process (pause_sidecar)
           from the rows' lattice `pauses`, word timings and the chapters' levels — see
-          Low Confidence Waqf below
+          Low Confidence Waqf below; a segment in low_confidence_v2 is dropped from
+          missed_waqf_v2 (one card per segment)
 assemble  in-process: adapt → promote_build.build_artifacts (peaks from the acquired blobs,
           no ffmpeg) → reciters/<slug>/{detailed,segments,pipeline_meta,chapter_sources,
           coverage_report,edit_history*.jsonl,low_confidence_v2,auto_split_v1,

@@ -6,7 +6,8 @@ The timing engine's cut-timing pass aligns each proposed stop with a seeded psil
 silence_end_ms, source}``. A proposal's cut takes the pass's cursor (the middle
 of that silence) and carries the span, so a WAQF answer can split with a gap.
 Joins are matched to cuts by ``after_ref``; a cut the pass did not time keeps
-its sidecar cursor and no span.
+its sidecar cursor and no span, and a cut that already carries its own measured pause
+(the neural sidecar's, ``timing_source`` set) keeps it.
 """
 
 from __future__ import annotations
@@ -40,6 +41,8 @@ def _apply(entry: dict, joins: list[dict]) -> dict:
     by_ref = {j.get("after_ref"): j for j in joins if j.get("kind", PROPOSAL) == PROPOSAL}
     cuts = [dict(c) for c in entry.get("cuts") or [] if isinstance(c, dict)]
     for cut in cuts:
+        if cut.get("timing_source"):
+            continue
         join = by_ref.get(_after_ref(cut))
         timed = _timed(join) if join else None
         if join is None or timed is None:

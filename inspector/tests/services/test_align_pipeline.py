@@ -589,3 +589,24 @@ def test_sidecars_stage_builds_missed_waqf_v2_and_assemble_publishes_it(align_en
         started_at="2026-09-13T00:00:00Z",
     )
     assert backend.exists(f"reciters/{SLUG}/missed_waqf_v2.json")
+
+
+def test_sidecars_stage_leaves_a_low_confidence_segment_one_card(align_env):
+    from services.admin.align_pipeline import runs, stage_sidecars, staging
+    from services.admin.align_pipeline.params import AlignParams
+
+    _backend, _started = align_env
+    run = runs.start(SLUG, OWNER)
+    path = staging.sidecar_path(SLUG, run.run_id, "missed_waqf_v2.json")
+    staging.write_json(path, {"_meta": {"kind": "missed_waqf", "segments": 2},
+                              "by_uid": {"a": {"cursors": [1]}, "b": {"cursors": [2]}}})  # fmt: skip
+    staging.write_json(staging.sidecar_path(SLUG, run.run_id, "auto_split_v1.json"), {"by_uid": {}})
+    staging.write_json(
+        staging.sidecar_path(SLUG, run.run_id, "low_confidence_v2.json"), {"failures": ["b", "c"]}
+    )
+
+    stage_sidecars.run(SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"})
+
+    staged = staging.read_json(path)
+    assert list(staged["by_uid"]) == ["a"]
+    assert staged["_meta"]["segments"] == 1 and staged["_meta"]["low_confidence"] == 1

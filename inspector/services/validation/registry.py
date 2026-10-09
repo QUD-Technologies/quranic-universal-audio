@@ -135,7 +135,7 @@ _REGISTRY: dict[str, IssueDefinition] = {
         persists_ignore=True,
         scope="per_segment",
         display_title="Low Confidence v2",
-        description="MFA tight-beam probe disagreed with the DP alignment for these segments. Treat as a second-opinion warning.",
+        description="The neural timing head fits these segments poorly against their text (a wrong or shifted reference, noise, or a misread). Treat as a second-opinion warning.",
     ),
     "repetitions": IssueDefinition(
         kind="repetitions",
