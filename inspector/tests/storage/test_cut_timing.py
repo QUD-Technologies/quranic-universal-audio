@@ -72,5 +72,6 @@ def test_a_cut_with_its_own_measured_pause_keeps_it():
     doc = {"by_uid": {"u1": {"cursors": [1050], "refs": ["2:1:1-2:1:2", "2:1:3-2:1:9"],
                              "cuts": [neural]}}}  # fmt: skip
     out = timed_missed_waqf_doc(doc, _timing(_join("2:1:2", 900, 1200, 1500, "psil")))
+    assert out is not None
     assert out["by_uid"]["u1"]["cuts"][0] == neural
     assert out["by_uid"]["u1"]["cursors"] == [1050]

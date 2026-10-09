@@ -139,7 +139,8 @@ def test_native_v15_with_variants_round_trips():
     doc = _v15_doc()
     model = TsShardDoc.model_validate(doc)
     assert model.model_dump(by_alias=True, mode="json") == doc
-    assert model.readings[0].variants[0].affected["sakt"].c == [5, 6]
+    variants = model.readings[0].variants
+    assert variants is not None and variants[0].affected["sakt"].c == [5, 6]
 
 
 def test_v13_dump_omits_absent_v15_fields():

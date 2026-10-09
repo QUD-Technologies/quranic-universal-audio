@@ -189,7 +189,7 @@ def seg_word_times(reciter, chapter):
         except (RiwayahMismatch, UnsupportedRiwayah, EditionsUnavailable):
             counts = None
     segments = word_times.chapter_word_times(entries, doc, counts)
-    model = SegWordTimesResponse(segments=segments)
+    model = SegWordTimesResponse.model_validate({"segments": segments})
     return orjson_cached_response(model.model_dump(**_DUMP))
 
 

@@ -115,8 +115,8 @@ def _one_card(slug: str, run_id: str) -> None:
     """Drop the Low Confidence Waqf items of segments already in Low Confidence."""
     low = staging.read_json(staging.sidecar_path(slug, run_id, LOW_CONFIDENCE_FILE)) or {}
     path = staging.sidecar_path(slug, run_id, MISSED_WAQF_FILE)
-    missed = staging.read_json(path)
-    flagged = set(low.get("failures") or []) & set((missed or {}).get("by_uid") or {})
+    missed = staging.read_json(path) or {}
+    flagged = set(low.get("failures") or []) & set(missed.get("by_uid") or {})
     if not flagged:
         return
     by_uid = {uid: item for uid, item in missed["by_uid"].items() if uid not in flagged}
