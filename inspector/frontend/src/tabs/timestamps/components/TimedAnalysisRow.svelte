@@ -39,6 +39,7 @@
         type TimedEntity,
     } from '../utils/timed-entities';
     import { defineInspectorRule, ruleLabel } from '../utils/tajweed-rules';
+    import { adoptDisplayStopMark } from '../utils/display-stop-mark';
     import {
         cellTargetFromEl,
         ruleIdsFromEl,
@@ -88,10 +89,9 @@
                 const boundary = item.view.boundaries[index];
                 const sourceText = text.get(word.location) ?? word.display_text;
                 const policy = boundary && boundaryPolicies.get(String(boundary.boundary_id));
-                word.display_text = stripBoundaryMarks(
-                    sourceText,
-                    policy?.showMarker ? boundary : undefined,
-                );
+                word.display_text = policy?.showMarker && boundary
+                    ? adoptDisplayStopMark(sourceText, boundary)
+                    : stripBoundaryMarks(sourceText, undefined);
             });
             return { ...item, boundaryPolicies };
         });

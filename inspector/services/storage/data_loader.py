@@ -477,8 +477,10 @@ def load_surah_info_lite() -> dict:
 def word_has_stop(surah: int, ayah: int, word_num: int, riwayah: str = DEFAULT_SDK_RIWAYAH) -> bool:
     """True iff this edition writes a waqf stop sign on the given word.
 
-    Hafs reads ``qpc_hafs.json`` against ``constants.STOP_SIGNS`` (four signs,
-    deliberately excluding the paired stop and the sakt). Other editions read
+    Hafs reads the Digital Khatt word (the 1421 printing's marks, the same text
+    the Segments and Timestamps tabs display) against ``constants.STOP_SIGNS``
+    (four signs, deliberately excluding the paired stop and the sakt). QPC
+    carries the 1405 marks, which disagree on 352 words. Other editions read
     their own script against their own observed inventory — Warsh and Qalun
     carry only U+06D6, on 9,948 words.
     """
@@ -487,8 +489,5 @@ def word_has_stop(surah: int, ayah: int, word_num: int, riwayah: str = DEFAULT_S
 
         text = editions.word_map(riwayah).get(f"{surah}:{ayah}:{word_num}", "")
         return bool(editions.stop_signs(riwayah) & set(text))
-    qpc = load_qpc()
-    entry = qpc.get(f"{surah}:{ayah}:{word_num}")
-    if not entry:
-        return False
-    return bool(STOP_SIGNS & set(entry.get("text", "")))
+    text = get_dk_words_flat().get(f"{surah}:{ayah}:{word_num}", "")
+    return bool(STOP_SIGNS & set(text))

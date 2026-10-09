@@ -66,6 +66,14 @@ There is no legacy reader. Historical v9/v11/v12 objects are accepted only by
 the one-time restampers, which emit the current shape and validate it before
 upload.
 
+`_meta.stop_edition` names the Madinah printing whose waqf marks the stop
+cells carry: `"1421"` (Digital Khatt's, stamped from quranic-phonemizer 3.0.1)
+or absent, meaning the earlier `"1405"`. The two differ on 352 words and only in
+what a shard renders; the Timestamps view takes the drawn mark from the Digital
+Khatt word, so either edition displays correctly. Shards the re-time does not
+rebuild are restamped locally with `scripts/migrations/restamp_stop_edition.py`
+(no re-timing; dry-run unless `--output`).
+
 ## Why the compact codec is native
 
 The SDK builds the complete schema-v2 `analysis`, `source`, and `cells`

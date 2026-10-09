@@ -19,6 +19,7 @@ DISPLAY_ONLY_MARKS = frozenset(
         0x06D6,  # small high sad-lam-alef-maqsura
         0x06D7,  # small high qaf-lam-alef-maqsura
         0x06D8,  # small high meem initial form
+        0x06D9,  # small high lam alef (DK writes none today)
         0x06DA,  # small high jeem
         0x06DB,  # small high three dots
         0x06DE,  # rub el hizb
