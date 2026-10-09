@@ -9,7 +9,9 @@ export interface FixturePart {
 
 export function nativeReading(id: string, parts: FixturePart[]): TsShardReading {
     const words = parts.map((part, index) => ({
-        id: index, ref: `${part.ref}:1`, text: part.text ?? `w${index}`,
+        id: index,
+        ref: `${part.ref}:${parts.slice(0, index).filter((prior) => prior.ref === part.ref).length + 1}`,
+        text: part.text ?? `w${index}`,
         before_boundary_id: index, after_boundary_id: index + 1, sound_ids: [index],
     }));
     const sounds = words.map((word) => ({
