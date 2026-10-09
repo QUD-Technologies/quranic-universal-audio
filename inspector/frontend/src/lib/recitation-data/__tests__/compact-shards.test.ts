@@ -92,3 +92,40 @@ describe('compact timestamp shard pauses', () => {
         });
     });
 });
+
+describe('compact timestamp shard variants (v15)', () => {
+    const catalogue = {
+        iwaja_qayyima: {
+            name: 'Iwaja qayyima', description: null, options: ['sakt', 'idraj'], default: 'sakt',
+        },
+    };
+    const variant = {
+        id: 'iwaja_qayyima', chosen: 'idraj', words: [0, 1], targets: [0, 1],
+        anchor: 'boundary', boundary: 1, by: 'scored', score: 4.0,
+        affected: { sakt: { c: [5, 6], s: [1], b: [1] } },
+    };
+    const v15 = { ...meta, schema_version: 15, variant_catalogue: catalogue, variant_policy: '2026-10-05' };
+
+    it('copies a reading\'s variants with the chapter definitions', () => {
+        const withVariants = {
+            ...reading('r1', ['18:1'], [[100, 400, 0, 2]], [[100, 200], [200, 400]]),
+            variants: [variant],
+        };
+        const plain = reading('r2', ['18:2'], [[500, 600, 0, 1]], [[500, 600]]);
+        const shard = decodeTimestampShard({ _meta: v15, readings: [withVariants, plain] });
+        const [first, second] = shard.readings as Array<{ variants?: unknown; variantCatalogue?: unknown }>;
+
+        expect(first?.variants).toEqual([variant]);
+        expect(first?.variantCatalogue).toEqual(catalogue);
+        expect(second).not.toHaveProperty('variants');
+        expect(second).not.toHaveProperty('variantCatalogue');
+    });
+
+    it('reads native 13 and 15 and rejects a native 14', () => {
+        const one = [reading('r1', ['1:1'], [[100, 200, 0, 1]], [[100, 200]])];
+        expect(() => decodeTimestampShard({ _meta: meta, readings: one })).not.toThrow();
+        expect(() => decodeTimestampShard({ _meta: v15, readings: one })).not.toThrow();
+        expect(() => decodeTimestampShard({ _meta: { ...meta, schema_version: 14 }, readings: one }))
+            .toThrow('schema 14 is unsupported');
+    });
+});
