@@ -190,6 +190,14 @@ def align_env(tmp_path, monkeypatch):
     monkeypatch.setenv("INSPECTOR_HF_TOKEN", "hf_test")
     backend = _hf_bucket.FilesystemBackend(tmp_path)
     _hf_bucket.set_backend(backend)
+    from services.timing import aligner_timing
+
+    backend.timed = []
+    monkeypatch.setattr(
+        aligner_timing,
+        "time_chapter",
+        lambda slug, chapter, entries, **kw: backend.timed.append((slug, chapter, kw)),
+    )
     _seed_catalog(
         vocab=Vocab(
             riwayat=[Riwayah(slug="hafs", short="H", name="Hafs")],
@@ -372,6 +380,7 @@ def test_assemble_publishes_reciter_and_auto_detect_fires(align_env):
         "112:3:1-112:4:5",
     ]
     assert segs[1]["segment_uid"]  # the waqf row got its uid
+    assert backend.timed == [(SLUG, 112, {"riwayah": "hafs", "category": "by_surah_audio"})]
     assert "qalqala_letter" in segs[0] or "is_boundary_adj" in segs[0]  # stamped
 
     history = [

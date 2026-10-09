@@ -236,6 +236,11 @@ def timestamps_path_br(slug: str, chapter: str | int) -> str:
     return reciter_file(slug, f"timestamps/{chapter}.json.br")
 
 
+def timing_path_br(slug: str, chapter: str | int) -> str:
+    """Brotli stored segment times of one audio chapter (written by the aligner)."""
+    return reciter_file(slug, f"timing/{chapter}.json.br")
+
+
 def prefetched_audio_path(slug: str, chapter: str | int) -> str:
     """MP3 written by the katana extraction pipeline for in-review reciters."""
     return reciter_file(slug, f"audio/{chapter}.mp3")

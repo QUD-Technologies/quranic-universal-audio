@@ -9,6 +9,7 @@ import pytest
 
 from qua_shared.schemas import TsJobSettings
 from services.admin import ts_aligner_runner as runner
+from services.timing import aligner_timing
 
 
 class _Reply:
@@ -31,10 +32,10 @@ def delivery(state_persistence, monkeypatch):
     }
     backend.write_json_atomic("reciters/r/detailed.json", detailed)
     backend.write_bytes_atomic("reciters/r/timing/112.json.br", b"stored-112")
-    monkeypatch.setattr(runner.aligner_params, "hf_token", lambda: "tok")
-    monkeypatch.setattr(runner.aligner_params, "extraction_secret", lambda: "sec")
-    monkeypatch.setattr(runner.aligner_params, "aligner_url", lambda: "https://aligner")
-    monkeypatch.setattr(runner, "resolve_bucket_repo", lambda: "o/b")
+    monkeypatch.setattr(aligner_timing.aligner_params, "hf_token", lambda: "tok")
+    monkeypatch.setattr(aligner_timing.aligner_params, "extraction_secret", lambda: "sec")
+    monkeypatch.setattr(aligner_timing.aligner_params, "aligner_url", lambda: "https://aligner")
+    monkeypatch.setattr(aligner_timing, "resolve_bucket_repo", lambda: "o/b")
     return backend
 
 
@@ -73,6 +74,7 @@ def test_a_run_times_each_chapter_and_writes_times_shards_and_record(delivery, m
     assert headers == {"Authorization": "Bearer tok", "X-Extraction-Secret": "sec"}
     assert base64.b64decode(body["times"]) == b"stored-112"
     assert sent[1][1]["times"] is None
+    assert body["shards"] is True
     assert body["audio_refs"] == {"112": "hf://buckets/o/b/reciters/r/audio/112.mp3"}
     assert delivery.read_bytes("reciters/r/timing/113.json.br") == b"times-113"
     assert delivery.read_bytes("reciters/r/timestamps/112.json.br") == b"shard-112"

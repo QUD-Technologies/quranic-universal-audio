@@ -1,8 +1,8 @@
 """Fire + inspect timestamps runs.
 
 Flask-free. The Reviews tab triggers ``launch()`` for an under-review reciter.
-By default the run goes to the aligner (``ts_aligner_runner``: stored segment
-times re-timed where segments changed, v13 shards rebuilt from them);
+By default the run goes to the aligner (``ts_aligner_runner``: v13 shards built
+from the stored segment times, timing only what is still stale);
 ``INSPECTOR_TS_ENGINE=space`` sends it to the MFA batch timing Space
 (``ts_space_client``). Either writes v13 per-chapter shards +
 ``ts_validation.json`` into the inspector bucket and a durable run-log record at
@@ -40,6 +40,7 @@ from datetime import UTC
 from qua_shared.schemas import StaleReason, TsJobRecord, TsJobSettings
 from services.state import state as state_service
 from services.storage.hf_bucket import StorageNotFound, get_backend
+from services.timing.aligner_timing import ts_engine
 
 log = logging.getLogger("inspector")
 
@@ -229,16 +230,10 @@ def in_flight_runs() -> list[dict]:
     return out
 
 
-def ts_engine() -> str:
-    """Where timestamps runs go: ``aligner`` (neural timing, stored segment times;
-    default) or ``space`` (the MFA batch timing Space)."""
-    return (os.environ.get("INSPECTOR_TS_ENGINE") or "aligner").strip().lower()
-
-
 def launch(
     slug: str, *, settings: TsJobSettings, full: bool = False, webhook_base: str | None = None
 ) -> dict:
-    """Fire the timestamps run for ``slug`` (:func:`ts_engine`) and link its run
+    """Fire the timestamps run for ``slug`` (``INSPECTOR_TS_ENGINE``, :func:`ts_engine`) and link its run
     id to the reciter.
 
     ``settings`` carries the admin's form choices; the engine owns the model,
