@@ -2729,7 +2729,7 @@ export interface TsWordShardMeta {
   riwayah: string;
   edition_id: string;
   words_sha256: string;
-  timing_provider: "hafs_proxy_mfa";
+  timing_provider: "hafs_proxy_mfa" | "hafs_proxy_neural";
   reference_riwayah: string;
   reference_id: string;
   projection_id?: string | null;

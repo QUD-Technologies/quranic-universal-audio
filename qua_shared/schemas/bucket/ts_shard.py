@@ -200,7 +200,7 @@ class TsWordShardMeta(BaseModel):
     #: How the intervals were obtained. Only one provider exists: MFA against
     #: the Hafs acoustic model using Hafs proxy phones. Recorded so a consumer
     #: can tell a proxy timing from a future native one without guessing.
-    timing_provider: Literal["hafs_proxy_mfa"]
+    timing_provider: Literal["hafs_proxy_mfa", "hafs_proxy_neural"]
     reference_riwayah: str = Field(min_length=1)
     reference_id: str = Field(min_length=1)
     #: The static Hafs->target map applied, or ``None`` for an identity result.

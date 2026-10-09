@@ -1,11 +1,22 @@
 # Timestamp generation
 
-Timestamps are produced on the batch timing Space (ADR 0002 slice B), not an
-in-container HF Job. The Inspector fires a run with a signed POST to the Space's
-`/internal/v1/timestamps` route (`services/admin/ts_space_client.py`); the Space
-aligns and writes native timestamp-shard v13 + `ts_validation.json` straight to
-the inspector bucket, plus a run-log record the Inspector polls every 120 seconds
-(`services/admin/timestamps_jobs.py`). QUA is a pure consumer of the shards. The
+Timestamps come from the neural timing head on the aligner Space. Each chapter's
+segment times are stored beside its shard, `reciters/<slug>/timing/<chapter>.json.br`
+(one entry per `segment_uid`: the ref and span it was timed with, words with their
+letters and sounds, the model). A run (`services/admin/ts_aligner_runner.py`) sends a
+chapter's detailed.json entries, their bucket audio and those stored times to the
+aligner's `POST /api/v1/extraction/timing`; the aligner keeps every time whose segment
+is unchanged, times the rest, and returns the chapter's times and native v13 shards,
+which the runner writes as returned. A regeneration after edits therefore times only
+the edited segments. The run writes the same run-log record
+(`reciters/<slug>/jobs/ts/<run_id>.json`) the batch Space wrote, so completion,
+releases and the automations (`services/admin/timestamps_jobs.py`) are unchanged.
+Bulk re-timing for a new model is an offline Katana batch (qua
+`engines/timing-batch`, `qua_timing_batch.retime`) that writes the same two files.
+
+`INSPECTOR_TS_ENGINE=space` sends runs to the MFA batch timing Space instead
+(`services/admin/ts_space_client.py`, `/internal/v1/timestamps`), which writes
+shards and `ts_validation.json` directly. QUA is a pure consumer of the shards. The
 complete stored contract is [shards.md](shards.md).
 
 ## Responsibilities

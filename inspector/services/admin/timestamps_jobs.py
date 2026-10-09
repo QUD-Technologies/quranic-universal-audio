@@ -1,13 +1,15 @@
-"""Fire + inspect timestamps runs on the batch timing Space.
+"""Fire + inspect timestamps runs.
 
-Flask-free. The Reviews tab triggers ``launch()`` for an under-review reciter;
-the whole-verse MFA producer runs on the batch timing Space (ADR 0002 slice B),
-which reads detailed.json + audio and writes v13 per-chapter shards +
-``ts_validation.json`` into the inspector bucket. The Space also writes a
-durable run-log record at ``reciters/<slug>/jobs/ts/<run_id>.json`` (settings +
-status + logs) — ``running`` at accept, then ``succeeded``/``failed`` when the
-run ends. Status is that record (``job_status`` reads it); the run id is
-appended to the reciter's ``timestamps_job_ids``.
+Flask-free. The Reviews tab triggers ``launch()`` for an under-review reciter.
+By default the run goes to the aligner (``ts_aligner_runner``: stored segment
+times re-timed where segments changed, v13 shards rebuilt from them);
+``INSPECTOR_TS_ENGINE=space`` sends it to the MFA batch timing Space
+(``ts_space_client``). Either writes v13 per-chapter shards +
+``ts_validation.json`` into the inspector bucket and a durable run-log record at
+``reciters/<slug>/jobs/ts/<run_id>.json`` (settings + status + logs) —
+``running`` at accept, then ``succeeded``/``failed`` when the run ends. Status is
+that record (``job_status`` reads it); the run id is appended to the reciter's
+``timestamps_job_ids``.
 
 Launching does NOT transition the reciter — it stays UNDER_REVIEW (marked_ready)
 while the run proceeds, so a failed run is recoverable (just re-run). On
@@ -227,50 +229,60 @@ def in_flight_runs() -> list[dict]:
     return out
 
 
+def ts_engine() -> str:
+    """Where timestamps runs go: ``aligner`` (neural timing, stored segment times;
+    default) or ``space`` (the MFA batch timing Space)."""
+    return (os.environ.get("INSPECTOR_TS_ENGINE") or "aligner").strip().lower()
+
+
 def launch(
     slug: str, *, settings: TsJobSettings, full: bool = False, webhook_base: str | None = None
 ) -> dict:
-    """Fire the whole-verse timestamps run for ``slug`` on the batch timing
-    Space and link its run id to the reciter.
+    """Fire the timestamps run for ``slug`` (:func:`ts_engine`) and link its run
+    id to the reciter.
 
-    ``settings`` carries the admin's form choices; the Space owns the model,
-    method and padding now, so only ``beams`` + ``chapters`` (affected-only
-    regen scope) reach it. Inside that scope the Space re-aligns only the
-    verses whose segments changed; ``full`` re-aligns everything (the whole
-    reciter when ``chapters`` is empty). The Space writes the ``running`` run-log record
-    synchronously before it returns the run id, so the panel can show the run
-    immediately; there is no HF Job to stage code for. ``webhook_base`` is
-    unused (completion is the polled run-log, not a callback) and kept only for
-    call-site compatibility. Returns ``{"job_id", "url"}``.
+    ``settings`` carries the admin's form choices; the engine owns the model,
+    so only ``chapters`` (affected-only regen scope; ``beams`` too for the MFA
+    Space) reach it. Inside that scope only the segments (aligner) or verses
+    (Space) that changed are re-timed; ``full`` re-times everything (the whole
+    reciter when ``chapters`` is empty). The ``running`` run-log record is written
+    before the run id returns, so the panel can show the run immediately.
+    ``webhook_base`` is unused (completion is the polled run-log, not a callback)
+    and kept only for call-site compatibility. Returns ``{"job_id", "url"}``.
 
     Does NOT transition the reciter — it stays UNDER_REVIEW (marked_ready) while
     the run proceeds. On success ``complete_timestamps_job`` publishes it via the
     ``job_status`` poll fallback. Caller must enforce single-flight via
     ``running_job_for`` first.
     """
-    from services.admin import ts_space_client
+    from services.admin import ts_aligner_runner, ts_space_client
     from services.reference.delivery_edition import sdk_riwayah_for
 
     if state_service.get_row(slug) is None:
         raise ValueError(f"unknown slug {slug}")
 
-    # The Space aligns against Hafs and projects, so it has to be told which
-    # edition the delivery is in — a Hafs-proxy run stamped as Hafs would ship
-    # the wrong coordinates into the shard.
-    run_id = ts_space_client.start_run(
-        slug,
-        chapters=settings.chapters,
-        beams=settings.beams,
-        riwayah=sdk_riwayah_for(slug),
-        full=full,
-    )
+    # Timing runs against Hafs and projects, so it has to be told which edition
+    # the delivery is in — a Hafs-proxy run stamped as Hafs would ship the wrong
+    # coordinates into the shard.
+    if ts_engine() == "aligner":
+        run_id = ts_aligner_runner.start_run(
+            slug, settings=settings, riwayah=sdk_riwayah_for(slug), full=full
+        )
+    else:
+        run_id = ts_space_client.start_run(
+            slug,
+            chapters=settings.chapters,
+            beams=settings.beams,
+            riwayah=sdk_riwayah_for(slug),
+            full=full,
+        )
     state_service.record_timestamps_job(slug, run_id)
     # Bust the in-flight cache so the next /releases/status fetch shows the
     # running job immediately (the Releases tab watches the ``timestamps`` kind).
     from services.storage import cache as _cache
 
     _cache.invalidate_in_flight_jobs_cache()
-    log.info("launched timestamps run %s for %s on the batch Space", run_id, slug)
+    log.info("launched timestamps run %s for %s (%s)", run_id, slug, ts_engine())
     return {"job_id": run_id, "url": None}
 
 
