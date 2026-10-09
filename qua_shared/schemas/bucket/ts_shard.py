@@ -3,17 +3,18 @@
 Two profiles share the path and the Brotli envelope, discriminated by
 ``_meta.profile``:
 
-- **``native``** (schema 13, 14 or 15) — the full phonemizer projection: cells,
-  sounds, rule occurrences, animation tokens. Requires quranic-phonemizer, so it
-  exists only for Hafs. v15 adds a reading's variant faces (``variants``) with
-  the chapter's ``_meta.variant_catalogue`` and ``variant_policy``.
+- **``native``** (schema 15; 13 is still read until the fleet is re-timed) —
+  the full phonemizer projection: cells, sounds, rule occurrences, animation
+  tokens. Requires quranic-phonemizer, so it exists only for Hafs. v15 adds a
+  reading's variant faces (``variants``) with the chapter's
+  ``_meta.variant_catalogue`` and ``variant_policy``.
 - **``word``** (schema 14) — word intervals and provenance only, for a riwayah
   timed through the Hafs MFA proxy. No phones, no letters, no cell geometry;
   those shapes belong to the Hafs reference script and cannot be honestly
   synthesised for another edition.
 
-``profile`` is **absent on every existing v13 object** and reads as ``native``,
-so the 37 published Hafs reciters are never restamped. Dispatch through
+``profile`` is **absent on every native object** and reads as ``native``.
+Dispatch through
 ``qua_shared.timestamps_shards.shard_profile`` / ``parse_shard`` rather than
 matching on ``schema_version`` alone.
 """
@@ -39,7 +40,8 @@ from qua_shared.riwayat import DEFAULT_SDK_RIWAYAH, SUPPORTED_RIWAYAT
 #: every reader from letters to words.
 _WORD_PROFILE_RIWAYAT = frozenset(SUPPORTED_RIWAYAT.values()) - {DEFAULT_SDK_RIWAYAH}
 
-TS_SHARD_SCHEMA_VERSION = 14
+#: The native version the SDK builders stamp; the word profile is 14.
+TS_SHARD_SCHEMA_VERSION = 15
 TsShardProfile = Literal["native", "word"]
 
 TsShardPart = tuple[str, int, int, int, int]
@@ -202,8 +204,7 @@ class TsShardMeta(_OmitsAbsentV15, BaseModel):
     model_config = ConfigDict(extra="allow")
     v15_fields: ClassVar[tuple[str, ...]] = ("variant_catalogue", "variant_policy")
 
-    #: 13 is every object written before the word profile existed; 14 followed
-    #: it and 15 adds reading variants. All are native.
+    #: 15 is what the builders write; 13 is read until every reciter is re-timed.
     #:
     #: There is deliberately NO ``profile`` field here. The native meta is the
     #: one the Flask shard route serves as byte-passthrough, so a defaulted
@@ -212,7 +213,7 @@ class TsShardMeta(_OmitsAbsentV15, BaseModel):
     #: discriminator is read from the raw dict by
     #: ``qua_shared.timestamps_shards.shard_profile``. ``extra="allow"`` means
     #: a document that does carry ``profile: "native"`` still validates.
-    schema_version: Literal[13, 14, 15]
+    schema_version: Literal[13, 15]
     chapter: int = Field(ge=1, le=114)
     audio_category: str = Field(min_length=1)
     phonemizer_version: str = Field(min_length=1)

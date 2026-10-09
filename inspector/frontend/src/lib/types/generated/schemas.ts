@@ -2686,7 +2686,7 @@ export interface TsShardDoc {
   readings: TsShardReading[];
 }
 export interface TsShardMeta {
-  schema_version: 13 | 14 | 15;
+  schema_version: 13 | 15;
   chapter: number;
   audio_category: string;
   phonemizer_version: string;

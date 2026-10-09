@@ -150,7 +150,7 @@ def test_v13_dump_omits_absent_v15_fields():
 
 def test_variants_need_schema_15():
     doc = _v15_doc()
-    doc["_meta"]["schema_version"] = 14
+    doc["_meta"]["schema_version"] = 13
     with pytest.raises(ValidationError, match="need schema v15"):
         TsShardDoc.model_validate(doc)
 

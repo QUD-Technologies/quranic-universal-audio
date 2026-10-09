@@ -11,12 +11,12 @@ profiles, discriminated by `_meta.profile`:
 
 | Profile | Schema | Contains | Produced for |
 |---|---|---|---|
-| `native` | 13, 14 or 15 | full phonemizer cells, sounds, animation tokens; v15 adds reading variants | Hafs |
+| `native` | 15 (13 read until the fleet re-time) | full phonemizer cells, sounds, animation tokens, reading variants | Hafs |
 | `word` | 14 | proxy-timed words + pause boundaries, nothing below | the other three riwayat |
 
-**Absent `profile` reads as `native`.** Every v13 object predates the
-discriminator, and existing Hafs shards are never restamped, so a reader must
-branch on `shard_profile()` / `isWordShard()` and never on `schema_version`.
+**Absent `profile` reads as `native`.** No native object carries the
+discriminator, so a reader must branch on `shard_profile()` / `isWordShard()`
+and never on `schema_version`.
 
 The word profile is documented in full in
 [`editions.md`](editions.md#5-the-word-profile-shard); the rest of this page is
@@ -24,13 +24,13 @@ the native profile.
 
 ## Contract
 
-A native object is a closed schema-v13/v14/v15 JSON document compressed with
+A native object is a closed schema-v15 JSON document compressed with
 deterministic Brotli quality 6:
 
 ```json
 {
   "_meta": {
-    "schema_version": 13,
+    "schema_version": 15,
     "chapter": 1,
     "audio_category": "by_surah",
     "phonemizer_version": "3.0",
