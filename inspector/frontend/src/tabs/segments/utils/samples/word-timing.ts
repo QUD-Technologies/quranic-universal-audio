@@ -1,7 +1,10 @@
 import type { SegWordTiming } from '../../../../lib/types/generated/schemas';
 
+/** A word interval: review-sample timings and stored segment times share this shape. */
+export type WordInterval = Pick<SegWordTiming, 'location' | 'start_ms' | 'end_ms'>;
+
 /** Return the word interval sounding at `timeMs`, or -1 between intervals. */
-export function wordIndexAt(timeMs: number, timings: SegWordTiming[] | null | undefined): number {
+export function wordIndexAt(timeMs: number, timings: WordInterval[] | null | undefined): number {
     if (!timings?.length) return -1;
     return timings.findIndex((word, index) =>
         timeMs >= word.start_ms
@@ -10,7 +13,7 @@ export function wordIndexAt(timeMs: number, timings: SegWordTiming[] | null | un
 }
 
 /** Guard against displaying stale timings after a reference edit. */
-export function timingsMatchRef(ref: string, timings: SegWordTiming[] | null | undefined): boolean {
+export function timingsMatchRef(ref: string, timings: WordInterval[] | null | undefined): boolean {
     if (!ref || !timings?.length || !ref.includes(':')) return false;
     const [start, end = start] = ref.split('-');
     return timings[0]?.location === start && timings[timings.length - 1]?.location === end;
@@ -20,7 +23,7 @@ export function timingsMatchRef(ref: string, timings: SegWordTiming[] | null | u
  * Historical word-timing text may use a different script; if its coordinates
  * cannot reproduce the displayed reference exactly, omit word highlights. */
 export function displayWordsForTimings(
-    timings: SegWordTiming[],
+    timings: WordInterval[],
     bodyText: string,
     dkWords: Record<string, string> | undefined,
     verseWordCounts: Record<string, number> | undefined,
