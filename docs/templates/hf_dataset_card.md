@@ -6,8 +6,7 @@ extra_gated_heading: Accept the QUA Dataset License 1.0 to access this dataset
 extra_gated_prompt: |
   This dataset is distributed under the **QUA Dataset License 1.0** by QUD Technologies. By requesting access you agree to its terms, including:
 
-  - **Free access.** Any app or feature that uses this data, or a model trained, fine-tuned, distilled, evaluated or benchmarked on it (or on such a model's output), must be free for every user: no charge, not behind, restricted to, or enhanced in a paid tier, no partial or gated access. The app itself must be free; other, unrelated features may be paid.
-  - **No advertising** anywhere in an app that uses this data or such a model.
+  - **Free access.** Any app or feature that uses this data, or a model trained, fine-tuned, distilled, evaluated or benchmarked on it (or on such a model's output), must be available in full to every user at no extra charge: not behind, restricted to, or enhanced in a paid tier, no partial or gated access. The app itself may be paid, and other, unrelated features may be paid.
   - **No selling** the data or access to it, including through a paid API or to another business.
   - **Share-alike.** Derivatives, including models, may only be distributed under this license.
   - **Declaration and disclosure.** Published models and datasets must state they used QUA, and you must answer truthfully if QUD Technologies asks whether a model or feature used it.
@@ -26,7 +25,7 @@ extra_gated_fields:
       - Personal study
       - label: Other
         value: other
-  I have read and agree to the QUA Dataset License 1.0, including its free-access and no-advertising conditions: checkbox
+  I have read and agree to the QUA Dataset License 1.0, including its free-access conditions: checkbox
 extra_gated_button_content: Accept and access
 task_categories:
 - automatic-speech-recognition
@@ -156,4 +155,4 @@ print(catalog[0]["name_en"], catalog[0]["riwayah"])
 
 [QUA Dataset License 1.0](https://github.com/QUD-Technologies/quranic-universal-audio/blob/main/LICENSE-DATA) (`qua-dataset-1.0`), by [QUD Technologies](https://qud.dev).
 
-In short: use it freely, including in commercial products. Any app or feature using this data, or a model trained, fine-tuned, distilled, evaluated or benchmarked on it (or on such a model's output), must be free for every user and fully accessible - not behind, restricted to, or enhanced in a paid tier - in an app that is itself free and shows no advertising; other, unrelated features may be paid. Don't sell the data. Share derivatives under the same license. Credit QUD Technologies - Qur'anic Universal Audio. The full license text governs.
+In short: use it freely, including in commercial products. Any app or feature using this data, or a model trained, fine-tuned, distilled, evaluated or benchmarked on it (or on such a model's output), must be available in full to every user at no extra charge - not behind, restricted to, or enhanced in a paid tier - even if the app itself is paid; other, unrelated features may be paid. Don't sell the data. Share derivatives under the same license. Credit QUD Technologies - Qur'anic Universal Audio. The full license text governs.
