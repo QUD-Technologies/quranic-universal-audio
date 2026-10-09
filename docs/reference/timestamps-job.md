@@ -3,16 +3,25 @@
 Timestamps come from the neural timing head on the aligner Space. Each chapter's
 segment times are stored beside its shard, `reciters/<slug>/timing/<chapter>.json.br`
 (one entry per `segment_uid`: the ref and span it was timed with, words with their
-letters and sounds, the model). A run (`services/admin/ts_aligner_runner.py`) sends a
-chapter's detailed.json entries, their bucket audio and those stored times to the
-aligner's `POST /api/v1/extraction/timing`; the aligner keeps every time whose segment
-is unchanged, times the rest, and returns the chapter's times and native v13 shards,
-which the runner writes as returned. A regeneration after edits therefore times only
-the edited segments. The run writes the same run-log record
-(`reciters/<slug>/jobs/ts/<run_id>.json`) the batch Space wrote, so completion,
-releases and the automations (`services/admin/timestamps_jobs.py`) are unchanged.
-Bulk re-timing for a new model is an offline Katana batch (qua
-`engines/timing-batch`, `qua_timing_batch.retime`) that writes the same two files.
+letters and sounds, the model). Every call goes through the aligner's
+`POST /api/v1/extraction/timing` (`services/timing/aligner_timing.py`): it receives a
+chapter's detailed.json entries, their bucket audio and the stored times, keeps every
+time whose segment is unchanged and times the rest.
+
+- **Align** stores them: the run's assemble stage times every chapter's final segments.
+- **Saves and undos** re-time their chapter in the background
+  (`services/timing/retime_queue.py`); only the changed segments are timed.
+- **Segment cards** read them back (`GET /api/seg/word-times/<reciter>/<chapter>`) and
+  light the sounding word while a card plays.
+- **A timestamps run** (`services/admin/ts_aligner_runner.py`) asks for the chapter's
+  native v13 shards as well; with the times already current it only builds them. A
+  chapter with a failed segment keeps its previous shards and fails the run. The run
+  writes the same run-log record (`reciters/<slug>/jobs/ts/<run_id>.json`) the batch
+  Space wrote, so completion, releases and the automations
+  (`services/admin/timestamps_jobs.py`) are unchanged.
+
+Bulk re-timing for a new model is an offline Katana batch (qua `engines/timing-batch`,
+`qua_timing_batch.retime`) that writes the same two files.
 
 `INSPECTOR_TS_ENGINE=space` sends runs to the MFA batch timing Space instead
 (`services/admin/ts_space_client.py`, `/internal/v1/timestamps`), which writes
