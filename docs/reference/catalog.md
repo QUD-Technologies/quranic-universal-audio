@@ -208,6 +208,11 @@ is never eligible for a public HF dataset split or GitHub release member.
 
 Chapter keys: `"1"`–`"114"` (by_surah) or `"<surah>:<ayah>"` (by_ayah). Per-chapter metric fields nullable until probed. `ChapterEntry` fields: `url` (required), `size_bytes`, `duration_sec`, `bitrate_kbps`, `bitrate_mode` (`cbr`/`vbr` per chapter), and `max_linear_seek_err_ms` (probe verdict evidence).
 
+**URL hygiene (#285).** `ChapterEntry.url` is a remote URL or a bucket-relative key (fixtures mode) — the
+schema rejects an absolute filesystem path / `file:` URI; `ChapterEntry.source_url` and `ManifestSource.url`
+must be `http(s)`. Every manifest writer round-trips through `AudioManifestSidecar`, so a machine-local
+download path can no longer reach the bucket; `scripts/diagnostics/validate_bucket.py` flags any legacy one.
+
 `sources` (`list[ManifestSource]`, `{url, title}`) holds playlist files whose surahs are not known yet: an online playlist intake mints with `chapters: {}` and every included file here. The align run detects each file's surahs, writes the chapters (bucket `url` + original `source_url` + `source_offset_ms`) and clears `sources`. The key is omitted from the dump when empty, so every other manifest keeps its on-disk shape.
 
 `AudioManifestSidecar` (`qua_shared/schemas/bucket/catalog.py`) is a bucket artefact with pure `extra="forbid"`: any unknown/legacy sidecar field raises `ValidationError` on parse (writer-drift signal), never silently stripped — the same external-file strictness the bucket-validation harness surfaces.

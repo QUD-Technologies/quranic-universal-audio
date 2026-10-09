@@ -6,6 +6,8 @@ pass is still caught.
 from __future__ import annotations
 
 from qua_shared.dataset_validation import (
+    check_audio_chapter,
+    check_canonical_order,
     check_canonical_uniqueness,
     check_intra_segment_gapless,
     fatal_violations,
@@ -46,3 +48,25 @@ def test_canonical_uniqueness_flags_zero_and_double_canonical_refs():
     assert [(v["ref"], v["canonical_rows"]) for v in violations] == [("1:2", 0), ("1:3", 2)]
     assert all(v["violation"] == "canonical_uniqueness" for v in violations)
     assert fatal_violations(violations) == violations
+
+
+def test_audio_chapter_flags_verses_timed_in_another_chapters_audio():
+    # Upstream 089.mp3 opens with 88:16-17 (abdur_rashid_sufi_shubah_qdc, #284).
+    violations = check_audio_chapter(
+        [("88:15", 88), ("88:16", 89), ("88:16", 89), ("88:17", 89), ("89:1", 89)]
+    )
+    assert [(v["ref"], v["audio_chapter"]) for v in violations] == [("88:16", 89), ("88:17", 89)]
+    assert fatal_violations(violations) == violations
+
+
+def test_canonical_order_flags_a_descent_within_a_surah():
+    # A stray 112:2-4 lead-in won canonical before 112:1 (islam_sobhi_mp3quran, #284).
+    violations = check_canonical_order(
+        [("112:2", 1905), ("112:3", 4269), ("112:4", 7103), ("112:1", 10746), ("113:1", 0)]
+    )
+    assert [(v["ref"], v["after_ref"]) for v in violations] == [("112:1", "112:4")]
+    assert fatal_violations(violations) == violations
+
+
+def test_canonical_order_ignores_input_order_and_other_surahs():
+    assert check_canonical_order([("2:2", 900), ("1:7", 5000), ("2:1", 100), ("1:1", 0)]) == []

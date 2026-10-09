@@ -422,6 +422,42 @@ def test_combined_source_surfaces_native_url_and_offset():
     assert offsets == {"2": 215000}  # only the non-zero offset is emitted
 
 
+def test_combined_source_link_wins_over_local_or_bucket_url():
+    sidecar = {
+        "_meta": {"checksum": "abc", "chapter_count": 2, "category": "by_surah"},
+        "chapters": {
+            "1": {"url": "/srv/scratch/x/001.mp3", "source_url": "https://youtu.be/AAA"},
+            "2": {
+                "url": "https://huggingface.co/buckets/o/b/resolve/reciters/x/audio/2.mp3",
+                "source_url": "https://youtu.be/BBB",
+            },
+        },
+    }
+
+    urls, _ = cut_release._audio_sources_from_manifest("x", sidecar)
+    assert urls == {"1": "https://youtu.be/AAA", "2": "https://youtu.be/BBB"}
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        # Offline-intake leftover (issue #285): a scratch path, no source link.
+        {"url": "/srv/scratch/qua_offline/intake/audio/x/001.mp3"},
+        {"url": "reciters/x/audio/1.mp3", "source_url": r"C:\tmp\001.mp3"},
+        # An internal bucket link is not a consumer source either.
+        {"url": "https://huggingface.co/buckets/o/b/resolve/reciters/x/audio/1.mp3"},
+    ],
+)
+def test_a_chapter_without_a_public_link_aborts_the_build(entry):
+    sidecar = {
+        "_meta": {"checksum": "abc", "chapter_count": 2, "category": "by_surah"},
+        "chapters": {"1": entry, "2": {"url": "https://cdn.example/2.mp3"}},
+    }
+
+    with pytest.raises(RuntimeError, match=r"offline_reciter: .*\['1'\]"):
+        cut_release._audio_sources_from_manifest("offline_reciter", sidecar)
+
+
 def test_single_file_offset_emitted_without_source_url():
     # A unique-per-chapter source whose recitation starts after a lead-in: the
     # URL is already native (no ``source_url``) but the offset must still ship.
@@ -549,3 +585,21 @@ def test_build_workers_env_override(monkeypatch):
     assert cut_release._build_workers() == 3
     monkeypatch.setenv(cut_release.BUILD_WORKERS_ENV, "")
     assert 1 <= cut_release._build_workers() <= cut_release.DEFAULT_BUILD_WORKERS
+
+
+def test_validate_occurrences_aborts_on_a_verse_timed_in_another_chapters_audio():
+    raw = [{"ref": "88:16", "canonical": True, "verse_start_ms": 160, "chapter": 89}]
+    with pytest.raises(cut_release._FatalViolations) as exc:
+        cut_release._validate_occurrences("slug", [], {}, raw)
+    assert [v["violation"] for v in exc.value.fatal] == ["foreign_chapter"]
+
+
+def test_validate_occurrences_aborts_on_canonical_rows_out_of_order():
+    raw = [
+        {"ref": "112:2", "canonical": True, "verse_start_ms": 1905, "chapter": 112},
+        {"ref": "112:1", "canonical": True, "verse_start_ms": 10746, "chapter": 112},
+        {"ref": "112:2", "canonical": False, "verse_start_ms": 13445, "chapter": 112},
+    ]
+    with pytest.raises(cut_release._FatalViolations) as exc:
+        cut_release._validate_occurrences("slug", [], {}, raw)
+    assert [v["violation"] for v in exc.value.fatal] == ["canonical_order"]

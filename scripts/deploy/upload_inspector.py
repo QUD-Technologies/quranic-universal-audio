@@ -105,6 +105,7 @@ short_description: Visualize, edit & verify Qur'anic recitation timestamps
 sdk: docker
 app_port: 7860
 pinned: false
+thumbnail: https://qud.dev/og/audio.png
 ---
 """
 
