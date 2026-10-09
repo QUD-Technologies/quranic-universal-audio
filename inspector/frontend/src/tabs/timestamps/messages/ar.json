@@ -343,5 +343,13 @@
   "ts_mushaf_repeat_invalid": "أدخل الآيات بصيغة سورة:آية، مثل 2:255.",
   "ts_mushaf_repeat_empty": "لا توجد آية مسجلة لهذا القارئ في هذا النطاق.",
   "ts_mushaf_repeat_progress": "الآية {verse} · {rep} من {each} · الجولة {round} من {rounds}",
-  "ts_shortcuts_label_mushaf": "عرض المصحف"
+  "ts_shortcuts_label_mushaf": "عرض المصحف",
+  "ts_variant_this_recitation": "هذه التلاوة",
+  "ts_variant_other_reading": "وجه آخر",
+  "ts_variant_note_scored": "الفارق الصوتي {score}",
+  "ts_variant_note_tie": "تساوت الدرجات، فأُبقي الوجه الافتراضي",
+  "ts_variant_note_length": "المدّ {share} × p5 المدّ اللازم",
+  "ts_variant_note_majority": "أغلب مواضع هذا التسجيل",
+  "ts_variant_note_pause": "وقفة {ms} ms",
+  "ts_variant_note_default": "لا دليل، فيُعرض الوجه الافتراضي"
 }
