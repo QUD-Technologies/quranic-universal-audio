@@ -422,26 +422,40 @@ def test_combined_source_surfaces_native_url_and_offset():
     assert offsets == {"2": 215000}  # only the non-zero offset is emitted
 
 
-def test_local_filesystem_paths_never_leak_as_chapter_urls():
-    # Offline-intake manifests can carry a scratch path in ``url`` / ``source_url``
-    # (issue #285); only remote http(s) URLs are consumer-actionable.
+def test_combined_source_link_wins_over_local_or_bucket_url():
     sidecar = {
-        "_meta": {"checksum": "abc", "chapter_count": 3, "category": "by_surah"},
+        "_meta": {"checksum": "abc", "chapter_count": 2, "category": "by_surah"},
         "chapters": {
-            "1": {"url": "/srv/scratch/qua_offline/intake/audio/x/001.mp3"},
+            "1": {"url": "/srv/scratch/x/001.mp3", "source_url": "https://youtu.be/AAA"},
             "2": {
-                "url": "/srv/scratch/qua_offline/intake/audio/x/002.mp3",
-                "source_url": "https://youtu.be/AAA",
-            },
-            "3": {
-                "url": "https://cdn.example/3.mp3",
-                "source_url": "/srv/scratch/qua_offline/intake/audio/x/003.mp3",
+                "url": "https://huggingface.co/buckets/o/b/resolve/reciters/x/audio/2.mp3",
+                "source_url": "https://youtu.be/BBB",
             },
         },
     }
 
-    urls, _ = cut_release._audio_sources_from_manifest("offline_reciter", sidecar)
-    assert urls == {"2": "https://youtu.be/AAA", "3": "https://cdn.example/3.mp3"}
+    urls, _ = cut_release._audio_sources_from_manifest("x", sidecar)
+    assert urls == {"1": "https://youtu.be/AAA", "2": "https://youtu.be/BBB"}
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        # Offline-intake leftover (issue #285): a scratch path, no source link.
+        {"url": "/srv/scratch/qua_offline/intake/audio/x/001.mp3"},
+        {"url": "reciters/x/audio/1.mp3", "source_url": r"C:\tmp\001.mp3"},
+        # An internal bucket link is not a consumer source either.
+        {"url": "https://huggingface.co/buckets/o/b/resolve/reciters/x/audio/1.mp3"},
+    ],
+)
+def test_a_chapter_without_a_public_link_aborts_the_build(entry):
+    sidecar = {
+        "_meta": {"checksum": "abc", "chapter_count": 2, "category": "by_surah"},
+        "chapters": {"1": entry, "2": {"url": "https://cdn.example/2.mp3"}},
+    }
+
+    with pytest.raises(RuntimeError, match=r"offline_reciter: .*\['1'\]"):
+        cut_release._audio_sources_from_manifest("offline_reciter", sidecar)
 
 
 def test_single_file_offset_emitted_without_source_url():

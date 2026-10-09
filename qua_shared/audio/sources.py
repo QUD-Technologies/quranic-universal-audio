@@ -26,17 +26,43 @@ SLOT_BASE = 201
 MAX_SLOT = 999
 
 
+_REMOTE_SCHEMES = ("http://", "https://")
+#: Inspector bucket links — internal storage, never a consumer-facing source.
+_BUCKET_URL_MARKER = "huggingface.co/buckets/"
+#: An absolute filesystem path or file URI (POSIX, Windows drive, UNC, home).
+_LOCAL_PATH_RE = re.compile(r"^(?:/|\\|~|file:|[A-Za-z]:[\\/])", re.IGNORECASE)
+
+
+def is_remote_url(value: object) -> bool:
+    """True for an ``http(s)://`` URL."""
+    return isinstance(value, str) and value.strip().lower().startswith(_REMOTE_SCHEMES)
+
+
+def is_local_path(value: object) -> bool:
+    """True for an absolute filesystem path or ``file:`` URI — a machine-local
+    location (e.g. an offline-intake scratch download, #285) that must never be
+    persisted as a manifest URL."""
+    return isinstance(value, str) and bool(_LOCAL_PATH_RE.match(value.strip()))
+
+
 def public_source_url(entry: dict) -> str | None:
     """The consumer-facing link for a manifest chapter: its ``source_url`` (the
     original file of a combined source), else its ``url`` — whichever is a
-    remote http(s) URL. ``None`` when neither is (e.g. an offline-intake
-    manifest that recorded a local scratch path), so releases never ship one."""
+    remote http(s) URL outside the Inspector bucket. ``None`` when neither is
+    (a local path or an internal bucket link), so releases never ship one."""
     for candidate in (entry.get("source_url"), entry.get("url")):
-        if isinstance(candidate, str) and candidate.strip().lower().startswith(
-            ("http://", "https://")
-        ):
+        if is_remote_url(candidate) and _BUCKET_URL_MARKER not in candidate.lower():
             return candidate.strip()
     return None
+
+
+def chapters_without_public_source(chapters: dict) -> list[str]:
+    """Manifest chapter keys with no :func:`public_source_url` — the release
+    adapters refuse to ship a recitation while any remain."""
+    return sorted(
+        (str(key) for key, entry in chapters.items() if not public_source_url(entry or {})),
+        key=lambda k: tuple(int(p) if p.isdigit() else 0 for p in k.split(":")),
+    )
 
 
 @dataclass(frozen=True)

@@ -52,7 +52,10 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from qua_shared.audio.sources import public_source_url  # noqa: E402
+from qua_shared.audio.sources import (  # noqa: E402
+    chapters_without_public_source,
+    public_source_url,
+)
 from qua_shared.digital_khatt import (  # noqa: E402
     DIGITAL_KHATT_FONT_FILENAME,
     DIGITAL_KHATT_SCRIPT_FILENAME,
@@ -444,14 +447,25 @@ def _audio_sources_from_manifest(
         return {}, {}
     chapters = audio_manifest.get("chapters")
     if isinstance(chapters, dict):
+        chapters = {
+            key: chapter
+            for key, chapter in chapters.items()
+            if (key.isdigit() or ":" in key) and isinstance(chapter, dict)
+        }
+        unlinked = chapters_without_public_source(chapters)
+        if unlinked:
+            # A local path / bucket link must never ship (#285), and dropping
+            # the chapter would silently strand its timestamps — repair the
+            # manifest instead.
+            raise RuntimeError(
+                f"{slug}: audio_manifest chapters {unlinked[:10]} have no public "
+                f"source URL ({len(unlinked)} total)"
+            )
         urls: dict[str, str] = {}
         offsets: dict[str, int] = {}
         for key, chapter in sorted(chapters.items()):
-            if not (key.isdigit() or ":" in key) or not isinstance(chapter, dict):
-                continue
             url = public_source_url(chapter)
-            if url is None:
-                continue
+            assert url is not None
             urls[key] = url
             offset = int(chapter.get("source_offset_ms") or 0)
             if offset > 0:
