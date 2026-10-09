@@ -1,4 +1,4 @@
-"""Strict round-trip tests for compact native timestamp shards (v13, v15)."""
+"""Strict round-trip tests for compact native timestamp shards (v15)."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from qua_shared.schemas import TsShardDoc
 def _doc() -> dict:
     return {
         "_meta": {
-            "schema_version": 13,
+            "schema_version": 15,
             "chapter": 1,
             "audio_category": "by_surah",
             "phonemizer_version": "2.15.0",
@@ -51,7 +51,7 @@ def _doc() -> dict:
     }
 
 
-def test_native_v13_round_trips_compact_storage():
+def test_native_round_trips_compact_storage():
     doc = _doc()
     model = TsShardDoc.model_validate(doc)
     assert model.model_dump(by_alias=True, mode="json") == doc
@@ -118,7 +118,6 @@ _CATALOGUE = {
 def _v15_doc() -> dict:
     """Two words, two sounds, boundaries 1–2, and one boundary-anchored variant."""
     doc = _doc()
-    doc["_meta"]["schema_version"] = 15
     doc["_meta"]["variant_catalogue"] = copy.deepcopy(_CATALOGUE)
     doc["_meta"]["variant_policy"] = "2026-10-05"
     reading = doc["readings"][0]
@@ -143,16 +142,17 @@ def test_native_v15_with_variants_round_trips():
     assert variants is not None and variants[0].affected["sakt"].c == [5, 6]
 
 
-def test_v13_dump_omits_absent_v15_fields():
+def test_dump_omits_absent_variant_fields():
     dumped = TsShardDoc.model_validate(_doc()).model_dump(by_alias=True, mode="json")
     assert "variants" not in dumped["readings"][0]
     assert "variant_catalogue" not in dumped["_meta"]
 
 
-def test_variants_need_schema_15():
-    doc = _v15_doc()
-    doc["_meta"]["schema_version"] = 13
-    with pytest.raises(ValidationError, match="need schema v15"):
+@pytest.mark.parametrize("version", [13, 14])
+def test_native_schema_before_15_is_rejected(version):
+    doc = _doc()
+    doc["_meta"]["schema_version"] = version
+    with pytest.raises(ValidationError, match="schema_version"):
         TsShardDoc.model_validate(doc)
 
 

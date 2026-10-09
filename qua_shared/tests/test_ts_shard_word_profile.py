@@ -109,8 +109,8 @@ def _shard(**meta_overrides) -> dict:
 
 
 def test_absent_profile_reads_as_native():
-    """Every existing v13 object predates ``profile`` and must stay native."""
-    assert shard_profile({"_meta": {"schema_version": 13}}) == "native"
+    """No native object carries ``profile``; absent means native."""
+    assert shard_profile({"_meta": {"schema_version": 15}}) == "native"
     assert shard_profile({}) == "native"
 
 
@@ -120,13 +120,13 @@ def test_word_profile_is_discriminated():
 
 
 def test_native_meta_accepts_every_native_schema_version():
-    """The builders write 15; 13 is read until every reciter is re-timed."""
-    assert NATIVE_SHARD_SCHEMA_VERSIONS == (13, 15)
+    """Native shards are read at the version the builders write."""
+    assert NATIVE_SHARD_SCHEMA_VERSIONS == (15,)
     assert TS_SHARD_SCHEMA_VERSION == 15
     meta_model = TsShardDoc.model_fields["meta"].annotation
     assert isinstance(meta_model, type) and issubclass(meta_model, BaseModel)
     fields = meta_model.model_fields
-    assert get_args(fields["schema_version"].annotation) == (13, 15)
+    assert get_args(fields["schema_version"].annotation) == (15,)
 
 
 def test_native_meta_declares_no_profile_field():
@@ -138,7 +138,7 @@ def test_native_meta_declares_no_profile_field():
     assert "profile" not in meta_model.model_fields
     native = {
         "_meta": {
-            "schema_version": 13,
+            "schema_version": 15,
             "chapter": 1,
             "audio_category": "by_surah",
             "phonemizer_version": "3.0",

@@ -9,7 +9,7 @@ import pytest
 
 def _shard(*readings: dict) -> bytes:
     return brotli.compress(
-        orjson.dumps({"_meta": {"schema_version": 13, "chapter": 2}, "readings": list(readings)}),
+        orjson.dumps({"_meta": {"schema_version": 15, "chapter": 2}, "readings": list(readings)}),
         quality=1,
     )
 
@@ -44,7 +44,7 @@ def test_verse_serves_one_ayah_as_a_shard_document(flask_client, chapter):
     assert res.headers["Content-Encoding"] == "br"
     assert res.mimetype == "application/json"
     doc = _read(res)
-    assert doc["_meta"]["schema_version"] == 13
+    assert doc["_meta"]["schema_version"] == 15
     assert [r["id"] for r in doc["readings"]] == ["r3"]
 
 

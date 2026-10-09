@@ -1,6 +1,6 @@
-"""Decode the compact renderer/timing payload stored in native shards (schema 13–15).
+"""Decode the compact renderer/timing payload stored in native shards (schema 15).
 
-A v15 reading's ``variants`` pass through unchanged."""
+A reading's ``variants`` pass through unchanged."""
 
 from __future__ import annotations
 
