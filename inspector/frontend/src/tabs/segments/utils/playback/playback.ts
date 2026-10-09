@@ -211,12 +211,13 @@ const _drawLoop: AnimationLoop = createAnimationLoop(() => {
  * @returns true when it seeked or stopped (caller skips this frame's draw).
  */
 /** The word intervals the playing card highlights: a review sample's own timings, else
- *  the stored segment times (a segment without them refetches its chapter's). */
+ *  the stored segment times (a card without valid ones refetches its chapter's). */
 function _highlightTimings(seg: Segment, chapter: number): WordInterval[] {
     if (get(isSampleMode)) return seg.word_timings ?? [];
-    const stored = storedWordTimes(chapter, seg.segment_uid);
-    if (!stored.length) ensureWordTimes(get(selectedReciter), chapter, true);
-    return timingsMatchRef(seg.matched_ref, stored) ? stored : [];
+    const stored = storedWordTimes(chapter, seg);
+    if (timingsMatchRef(seg.matched_ref, stored)) return stored;
+    ensureWordTimes(get(selectedReciter), chapter, true);
+    return [];
 }
 
 function _maybeSkipDeletedGap(timeMs: number): boolean {

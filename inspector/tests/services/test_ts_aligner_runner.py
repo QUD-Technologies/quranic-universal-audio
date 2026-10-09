@@ -78,10 +78,24 @@ def test_a_run_times_each_chapter_and_writes_times_shards_and_record(delivery, m
     assert body["audio_refs"] == {"112": "hf://buckets/o/b/reciters/r/audio/112.mp3"}
     assert delivery.read_bytes("reciters/r/timing/113.json.br") == b"times-113"
     assert delivery.read_bytes("reciters/r/timestamps/112.json.br") == b"shard-112"
+    # A chapter with a failed segment keeps its previous shards and fails the run.
+    assert not delivery.exists("reciters/r/timestamps/113.json.br")
     validation = json.loads(delivery.read_bytes("reciters/r/ts_validation.json"))
     assert validation["failed_segments"] == {"113": [{"seg": 0}]}
     assert validation["_meta"]["aligner_model"] == "head@1"
-    assert _record(delivery, "run1")["status"] == "succeeded"
+    stored = _record(delivery, "run1")
+    assert stored["status"] == "failed" and "113" in stored["error"]
+
+
+def test_a_canceled_run_stops_and_stays_canceled(delivery, monkeypatch):
+    sent: list = []
+    _serve(monkeypatch, sent)
+    record = runner.TsJobRecord(job_id="run4", slug="r", settings=TsJobSettings())
+    runner._write(record.model_copy(update={"status": "canceled"}))
+    runner._run(record, "hafs", False)
+
+    assert sent == []
+    assert _record(delivery, "run4")["status"] == "canceled"
 
 
 def test_a_scoped_run_keeps_other_chapters_failures(delivery, monkeypatch):

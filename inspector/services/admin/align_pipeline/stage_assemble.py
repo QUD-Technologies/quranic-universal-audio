@@ -87,17 +87,12 @@ def _store_times(slug: str, run_id: str, riwayah: str) -> None:
     any failed, so a retry times what is left."""
     if not aligner_timing.enabled():
         return
-    detailed = aligner_timing.read_detailed(slug)
-    by_chapter = aligner_timing.entries_by_chapter(detailed)
-    category = aligner_timing.audio_category(detailed)
     failed = []
-    for chapter in sorted(by_chapter):
+    for chapter in aligner_timing.chapters_of(slug):
         progress.check_cancel(run_id)
         progress.set_detail(run_id, timing_chapter=chapter)
         try:
-            aligner_timing.time_chapter(
-                slug, chapter, by_chapter[chapter], riwayah=riwayah, category=category
-            )
+            aligner_timing.time_chapter(slug, chapter, riwayah=riwayah)
         except Exception:  # noqa: BLE001 — every chapter is tried; the run fails after
             log.exception("align %s: timing chapter %s failed", run_id, chapter)
             failed.append(chapter)

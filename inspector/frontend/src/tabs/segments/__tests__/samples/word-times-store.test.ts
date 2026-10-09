@@ -9,9 +9,11 @@ import {
 } from '../../stores/word-times';
 
 const WORDS = [{ location: '112:1:1', start_ms: 1000, end_ms: 1400 }];
+const TIMES = { start_ms: 1000, end_ms: 1400, words: WORDS };
+const CARD = { segment_uid: 'a', time_start: 1000, time_end: 1400 };
 
-function serve(segments: Record<string, typeof WORDS>) {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ segments })));
+function serve(segments: Record<string, typeof TIMES>) {
+    const fetchMock = vi.fn(async (_url: string) => new Response(JSON.stringify({ segments })));
     vi.stubGlobal('fetch', fetchMock);
     return fetchMock;
 }
@@ -29,15 +31,16 @@ describe('stored word times', () => {
     });
 
     it('loads a chapter once however many cards ask', async () => {
-        const fetchMock = serve({ a: WORDS });
+        const fetchMock = serve({ a: TIMES });
         ensureWordTimes('r', 112);
         ensureWordTimes('r', '112');
         await settle();
         ensureWordTimes('r', 112);
         expect(fetchMock).toHaveBeenCalledTimes(1);
         expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/seg/word-times/r/112');
-        expect(storedWordTimes(112, 'a')).toEqual(WORDS);
-        expect(storedWordTimes(112, 'missing')).toEqual([]);
+        expect(storedWordTimes(112, CARD)).toEqual(WORDS);
+        expect(storedWordTimes(112, { ...CARD, segment_uid: 'missing' })).toEqual([]);
+        expect(storedWordTimes(112, { ...CARD, time_end: 1300 })).toEqual([]);
     });
 
     it('refetches a chapter on request only after the throttle', async () => {
@@ -54,7 +57,7 @@ describe('stored word times', () => {
     });
 
     it('drops every chapter on a reciter switch', async () => {
-        serve({ a: WORDS });
+        serve({ a: TIMES });
         ensureWordTimes('r', 112);
         await settle();
         ensureWordTimes('other', 2);

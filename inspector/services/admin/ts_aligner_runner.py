@@ -9,7 +9,9 @@ chapter's times and shards, written as returned.
 
 ``start_run`` writes the ``running`` run record (``jobs/ts/<run_id>.json``, the shape the
 batch Space wrote) and works on a daemon thread, stamping the record ``succeeded`` or
-``failed`` at the end, so completion, releases and the automations read it unchanged.
+``failed`` at the end, so completion, releases and the automations read it unchanged. A
+chapter with a failed segment keeps its previous shards and fails the run; a record marked
+``canceled`` stops the run before its next chapter and stays canceled.
 """
 
 from __future__ import annotations
@@ -64,6 +66,16 @@ def _write(record: TsJobRecord) -> None:
     get_backend().write_json_atomic(path, record.model_dump(exclude_none=True))
 
 
+class _Canceled(Exception):
+    """The run's record was marked canceled while it ran."""
+
+
+def _canceled(record: TsJobRecord) -> bool:
+    from services.admin.timestamps_jobs import read_job_record
+
+    return (read_job_record(record.slug, record.job_id) or {}).get("status") == "canceled"
+
+
 def _run(record: TsJobRecord, riwayah: str, full: bool) -> None:
     def emit(line: str) -> None:
         log.info("[ts %s] %s", record.slug, line)
@@ -73,50 +85,55 @@ def _run(record: TsJobRecord, riwayah: str, full: bool) -> None:
             record.log_truncated = True
 
     try:
-        failed, model = _time_chapters(record.slug, record.settings.chapters, riwayah, full, emit)
+        failed, model = _time_chapters(record, riwayah, full, emit)
         _write_validation(record.slug, failed, record.settings.chapters, model)
+        if failed:
+            raise RuntimeError(
+                f"segments failed in chapter(s) {sorted(map(int, failed))}; their shards were "
+                "left as they were (ts_validation.json lists the segments)"
+            )
         record.status = "succeeded"
+    except _Canceled:
+        emit("canceled")
+        record.status = "canceled"
     except Exception as exc:  # noqa: BLE001 — the record is the run's only outcome
         log.exception("timestamps run %s failed", record.job_id)
         emit(f"failed: {exc}")
         record.status = "failed"
         record.error = str(exc)[:500]
+    if record.status != "canceled" and _canceled(record):
+        record.status = "canceled"
     record.ended_at = _now()
     _write(record)
 
 
-def _time_chapters(slug, chapters, riwayah, full, emit) -> tuple[dict[str, list], str]:
-    detailed = aligner_timing.read_detailed(slug)
-    by_chapter = aligner_timing.entries_by_chapter(detailed)
-    wanted = (
-        sorted(by_chapter) if not chapters else [c for c in sorted(by_chapter) if c in chapters]
-    )
-    category = aligner_timing.audio_category(detailed)
-    emit(f"{len(wanted)} chapter(s), {riwayah}, {category}, full={full}")
+def _time_chapters(record: TsJobRecord, riwayah, full, emit) -> tuple[dict[str, list], str]:
+    """Each wanted chapter timed and its shards written, unless a segment failed: that
+    chapter's shards stay as they were. Stops before a chapter once the run is canceled."""
+    slug, chapters = record.slug, record.settings.chapters
+    wanted = [c for c in aligner_timing.chapters_of(slug) if not chapters or c in chapters]
+    emit(f"{len(wanted)} chapter(s), {riwayah}, full={full}")
     backend = get_backend()
     failed: dict[str, list] = {}
     model = ""
     for chapter in wanted:
-        reply = aligner_timing.time_chapter(
-            slug,
-            chapter,
-            by_chapter[chapter],
-            riwayah=riwayah,
-            category=category,
-            full=full,
-            shards=True,
-        )
-        for shard_chapter, shard in reply["shards"].items():
-            backend.write_bytes_atomic(
-                storage_paths.timestamps_path_br(slug, shard_chapter), base64.b64decode(shard)
-            )
-        if reply["failed_segments"]:
-            failed[str(chapter)] = reply["failed_segments"]
+        if _canceled(record):
+            raise _Canceled
+        reply = aligner_timing.time_chapter(slug, chapter, riwayah=riwayah, full=full, shards=True)
+        if reply is None:
+            continue
         model = reply["model"]
         emit(
             f"ch{chapter}: timed {reply['timed']}, kept {reply['kept']}, failed {reply['failed']}"
             f" ({reply['model']})"
         )
+        if reply["failed_segments"]:
+            failed[str(chapter)] = reply["failed_segments"]
+            continue
+        for shard_chapter, shard in reply["shards"].items():
+            backend.write_bytes_atomic(
+                storage_paths.timestamps_path_br(slug, shard_chapter), base64.b64decode(shard)
+            )
     return failed, model
 
 

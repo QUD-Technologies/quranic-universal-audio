@@ -3,16 +3,18 @@
  *
  * Every timed segment's word intervals come from the stored segment times
  * (`GET /api/seg/word-times/<reciter>/<chapter>`, chapter-audio ms), fetched once
- * per chapter the first time one of its cards renders. A segment whose stored times
- * no longer match it is absent; a save re-times its chapter on the server in the
- * background, so playing a segment that has no times refetches its chapter (at
- * most once per `REFETCH_MS`). Review samples keep their own `word_timings`.
+ * per chapter the first time one of its cards renders. Each carries the span it was
+ * timed on, so a card trimmed since is treated as untimed. A save re-times its
+ * chapter on the server in the background, so playing a card without valid times
+ * refetches its chapter (at most once per `REFETCH_MS`). Review samples keep their
+ * own `word_timings`.
  */
 
 import { get, writable } from 'svelte/store';
 
 import { fetchJsonOrNull } from '../../../lib/api';
 import type {
+    SegStoredTimes,
     SegStoredWordTime,
     SegWordTimesResponse,
 } from '../../../lib/types/generated/schemas';
@@ -20,8 +22,8 @@ import type {
 /** Shortest gap between two refetches of one chapter. */
 const REFETCH_MS = 15_000;
 
-/** chapter → segment uid → word intervals, for the current reciter. */
-export const wordTimes = writable<Record<string, Record<string, SegStoredWordTime[]>>>({});
+/** chapter → segment uid → stored times, for the current reciter. */
+export const wordTimes = writable<Record<string, Record<string, SegStoredTimes>>>({});
 
 let _reciter = '';
 const _fetchedAt = new Map<string, number>();
@@ -55,13 +57,24 @@ export function ensureWordTimes(
     _inflight.set(key, job);
 }
 
-/** The stored word intervals of the segment `uid` in `chapter`, or `[]`. */
+/** The card's stored word intervals, or `[]` when it has none or was trimmed since. */
+export function timesForCard(
+    all: Record<string, Record<string, SegStoredTimes>>,
+    chapter: number | string | null | undefined,
+    seg: { segment_uid?: string | null; time_start: number; time_end: number },
+): SegStoredWordTime[] {
+    if (chapter == null || !seg.segment_uid) return [];
+    const held = all[String(chapter)]?.[seg.segment_uid];
+    if (!held || held.start_ms !== seg.time_start || held.end_ms !== seg.time_end) return [];
+    return held.words;
+}
+
+/** `timesForCard` against the current store. */
 export function storedWordTimes(
     chapter: number | string | null | undefined,
-    uid: string | null | undefined,
+    seg: { segment_uid?: string | null; time_start: number; time_end: number },
 ): SegStoredWordTime[] {
-    if (chapter == null || !uid) return [];
-    return get(wordTimes)[String(chapter)]?.[uid] ?? [];
+    return timesForCard(get(wordTimes), chapter, seg);
 }
 
 /** Drop every chapter's word times (reciter switch / stale reload). */

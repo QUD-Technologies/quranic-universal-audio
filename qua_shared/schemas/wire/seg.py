@@ -194,16 +194,26 @@ class SegStoredWordTime(BaseModel):
     end_ms: int
 
 
+class SegStoredTimes(BaseModel):
+    """One segment's stored word intervals and the span they were timed on."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    start_ms: int
+    end_ms: int
+    words: list[SegStoredWordTime]
+
+
 class SegWordTimesResponse(BaseModel):
     """``GET /api/seg/word-times/<reciter>/<chapter>``: stored word intervals.
 
-    ``segments`` maps a segment uid to its words; a segment whose stored times no
-    longer match it (span or timed ref changed since timing) is absent.
+    ``segments`` maps a segment uid to its timed words; a segment whose stored
+    times no longer match it (span or timed ref changed since timing) is absent.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    segments: dict[str, list[SegStoredWordTime]]
+    segments: dict[str, SegStoredTimes]
 
 
 class SegDataSegment(BaseModel):

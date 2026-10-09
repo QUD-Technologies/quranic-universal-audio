@@ -180,7 +180,16 @@ def seg_word_times(reciter, chapter):
         return jsonify(ErrorEnvelope(error="Chapter not found").model_dump(exclude_none=True)), 404
     entries = [e for e in load_detailed(reciter) or [] if chapter_from_ref(e["ref"]) == chapter]
     doc = word_times.read_doc(reciter, chapter)
-    model = SegWordTimesResponse(segments=word_times.chapter_word_times(entries, doc))
+    counts = None
+    if doc and any(s.get("source_ref") for e in entries for s in e.get("segments", [])):
+        try:
+            from services.reference import editions
+
+            counts = editions.word_counts(sdk_riwayah_for(reciter))
+        except (RiwayahMismatch, UnsupportedRiwayah, EditionsUnavailable):
+            counts = None
+    segments = word_times.chapter_word_times(entries, doc, counts)
+    model = SegWordTimesResponse(segments=segments)
     return orjson_cached_response(model.model_dump(**_DUMP))
 
 

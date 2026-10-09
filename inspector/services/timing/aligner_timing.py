@@ -53,7 +53,12 @@ def chapter_lock(slug: str, chapter: int) -> threading.Lock:
 
 
 def read_detailed(slug: str) -> dict:
-    return json.loads(get_backend().read_bytes(storage_paths.detailed_path(slug)))
+    """``slug``'s detailed.json with every segment's uid, derived as the read path does."""
+    from domain.identity import backfill_entries_uids
+
+    detailed = json.loads(get_backend().read_bytes(storage_paths.detailed_path(slug)))
+    backfill_entries_uids(detailed.get("entries", []))
+    return detailed
 
 
 def entries_by_chapter(detailed: dict) -> dict[int, list[dict]]:
@@ -61,6 +66,10 @@ def entries_by_chapter(detailed: dict) -> dict[int, list[dict]]:
     for entry in detailed.get("entries", []):
         out[int(str(entry["ref"]).split(":")[0])].append(entry)
     return out
+
+
+def chapters_of(slug: str) -> list[int]:
+    return sorted(entries_by_chapter(read_detailed(slug)))
 
 
 def audio_category(detailed: dict) -> str:
@@ -81,23 +90,28 @@ def read_times(slug: str, chapter: int) -> bytes | None:
 def time_chapter(
     slug: str,
     chapter: int,
-    entries: list[dict],
     *,
     riwayah: str,
-    category: str,
     full: bool = False,
     shards: bool = False,
-) -> dict:
-    """Bring ``chapter``'s stored times up to date and write them; returns the aligner's
-    reply (``timed``/``kept``/``failed``, ``failed_segments``, ``model``, ``shards``)."""
+) -> dict | None:
+    """Bring ``chapter``'s stored times up to date with its current segments and write them;
+    returns the aligner's reply (``timed``/``kept``/``failed``, ``failed_segments``,
+    ``model``, ``shards``), or ``None`` when the chapter has no segments any more. The
+    segments are read under the chapter's lock, so a later save's re-time always runs
+    after this one and writes last."""
     with chapter_lock(slug, chapter):
+        detailed = read_detailed(slug)
+        entries = entries_by_chapter(detailed).get(int(chapter))
+        if not entries:
+            return None
         times = read_times(slug, chapter)
         reply = _post(
             {
                 "slug": slug,
                 "chapter": chapter,
                 "riwayah": riwayah,
-                "audio_category": category,
+                "audio_category": audio_category(detailed),
                 "entries": entries,
                 "audio_refs": {str(e["ref"]): _audio_ref(slug, e["ref"]) for e in entries},
                 "times": base64.b64encode(times).decode() if times else None,
@@ -113,27 +127,21 @@ def time_chapter(
 
 
 def retime(slug: str, chapters: list[int] | None = None, *, full: bool = False) -> dict:
-    """Times alone for ``chapters`` (all when ``None``) of ``slug``'s current detailed.json;
-    returns ``{chapter: reply}``. A chapter that no longer exists is skipped."""
+    """Times alone for ``chapters`` (all when ``None``) of ``slug``; returns
+    ``{chapter: reply}``. A chapter that no longer exists is skipped."""
     from services.reference.delivery_edition import sdk_riwayah_for
 
-    detailed = read_detailed(slug)
-    by_chapter = entries_by_chapter(detailed)
-    riwayah, category = sdk_riwayah_for(slug), audio_category(detailed)
-    wanted = sorted(by_chapter) if chapters is None else [c for c in chapters if c in by_chapter]
+    riwayah = sdk_riwayah_for(slug)
     out = {}
-    for chapter in wanted:
-        out[chapter] = time_chapter(
-            slug, chapter, by_chapter[chapter], riwayah=riwayah, category=category, full=full
-        )
+    for chapter in chapters_of(slug) if chapters is None else sorted(chapters):
+        reply = time_chapter(slug, chapter, riwayah=riwayah, full=full)
+        if reply is None:
+            continue
+        out[chapter] = reply
         log.info(
             "[timing %s] ch%s: timed %s, kept %s, failed %s",
-            slug,
-            chapter,
-            out[chapter]["timed"],
-            out[chapter]["kept"],
-            out[chapter]["failed"],
-        )
+            slug, chapter, reply["timed"], reply["kept"], reply["failed"],
+        )  # fmt: skip
     return out
 
 

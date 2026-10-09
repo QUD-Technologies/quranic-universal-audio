@@ -87,10 +87,14 @@ def test_word_times_show_only_segments_still_timed_as_stored():
     out = word_times.chapter_word_times([{"ref": "112", "segments": [SEG, trimmed, failed]}], doc)
 
     assert out == {
-        "a": [
-            {"location": "112:1:1", "start_ms": 1000, "end_ms": 1700},
-            {"location": "112:1:2", "start_ms": 1700, "end_ms": 1700},
-        ]
+        "a": {
+            "start_ms": 1000,
+            "end_ms": 3000,
+            "words": [
+                {"location": "112:1:1", "start_ms": 1000, "end_ms": 1700},
+                {"location": "112:1:2", "start_ms": 1700, "end_ms": 1700},
+            ],
+        }
     }
 
 
@@ -108,7 +112,7 @@ def test_word_times_route_reads_the_stored_doc(delivery, flask_client, monkeypat
     resp = flask_client.get("/api/seg/word-times/r/112")
 
     assert resp.status_code == 200
-    assert resp.get_json()["segments"]["a"][1] == {
+    assert resp.get_json()["segments"]["a"]["words"][1] == {
         "location": "112:1:2",
         "start_ms": 1900,
         "end_ms": 2900,
@@ -150,17 +154,47 @@ def test_schedule_is_a_no_op_when_timing_is_off(monkeypatch):
 def test_align_times_every_chapter_then_fails_on_any_failure(monkeypatch):
     from services.admin.align_pipeline import stage_assemble
 
-    detailed = {"entries": [{"ref": "1", "segments": []}, {"ref": "2", "segments": []}]}
     tried = []
 
-    def time_chapter(slug, chapter, entries, **kw):
+    def time_chapter(slug, chapter, **kw):
         tried.append(chapter)
         if chapter == 1:
             raise aligner_timing.TimingCallError("ch1: aligner 502")
 
     monkeypatch.setattr(aligner_timing, "enabled", lambda: True)
-    monkeypatch.setattr(aligner_timing, "read_detailed", lambda slug: detailed)
+    monkeypatch.setattr(aligner_timing, "chapters_of", lambda slug: [1, 2])
     monkeypatch.setattr(aligner_timing, "time_chapter", time_chapter)
     with pytest.raises(stage_assemble.AssembleError, match=r"chapters \[1\]"):
         stage_assemble._store_times("r", "run", "hafs")
     assert tried == [1, 2]
+
+
+def test_segments_without_a_stored_uid_are_sent_with_the_read_path_uid(delivery, monkeypatch):
+    from domain.identity import derive_uid
+
+    bare = {k: v for k, v in SEG.items() if k != "segment_uid"}
+    delivery.write_json_atomic(
+        "reciters/r/detailed.json", {"_meta": {}, "entries": [{"ref": "112", "segments": [bare]}]}
+    )
+    sent: list = []
+    _serve(monkeypatch, sent)
+    aligner_timing.retime("r", [112])
+    uid = sent[0]["entries"][0]["segments"][0]["segment_uid"]
+    assert uid == derive_uid(chapter=112, original_index=0, start_ms=1000)
+
+
+def test_a_projected_segment_is_relabelled_word_for_word():
+    words = [["112:1:1", 0, 500, [], []], ["112:1:2", 500, 900, [], []]]
+    doc = {"_meta": {}, "segments": {
+        "a": {"ref": "112:1:1-112:1:2", "span": [0, 1000], "status": "ok", "words": words},
+        "b": {"ref": "112:1:1-112:1:2", "span": [1000, 2000], "status": "ok", "words": words},
+    }}  # fmt: skip
+    same = {"segment_uid": "a", "matched_ref": "112:2:1-112:2:2", "source_ref": "112:1:1-112:1:2",
+            "confidence": 1.0, "time_start": 0, "time_end": 1000}  # fmt: skip
+    longer = {**same, "segment_uid": "b", "matched_ref": "112:2:1-112:2:3", "time_start": 1000,
+              "time_end": 2000}  # fmt: skip
+    out = word_times.chapter_word_times(
+        [{"ref": "112", "segments": [same, longer]}], doc, {(112, 2): 3}
+    )
+    assert [w["location"] for w in out["a"]["words"]] == ["112:2:1", "112:2:2"]
+    assert "b" not in out

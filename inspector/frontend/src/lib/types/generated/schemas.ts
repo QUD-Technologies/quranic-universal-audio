@@ -1972,6 +1972,14 @@ export interface SegSegmentPeaks {
   peaks?: [unknown, unknown][];
 }
 /**
+ * One segment's stored word intervals and the span they were timed on.
+ */
+export interface SegStoredTimes {
+  start_ms: number;
+  end_ms: number;
+  words: SegStoredWordTime[];
+}
+/**
  * One word interval from the stored segment times, chapter-audio ms.
  */
 export interface SegStoredWordTime {
@@ -2389,12 +2397,12 @@ export interface SegValBoundaryMeta {
 /**
  * ``GET /api/seg/word-times/<reciter>/<chapter>``: stored word intervals.
  *
- * ``segments`` maps a segment uid to its words; a segment whose stored times no
- * longer match it (span or timed ref changed since timing) is absent.
+ * ``segments`` maps a segment uid to its timed words; a segment whose stored
+ * times no longer match it (span or timed ref changed since timing) is absent.
  */
 export interface SegWordTimesResponse {
   segments: {
-    [k: string]: SegStoredWordTime[];
+    [k: string]: SegStoredTimes;
   };
 }
 export interface TsCompactRender {

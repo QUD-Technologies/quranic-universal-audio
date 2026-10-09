@@ -57,7 +57,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     import { activeFilters } from '../../stores/filters';
     import { savedFilterView } from '../../stores/navigation';
     import { isSampleMode } from '../../stores/samples';
-    import { ensureWordTimes, wordTimes } from '../../stores/word-times';
+    import { ensureWordTimes, timesForCard, wordTimes } from '../../stores/word-times';
     import { missingWordsSegKeys } from '../../stores/validation';
     import { deriveRowChips, type RowChip } from '../../utils/samples/chips';
     import { displayWordsForTimings, timingsMatchRef } from '../../utils/samples/word-timing';
@@ -334,9 +334,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     );
     // Outside review samples the highlight follows the stored segment times.
     $: if (!$isSampleMode) ensureWordTimes($selectedReciter, rowChapter);
-    $: storedWords = $isSampleMode || !seg.segment_uid
-        ? []
-        : ($wordTimes[String(rowChapter)]?.[seg.segment_uid] ?? []);
+    $: storedWords = $isSampleMode ? [] : timesForCard($wordTimes, rowChapter, seg);
     $: highlightTimings = $isSampleMode
         ? reviewWordTimings
         : (timingsMatchRef(bodyRef, storedWords) ? storedWords : []);
