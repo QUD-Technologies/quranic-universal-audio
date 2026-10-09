@@ -42,6 +42,10 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from qua_shared.audio.sources import (  # noqa: E402
+    chapters_without_public_source,
+    public_source_url,
+)
 from qua_shared.catalog_visibility import is_everyayah_channel  # noqa: E402
 from qua_shared.inspector_notify import WEBHOOK_USER_AGENT  # noqa: E402
 from qua_shared.mp3_frames import (  # noqa: E402
@@ -471,6 +475,25 @@ def _verses_for_validation(rows: list[dict]) -> dict[str, dict]:
             "segments": [(s[0], s[1], s[2] + cs, s[3] + cs) for s in r["segments"]],
         }
     return out
+
+
+def _manifest_chapter_sources(audio_manifest: dict | None) -> tuple[dict[str, str], dict[str, int]]:
+    """``(chapter_urls, chapter_offsets)`` for the dataset rows. The URL is the
+    chapter's public source link; the offset is where the chapter starts inside
+    that source. Raises when any chapter has no public link (a local path or an
+    internal bucket URL, #285) — the manifest must be repaired before publish."""
+    chapters = (audio_manifest or {}).get("chapters") or {}
+    unlinked = chapters_without_public_source(chapters)
+    if unlinked:
+        raise RuntimeError(
+            f"audio_manifest chapters {unlinked[:10]} have no public source URL "
+            f"({len(unlinked)} total)"
+        )
+    urls = {str(ch): public_source_url(entry or {}) or "" for ch, entry in chapters.items()}
+    offsets = {
+        str(ch): int((entry or {}).get("source_offset_ms") or 0) for ch, entry in chapters.items()
+    }
+    return urls, offsets
 
 
 # ---------------------------------------------------------------------------
@@ -928,15 +951,7 @@ def publish_slug(
     # provenance, not the internal bucket URL. ``source_offset_ms`` is where the
     # chapter begins inside that source — added to each clip's in-chapter start.
     detailed_by_ref = _detailed_by_ref(detailed)
-    _manifest_chapters = (audio_manifest or {}).get("chapters") or {}
-    chapter_urls = {
-        str(ch): ((entry or {}).get("source_url") or (entry or {}).get("url", ""))
-        for ch, entry in _manifest_chapters.items()
-    }
-    chapter_offsets = {
-        str(ch): int((entry or {}).get("source_offset_ms") or 0)
-        for ch, entry in _manifest_chapters.items()
-    }
+    chapter_urls, chapter_offsets = _manifest_chapter_sources(audio_manifest)
     rows = build_rows(
         timestamps,
         detailed_by_ref,

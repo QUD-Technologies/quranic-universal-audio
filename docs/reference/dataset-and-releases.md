@@ -230,6 +230,11 @@ resolution) so the release never leaks an internal bucket URL. When one source s
 (or a single file has a trimmed lead-in), `audio.chapter_offsets_ms[ch]` carries that chapter's start
 offset inside its source — the same value the HF dataset persists as `source_offset_ms`. Map a release
 tier-file timestamp into the source file with `source_ms = chapter_offsets_ms.get(ch, 0) + tier_ms`.
+Both adapters resolve the link through `qua_shared.audio.sources.public_source_url`, which accepts only
+remote `http(s)` URLs outside the Inspector bucket. A chapter with no such link (a local path from an
+offline intake, #285, or a bare bucket URL) is **fatal**: the cut aborts and `publish_hf` refuses the slug,
+naming the chapters — repair the manifest, never ship the path. The manifest schema also rejects a local
+path at write time (see [catalog.md](catalog.md)).
 `chapter_offsets_ms` is **omitted from the JSON when empty** (model_serializer on `ReleaseCatalogAudio`),
 so CDN by-surah catalogs stay byte-stable and their `content_hash` doesn't churn.
 
