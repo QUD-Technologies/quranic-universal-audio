@@ -349,7 +349,7 @@ def _build_tier_files(
 
 
 def _release_occurrences(
-    slug: str,
+    raw: list[dict],
     verses: dict[str, dict],
     layouts: dict[str, dict],
     digital_khatt_words: dict,
@@ -369,7 +369,7 @@ def _release_occurrences(
         for ref, layout in layouts.items()
         if not ref.startswith("_")
     ]
-    for occurrence in _load_occurrences(slug):
+    for occurrence in raw:
         ref = occurrence["ref"]
         if occurrence["canonical"] or ref not in verses:
             continue
@@ -1143,14 +1143,21 @@ def _verse_counts(riwayah: str, surah_info: dict) -> dict[int, int]:
     return verse_counts_from_surah_info(surah_info_for(riwayah, surah_info))
 
 
-def _validate_occurrences(slug: str, occurrences: list[dict], edition_counts: dict) -> dict:
+def _validate_occurrences(
+    slug: str, occurrences: list[dict], edition_counts: dict, raw: list[dict]
+) -> dict:
     """Boundary-validate the SAME invariants the dataset does, against the
     byte-exact segments (gapless within a segment, gaps only across
     boundaries) — source-relative ms. Non-canonical takes are keyed
     ``ref#n`` so they skip the coverage check (a partial repeat is
     incomplete by definition) but still face the span invariants.
+    ``raw`` (the shipped refs' shard occurrences, each tagged with the chapter
+    whose audio timed it) faces the timeline invariants: no verse timed in
+    another chapter's audio, canonical rows in mushaf order.
     Raises ``_FatalViolations`` on any hard failure."""
     from qua_shared.dataset_validation import (
+        check_audio_chapter,
+        check_canonical_order,
         check_canonical_uniqueness,
         fatal_violations,
         validate_dataset,
@@ -1166,10 +1173,14 @@ def _validate_occurrences(slug: str, occurrences: list[dict], edition_counts: di
         for_validate,
         expected_words={f"{s_num}:{a_num}": n for (s_num, a_num), n in edition_counts.items()},
     )
-    uniqueness = check_canonical_uniqueness((o["ref"], o["canonical"]) for o in occurrences)
-    rec_summary["violations"].extend(uniqueness)
-    rec_summary["violation_count"] += len(uniqueness)
-    for v in uniqueness:
+    timeline = [
+        *check_canonical_uniqueness((o["ref"], o["canonical"]) for o in occurrences),
+        *check_audio_chapter((o["ref"], o["chapter"]) for o in raw),
+        *check_canonical_order((o["ref"], o["verse_start_ms"]) for o in raw if o["canonical"]),
+    ]
+    rec_summary["violations"].extend(timeline)
+    rec_summary["violation_count"] += len(timeline)
+    for v in timeline:
         rec_summary["by_kind"][v["violation"]] = rec_summary["by_kind"].get(v["violation"], 0) + 1
     fatal = fatal_violations(rec_summary["violations"])
     if fatal:
@@ -1219,8 +1230,9 @@ def _build_member(rec: dict, ctx: _BuildContext) -> dict | None:
     # segments are all derived once. Each adapter selects its public view of
     # the SAME layout, so timing/token ownership cannot drift.
     layouts = build_verse_layouts(reshape_canonical(verses, ctx.digital_khatt_words), **ctx.pads)
-    occurrences = _release_occurrences(slug, verses, layouts, ctx.digital_khatt_words, ctx.pads)
-    rec_summary = _validate_occurrences(slug, occurrences, edition_counts)
+    raw = [o for o in _load_occurrences(slug) if o["ref"] in verses]
+    occurrences = _release_occurrences(raw, verses, layouts, ctx.digital_khatt_words, ctx.pads)
+    rec_summary = _validate_occurrences(slug, occurrences, edition_counts, raw)
 
     # Tier files: every recited occurrence in timeline order, one canonical
     # per verse.

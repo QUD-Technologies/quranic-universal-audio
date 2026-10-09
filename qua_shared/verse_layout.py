@@ -164,11 +164,17 @@ def load_canonical_verses(ts_dir: Path) -> dict[str, dict]:
 def load_shard_occurrences(ts_dir: Path) -> list[dict]:
     """Every occurrence of every verse across ``ts_dir``, chapter by chapter in
     audio order — ``project_shard_occurrences`` rows, the canonical one per ref
-    flagged. The same audits as ``load_canonical_verses`` run first."""
+    flagged, each tagged with the ``chapter`` whose audio it was timed in (the
+    shard's own chapter, which a verse spilled across an upstream file cut does
+    not share). The same audits as ``load_canonical_verses`` run first."""
     from qua_shared.timestamps_native import project_shard_occurrences
 
     documents, _meta = _load_audited_shards(ts_dir)
-    return [row for document in documents for row in project_shard_occurrences(document)]
+    return [
+        {**row, "chapter": int(document["_meta"]["chapter"])}
+        for document in documents
+        for row in project_shard_occurrences(document)
+    ]
 
 
 def reshape_canonical(canonical: dict, digital_khatt_words: dict) -> dict[str, dict]:

@@ -585,3 +585,21 @@ def test_build_workers_env_override(monkeypatch):
     assert cut_release._build_workers() == 3
     monkeypatch.setenv(cut_release.BUILD_WORKERS_ENV, "")
     assert 1 <= cut_release._build_workers() <= cut_release.DEFAULT_BUILD_WORKERS
+
+
+def test_validate_occurrences_aborts_on_a_verse_timed_in_another_chapters_audio():
+    raw = [{"ref": "88:16", "canonical": True, "verse_start_ms": 160, "chapter": 89}]
+    with pytest.raises(cut_release._FatalViolations) as exc:
+        cut_release._validate_occurrences("slug", [], {}, raw)
+    assert [v["violation"] for v in exc.value.fatal] == ["foreign_chapter"]
+
+
+def test_validate_occurrences_aborts_on_canonical_rows_out_of_order():
+    raw = [
+        {"ref": "112:2", "canonical": True, "verse_start_ms": 1905, "chapter": 112},
+        {"ref": "112:1", "canonical": True, "verse_start_ms": 10746, "chapter": 112},
+        {"ref": "112:2", "canonical": False, "verse_start_ms": 13445, "chapter": 112},
+    ]
+    with pytest.raises(cut_release._FatalViolations) as exc:
+        cut_release._validate_occurrences("slug", [], {}, raw)
+    assert [v["violation"] for v in exc.value.fatal] == ["canonical_order"]
