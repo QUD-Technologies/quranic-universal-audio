@@ -11,12 +11,12 @@ profiles, discriminated by `_meta.profile`:
 
 | Profile | Schema | Contains | Produced for |
 |---|---|---|---|
-| `native` | 13 or 14 | full phonemizer cells, sounds, animation tokens | Hafs |
+| `native` | 15 (13 read until the fleet re-time) | full phonemizer cells, sounds, animation tokens, reading variants | Hafs |
 | `word` | 14 | proxy-timed words + pause boundaries, nothing below | the other three riwayat |
 
-**Absent `profile` reads as `native`.** Every v13 object predates the
-discriminator, and existing Hafs shards are never restamped, so a reader must
-branch on `shard_profile()` / `isWordShard()` and never on `schema_version`.
+**Absent `profile` reads as `native`.** No native object carries the
+discriminator, so a reader must branch on `shard_profile()` / `isWordShard()`
+and never on `schema_version`.
 
 The word profile is documented in full in
 [`editions.md`](editions.md#5-the-word-profile-shard); the rest of this page is
@@ -24,13 +24,13 @@ the native profile.
 
 ## Contract
 
-A native object is a closed schema-v13/v14 JSON document compressed with
+A native object is a closed schema-v15 JSON document compressed with
 deterministic Brotli quality 6:
 
 ```json
 {
   "_meta": {
-    "schema_version": 13,
+    "schema_version": 15,
     "chapter": 1,
     "audio_category": "by_surah",
     "phonemizer_version": "3.0",
@@ -184,6 +184,35 @@ same. The chapter-leading boundary spans its first part start to its first word
 start, and the chapter-final boundary spans its last word end to its final part
 edge. Overlaps clamp to an empty interval. Boundary timing never changes the
 native semantic state.
+
+## Reading variants (v15)
+
+A v15 reading may carry `variants`: the selectors (reading faces) shown for it,
+present only when the reading has a shown, active, picked occurrence. Each
+names the face this recitation was read with and what the other faces would
+change:
+
+```json
+"variants": [{
+  "id": "iwaja_qayyima", "chosen": "idraj",
+  "words": [0, 1], "targets": [0, 1], "anchor": "boundary", "boundary": 1,
+  "by": "scored", "score": 4.0,
+  "affected": {"sakt": {"c": [5, 6], "s": [5, 6], "b": [1]}}
+}]
+```
+
+| Field | Meaning |
+| --- | --- |
+| `words`, `targets` | Reading word IDs (0-based) of the occurrence and of the words its faces change. |
+| `anchor`, `boundary` | `word` (on `words[0]`) or `boundary`, then `boundary` is the native boundary ID (from 1: boundary `k` is `render.b[k-1]`). |
+| `by`, `score` | The rule that picked `chosen` — `scored` (score = path-score margin), `tie`, `length` (long vowel ÷ lāzim p5), `majority`, `pause` (gap ms) or `default` (no evidence; shown masked). |
+| `affected` | One key per option not chosen: word-column IDs `c`, sound IDs `s` and boundary IDs `b` of the rendered (chosen) reading that option would change. |
+
+`_meta.variant_catalogue` (`{id: {name, description, options, default}}`) and
+`_meta.variant_policy` are present when some reading has variants.
+`_meta.native_profile.variant` stays the default map; a reading's selection is
+that map overlaid with its `variants[].chosen`. The Inspector draws the numbers
+read-only (`variantControlsFor`); hovering one spotlights its `affected` cells.
 
 ## Renderer policy is not shard schema
 

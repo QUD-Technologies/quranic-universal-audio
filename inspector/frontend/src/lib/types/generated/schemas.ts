@@ -2601,7 +2601,7 @@ export interface TsReportTarget {
  */
 export interface TsReportSnapshot {
   native_schema_version?: 2 | null;
-  shard_schema_version?: 12 | 13 | 14;
+  shard_schema_version?: 12 | 13 | 14 | 15;
   shard_profile?: "native" | "word";
   native?: {
     [k: string]: unknown;
@@ -2687,26 +2687,73 @@ export interface TsShardDoc {
   readings: TsShardReading[];
 }
 export interface TsShardMeta {
-  schema_version: 13 | 14;
+  schema_version: 13 | 15;
   chapter: number;
   audio_category: string;
   phonemizer_version: string;
   native_schema_version: 2;
   renderer_codec_version: 1;
   native_profile: TsNativeProfile;
+  variant_catalogue?: {
+    [k: string]: TsVariantDefinition;
+  } | null;
+  variant_policy?: string | null;
   [k: string]: unknown;
+}
+export interface TsVariantDefinition {
+  name: string;
+  description: string | null;
+  /**
+   * @minItems 2
+   */
+  options: [string, string, ...string[]];
+  default: string;
 }
 export interface TsShardReading {
   id: string;
   parts: [unknown, unknown, unknown, unknown, unknown][];
   render: TsCompactRender;
   timing: TsShardTiming;
+  variants?: TsReadingVariant[] | null;
 }
 export interface TsShardTiming {
   w: [unknown, unknown][];
   s: [unknown, unknown][];
   a: [unknown, unknown][];
   c: [unknown, unknown, unknown][];
+}
+/**
+ * One shown variant occurrence. ``words``/``targets`` are reading word ids,
+ * ``boundary`` a native boundary id (from 1); ``affected`` has one entry per
+ * option not chosen, in the rendered reading's ids.
+ */
+export interface TsReadingVariant {
+  id: string;
+  chosen: string;
+  /**
+   * @minItems 1
+   * @maxItems 2
+   */
+  words: [number] | [number, number];
+  /**
+   * @minItems 1
+   */
+  targets: [number, ...number[]];
+  anchor: "word" | "boundary";
+  boundary: number | null;
+  by: "scored" | "tie" | "length" | "majority" | "pause" | "default";
+  score: number | null;
+  affected: {
+    [k: string]: TsVariantCells;
+  };
+}
+/**
+ * Rendered-reading cells another option changes: column, sound and boundary ids.
+ */
+export interface TsVariantCells {
+  c: number[];
+  s: number[];
+  b: number[];
 }
 /**
  * The ``ts_validation.json`` document — meta + verse-keyed flags.

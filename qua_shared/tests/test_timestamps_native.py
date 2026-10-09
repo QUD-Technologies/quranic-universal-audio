@@ -303,3 +303,25 @@ def test_release_projection_rejects_a_v13_identity_closure_gap(tmp_path):
 
     with pytest.raises(V13AuditError, match="animation words"):
         load_canonical_verses(tmp_path)
+
+
+def test_decoder_passes_reading_variants_through():
+    reading = _reading("r1", [("18:1", (100, 400), [11, 12])])
+    variant = {
+        "id": "iwaja_qayyima",
+        "chosen": "idraj",
+        "words": [0, 1],
+        "targets": [0, 1],
+        "anchor": "boundary",
+        "boundary": 1,
+        "by": "scored",
+        "score": 4.0,
+        "affected": {"sakt": {"c": [5, 6], "s": [], "b": [1]}},
+    }
+    reading["variants"] = [variant]
+    plain = _reading("r2", [("18:2", (500, 600), [1])])
+
+    decoded = decode_document(_shard([reading, plain]))
+
+    assert decoded["readings"][0]["variants"] == [variant]
+    assert "variants" not in decoded["readings"][1]

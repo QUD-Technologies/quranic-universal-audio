@@ -3,7 +3,8 @@
  * `TimedAnalysisRow` for one reciter:verse straight from shards via the real
  * `ts-source` assembly — no SPA, no audio, no waveform, no progress-bar math.
  *
- * Driven by URL params: `?reciter=<slug>&ref=45:32[&words=1-3]`. `/api` is
+ * Driven by URL params: `?reciter=<slug>&ref=45:32[&words=1-3][&t=<audio ms>]`;
+ * `t` parks the playhead there so the active cells light. `/api` is
  * proxied to a backend (set `INSPECTOR_API_TARGET` to the dev Space so no local
  * Flask is needed). Because it imports the production component + assembly,
  * there is zero rendering drift — TypeScript fails the build if their API moves.
@@ -39,6 +40,7 @@ import {
     deliveryRiwayah,
     showLetters,
     showPhonemes,
+    tsWaveformHoverTime,
     wordProfile,
 } from '../src/tabs/timestamps/stores/display';
 import { setRuleEnabled } from '../src/tabs/timestamps/stores/tajweed-settings';
@@ -116,14 +118,21 @@ async function render(): Promise<void> {
 
     loadedVerse.set({ data, tsSegOffset: 0, tsSegEnd: Number.MAX_SAFE_INTEGER });
     focusWaslGroup.set(group);
-    mount(wordShard ? WordTimedRow : TimedAnalysisRow, {
+    const row = mount(wordShard ? WordTimedRow : TimedAnalysisRow, {
         target: document.getElementById('app')!,
     });
+    const playhead = p.get('t');
 
     // Let web fonts + recomputeRowGap (ResizeObserver) settle before flagging ready.
     await (document as unknown as { fonts?: { ready: Promise<unknown> } }).fonts?.ready;
     requestAnimationFrame(() =>
-        requestAnimationFrame(() => { document.body.dataset.ready = '1'; }),
+        requestAnimationFrame(() => {
+            if (playhead !== null && 'updateHighlights' in row) {
+                tsWaveformHoverTime.set(Number(playhead) / 1000);
+                (row as { updateHighlights: () => void }).updateHighlights();
+            }
+            document.body.dataset.ready = '1';
+        }),
     );
 }
 
