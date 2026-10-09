@@ -1,4 +1,6 @@
-"""Decode the compact renderer/timing payload stored in schema-v13 shards."""
+"""Decode the compact renderer/timing payload stored in native shards (schema 13–15).
+
+A v15 reading's ``variants`` pass through unchanged."""
 
 from __future__ import annotations
 
@@ -260,6 +262,7 @@ def decode_reading(reading: dict[str, Any]) -> dict[str, Any]:
             "boundaries": _boundaries(parts, word_times, states),
         },
         "native_digest": render["m"][2],
+        **({"variants": reading["variants"]} if reading.get("variants") else {}),
     }
 
 

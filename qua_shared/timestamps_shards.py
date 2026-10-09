@@ -9,10 +9,10 @@ from pathlib import Path
 
 MANIFEST_SCHEMA_VERSION = 1
 #: Versions a reader accepts for a native document. Objects written before the
-#: word profile existed stamp 13 and are never restamped, so both are current.
+#: word profile existed stamp 13 and are never restamped; 15 adds reading variants.
 #: There is no "version to write" constant here — the SDK builders stamp it, and
 #: a second copy in this tree could only ever disagree with them.
-NATIVE_SHARD_SCHEMA_VERSIONS = (13, 14)
+NATIVE_SHARD_SCHEMA_VERSIONS = (13, 14, 15)
 
 
 def shard_profile(shard_doc: dict) -> str:

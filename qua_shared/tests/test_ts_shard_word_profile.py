@@ -118,14 +118,14 @@ def test_word_profile_is_discriminated():
     assert isinstance(parse_shard(WORD_SHARD), TsWordShardDoc)
 
 
-def test_native_meta_accepts_both_schema_versions():
-    """v13 objects are never restamped, so the reader accepts 13 and 14."""
-    assert NATIVE_SHARD_SCHEMA_VERSIONS == (13, 14)
+def test_native_meta_accepts_every_native_schema_version():
+    """v13 objects are never restamped, so the reader accepts 13, 14 and 15."""
+    assert NATIVE_SHARD_SCHEMA_VERSIONS == (13, 14, 15)
     assert TS_SHARD_SCHEMA_VERSION == 14
     meta_model = TsShardDoc.model_fields["meta"].annotation
     assert meta_model is not None
     fields = meta_model.model_fields
-    assert fields["schema_version"].annotation.__args__ == (13, 14)
+    assert fields["schema_version"].annotation.__args__ == (13, 14, 15)
 
 
 def test_native_meta_declares_no_profile_field():
