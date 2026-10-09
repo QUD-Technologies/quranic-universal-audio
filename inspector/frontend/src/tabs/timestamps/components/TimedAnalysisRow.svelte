@@ -5,6 +5,8 @@
         stripBoundaryMarks,
         type CellBoundary,
         type HostClasses,
+        type VariantControlOccurrence,
+        type VariantControls,
     } from '@quranic-phonemizer/cells';
     import { get } from 'svelte/store';
     import { onDestroy, tick } from 'svelte';
@@ -39,6 +41,7 @@
         type TimedEntity,
     } from '../utils/timed-entities';
     import { defineInspectorRule, ruleLabel } from '../utils/tajweed-rules';
+    import { variantControlsFor, variantTipLines } from '../utils/variant-controls';
     import {
         cellTargetFromEl,
         ruleIdsFromEl,
@@ -50,16 +53,28 @@
     let entityByElement = new Map<HTMLElement, TimedEntity>();
     let clickTimer: ReturnType<typeof setTimeout> | null = null;
     let rowGap = $state(16);
-    let tipText = $state<string | null>(null);
+    let tipLines = $state<TipLine[] | null>(null);
+    let tipVariant = $state(false);
     let tipX = $state(0);
     let tipY = $state(0);
     let tipElement: HTMLElement | null = null;
     let tipWarm = false;
     let tipShowTimer: ReturnType<typeof setTimeout> | null = null;
     let tipCoolTimer: ReturnType<typeof setTimeout> | null = null;
+    let pointerTarget: Element | null = null;
+
+    interface TipLine {
+        text: string;
+        muted: boolean;
+    }
+
+    const VARIANT_SELECTOR = '[data-qc-variant]';
+    const insideVariant = (target: EventTarget | null): boolean =>
+        target instanceof Element && Boolean(target.closest(VARIANT_SELECTOR));
 
     type DisplayReading = ParsedReading & {
         boundaryPolicies: Map<string, BoundaryPolicy>;
+        variantControls: VariantControls | undefined;
     };
 
     const displayData = $derived($focusWaslGroup?.data ?? $loadedVerse?.data ?? null);
@@ -93,7 +108,10 @@
                     policy?.showMarker ? boundary : undefined,
                 );
             });
-            return { ...item, boundaryPolicies };
+            const variantControls = variantControlsFor(
+                item.reading.variantCatalogue, item.reading, onVariantHover,
+            );
+            return { ...item, boundaryPolicies, variantControls };
         });
     });
 
@@ -369,11 +387,23 @@
         return true;
     }
 
+    /** The silence report targets the junction, also when its timed sign is clicked. */
+    function clickedEntity(target: EventTarget | null): TimedEntity | null {
+        if (get(reportMode).kind === 'silence' && target instanceof Element) {
+            const boundary = target.closest<HTMLElement>('[data-qc-boundary-id]');
+            const entity = boundary && entityByElement.get(boundary);
+            if (entity) return entity;
+        }
+        return entityOf(target);
+    }
+
     function onClick(event: MouseEvent): void {
-        const entity = entityOf(event.target);
+        if (insideVariant(event.target)) return;
+        const entity = clickedEntity(event.target);
         if (!entity) return;
         if (!entity.timed && get(reportMode).kind === 'inactive') return;
-        if (event.target instanceof Element && stageReport(event.target, entity)) return;
+        const element = entity.kind === 'boundary' ? entity.element : event.target;
+        if (element instanceof Element && stageReport(element, entity)) return;
         if (entity.kind === 'boundary') return;
         if (clickTimer) clearTimeout(clickTimer);
         clickTimer = setTimeout(() => {
@@ -383,6 +413,7 @@
     }
 
     function onDoubleClick(event: MouseEvent): void {
+        if (insideVariant(event.target)) return;
         const entity = entityOf(event.target);
         if (!entity || !entity.timed || entity.kind === 'boundary') return;
         if (clickTimer) clearTimeout(clickTimer);
@@ -395,11 +426,13 @@
 
     function onKeyDown(event: KeyboardEvent): void {
         if (event.key !== 'Enter' && event.key !== ' ') return;
-        const entity = entityOf(event.target);
+        if (insideVariant(event.target)) return;
+        const entity = clickedEntity(event.target);
         if (!entity) return;
         if (!entity.timed && get(reportMode).kind === 'inactive') return;
         event.preventDefault();
-        if (event.target instanceof Element && stageReport(event.target, entity)) return;
+        const element = entity.kind === 'boundary' ? entity.element : event.target;
+        if (element instanceof Element && stageReport(element, entity)) return;
         if (entity.kind === 'boundary') return;
         if (event.key === ' ') {
             if (sameLoop(entity)) loopTarget.set(null);
@@ -409,6 +442,8 @@
     }
 
     function onPointerOver(event: PointerEvent): void {
+        pointerTarget = event.target instanceof Element ? event.target : null;
+        if (insideVariant(event.target)) return;
         const entity = entityOf(event.target);
         if (entity?.timed) {
             tsHoveredElement.set({
@@ -426,7 +461,7 @@
             hideTip(false);
             return;
         }
-        if (target === tipElement) return;
+        if (target === tipElement && !tipVariant) return;
         hideTip(false);
         tipElement = target;
         const rules = (target.dataset.qcRuleIds ?? '').split(' ').filter(Boolean);
@@ -436,7 +471,14 @@
         const duration = ownsTiming
             ? `${Math.round(((entity.end - entity.start) * 1000) / 10) * 10} ms`
             : null;
-        const lines = [duration, ...rules.map(ruleLabel)].filter(Boolean) as string[];
+        const lines = [
+            ...(duration ? [{ text: duration, muted: false }] : []),
+            ...rules.map((rule) => ({ text: ruleLabel(rule), muted: true })),
+        ];
+        showTip(target, lines, false);
+    }
+
+    function showTip(target: HTMLElement, lines: TipLine[], variant: boolean): void {
         if (!lines.length) return;
         if (tipCoolTimer) {
             clearTimeout(tipCoolTimer);
@@ -447,17 +489,48 @@
             const box = target.getBoundingClientRect();
             tipX = box.left + box.width / 2;
             tipY = box.top;
-            tipText = lines.join('\n');
+            tipLines = lines;
+            tipVariant = variant;
             tipWarm = true;
         };
         if (tipWarm) show();
         else tipShowTimer = setTimeout(show, 500);
     }
 
+    /** The hovered or focused number of a read-only variant, else null. */
+    function variantButton(option: string): HTMLElement | null {
+        const matches = (element: Element | null): element is HTMLElement =>
+            element instanceof HTMLElement
+            && element.dataset.qcVariantOption === option
+            && root?.contains(element) === true;
+        const hovered = pointerTarget?.closest('[data-qc-variant-option]') ?? null;
+        if (matches(hovered)) return hovered;
+        const focused = document.activeElement;
+        return matches(focused) ? focused : null;
+    }
+
+    function onVariantHover(
+        variantId: string,
+        option: string | null,
+        occurrence: VariantControlOccurrence,
+    ): void {
+        hideTip(false);
+        if (option === null) return;
+        const item = parsed.find((one) => one.variantControls?.occurrences.includes(occurrence));
+        const definition = item?.variantControls?.definitions[variantId];
+        const target = variantButton(option);
+        if (!definition || !target) return;
+        tipElement = target;
+        const lines = variantTipLines(definition, occurrence, option)
+            .map((text, index) => ({ text, muted: index > 0 }));
+        showTip(target, lines, true);
+    }
+
     function hideTip(cool = true): void {
         if (tipShowTimer) clearTimeout(tipShowTimer);
         tipShowTimer = null;
-        tipText = null;
+        tipLines = null;
+        tipVariant = false;
         tipElement = null;
         if (!cool) return;
         if (tipCoolTimer) clearTimeout(tipCoolTimer);
@@ -509,15 +582,23 @@
                 showTooltips={false}
                 hostClasses={hostClasses(item)}
                 keepBoundaryWithNext={keepBoundaryWithNext(item)}
+                variantControls={item.variantControls}
             />
         </div>
     {/each}
 </div>
 
-{#if tipText}
-    <div class="cell-tip" dir="ltr" style:left={`${tipX}px`} style:top={`${tipY}px`} role="tooltip">
-        {#each tipText.split('\n') as line (line)}
-            <div class:tip-rule={!line.endsWith(' ms')}>{line}</div>
+{#if tipLines}
+    <div
+        class="cell-tip"
+        class:variant-tip={tipVariant}
+        dir="auto"
+        style:left={`${tipX}px`}
+        style:top={`${tipY}px`}
+        role="tooltip"
+    >
+        {#each tipLines as line, index (index)}
+            <div class:tip-rule={line.muted}>{line.text}</div>
         {/each}
     </div>
 {/if}

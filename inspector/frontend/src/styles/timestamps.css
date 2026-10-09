@@ -216,6 +216,13 @@
     border-color: var(--anim-highlight-color);
 }
 
+/* A timed boundary column (a sakt sign with a `timing.c` row) lights like a letter. */
+.timed-analysis .boundary-tile .pause-bridge.active[data-qc-column-id]:not(.verse-mark) {
+    color: var(--hl-letter-ink, var(--ink-on-color));
+    background: var(--ts-letter-deep, var(--hl-letter-color));
+    border-color: var(--ts-letter-color, var(--hl-letter-color));
+}
+
 .timed-analysis .boundary-tile.qc-verse-end > .pause-bridge {
     color: var(--qc-word-ink);
     background: transparent;
@@ -279,6 +286,11 @@
 .cell-tip .tip-rule {
     color: var(--text-secondary);
     font-size: 0.68rem;
+}
+
+.cell-tip.variant-tip {
+    max-width: 18rem;
+    white-space: normal;
 }
 
 @media (prefers-reduced-motion: reduce) {
