@@ -34,7 +34,7 @@ The producer owns acoustic work only:
 
 - resolve recorded segments and their connected-wasl relationships;
 - obtain chapter audio;
-- run MFA with the pinned acoustic model and emphatic-fatha-only token inventory;
+- time each segment with the neural timing head (`timing.neural_head@v1`);
 - recover word, sound, and written-letter intervals;
 - pass timing occurrences to the SDK v13 builder;
 - validate and deterministically Brotli-compress each chapter;
@@ -44,13 +44,13 @@ It does not construct frontend cells, rename tajweed rules, synthesize bridges, 
 
 ## Native build
 
-The Space's whole-verse producer passes timing occurrences to the SDK v13 shard builder.
+The aligner's chapter route passes the stored times, as timing occurrences, to the SDK v13 shard builder.
 
 For each chapter the builder:
 
 1. Orders original occurrences by absolute audio time.
 2. Joins adjacent occurrences while the preceding occurrence carries `wasl`.
-3. Phonemizes each maximal connected reading once with quranic-phonemizer 3.0.
+3. Phonemizes each maximal connected reading once with the pinned quranic-phonemizer.
 4. Builds native schema-2 analysis, source, and transformed-cell documents using `emphatic_fatha`, `emphatic_ikhfaa`, `imala`, and `tashil` for display.
 5. Checks the recovered acoustic sound sequence against the acoustic native surface.
 6. Transfers word and sound intervals to native IDs and recuts written-letter intervals to source-unit IDs.
@@ -61,11 +61,12 @@ Cross-verse wasl is never split or rephonemized as pausal. Known chains such as 
 
 ## Version pinning
 
-The Space image bakes the same-commit QUA SDK + quranic-phonemizer `3.0`; a chapter's shard
-`_meta` records the schema version, native schema version, renderer codec
-version, and phonemizer version it was built with. MFA remains acoustic
-emphatic-fatha-only. The additional display phonemes are same-cardinality
-notation choices and never enter the acoustic model or redistribute intervals.
+The aligner Space installs the same-commit qua SDK and its quranic-phonemizer pin; a
+chapter's shard `_meta` records the schema version, native schema version, renderer
+codec version, phonemizer version and stop edition it was built with, and the stored
+times record the timing model and phonemizer they were decoded with (a change of either
+re-times the chapter). The additional display phonemes are same-cardinality notation
+choices and never enter the timing model or redistribute intervals.
 
 ## Inputs and outputs
 
