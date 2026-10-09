@@ -115,7 +115,11 @@ The same predicate drives the Releases-tab buckets and the cut job's member disc
    (`verse_layout.load_shard_occurrences` → `timestamps_native.project_shard_occurrences`); each
    non-canonical span of a verse that survived the gate is laid out on its own
    (`_release_occurrences`) — a verse whose canonical take was gated drops all its repeats too.
-   `check_canonical_uniqueness` then hard-fails on any ref with ≠ 1 canonical row
+   `check_canonical_uniqueness` then hard-fails on any ref with ≠ 1 canonical row,
+   `check_audio_chapter` on any shipped verse timed inside another chapter's audio (an upstream
+   file cut that spilled verses into the next file — release rows carry no file of their own, so
+   they would ship with times into the wrong mp3), and `check_canonical_order` on any canonical row
+   that starts after a higher ayah of its surah (a stray lead-in take that won canonical, a stale shard)
    → builds the three
    tier files (verse/word/letter, top-down), `catalog.json`, a per-recitation `manifest.json`; packs
    a deterministic `<slug>.zip`; computes `content_hash = SHA-256(letter_tier.gz || catalog.json)`.
@@ -499,7 +503,11 @@ Each artifact runs a fail-blocking validation pass before it is produced; the su
 to the `gh_releases.validation_summary` / `per_recitation_releases.validation_summary` row.
 Block on the `HARD_FAIL_KINDS` in [dataset_validation.py](../../qua_shared/dataset_validation.py):
 `word_bleed_first`, `word_bleed_last`, `duration_arithmetic`, `intra_segment_gap`,
-`canonical_uniqueness` — `fatal_violations` aborts the cut on any of these. `coverage_gap` is
+`canonical_uniqueness`, `foreign_chapter`, `canonical_order` — `fatal_violations` aborts the cut
+on any of these. The last two are timeline checks over the shipped refs' raw shard occurrences
+(`verse_layout.load_shard_occurrences` tags each with the `chapter` whose audio timed it). A hit is
+a data fix in the bucket — drop the spilled segments and trim the audio, or regenerate a stale
+shard — never a projection workaround. `coverage_gap` is
 reported but **non-fatal**, and incomplete verses are gated out by `select_complete_verses` *before*
 validation runs, so `coverage_gap` does not fire for emitted verses. In the cut, non-canonical
 occurrence rows are validated under `ref#n` keys: they face the span invariants but not

@@ -31,6 +31,8 @@ from collections.abc import Iterable
 #   "intra_segment_gap"                     — adjacent words within a segment have a gap
 #   "coverage_gap"                          — widx 1..N not all present in this verse
 #   "canonical_uniqueness"                  — a verse ref with != 1 canonical occurrence row
+#   "foreign_chapter"                       — a verse timed inside another chapter's audio
+#   "canonical_order"                       — canonical rows of a surah descend in ayah order
 class Violation(dict):
     """Plain dict subclass — JSON-serializable, schema-stable."""
 
@@ -184,6 +186,50 @@ def check_canonical_uniqueness(occurrences: Iterable[tuple[str, bool]]) -> list[
     ]
 
 
+def _surah(ref: str) -> int:
+    return int(ref.split(":", 1)[0])
+
+
+def _ayah(ref: str) -> int:
+    return int(ref.split(":", 2)[1])
+
+
+def check_audio_chapter(occurrences: Iterable[tuple[str, int]]) -> list[Violation]:
+    """Every occurrence is timed inside its own surah's audio.
+
+    ``occurrences`` is ``(ref, chapter)`` per row, ``chapter`` being the audio
+    file the row's times are relative to. Release rows carry no file of their
+    own — a consumer plays the ref's surah — so a verse an upstream file cut
+    spilled into a neighbouring chapter's audio would ship with times into the
+    wrong file. One violation per ``(ref, chapter)`` pair.
+    """
+    foreign = sorted(
+        {(ref, chapter) for ref, chapter in occurrences if _surah(ref) != chapter},
+        key=lambda pair: (pair[1], _surah(pair[0]), _ayah(pair[0])),
+    )
+    return [_violation(ref, "foreign_chapter", audio_chapter=chapter) for ref, chapter in foreign]
+
+
+def check_canonical_order(canonical: Iterable[tuple[str, int]]) -> list[Violation]:
+    """Canonical rows of each surah follow mushaf order in time.
+
+    ``canonical`` is ``(ref, start_ms)`` per canonical row. A one-take-per-verse
+    consumer plays them in time order, so a descent (a stray lead-in take that
+    won canonical, a stale shard) reorders the surah. One violation per descent,
+    on the row that starts after a higher ayah.
+    """
+    by_surah: dict[int, list[tuple[int, str]]] = {}
+    for ref, start_ms in canonical:
+        by_surah.setdefault(_surah(ref), []).append((int(start_ms), ref))
+    out: list[Violation] = []
+    for surah in sorted(by_surah):
+        rows = sorted(by_surah[surah])
+        for (_, before), (start_ms, ref) in zip(rows, rows[1:]):
+            if _ayah(ref) < _ayah(before):
+                out.append(_violation(ref, "canonical_order", after_ref=before, start_ms=start_ms))
+    return out
+
+
 def validate_verse(ref: str, verse: dict, *, expected_words: int | None = None) -> list[Violation]:
     """Run every check on one verse. Returns the combined violation list."""
     out: list[Violation] = []
@@ -267,6 +313,8 @@ HARD_FAIL_KINDS = (
     "duration_arithmetic",
     "intra_segment_gap",
     "canonical_uniqueness",
+    "foreign_chapter",
+    "canonical_order",
 )
 
 
