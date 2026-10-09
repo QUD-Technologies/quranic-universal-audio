@@ -273,7 +273,7 @@
   "dashboard_submit_attest_distribution_rights": "To the best of my knowledge, I have the reciter’s permission or the distribution rights to share these recordings publicly.",
   "dashboard_submit_attest_links_verified": "I have verified that links work and play the correct chapters, and that the metadata is accurate.",
   "dashboard_submit_attest_playlist_public": "If this is my own playlist, I agree to keep it public so everyone can benefit from the audio and timings.",
-  "dashboard_submit_attest_storage_rights": "I grant Quranic Universal Audio the right to download, process, distribute, and store this audio permanently, under CC By 4.0 license",
+  "dashboard_submit_attest_storage_rights": "I grant QUD Technologies, for Quranic Universal Audio, the right to download, process, distribute, and store this audio permanently, and to publish timing data derived from it under the QUA Dataset License.",
   "dashboard_submit_auto_claim_hint": "You hold one claim at a time. Skipped if you're already holding one.",
   "dashboard_submit_auto_claim_label": "Auto-claim me as reviewer once alignment finishes",
   "dashboard_submit_combo_coverage": "{count}/114",

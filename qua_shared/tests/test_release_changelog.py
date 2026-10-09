@@ -59,7 +59,7 @@ def test_first_release_added_only():
         "audio metadata, and the audio URLs paired with the timestamp data. |"
     ) in md
     # The release-level files index the whole release; each zip carries its own catalog.
-    assert "plus its own `catalog.json`." in md
+    assert "plus its own `catalog.json` and `LICENSE`." in md
     assert "each zip also carries its own `catalog.json`" in md
     assert "release_schemas.json" not in md
     assert "First release: **2** recitations." in md

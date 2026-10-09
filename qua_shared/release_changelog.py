@@ -14,6 +14,7 @@ import re
 from collections.abc import Mapping
 
 from qua_shared.config_loader import load_template
+from qua_shared.dataset_license import DATA_LICENSE_ID, DATA_LICENSE_NAME, DATA_LICENSE_URL
 
 _PLACEHOLDER_RE = re.compile(r"{{\s*([a-z_]+)\s*}}")
 _REQUIRED_BLOCKS = {
@@ -163,7 +164,8 @@ def _recitation_changes(
 
 
 def _release_footer(*, license_id: str, owner: str, repo: str, hf_dataset: str) -> str:
-    return f"**License:** {license_id}"
+    name = DATA_LICENSE_NAME if license_id == DATA_LICENSE_ID else license_id
+    return f"**License:** [{name}]({DATA_LICENSE_URL}) (`{license_id}`)"
 
 
 def render_changelog(
@@ -176,7 +178,7 @@ def render_changelog(
     owner: str = "",
     repo: str = "",
     hf_dataset: str = "",
-    license_id: str = "CC-BY-4.0",
+    license_id: str = DATA_LICENSE_ID,
 ) -> str:
     """Return the full release body markdown."""
     added = [m for m in members if m.get("change_kind") == "added"]

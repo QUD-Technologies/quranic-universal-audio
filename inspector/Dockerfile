@@ -211,13 +211,14 @@ COPY inspector/utils/ ./inspector/utils/
 # entrypoints (publish_hf / publish_hf_batch / cut_release / shard) that
 # ``services/admin/jobs/base.stage_job_code`` uploads to the aligner-bucket on
 # launch. ``.github/config/repo.yml``, ``docs/templates/`` (release-body +
-# dataset-card render-templates) + ``LICENSE`` are read by config_loader (the
+# dataset-card render-templates) + ``LICENSE`` / ``LICENSE-DATA`` are read by config_loader (the
 # inspector release preview + the job-side cut_release/publish_hf renderers).
 COPY qua_shared/ ./qua_shared/
 COPY qua_jobs/ ./qua_jobs/
 COPY .github/config/ ./.github/config/
 COPY docs/templates/ ./docs/templates/
 COPY LICENSE ./LICENSE
+COPY LICENSE-DATA ./LICENSE-DATA
 # Linguistic data read by services/data_loader.py via config.py's _QUA_DATA,
 # plus surah_info.json read by services/data_loader.py at startup. These four
 # files are the entire on-disk data surface in deployed mode — everything else

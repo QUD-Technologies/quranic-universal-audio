@@ -64,6 +64,7 @@ def _write_minimal_tree(tmp_path):
     (tmp_path / "docs" / "templates" / "release_body.md").write_text("{{ release_title }}")
     (tmp_path / "docs" / "templates" / "hf_dataset_card.md").write_text("{{ dataset_title }}")
     (tmp_path / "LICENSE").write_text("MIT")
+    (tmp_path / "LICENSE-DATA").write_text("data")
 
 
 def test_stage_job_code_uploads_every_required_path(stub_batch, monkeypatch, tmp_path):
@@ -127,6 +128,7 @@ def test_stage_job_code_requires_digital_khatt_assets(stub_batch, monkeypatch, t
     (tmp_path / "docs" / "templates" / "release_body.md").write_text("{{ release_title }}")
     (tmp_path / "docs" / "templates" / "hf_dataset_card.md").write_text("{{ dataset_title }}")
     (tmp_path / "LICENSE").write_text("MIT")
+    (tmp_path / "LICENSE-DATA").write_text("data")
     monkeypatch.setattr(base, "REPO_ROOT", tmp_path)
 
     with pytest.raises(base.JobStagingError) as exc:
