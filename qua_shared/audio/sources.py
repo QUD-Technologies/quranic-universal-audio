@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import TypeGuard
 from pathlib import PurePosixPath
 
 DIRECT_AUDIO_EXTS = frozenset({".mp3", ".wav", ".flac", ".m4a", ".ogg", ".opus", ".aac"})
@@ -33,7 +34,7 @@ _BUCKET_URL_MARKER = "huggingface.co/buckets/"
 _LOCAL_PATH_RE = re.compile(r"^(?:/|\\|~|file:|[A-Za-z]:[\\/])", re.IGNORECASE)
 
 
-def is_remote_url(value: object) -> bool:
+def is_remote_url(value: object) -> TypeGuard[str]:
     """True for an ``http(s)://`` URL."""
     return isinstance(value, str) and value.strip().lower().startswith(_REMOTE_SCHEMES)
 

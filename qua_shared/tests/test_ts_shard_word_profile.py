@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import copy
+from typing import get_args
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from qua_shared.schemas.bucket.ts_shard import (
     TS_SHARD_SCHEMA_VERSION,
@@ -123,9 +124,9 @@ def test_native_meta_accepts_both_schema_versions():
     assert NATIVE_SHARD_SCHEMA_VERSIONS == (13, 14)
     assert TS_SHARD_SCHEMA_VERSION == 14
     meta_model = TsShardDoc.model_fields["meta"].annotation
-    assert meta_model is not None
+    assert isinstance(meta_model, type) and issubclass(meta_model, BaseModel)
     fields = meta_model.model_fields
-    assert fields["schema_version"].annotation.__args__ == (13, 14)
+    assert get_args(fields["schema_version"].annotation) == (13, 14)
 
 
 def test_native_meta_declares_no_profile_field():
@@ -133,7 +134,7 @@ def test_native_meta_declares_no_profile_field():
     would rewrite 4,126 existing objects on the first round-trip. Native is the
     absence of the key; ``shard_profile`` reads it from the raw dict."""
     meta_model = TsShardDoc.model_fields["meta"].annotation
-    assert meta_model is not None
+    assert isinstance(meta_model, type) and issubclass(meta_model, BaseModel)
     assert "profile" not in meta_model.model_fields
     native = {
         "_meta": {
