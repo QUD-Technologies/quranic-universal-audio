@@ -223,3 +223,17 @@ def test_keyed_cache_get_does_not_promote():
         assert kc.get("a") == 1
     kc.set("d", 4)
     assert kc.get("a") is None
+
+
+def test_audio_manifest_cache_holds_every_released_sidecar():
+    """The TS manifest walks every released sidecar per rebuild; an LRU smaller than
+    that set misses on every entry of a fixed-order walk."""
+    from services.storage import cache
+
+    slugs = [f"r{i}" for i in range(200)]
+    try:
+        for slug in slugs:
+            cache.set_audio_manifest_cache(slug, {"chapters": {}})
+        assert all(cache.get_audio_manifest_cache(s) is not None for s in slugs)
+    finally:
+        cache.invalidate_audio_manifest_cache()
