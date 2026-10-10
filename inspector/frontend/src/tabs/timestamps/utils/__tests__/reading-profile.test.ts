@@ -19,6 +19,10 @@ const ROWS: TsReadingRow[] = [
         options: [{ option: 'saad', verses: [v(52, 37)] }, { option: 'seen', verses: [] }],
     },
     {
+        selector: 'daaf_haraka', key: 'daaf_haraka', texts: ['ضَعْفٍ'],
+        options: [{ option: 'fatha', verses: [v(30, 54)] }],
+    },
+    {
         selector: 'iwaja_qayyima', key: 'iwaja_qayyima', texts: ['عِوَجَاۜ', 'قَيِّمًا'],
         options: [{ option: 'sakt', verses: [v(18, 1, '18:1–2')] }],
     },
@@ -32,6 +36,7 @@ describe('buildProfile', () => {
         expect(groups.map((g) => [g.group, g.words.map((w) => w.key)])).toEqual([
             ['hamza', ['istifham_article/allah']],
             ['letters', ['yabsut', 'almusaytirun']],
+            ['vowels', ['daaf_haraka']],
             ['sakt', ['iwaja_qayyima']],
         ]);
     });
@@ -46,7 +51,7 @@ describe('buildProfile', () => {
     });
 
     it('fills an option the summary left out with no verses', () => {
-        const sakt = groups[2]!.words[0]!;
+        const sakt = groups[3]!.words[0]!;
         expect(sakt.texts).toEqual(['عِوَجَاۜ', 'قَيِّمًا']);
         expect(sakt.options).toEqual([
             { option: 'sakt', verses: [v(18, 1, '18:1–2')] },

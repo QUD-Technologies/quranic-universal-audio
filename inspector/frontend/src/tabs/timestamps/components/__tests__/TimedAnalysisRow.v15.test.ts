@@ -69,7 +69,7 @@ describe('TimedAnalysisRow v15 reading variants', () => {
         await waitFor(() => expect(spotted(container)).toEqual(['c101', 's1']));
         await waitFor(
             () => expect(document.querySelector('.cell-tip')?.textContent)
-                .toContain('Istifham article: IbdalOther reading'),
+                .toContain('Question hamza before al-: IbdalOther reading'),
             { timeout: 1_000 },
         );
 

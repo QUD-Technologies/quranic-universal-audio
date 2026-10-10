@@ -11,7 +11,7 @@
 
 import * as m from '$lib/paraglide/messages';
 
-export type ChoiceGroup = 'hamza' | 'letters' | 'joining' | 'sakt' | 'stopping';
+export type ChoiceGroup = 'hamza' | 'letters' | 'vowels' | 'joining' | 'sakt' | 'stopping';
 
 export interface ChoiceFamily {
     group: ChoiceGroup;
@@ -20,11 +20,12 @@ export interface ChoiceFamily {
     title: () => string;
 }
 
-export const GROUP_ORDER: readonly ChoiceGroup[] = ['hamza', 'letters', 'joining', 'sakt', 'stopping'];
+export const GROUP_ORDER: readonly ChoiceGroup[] = ['hamza', 'letters', 'vowels', 'joining', 'sakt', 'stopping'];
 
 export const GROUP_TITLE: Record<ChoiceGroup, () => string> = {
     hamza: m.ts_readings_group_hamza,
     letters: m.ts_readings_group_letters,
+    vowels: m.ts_readings_group_vowels,
     joining: m.ts_readings_group_joining,
     sakt: m.ts_readings_group_sakt,
     stopping: m.ts_readings_group_stopping,
@@ -33,7 +34,7 @@ export const GROUP_TITLE: Record<ChoiceGroup, () => string> = {
 export const FAMILIES: Record<string, ChoiceFamily> = {
     istifham: { group: 'hamza', options: ['ibdal', 'tashil'], title: m.ts_readings_istifham_title },
     seen_saad: { group: 'letters', options: ['seen', 'saad'], title: m.ts_readings_seen_saad_title },
-    daaf: { group: 'letters', options: ['fatha', 'damma'], title: m.ts_readings_daaf_title },
+    daaf: { group: 'vowels', options: ['fatha', 'damma'], title: m.ts_readings_daaf_title },
     opening_letters: {
         group: 'joining', options: ['izhar', 'idgham'], title: m.ts_readings_opening_letters_title,
     },
