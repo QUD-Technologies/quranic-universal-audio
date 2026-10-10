@@ -16,8 +16,9 @@ Launches an HF Job that runs ``qua_jobs/cut_release.py``. The job:
      uploads every asset.
 
 On webhook completion (with ``version`` in the payload), ``complete()`` here
-inserts a ``gh_releases`` row + N ``gh_release_recitations`` rows and fires
-``released({track:'gh', version, recitation_count})``.
+inserts a ``gh_releases`` row + N ``gh_release_recitations`` rows, fires
+``released({track:'gh', version, recitation_count})`` and notifies owners —
+including any recitations the job held out for a changed upstream recording.
 
 Global single-flight: only one cut at a time across the system.
 """
@@ -229,6 +230,15 @@ def complete(
     from services.storage import cache as _cache
 
     _cache.invalidate_in_flight_jobs_cache()
+
+    from services.notifications import emit as _notify
+
+    _notify.notify_owners_release_cut(
+        job_id=job_id,
+        version=version,
+        recitation_count=len(members),
+        held=(validation_summary or {}).get("held_upstream_changes"),
+    )
 
     # Email subscribers opted into release notifications (best-effort). Past the
     # idempotency guard above, so a webhook retry can't double-send.

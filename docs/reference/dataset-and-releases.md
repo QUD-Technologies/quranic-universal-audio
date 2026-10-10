@@ -241,8 +241,10 @@ naming the chapters — repair the manifest, never ship the path. The manifest s
 path at write time (see [catalog.md](catalog.md)).
 Before building, the cut range-reads every eligible chapter's upstream link
 (`qua_shared.audio.upstream`); a different recording than the one aligned (size changed,
-duration off by more than 2 s) aborts the cut (exit 17, `failed` webhook with
-`validation_summary.upstream_changes`). `scripts/diagnostics/upstream_drift.py` reports the
+duration off by more than 2 s) is held out of the cut; the rest ship. The completion webhook
+carries the held ones in `validation_summary.held_upstream_changes`, and owners get a
+notification either way: published (listing held recitations and chapters to realign), or
+failed. Every recitation held → the cut fails. `scripts/diagnostics/upstream_drift.py` reports the
 same check fleet-wide.
 `chapter_offsets_ms` is **omitted from the JSON when empty** (model_serializer on `ReleaseCatalogAudio`),
 so CDN by-surah catalogs stay byte-stable and their `content_hash` doesn't churn.

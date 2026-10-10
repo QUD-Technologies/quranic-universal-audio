@@ -14,7 +14,8 @@ the ``gh_releases`` row + N ``gh_release_recitations`` rows and fires the
 public ``released`` event.
 
 A recitation whose linked upstream audio is now a different recording
-(``qua_shared.audio.upstream``) aborts the cut before anything is built.
+(``qua_shared.audio.upstream``) is held out of the cut; the completion webhook
+lists it under ``validation_summary.held_upstream_changes``.
 
 The HF Job NEVER writes the inspector DB. Reads only.
 
@@ -1098,7 +1099,7 @@ class _BuildContext:
 def _upstream_changes(eligible: list[dict]) -> dict[str, list[str]]:
     """``{slug: ["ch62 recording (465s → 321s)", …]}`` for every eligible
     recitation whose linked upstream audio is a different recording than the one
-    its timestamps were aligned on (``qua_shared.audio.upstream``)."""
+    its timestamps were aligned on (``qua_shared.audio.upstream``) — held out."""
     changed: dict[str, list[str]] = {}
     for rec in eligible:
         path = _bucket_root() / "catalog" / "audio_manifest" / f"{rec['slug']}.json"
@@ -1368,23 +1369,24 @@ def main() -> int:
         log.error("no eligible recitations — aborting")
         return 3
 
-    changed = _upstream_changes(eligible)
-    if changed:
-        for slug, chapters in changed.items():
-            log.error("  %s: upstream audio changed — %s", slug, ", ".join(chapters[:10]))
-        log.error(
-            "%d recitation(s) link upstream audio that no longer matches — aborting", len(changed)
-        )
-        _post_webhook(
-            version=version_override or "",
-            job_id=job_id,
-            external_uri="",
-            members=[],
-            launched_by=launched_by,
-            status="failed",
-            validation_summary={"upstream_changes": changed},
-        )
-        return 17
+    held = _upstream_changes(eligible)
+    if held:
+        for slug, chapters in held.items():
+            log.warning("  %s held: upstream audio changed — %s", slug, ", ".join(chapters[:10]))
+        eligible = [rec for rec in eligible if rec["slug"] not in held]
+        log.warning("%d recitation(s) held out of this cut", len(held))
+        if not eligible:
+            log.error("every eligible recitation is held — aborting")
+            _post_webhook(
+                version=version_override or "",
+                job_id=job_id,
+                external_uri="",
+                members=[],
+                launched_by=launched_by,
+                status="failed",
+                validation_summary={"held_upstream_changes": held},
+            )
+            return 3
 
     # 2. Build per-recitation artifacts and accumulate member rows.
     refs_dir = _code_root() / "data"
@@ -1601,6 +1603,7 @@ def main() -> int:
         validation_summary={
             "violation_count": validation_summary_total["violation_count"],
             "by_kind": validation_summary_total["by_kind"],
+            "held_upstream_changes": held,
         },
     )
 
