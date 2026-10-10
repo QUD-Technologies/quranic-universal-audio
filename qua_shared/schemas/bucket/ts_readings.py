@@ -10,17 +10,22 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-READINGS_SCHEMA_VERSION = 1
+READINGS_SCHEMA_VERSION = 2
 
 
 class TsReadingVerse(BaseModel):
-    """A verse an option was read at; ``label`` spans verses when the words cross one."""
+    """A verse an option was read at; ``label`` spans verses when the words cross one.
+
+    ``start_ms`` is where the shard part holding the option's first word starts, so a jump
+    lands on the rendition read that way when the verse is recited more than once.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     surah: int
     ayah: int
     label: str
+    start_ms: int | None = None
 
 
 class TsReadingOption(BaseModel):

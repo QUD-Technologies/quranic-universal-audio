@@ -17,6 +17,9 @@ export interface PendingTsNavigation {
     autoplay: boolean;
     /** Target a specific reciter (flag-notification redirect). */
     slug?: string;
+    /** Chapter-audio ms inside the verse: lands on the rendition playing there
+     *  when the verse is recited more than once. */
+    timeMs?: number;
 }
 
 export const pendingTsNavigation = writable<PendingTsNavigation | null>(null);

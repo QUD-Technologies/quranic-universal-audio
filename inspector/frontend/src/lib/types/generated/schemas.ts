@@ -2565,11 +2565,15 @@ export interface TsReadingOption {
 }
 /**
  * A verse an option was read at; ``label`` spans verses when the words cross one.
+ *
+ * ``start_ms`` is where the shard part holding the option's first word starts, so a jump
+ * lands on the rendition read that way when the verse is recited more than once.
  */
 export interface TsReadingVerse {
   surah: number;
   ayah: number;
   label: string;
+  start_ms?: number | null;
 }
 /**
  * One selector at one word (two for a boundary selector), in mushaf order.

@@ -9,7 +9,7 @@
      * wherever Hafs allows more than one way: per group, one row per word with
      * the word in the Quran font beside its options, the options read carrying
      * the verses read that way and the others dimmed. Each verse chip jumps the
-     * Timestamps view to that verse for this reciter. Overflow scrolls inside
+     * Timestamps view to the rendition of that verse read that way. Overflow scrolls inside
      * the panel; labels follow the UI locale only.
      *
      * Both come from `reading-profile-source` (`GET /api/ts/readings/<slug>` and
@@ -58,7 +58,13 @@
     });
 
     function jump(verse: TsReadingVerse): void {
-        pendingTsNavigation.set({ surah: verse.surah, ayah: verse.ayah, autoplay: true, slug });
+        pendingTsNavigation.set({
+            surah: verse.surah,
+            ayah: verse.ayah,
+            autoplay: true,
+            slug,
+            timeMs: verse.start_ms ?? undefined,
+        });
         onjump?.();
     }
 
