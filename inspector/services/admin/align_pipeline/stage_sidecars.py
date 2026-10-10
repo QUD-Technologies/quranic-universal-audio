@@ -3,14 +3,14 @@
 Builds every chapter's ``ChapterCandidate`` from the staged aligner results (the
 same adaptation assemble uses, so the sidecars index exactly the rows that get
 published) and streams ``POST /api/v1/extraction/sidecars``. Auto Split reuses
-the align stage's candidate-only interactive timings; Low Confidence and Low Confidence
-Waqf (``missed_waqf_v2``) are the review policy over the neural timing head's checks, run
-on the Space — the policy a batch re-time publishes. The Space runs one sidecar job at a
-time; a 409 waits and retries. ``verse_ends_v1`` is built here from the staged rows'
-matcher-lattice pauses, word timings and the chapters' baked loudness levels, without the
-Space (``pause_sidecar``), which also gives the ``missed_waqf_v2`` of a delivery the Space
-does not review (non-Hafs). A segment gets one card: one in Low Confidence is dropped from
-Low Confidence Waqf, its fit being too poor to trust a stop inside it.
+the align stage's candidate-only interactive timings; Low Confidence is the review policy
+over the neural timing head's checks, run on the Space. The Space runs one sidecar job at a
+time; a 409 waits and retries. ``verse_ends_v1`` and a matcher-lattice ``missed_waqf_v2``
+(Low Confidence Waqf) are built here from the staged rows' lattice pauses, word timings and
+the chapters' baked loudness levels, without the Space (``pause_sidecar``); on a Hafs
+delivery the Space's neural Low Confidence Waqf is merged into it (``waqf_union``). A segment
+gets one card: one in Low Confidence is dropped from Low Confidence Waqf, its fit being too
+poor to trust a stop inside it.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ import requests
 
 from services.storage.hf_bucket import resolve_bucket_repo
 
-from . import adapt, pause_sidecar, progress, staging
+from . import adapt, pause_sidecar, progress, staging, waqf_union
 from .aligner_client import AlignerClient, AlignerError
 from .params import AUTO_SPLIT_TIMING_SOURCE, AlignParams
 
@@ -102,13 +102,16 @@ def _stage_space_sidecars(
     }
     result = _call(run_id, body)
     # A non-Hafs delivery gets no neural review (D12 — the Space answers ``null``):
-    # it keeps the matcher-lattice Low Confidence Waqf staged before the call.
-    for name, key in (
-        (LOW_CONFIDENCE_FILE, "low_confidence_v2"),
-        (MISSED_WAQF_FILE, "missed_waqf_v2"),
-    ):
-        if result.get(key) is not None:
-            staging.write_json(staging.sidecar_path(slug, run_id, name), result[key])
+    # its Low Confidence Waqf is the matcher-lattice one alone.
+    if result.get("low_confidence_v2") is not None:
+        staging.write_json(
+            staging.sidecar_path(slug, run_id, LOW_CONFIDENCE_FILE), result["low_confidence_v2"]
+        )
+    if result.get("missed_waqf_v2") is not None:
+        path = staging.sidecar_path(slug, run_id, MISSED_WAQF_FILE)
+        staging.write_json(
+            path, waqf_union.merge(result["missed_waqf_v2"], staging.read_json(path))
+        )
     staging.write_json(staging.sidecar_path(slug, run_id, AUTO_SPLIT_FILE), result["auto_split_v1"])
     log.info("align %s: sidecars staged", run_id)
 

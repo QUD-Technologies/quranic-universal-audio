@@ -505,11 +505,14 @@ def _missed_waqf_after_sidecars(align_env, monkeypatch, neural):
     return staging.read_json(staging.sidecar_path(SLUG, run.run_id, "missed_waqf_v2.json"))
 
 
-def test_sidecars_stage_stages_the_neural_missed_waqf(align_env, monkeypatch):
-    """The Space's neural review replaces the matcher-lattice Low Confidence Waqf."""
-    neural = {"_meta": {"kind": "missed_waqf", "method": "neural_checks"}, "by_uid": {"u": {}}}
+def test_sidecars_stage_merges_the_neural_missed_waqf(align_env, monkeypatch):
+    """The Space's neural review is merged into the matcher-lattice Low Confidence Waqf."""
+    neural = {"_meta": {"kind": "missed_waqf", "method": "neural_checks"}, "by_uid": {}}
 
-    assert _missed_waqf_after_sidecars(align_env, monkeypatch, neural) == neural
+    staged = _missed_waqf_after_sidecars(align_env, monkeypatch, neural)
+
+    assert staged["_meta"]["method"] == "neural_checks"
+    assert set(staged["_meta"]["by_axes"]) == {"neural", "lattice", "both"}
 
 
 def test_sidecars_stage_keeps_the_matcher_missed_waqf_without_a_neural_one(align_env, monkeypatch):

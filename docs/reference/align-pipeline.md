@@ -21,7 +21,7 @@ Where it lives:
 
 | Piece | Path |
 |---|---|
-| Service package | `inspector/services/admin/align_pipeline/` — `runs` (start/retry/cancel/status), `runner` (worker threads), `stage_acquire` · `stage_align` · `stage_split` · `stage_sidecars` · `stage_assemble`, `sources` (manifest → source groups + slots), `partition` (pure cut logic), `resolve` (which file each surah is taken from), `manifest` (writes acquired size/duration/offset + split coverage back to the audio manifest), `adapt` (aligner rows → staged shapes), `pause_sidecar` (lattice pauses + levels → `missed_waqf_v2` / `verse_ends_v1`), `join_silence` (silence at a join from the baked levels), `aligner_client` (SSE), `staging` (bucket paths), `progress` (in-memory detail + cancel), `params` (knobs + env), `limits` (shared GPU/CPU budget) |
+| Service package | `inspector/services/admin/align_pipeline/` — `runs` (start/retry/cancel/status), `runner` (worker threads), `stage_acquire` · `stage_align` · `stage_split` · `stage_sidecars` · `stage_assemble`, `sources` (manifest → source groups + slots), `partition` (pure cut logic), `resolve` (which file each surah is taken from), `manifest` (writes acquired size/duration/offset + split coverage back to the audio manifest), `adapt` (aligner rows → staged shapes), `pause_sidecar` (lattice pauses + levels → `missed_waqf_v2` / `verse_ends_v1`), `waqf_union` (neural + matcher-lattice Low Confidence Waqf, one card per segment), `join_silence` (silence at a join from the baked levels), `aligner_client` (SSE), `staging` (bucket paths), `progress` (in-memory detail + cancel), `params` (knobs + env), `limits` (shared GPU/CPU budget) |
 | Intake planner | `inspector/services/admin/intake_plan/` — `enumerate` (+ `drive`), `identity`, `plan`, `mint` |
 | Durable row | `align_runs` table — `services/db/migrations/0031_align_runs.sql`, `services/db/repo_align_runs.py` |
 | HF jobs | `qua_jobs/acquire_audio.py` (kind `acquire_audio`) and `qua_jobs/split_audio.py` (kind `split_audio`), both shown in the Jobs tab; shared fetch/encode/cut/peaks helpers in `qua_jobs/audio_io.py`; grouping in `qua_shared/audio/sources.py` |
@@ -75,16 +75,16 @@ align     per-file loop, aligner Space POST /api/v1/batches (alignment-only) +
           From here a cut chapter is indistinguishable from a single one.
 sidecars  one reciter-wide POST /api/v1/extraction/sidecars (SSE) — the aligner times
           every segment with the neural head, runs the review policy over its checks
-          (qua_timing_batch.retime.review) for low_confidence_v2 and missed_waqf_v2 — the
-          policy a batch re-time publishes — and builds auto_split from the align stage's
-          word timings (else the same neural rows)
-          → staging/<slug>/<run>/sidecars/{low_confidence_v2,missed_waqf_v2,auto_split_v1}.json
+          (qua_timing_batch.retime.review) for low_confidence_v2 and a neural
+          missed_waqf_v2, and builds auto_split from the align stage's word timings (else
+          the same neural rows)
+          → staging/<slug>/<run>/sidecars/{low_confidence_v2,auto_split_v1}.json
           Hafs only for the review: a non-Hafs delivery gets `low_confidence_v2: null` and
           `missed_waqf_v2: null` (D12, editions.md); auto_split_v1 is always staged
-          + sidecars/verse_ends_v1.json built in-process (pause_sidecar) from the rows'
-          matcher-lattice `pauses`, word timings and the chapters' levels — see Low
-          Confidence Waqf below — which also stages the missed_waqf_v2 of a non-Hafs
-          delivery; a segment in low_confidence_v2 is dropped from missed_waqf_v2 (one card
+          + sidecars/{missed_waqf_v2,verse_ends_v1}.json built in-process (pause_sidecar)
+          from the rows' matcher-lattice `pauses`, word timings and the chapters' levels,
+          with the neural missed_waqf_v2 merged in (waqf_union) — see Low Confidence Waqf
+          below; a segment in low_confidence_v2 is dropped from missed_waqf_v2 (one card
           per segment)
 assemble  in-process: adapt → promote_build.build_artifacts (peaks from the acquired blobs,
           no ffmpeg) → reciters/<slug>/{detailed,segments,pipeline_meta,chapter_sources,
@@ -261,9 +261,12 @@ save flow keeps them only while the row's time and ref are unchanged.
 
 ## Low Confidence Waqf (`missed_waqf_v2.json`) and verse ends (`verse_ends_v1.json`)
 
-On a Hafs delivery the staged `missed_waqf_v2` is the aligner's neural review (above); the
-matcher-lattice build below gives `verse_ends_v1` and a non-Hafs delivery's
-`missed_waqf_v2`.
+On a Hafs delivery `missed_waqf_v2` is the union of two arms, one card per segment
+(`waqf_union`): `lattice`, the matcher-lattice build below, and `neural`, the aligner's review
+of its timing checks (a mid-verse join whose stop scores within the review margin of reading
+through). A join both flag is one cut with both axes at the neural cursor; a mid-verse sakt
+boundary (75:27:2, 83:14:2) is never asked. Each cut keeps its `axes`, so the answers measure
+each arm. A non-Hafs delivery gets the `lattice` arm alone.
 
 The acquire and split jobs bake `reciters/<slug>/levels/<ch>.json.gz` next to the
 peaks (on a re-run, acquire bakes them for already-persisted chapters straight off the
