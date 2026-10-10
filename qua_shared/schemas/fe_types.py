@@ -182,7 +182,12 @@ from .wire.seg import (
     SegValUnmarkedWaslItem,
     SegWordTimesResponse,
 )
-from .wire.timestamps import TsConfigResponse, TsManifestResponse
+from .wire.timestamps import (
+    TsConfigResponse,
+    TsMaddRow,
+    TsManifestResponse,
+    TsRecitationProfile,
+)
 from .wire.ts_reports import (
     TsReciterReports,
     TsReport,
@@ -236,7 +241,9 @@ __all__ = [
     "SegmentFlagView",
     "SegmentsChapterSummary",
     "TsConfigResponse",
+    "TsMaddRow",
     "TsManifestResponse",
+    "TsRecitationProfile",
     "TsReciterReports",
     "TsReport",
     "TsReportAuthor",

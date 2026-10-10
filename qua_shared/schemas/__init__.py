@@ -34,6 +34,7 @@ from .bucket.edit_history import (
 from .bucket.jobs import JobKind, JobMember, JobRecord, JobsListResponse, JobStatus
 from .bucket.peaks_history import PeaksRecord, parse_peaks_record
 from .bucket.pipeline_meta import PipelineMeta
+from .bucket.recitation_profile import RecitationProfileDoc
 from .bucket.segment import (
     DetailedDocument,
     DetailedEntry,
@@ -277,8 +278,10 @@ from .wire.timestamps import (
     TsCatalogReciter,
     TsCatalogResponse,
     TsConfigResponse,
+    TsMaddRow,
     TsManifestReciter,
     TsManifestResponse,
+    TsRecitationProfile,
     TsReciter,
     TsRecitersResponse,
     TsVbrResponse,
@@ -520,7 +523,9 @@ __all__ = [
     "TsWordTiming",
     "TsConfigResponse",
     "TsManifestReciter",
+    "TsMaddRow",
     "TsManifestResponse",
+    "TsRecitationProfile",
     "TsCatalogReciter",
     "TsCatalogDelivery",
     "TsCatalogResponse",
@@ -536,6 +541,7 @@ __all__ = [
     "TsReadingRow",
     "TsReadingVerse",
     "TsReadingsDoc",
+    "RecitationProfileDoc",
     "TsValidationDoc",
     "TsValidationMeta",
     "TsValidationVerse",

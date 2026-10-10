@@ -21,6 +21,8 @@ What is modelled here, by source route/service:
   wire body. See the class docstrings.
 - ``GET /api/ts/vbr/<reciter>`` → :class:`TsVbrResponse`. Built inline by
   ``ts_vbr``.
+- ``GET /api/ts/profile/<reciter>`` → :class:`TsRecitationProfile` or ``null``. Built by
+  ``services/reference/recitation_profile.py`` from the bucket ``RecitationProfileDoc``.
 - the per-chapter shard (``GET /api/ts/shard/<reciter>/<chapter>``,
   decompressed) reuses :class:`~qua_shared.schemas.bucket.ts_shard.TsShardDoc`
   / ``TsShardReading`` / ``TsShardPart`` — imported, never redefined.
@@ -41,6 +43,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..bucket.catalog import AudioCategory
+from ..bucket.recitation_profile import MaddLength
 from ..bucket.ts_shard import TsShardDoc, TsShardPart, TsShardReading
 
 __all__ = [
@@ -51,6 +54,8 @@ __all__ = [
     "TsCatalogDelivery",
     "TsCatalogResponse",
     "TsVbrResponse",
+    "TsMaddRow",
+    "TsRecitationProfile",
     "TsReciter",
     "TsRecitersResponse",
     "Letter",
@@ -277,6 +282,36 @@ class TsVbrResponse(BaseModel):
 
     vbr_chapters: list[int] = Field(default_factory=list)
     error: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# GET /api/ts/profile/<reciter>
+# ---------------------------------------------------------------------------
+
+MaddKind = Literal["tabii", "munfasil", "muttasil", "lazim", "arid", "leen"]
+
+
+class TsMaddRow(BaseModel):
+    """One madd type with occurrences; ``length`` only for the types with a length choice."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: MaddKind
+    mean_ms: int
+    length: MaddLength | None = None
+
+
+class TsRecitationProfile(BaseModel):
+    """A Hafs recitation's madd, ghunnah and pause durations — the public projection.
+
+    Madd rows in display order; a type, ghunnah or pauses with no occurrences is absent.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    madd: list[TsMaddRow] = Field(default_factory=list)
+    ghunnah_ms: int | None = None
+    pause_ms: int | None = None
 
 
 # ---------------------------------------------------------------------------
