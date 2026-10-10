@@ -14,9 +14,11 @@ profile are copied to a backup folder (:mod:`services.admin.ts_backup`, which do
 rollback); a failed backup fails the run untouched. Shards are written only when no built
 chapter leaves a word, sound or rendered sakt untimed (the aligner's ``untimed`` counts, the
 batch re-time's publish gate); otherwise none are and the run fails naming the counts. A Hafs
-run that succeeds with every chapter's shard in the bucket ends by writing
-``recitation_profile.json`` (summarized on the aligner from the delivery's shards) and dropping
-the cached profile; a profile that cannot be built is logged and leaves the run succeeded.
+run that succeeds ends by writing ``recitation_profile.json`` and dropping the cached profile:
+the aligner summarizes every chapter, the run's own from the ``profile_samples`` their shard
+calls returned and the rest from their shards in the bucket (none missing). A profile that
+cannot be built is logged and leaves the run succeeded. A cancel seen after the shards are
+built writes neither shards nor profile.
 
 ``start_run`` writes the ``running`` run record (``jobs/ts/<run_id>.json``, the shape the
 batch Space wrote) and works on a daemon thread, stamping the record ``succeeded`` or
@@ -30,6 +32,7 @@ now in the bucket before the record is closed.
 from __future__ import annotations
 
 import base64
+import dataclasses
 import datetime
 import json
 import logging
@@ -103,20 +106,20 @@ def _run(record: TsJobRecord, riwayah: str, full: bool) -> None:
     try:
         root, copied = ts_backup.backup(record.slug)
         emit(f"backup: {root} ({', '.join(copied) or 'nothing live yet'})")
-        failed, model, untimed = _time_chapters(record, riwayah, full, emit)
-        _write_validation(record.slug, failed, record.settings.chapters, model)
-        if untimed:
+        out = _time_chapters(record, riwayah, full, emit)
+        _write_validation(record.slug, out.failed, record.settings.chapters, out.model)
+        if out.untimed:
             raise RuntimeError(
-                f"untimed words, sounds or sakt: {_counts(untimed)}; no shards were written"
+                f"untimed words, sounds or sakt: {_counts(out.untimed)}; no shards were written"
             )
-        if failed:
+        if out.failed:
             raise RuntimeError(
-                f"segments failed in chapter(s) {sorted(map(int, failed))}; their shards were "
-                "left as they were (ts_validation.json lists the segments)"
+                f"segments failed in chapter(s) {sorted(map(int, out.failed))}; their shards "
+                "were left as they were (ts_validation.json lists the segments)"
             )
         record.status = "succeeded"
-        if riwayah == DEFAULT_SDK_RIWAYAH:
-            _write_profile(record.slug, emit)
+        if riwayah == DEFAULT_SDK_RIWAYAH and not _canceled(record):
+            _write_profile(record.slug, out.samples, emit)
     except _Canceled:
         emit("canceled")
         record.status = "canceled"
@@ -132,13 +135,19 @@ def _run(record: TsJobRecord, riwayah: str, full: bool) -> None:
     _write(record)
 
 
-def _time_chapters(
-    record: TsJobRecord, riwayah, full, emit
-) -> tuple[dict[str, list], str, dict[str, dict]]:
+@dataclasses.dataclass
+class _Outcome:
+    failed: dict[str, list]  # chapter -> its failed segments
+    model: str
+    untimed: dict[str, dict]  # chapter -> its untimed counts
+    samples: dict[int, dict]  # chapter -> its recitation-profile samples
+
+
+def _time_chapters(record: TsJobRecord, riwayah, full, emit) -> _Outcome:
     """Each wanted chapter's times brought current, then its shards built and written, unless
     a segment failed: that chapter's shards stay as they were. No shard is written when a built
-    chapter leaves anything untimed. Returns the failed segments, the model and the untimed
-    counts by chapter. Stops before a chapter once the run is canceled."""
+    chapter leaves anything untimed. Stops before a chapter, and before the writes, once the
+    run is canceled."""
     slug, chapters = record.slug, record.settings.chapters
     wanted = [c for c in aligner_timing.chapters_of(slug) if not chapters or c in chapters]
     emit(f"{len(wanted)} chapter(s), {riwayah}, full={full}")
@@ -153,6 +162,8 @@ def _time_chapters(
             failed[str(chapter)] = reply["failed_segments"]
     publish = {c: r for c, r in built.items() if str(c) not in failed}
     untimed = _untimed(publish, emit)
+    if _canceled(record):
+        raise _Canceled
     if not untimed:
         backend = get_backend()
         for reply in publish.values():
@@ -161,7 +172,8 @@ def _time_chapters(
                     storage_paths.timestamps_path_br(slug, shard_chapter), base64.b64decode(shard)
                 )
     model = next((r["model"] for r in (*built.values(), *timed.values())), "")
-    return failed, model, untimed
+    samples = {c: r["profile_samples"] for c, r in publish.items() if r.get("profile_samples")}
+    return _Outcome(failed, model, untimed, samples)
 
 
 def _untimed(replies: dict[int, dict], emit) -> dict[str, dict]:
@@ -192,18 +204,21 @@ def _counts(untimed: dict[str, dict]) -> str:
     return "; ".join(f"ch{ch} {untimed[ch]}" for ch in sorted(untimed, key=int))
 
 
-def _write_profile(slug: str, emit) -> None:
-    """``recitation_profile.json`` from every chapter's shard, when each chapter has one; a
-    failure is logged and the previous profile stays."""
+def _write_profile(slug: str, samples: dict[int, dict], emit) -> None:
+    """``recitation_profile.json`` from every chapter: ``samples`` for the chapters this run
+    built, the bucket shard for the rest (each must have one). A failure is logged and the
+    previous profile stays."""
     try:
         chapters = aligner_timing.chapters_of(slug)
         shards_dir = storage_paths.reciter_file(slug, "timestamps")
         present = set(get_backend().list_dir_strict(shards_dir))
-        missing = [c for c in chapters if f"{c}.json.br" not in present]
+        stored = [c for c in chapters if c not in samples]
+        missing = [c for c in stored if f"{c}.json.br" not in present]
         if missing:
             emit(f"recitation profile not written: no shard for chapter(s) {missing}")
             return
-        doc = aligner_timing.delivery_profile(slug, chapters)
+        inline = {c: samples[c] for c in chapters if c in samples}
+        doc = aligner_timing.delivery_profile(slug, stored, inline)
         RecitationProfileDoc.model_validate(doc)
         get_backend().write_json_atomic(storage_paths.recitation_profile_path(slug), doc)
     except Exception as exc:  # noqa: BLE001 — the run's shards are live either way
