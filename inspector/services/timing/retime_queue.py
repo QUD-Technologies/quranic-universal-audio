@@ -18,7 +18,7 @@ from . import aligner_timing
 log = logging.getLogger("inspector")
 
 #: Seconds a chapter's worker waits for further saves before timing it.
-SETTLE_S = 5.0
+SETTLE_S = 1.5
 
 _lock = threading.Lock()
 _running: set[tuple[str, int]] = set()
