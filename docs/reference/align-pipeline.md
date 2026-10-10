@@ -98,9 +98,7 @@ assemble  in-process: adapt → promote_build.build_artifacts (peaks from the ac
           verse_ends_v1 verdicts are applied to the published delivery
           (services/segments/verse_end_verdicts: WAQF splits, WASL answers, one
           cross_verse/auto_fix op per segment; a retry re-applies idempotently);
-          every chapter's segment times stored, then the first timestamps run launched
-          (shards, reading variants, readings summary; it publishes nothing until the
-          reciter is marked ready); staging deleted
+          staging deleted
 auto_detect  sees detailed.json → reciter.alignment_completed → awaiting_review
 ```
 
