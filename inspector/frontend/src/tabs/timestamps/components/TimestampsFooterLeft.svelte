@@ -6,7 +6,8 @@
      * drop-up lists the other TS-capable reciters.
      *
      * The analysis cluster (loop / letters / phonemes / translations / help)
-     * lives in the player CENTER — see TimestampsFooterAnalysis. The
+     * lives in the player CENTER — see TimestampsFooterAnalysis. A Hafs
+     * recitation also gets the reading-profile button (ReadingProfile). The
      * bookmark + panel buttons live on the now-reciting filmstrip.
      */
     import { onMount, tick } from 'svelte';
@@ -18,6 +19,7 @@
     import { i18n } from '../../../lib/i18n/locale.svelte';
     import * as m from '../../../lib/paraglide/messages';
     import { dashPort } from '../../../lib/playback/dash-port';
+    import { isHafs } from '../../../lib/riwayat';
     import { playerContext } from '../../../lib/stores/player-context';
     import { LS_KEYS } from '../../../lib/utils/constants';
     import { combinationCompact, vocabLabel } from '../../../lib/utils/delivery-label';
@@ -31,6 +33,7 @@
     } from '../services/ts-published';
     import { mushafActive } from '../stores/mushaf';
     import { cycleShuffle, requestManualShuffle, shuffleMode } from '../stores/shuffle';
+    import ReadingProfile from './ReadingProfile.svelte';
 
     // Tri-state shuffle: 0 off · 1 ayah (same reciter) · 2 both (random
     // reciter + ayah). Off/ayah share the single-reciter glyph (ayah just
@@ -212,6 +215,14 @@
             </div>
         {/if}
     </div>
+
+    {#if curEntry && isHafs(curEntry.delivery.riwayah)}
+        <ReadingProfile
+            slug={curEntry.delivery.slug}
+            reciterName={curEntry.reciter.name}
+            reciterNameAr={curEntry.reciter.name_ar}
+        />
+    {/if}
 
     <!-- Tri-state shuffle cycle (double-height, right of the picker). The
          Mushaf view reads on in order, so shuffle is off there. -->

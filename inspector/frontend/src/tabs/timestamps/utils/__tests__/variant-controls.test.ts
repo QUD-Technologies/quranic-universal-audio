@@ -84,12 +84,12 @@ describe('variant tips', () => {
         const occurrence = controls.occurrences[0]!;
 
         expect(variantTipLines(definition, occurrence, 'tashil')).toEqual([
-            'Istifham article: Tashil',
+            'Question hamza before al-: Tashil',
             'This recitation',
             'Hamzat al-wasl after the question hamza.',
         ]);
         expect(variantTipLines(definition, occurrence, 'ibdal')).toEqual([
-            'Istifham article: Ibdal',
+            'Question hamza before al-: Ibdal',
             'Other reading',
             'Hamzat al-wasl after the question hamza.',
         ]);
