@@ -5,7 +5,6 @@ import type { TsReadingVariant } from '../../../../lib/types/generated/schemas';
 import {
     type VariantCatalogue,
     variantControlsFor,
-    variantNote,
     variantTipLines,
 } from '../variant-controls';
 
@@ -44,7 +43,6 @@ describe('variantControlsFor', () => {
             active: true,
             masked: false,
             affected: { ibdal: { column_ids: [101], sound_ids: [1], boundary_ids: [] } },
-            note: 'long vowel 0.31 × lāzim p5',
         }]);
     });
 
@@ -56,20 +54,19 @@ describe('variantControlsFor', () => {
             anchor_word_id: 0,
             anchor_boundary_id: 1,
             affected: { sakt: { column_ids: [5, 6], sound_ids: [5, 6], boundary_ids: [1] } },
-            note: 'acoustic margin 4.0',
         });
         expect(variantControlsFor(CATALOGUE, { variants: [SAKT] })!.definitions.iwaja_qayyima)
             .not.toHaveProperty('description');
     });
 
-    it('masks a pick made without evidence', () => {
+    it('keeps how a face was picked out of the public controls', () => {
         const [occurrence] = variantControlsFor(CATALOGUE, {
             variants: [{ ...V15_VARIANT, chosen: 'ibdal', by: 'default', score: null,
                 affected: { tashil: { c: [], s: [], b: [] } } }],
         })!.occurrences;
 
-        expect(occurrence?.masked).toBe(true);
-        expect(occurrence?.note).toBe('no evidence, default shown');
+        expect(occurrence?.masked).toBe(false);
+        expect(occurrence).not.toHaveProperty('note');
     });
 
     it('is undefined for a reading without variants or definitions', () => {
@@ -80,18 +77,7 @@ describe('variantControlsFor', () => {
     });
 });
 
-describe('variant notes and tips', () => {
-    it.each([
-        [{ by: 'scored', score: 4.04 }, 'acoustic margin 4.0'],
-        [{ by: 'tie', score: 0 }, 'equal scores, default kept'],
-        [{ by: 'length', score: 0.312 }, 'long vowel 0.31 × lāzim p5'],
-        [{ by: 'majority', score: 1.2 }, "majority of this recording's places"],
-        [{ by: 'pause', score: 240 }, 'pause 240 ms'],
-        [{ by: 'default', score: null }, 'no evidence, default shown'],
-    ] as const)('notes %o', (variant, note) => {
-        expect(variantNote(variant)).toBe(note);
-    });
-
+describe('variant tips', () => {
     it('names the face and whose reading it is', () => {
         const controls = variantControlsFor(CATALOGUE, { variants: [V15_VARIANT] })!;
         const definition = controls.definitions.istifham_article!;
@@ -101,7 +87,6 @@ describe('variant notes and tips', () => {
             'Istifham article: Tashil',
             'This recitation',
             'Hamzat al-wasl after the question hamza.',
-            'long vowel 0.31 × lāzim p5',
         ]);
         expect(variantTipLines(definition, occurrence, 'ibdal')).toEqual([
             'Istifham article: Ibdal',

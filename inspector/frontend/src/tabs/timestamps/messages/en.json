@@ -325,11 +325,5 @@
   "ts_mushaf_repeat_progress": "Verse {verse} · {rep} of {each} · round {round} of {rounds}",
   "ts_shortcuts_label_mushaf": "Mushaf view",
   "ts_variant_this_recitation": "This recitation",
-  "ts_variant_other_reading": "Other reading",
-  "ts_variant_note_scored": "acoustic margin {score}",
-  "ts_variant_note_tie": "equal scores, default kept",
-  "ts_variant_note_length": "long vowel {share} × lāzim p5",
-  "ts_variant_note_majority": "majority of this recording's places",
-  "ts_variant_note_pause": "pause {ms} ms",
-  "ts_variant_note_default": "no evidence, default shown"
+  "ts_variant_other_reading": "Other reading"
 }
