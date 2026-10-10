@@ -52,7 +52,8 @@ class AlignParams:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
     def batch_body(self, *, device: str | None = None) -> dict:
-        """The ``POST /api/v1/batches`` body for alignment plus split-candidate timing.
+        """The ``POST /api/v1/batches`` body for alignment plus split-candidate timing and
+        the rows' review checks (the sidecars' Low Confidence and Missed Waqf).
 
         ``device`` overrides the run's starting lane — the align stage passes the
         live one so a GPU→CPU fallback recreates the batch on CPU."""
@@ -65,6 +66,7 @@ class AlignParams:
             "min_silence_floor_ms": self.min_silence_floor_ms,
             "include_word_timestamps": False,
             "include_auto_split_timings": True,
+            "include_review_checks": True,
             "include_merge_groups": True,
             "discard_session": True,
         }

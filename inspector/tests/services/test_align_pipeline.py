@@ -172,6 +172,7 @@ def test_align_batch_requests_only_auto_split_candidate_timings():
     body = AlignParams().batch_body()
     assert body["include_word_timestamps"] is False
     assert body["include_auto_split_timings"] is True
+    assert body["include_review_checks"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -678,3 +679,61 @@ def test_sidecars_stage_leaves_a_low_confidence_segment_one_card(align_env):
     staged = staging.read_json(path) or {}
     assert list(staged["by_uid"]) == ["a"]
     assert staged["_meta"]["segments"] == 1 and staged["_meta"]["low_confidence"] == 1
+
+
+def test_sidecars_stage_sends_the_align_stage_checks_on_the_staged_timeline(align_env, monkeypatch):
+    """A row's review checks travel by published segment index, moved with the row onto its
+    staged timeline; a check for another span (or none) is left for the Space to time."""
+    from copy import deepcopy
+
+    from services.admin.align_pipeline import runs, stage_sidecars, staging
+    from services.admin.align_pipeline.params import AlignParams
+
+    _backend, _started = align_env
+    run = runs.start(SLUG, OWNER)
+    chapter = deepcopy(CH112)
+    # As if the split stage moved the row 1000 ms earlier after the aligner checked it.
+    chapter["segments"][1]["review_checks"] = {
+        "row": {"uid": "1", "ref": "112:1:1-112:1:4", "start_ms": 8380, "end_ms": 11940,
+                "fit": -0.2},
+        "joins": [{"uid": "1", "before": "112:1:1", "after": "112:1:2", "at_ms": 9000}],
+    }  # fmt: skip
+    chapter["segments"][2]["review_checks"] = {
+        "row": {"uid": "2", "ref": "112:2:1-112:2:2", "start_ms": 0, "end_ms": 10},
+        "joins": [],
+    }
+    staging.write_json(staging.chapter_path(SLUG, run.run_id, 112), chapter)
+    captured = {}
+
+    def fake_call(_run_id, body):
+        captured.update(body)
+        return {"low_confidence_v2": {"failures": []}, "auto_split_v1": {"by_uid": {}}}
+
+    monkeypatch.setattr(stage_sidecars, "_call", fake_call)
+
+    stage_sidecars.run(SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"})
+
+    first, second, third = captured["review_checks"]["112"]
+    assert (first["row"]["start_ms"], first["row"]["end_ms"]) == (7380, 10940)
+    assert first["joins"][0]["at_ms"] == 8000
+    assert second is None and third is None
+
+
+def test_sidecars_stage_sends_no_checks_when_the_align_stage_had_none(align_env, monkeypatch):
+    from services.admin.align_pipeline import runs, stage_sidecars, staging
+    from services.admin.align_pipeline.params import AlignParams
+
+    _backend, _started = align_env
+    run = runs.start(SLUG, OWNER)
+    staging.write_json(staging.chapter_path(SLUG, run.run_id, 112), CH112)
+    captured = {}
+
+    def fake_call(_run_id, body):
+        captured.update(body)
+        return {"low_confidence_v2": {"failures": []}, "auto_split_v1": {"by_uid": {}}}
+
+    monkeypatch.setattr(stage_sidecars, "_call", fake_call)
+
+    stage_sidecars.run(SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"})
+
+    assert "review_checks" not in captured

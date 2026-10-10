@@ -4,7 +4,9 @@ Builds every chapter's ``ChapterCandidate`` from the staged aligner results (the
 same adaptation assemble uses, so the sidecars index exactly the rows that get
 published) and streams ``POST /api/v1/extraction/sidecars``. Auto Split reuses
 the align stage's candidate-only interactive timings; Low Confidence is the review policy
-over the neural timing head's checks, run on the Space. The Space runs one sidecar job at a
+over the neural timing head's checks, which the align stage returned per row
+(``review_checks``, sent on the staged timeline); the Space times only the segments without
+them. The Space runs one sidecar job at a
 time; a 409 waits and retries. ``verse_ends_v1`` and a matcher-lattice ``missed_waqf_v2``
 (Low Confidence Waqf) are built here from the staged rows' lattice pauses, word timings and
 the chapters' baked loudness levels, without the Space (``pause_sidecar``); on a Hafs
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass
 
 import requests
 
@@ -35,18 +38,32 @@ VERSE_ENDS_FILE = pause_sidecar.VERSE_ENDS_FILE
 BUSY_RETRY_S = 60
 BUSY_MAX_WAIT_S = 6 * 3600
 TRANSIENT_ATTEMPTS = 3
+#: Both sides round region seconds to ms.
+SPAN_TOLERANCE_MS = 1
 
 
 class SidecarsStageError(RuntimeError):
     pass
 
 
+@dataclass
+class Payloads:
+    """The sidecars request's per-chapter parts, by published segment index."""
+
+    candidates: dict[str, dict]
+    #: The align stage's word timings, ``None`` when a chapter was staged without them.
+    timings: dict[str, list[list[dict] | None]] | None
+    #: The align stage's review checks, ``None`` when no row carries one.
+    checks: dict[str, list[dict | None]] | None
+
+
 def payloads_for(
     slug: str, run_id: str, chapters: list[int], sources: dict[int, str], riwayah: str
-) -> tuple[dict[str, dict], dict[str, list[list[dict] | None]] | None]:
+) -> Payloads:
     docs = staging.read_chapters(slug, run_id, chapters)
     candidates: dict[str, dict] = {}
     timings: dict[str, list[list[dict] | None]] = {}
+    checks: dict[str, list[dict | None]] = {}
     for ch in chapters:
         candidate, _events, _basmala = adapt.adapt_chapter(
             ch, docs[ch], source_url=sources[ch], riwayah=riwayah
@@ -56,19 +73,45 @@ def payloads_for(
         timings[str(ch)] = [
             row.get("words") if isinstance(row.get("words"), list) else None for row in kept_rows
         ]
+        checks[str(ch)] = [_rebased_checks(row) for row in kept_rows]
     current = all(
         (docs[ch].get("_inspector") or {}).get("auto_split_timing_source")
         == AUTO_SPLIT_TIMING_SOURCE
         for ch in chapters
     )
-    return candidates, timings if current else None
+    any_checks = any(c is not None for rows in checks.values() for c in rows)
+    return Payloads(candidates, timings if current else None, checks if any_checks else None)
+
+
+def _rebased_checks(row: dict) -> dict | None:
+    """The row's review checks on its staged timeline (the split stage may have moved the
+    row onto its chapter's cut), or ``None`` when it has none for this span."""
+    item = row.get("review_checks")
+    if not isinstance(item, dict) or not isinstance(check := item.get("row"), dict):
+        return None
+    try:
+        start, end = int(check["start_ms"]), int(check["end_ms"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    row_start, row_end = adapt.to_ms(row["time_from"]), adapt.to_ms(row["time_to"])
+    if abs((end - start) - (row_end - row_start)) > SPAN_TOLERANCE_MS:
+        return None
+    shift = row_start - start
+    return {
+        "row": {**check, "start_ms": start + shift, "end_ms": end + shift},
+        "joins": [
+            {**join, "at_ms": int(join["at_ms"]) + shift}
+            for join in item.get("joins") or []
+            if isinstance(join, dict) and "at_ms" in join
+        ],
+    }
 
 
 def candidates_for(
     slug: str, run_id: str, chapters: list[int], sources: dict[int, str], riwayah: str
 ) -> dict[str, dict]:
     """Compatibility view for callers that only need the staged candidates."""
-    return payloads_for(slug, run_id, chapters, sources, riwayah)[0]
+    return payloads_for(slug, run_id, chapters, sources, riwayah).candidates
 
 
 def run(
@@ -89,7 +132,7 @@ def run(
 def _stage_space_sidecars(
     slug: str, run_id: str, params: AlignParams, chapters: list[int], sources: dict[int, str]
 ) -> None:
-    candidates, auto_split_timings = payloads_for(slug, run_id, chapters, sources, params.riwayah)
+    payloads = payloads_for(slug, run_id, chapters, sources, params.riwayah)
     body = {
         "slug": slug,
         "riwayah": params.riwayah,
@@ -97,8 +140,9 @@ def _stage_space_sidecars(
             "repo": resolve_bucket_repo(),
             "path_tpl": f"reciters/{slug}/audio/{{chapter}}.mp3",
         },
-        "candidates": candidates,
-        **({"auto_split_timings": auto_split_timings} if auto_split_timings is not None else {}),
+        "candidates": payloads.candidates,
+        **({"auto_split_timings": payloads.timings} if payloads.timings is not None else {}),
+        **({"review_checks": payloads.checks} if payloads.checks is not None else {}),
     }
     result = _call(run_id, body)
     # A non-Hafs delivery gets no neural review (D12 — the Space answers ``null``):
