@@ -40,6 +40,8 @@ port.dispose();
 
 Subscriber API (each returns an unsubscribe fn, snapshotted before fanout): `onLoad`, `onPlay`, `onPause`, `onEnded`, `onTimeUpdate` (file-absolute), `onError`, `onWaiting` (network/decoder starvation), `onPlaying` (actual audible resume, distinct from `onPlay`).
 
+`timelineVersion` changes synchronously on `seek`, element/source replacement and clip loads, and on native `seeking` events. It stays unchanged on ordinary playback ticks and coverage reuse. Consumers compare versions to reset visual cursor history without guessing whether a backward clock movement is a seek.
+
 ### Coordinate contract
 
 **File-absolute milliseconds outside the port. Clip-relative inside.** Every consumer hands the port file-absolute ms; the port subtracts `_window.offsetMs` before writing `el.currentTime` (`seek()`). `offsetMs` is `0` for CBR (chapter URL, file-absolute currentTime), equal to clip start for VBR (segment-clip URL plays from byte 0). Helpers: `toClipMs`, `toFileMs`, `currentTimeMs()` (file-absolute), `coordinates()` (`{offsetMs}`).

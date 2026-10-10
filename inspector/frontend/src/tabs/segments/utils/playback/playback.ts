@@ -100,6 +100,10 @@ import { ensureWordTimes, storedWordTimes } from '../../stores/word-times';
  *  the right canvas. */
 let _prevPlaying: { chapter: number; index: number } | null = null;
 
+/** Identity of the transport and timing data behind the held word cursor. */
+let _wordTimelineVersion = -1;
+let _wordTimings: WordInterval[] | null = null;
+
 /** Canvases of staged (not-yet-dispatched) split pieces that currently carry a
  *  playhead. Staged pieces slice one parent window between them, so when the
  *  cursor crosses out of a piece that piece needs its waveform repainted once
@@ -298,6 +302,8 @@ export function resetHighlightRefs(): void {
  *  Called explicitly on edit-mode entry, per-reciter clear, and chapter
  *  swap. */
 export function disposeSegPlayback(): void {
+    _wordTimings = null;
+    setActiveWordCursor(null);
     _cancelPendingProbePlay();
     cancelChimeGap();
     _drawLoop.stop();
@@ -1390,9 +1396,14 @@ export function drawActivePlayhead(timeMs?: number): void {
     // instead of vanishing (drawSegPlayhead skips out-of-range times). Visual
     // only — control paths keep the raw clock.
     const displayT = Math.min(seg.time_end, Math.max(seg.time_start, heardTimeMs(time, _activePlayStartMs)));
+    const timings = _highlightTimings(seg, active.chapter);
     const lit = get(activeWordCursor);
-    const litIndex = lit && lit.chapter === active.chapter && lit.index === active.index ? lit.wordIndex : -1;
-    const activeWordIndex = steadyWordIndexAt(displayT, _highlightTimings(seg, active.chapter), litIndex);
+    const sameTimeline = _wordTimelineVersion === segPort.timelineVersion && _wordTimings === timings;
+    const litIndex = sameTimeline && lit && lit.chapter === active.chapter && lit.index === active.index
+        ? lit.wordIndex : -1;
+    _wordTimelineVersion = segPort.timelineVersion;
+    _wordTimings = timings;
+    const activeWordIndex = steadyWordIndexAt(displayT, timings, litIndex);
     setActiveWordCursor(activeWordIndex >= 0
         ? { chapter: active.chapter, index: active.index, wordIndex: activeWordIndex }
         : null);

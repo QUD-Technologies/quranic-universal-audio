@@ -49,9 +49,24 @@ describe('steadyWordIndexAt', () => {
         expect(steadyWordIndexAt(990, words, 0)).toBe(0);
     });
 
-    it('steps back on a real seek', () => {
-        expect(steadyWordIndexAt(1100, words, 2)).toBe(0);
-        expect(steadyWordIndexAt(1200, words, 1)).toBe(0);
+    it('does not infer a seek from the size of a clock regression', () => {
+        expect(steadyWordIndexAt(1100, words, 2)).toBe(2);
+        expect(steadyWordIndexAt(1200, words, 1)).toBe(1);
+    });
+
+    it('recomputes after the caller resets the held index for a seek', () => {
+        expect(steadyWordIndexAt(1490, words, -1)).toBe(0);
+        expect(steadyWordIndexAt(900, words, -1)).toBe(-1);
+    });
+
+    it('selects the preceding timed word in a gap even without playback history', () => {
+        const spaced = [words[0]!, { ...words[1]!, start_ms: 1800 }];
+        expect(steadyWordIndexAt(1600, spaced, -1)).toBe(0);
+    });
+
+    it('skips zero-duration placeholders', () => {
+        const withUntimed = [...words, { location: '2:2:4', start_ms: 3000, end_ms: 3000 }];
+        expect(steadyWordIndexAt(3000, withUntimed, -1)).toBe(2);
     });
 
     it('lights from scratch when nothing is held', () => {

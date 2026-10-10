@@ -512,6 +512,35 @@ describe('AudioPort — pauseAndFlush / uncut', () => {
 // ---------------------------------------------------------------------------
 
 describe('AudioPort — events', () => {
+    it('marks seeks synchronously without treating playback ticks as discontinuities', () => {
+        const initial = port.timelineVersion;
+        audio.currentTime = 0.5;
+        audio._fireEvent('timeupdate');
+        expect(port.timelineVersion).toBe(initial);
+        port.seek(400);
+        expect(port.timelineVersion).toBeGreaterThan(initial);
+        const afterSeek = port.timelineVersion;
+        audio._fireEvent('seeking');
+        expect(port.timelineVersion).toBeGreaterThan(afterSeek);
+    });
+
+    it('marks transport replacement but preserves the version when coverage is reused', async () => {
+        port.setSource({ audioUrl: 'http://cdn/a.mp3', reciter: 'r1', vbr: true });
+        const first = port.loadCovering(5000, 6000);
+        audio._fireEvent('canplay');
+        await first.ready;
+        const version = port.timelineVersion;
+        port.loadCovering(5000, 6000);
+        expect(port.timelineVersion).toBe(version);
+        port.loadCovering(5200, 6000);
+        expect(port.timelineVersion).toBeGreaterThan(version);
+
+        port.attachElement(null);
+        const detached = port.timelineVersion;
+        audio._fireEvent('seeking');
+        expect(port.timelineVersion).toBe(detached);
+    });
+
     it('onPlay/onPause/onEnded fire when the element fires the DOM event', () => {
         const onPlay = vi.fn(), onPause = vi.fn(), onEnded = vi.fn();
         port.onPlay(onPlay); port.onPause(onPause); port.onEnded(onEnded);

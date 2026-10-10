@@ -12,25 +12,28 @@ export function wordIndexAt(timeMs: number, timings: WordInterval[] | null | und
     );
 }
 
-/** How far behind the lit word's start the clock must fall before the
- *  highlight steps back: more than output-latency jitter, less than a seek. */
-export const WORD_STEP_BACK_MS = 250;
-
 /**
- * `wordIndexAt` for a highlight that only moves forward. The heard clock
- * (`currentTime` minus a live output-latency estimate) wobbles by tens of ms,
- * so at a word edge it can cross back for a frame and flash the previous word.
- * `heldIndex` (the word lit now, or -1) stays lit until the clock falls
- * `WORD_STEP_BACK_MS` behind its start.
+ * Highlight the last timed word reached, holding it through silence and clock
+ * regressions. The caller resets `heldIndex` to -1 on a seek, clip change or
+ * timing replacement; the size of a clock correction cannot identify a seek.
+ * Zero-duration placeholders preserve text positions but never sound.
  */
 export function steadyWordIndexAt(
     timeMs: number,
     timings: WordInterval[] | null | undefined,
     heldIndex: number,
 ): number {
-    const index = wordIndexAt(timeMs, timings);
+    if (!timings?.length) return -1;
+    let index = -1;
+    for (let i = timings.length - 1; i >= 0; i--) {
+        const word = timings[i]!;
+        if (word.end_ms > word.start_ms && timeMs >= word.start_ms) {
+            index = i;
+            break;
+        }
+    }
     const held = heldIndex >= 0 ? timings?.[heldIndex] : undefined;
-    if (held && index < heldIndex && timeMs > held.start_ms - WORD_STEP_BACK_MS) return heldIndex;
+    if (held && held.end_ms > held.start_ms) return Math.max(index, heldIndex);
     return index;
 }
 
