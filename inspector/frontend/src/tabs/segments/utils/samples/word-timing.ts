@@ -12,6 +12,28 @@ export function wordIndexAt(timeMs: number, timings: WordInterval[] | null | und
     );
 }
 
+/** How far behind the lit word's start the clock must fall before the
+ *  highlight steps back: more than output-latency jitter, less than a seek. */
+export const WORD_STEP_BACK_MS = 250;
+
+/**
+ * `wordIndexAt` for a highlight that only moves forward. The heard clock
+ * (`currentTime` minus a live output-latency estimate) wobbles by tens of ms,
+ * so at a word edge it can cross back for a frame and flash the previous word.
+ * `heldIndex` (the word lit now, or -1) stays lit until the clock falls
+ * `WORD_STEP_BACK_MS` behind its start.
+ */
+export function steadyWordIndexAt(
+    timeMs: number,
+    timings: WordInterval[] | null | undefined,
+    heldIndex: number,
+): number {
+    const index = wordIndexAt(timeMs, timings);
+    const held = heldIndex >= 0 ? timings?.[heldIndex] : undefined;
+    if (held && index < heldIndex && timeMs > held.start_ms - WORD_STEP_BACK_MS) return heldIndex;
+    return index;
+}
+
 /** Guard against displaying stale timings after a reference edit. */
 export function timingsMatchRef(ref: string, timings: WordInterval[] | null | undefined): boolean {
     if (!ref || !timings?.length || !ref.includes(':')) return false;

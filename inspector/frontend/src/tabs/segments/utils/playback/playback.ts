@@ -56,6 +56,7 @@ import { displayedSegments } from '../../stores/filters';
 import {
     accordionNavCursor,
     activeAudioSource,
+    activeWordCursor,
     autoPlayEnabled,
     isMainAudioPlaying,
     playbackSpeed,
@@ -85,7 +86,7 @@ import { getRowEntriesFor } from './row-registry';
 import { heardTimeMs } from './heard-time';
 import { resolveSegSource } from './source';
 import { warmSeg } from './warmup';
-import { type WordInterval, timingsMatchRef, wordIndexAt } from '../samples/word-timing';
+import { type WordInterval, steadyWordIndexAt, timingsMatchRef } from '../samples/word-timing';
 import { isSampleMode } from '../../stores/samples';
 import { ensureWordTimes, storedWordTimes } from '../../stores/word-times';
 
@@ -1389,7 +1390,9 @@ export function drawActivePlayhead(timeMs?: number): void {
     // instead of vanishing (drawSegPlayhead skips out-of-range times). Visual
     // only — control paths keep the raw clock.
     const displayT = Math.min(seg.time_end, Math.max(seg.time_start, heardTimeMs(time, _activePlayStartMs)));
-    const activeWordIndex = wordIndexAt(displayT, _highlightTimings(seg, active.chapter));
+    const lit = get(activeWordCursor);
+    const litIndex = lit && lit.chapter === active.chapter && lit.index === active.index ? lit.wordIndex : -1;
+    const activeWordIndex = steadyWordIndexAt(displayT, _highlightTimings(seg, active.chapter), litIndex);
     setActiveWordCursor(activeWordIndex >= 0
         ? { chapter: active.chapter, index: active.index, wordIndex: activeWordIndex }
         : null);
