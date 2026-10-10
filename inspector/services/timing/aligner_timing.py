@@ -3,7 +3,9 @@
 ``POST /api/v1/extraction/timing`` receives the chapter's detailed.json entries, their
 bucket audio and the times stored last; it keeps every time whose segment (uid, ref, span)
 is unchanged, times the rest with the neural timing head, and returns the chapter's times
-(and, when asked, its shards) as base64 Brotli files written here as is. Calls for the same
+(and, when asked, its shards) as base64 Brotli files written here as is. Each chapter mp3's
+frame index (``audio_frames/<chapter>.bin``) lets the aligner read only the frames a few
+segments need; one it builds while decoding a whole file comes back and is stored. Calls for the same
 chapter are serialised (:func:`chapter_lock`) so a timestamps run and a post-save re-time
 never interleave their read and write of one times file.
 """
@@ -116,6 +118,11 @@ def time_chapter(
                 "audio_category": audio_category(detailed),
                 "entries": entries,
                 "audio_refs": {str(e["ref"]): _audio_ref(slug, e["ref"]) for e in entries},
+                "frame_refs": {
+                    str(e["ref"]): _frames_ref(slug, e["ref"])
+                    for e in entries
+                    if str(e["ref"]).isdigit()
+                },
                 "times": base64.b64encode(times).decode() if times else None,
                 "full": full,
                 "shards": shards,
@@ -126,6 +133,7 @@ def time_chapter(
         get_backend().write_bytes_atomic(
             storage_paths.timing_path_br(slug, chapter), base64.b64decode(reply["times"])
         )
+        _store_frames(slug, reply.get("frames") or {})
     return reply
 
 
@@ -167,6 +175,21 @@ def delivery_lazim(slug: str, replies: dict[int, dict]) -> list[float]:
 
 def _audio_ref(slug: str, ref) -> str:
     return f"hf://buckets/{resolve_bucket_repo()}/reciters/{slug}/audio/{ref}.mp3"
+
+
+def _frames_ref(slug: str, ref) -> str:
+    return f"hf://buckets/{resolve_bucket_repo()}/{storage_paths.audio_frames_path(slug, ref)}"
+
+
+def _store_frames(slug: str, frames: dict[str, str]) -> None:
+    """Store the frame indexes the aligner built; a failed write only costs a whole decode."""
+    for ref, data in frames.items():
+        try:
+            get_backend().write_bytes_atomic(
+                storage_paths.audio_frames_path(slug, ref), base64.b64decode(data)
+            )
+        except Exception:
+            log.exception("[timing %s] storing the frame index of %s failed", slug, ref)
 
 
 def _post(body: dict, chapter: int) -> dict:

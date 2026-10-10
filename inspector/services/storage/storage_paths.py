@@ -246,6 +246,11 @@ def prefetched_audio_path(slug: str, chapter: str | int) -> str:
     return reciter_file(slug, f"audio/{chapter}.mp3")
 
 
+def audio_frames_path(slug: str, chapter: str | int) -> str:
+    """Frame index of a chapter mp3 (byte offset of each frame, written by the aligner)."""
+    return reciter_file(slug, f"audio_frames/{chapter}.bin")
+
+
 def prefetched_peaks_dir(slug: str) -> str:
     return reciter_file(slug, "peaks")
 

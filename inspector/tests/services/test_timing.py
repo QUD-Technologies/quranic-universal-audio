@@ -58,6 +58,7 @@ def _serve(monkeypatch, sent: list):
         return _Reply({
             "model": "head@1", "times": base64.b64encode(b"times").decode(), "shards": {},
             "timed": 1, "kept": 0, "failed": 0, "failed_segments": [],
+            "frames": {"112": base64.b64encode(b"index").decode()},
         })  # fmt: skip
 
     monkeypatch.setattr(requests, "post", post)
@@ -72,6 +73,8 @@ def test_retime_stores_times_alone(delivery, monkeypatch):
     assert sent[0]["shards"] is False and sent[0]["full"] is False
     assert sent[0]["audio_category"] == "by_surah_audio"
     assert delivery.read_bytes("reciters/r/timing/112.json.br") == b"times"
+    assert sent[0]["frame_refs"] == {"112": "hf://buckets/o/b/reciters/r/audio_frames/112.bin"}
+    assert delivery.read_bytes("reciters/r/audio_frames/112.bin") == b"index"
 
 
 def test_word_times_show_only_segments_still_timed_as_stored():
