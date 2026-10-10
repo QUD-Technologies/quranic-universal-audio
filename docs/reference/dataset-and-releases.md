@@ -241,10 +241,17 @@ naming the chapters — repair the manifest, never ship the path. The manifest s
 path at write time (see [catalog.md](catalog.md)).
 Before building, the cut range-reads every eligible chapter's upstream link
 (`qua_shared.audio.upstream`); a different recording than the one aligned (size changed,
-duration off by more than 2 s) is held out of the cut; the rest ship. The completion webhook
-carries the held ones in `validation_summary.held_upstream_changes`, and owners get a
-notification either way: published (listing held recitations and chapters to realign), or
-failed. Every recitation held → the cut fails. `scripts/diagnostics/upstream_drift.py` reports the
+duration off by more than 2 s) leaves that chapter out of the cut; the remaining chapters of
+the recitation ship. Excluded chapters are skipped before shard auditing and projection,
+and contribute no occurrences, tier timestamps, audio URLs or offsets. Catalog coverage,
+chapter and ayah counts, the dataset manifest, changelog Missing column and zip contents
+derive from the retained chapters, exactly as for a chapter the recitation never had.
+A recitation with every timestamp chapter dropped is held out; every eligible recitation
+held → the cut fails. The completion webhook carries the exclusions in
+`validation_summary.dropped_upstream_chapters`; Inspector also accepts `held_upstream_changes`
+from jobs launched before deployment. Owners get a notification either way: published
+(listing recitations and chapters left out because their upstream audio changed), or
+failed. A clean cut sends the plain publication notification. `scripts/diagnostics/upstream_drift.py` reports the
 same check fleet-wide.
 `chapter_offsets_ms` is **omitted from the JSON when empty** (model_serializer on `ReleaseCatalogAudio`),
 so CDN by-surah catalogs stay byte-stable and their `content_hash` doesn't churn.
@@ -451,8 +458,8 @@ trimmed.
 The **GH release** loses none of it: `project_shard_occurrences` emits every occasion as a row —
 other occasions whole and unflagged, the canonical occasion's trimmed leading/trailing ends as
 their own unflagged rows — so "lost" above means *not the canonical row*, not absent from the
-release. The one true drop is a verse whose canonical take is incomplete: it and all its repeats
-are gated out together.
+release. A verse whose canonical take is incomplete and all its repeats are gated out together.
+For GitHub cuts, chapters with changed upstream recordings are excluded in their entirety.
 
 ### Failed-alignment, no-match & deletes at publish
 

@@ -25,6 +25,7 @@ drifted. This module owns all three so there is one source of truth.
 
 The HF dataset rebases these to clip-relative and slices audio; the GH release
 keeps them source-relative. Neither re-derives the geometry.
+Release adapters can exclude chapters before shard decoding and auditing.
 """
 
 from __future__ import annotations
@@ -97,7 +98,9 @@ def _fit_boundary(
     return budget * pad_end / total, budget * pad_start / total
 
 
-def _load_audited_shards(ts_dir: Path) -> tuple[list[dict], dict]:
+def _load_audited_shards(
+    ts_dir: Path, *, excluded_chapters: frozenset[int] = frozenset()
+) -> tuple[list[dict], dict]:
     """Every chapter shard in ``ts_dir``, audited, plus the delivery's ``_meta``.
 
     The meta names the profile and edition every shard agreed on: the deepest
@@ -122,6 +125,9 @@ def _load_audited_shards(ts_dir: Path) -> tuple[list[dict], dict]:
         name = path.name
         if not (name.endswith(".json") or name.endswith(".json.br")):
             continue
+        chapter = name.split(".", 1)[0]
+        if chapter.isdigit() and int(chapter) in excluded_chapters:
+            continue
         raw = path.read_bytes()
         if name.endswith(".br"):
             raw = brotli.decompress(raw)
@@ -144,15 +150,18 @@ def _load_audited_shards(ts_dir: Path) -> tuple[list[dict], dict]:
     return documents, meta
 
 
-def load_canonical_verses(ts_dir: Path) -> dict[str, dict]:
+def load_canonical_verses(
+    ts_dir: Path, *, excluded_chapters: frozenset[int] = frozenset()
+) -> dict[str, dict]:
     """Project every chapter shard in ``ts_dir`` into canonical verse timings.
 
     The result carries a ``"_meta"`` entry (see ``_load_audited_shards``);
     downstream adapters already skip ``_``-prefixed keys.
+    ``excluded_chapters`` are skipped before decoding or auditing their shards.
     """
     from qua_shared.timestamps_native import project_shard
 
-    documents, meta = _load_audited_shards(ts_dir)
+    documents, meta = _load_audited_shards(ts_dir, excluded_chapters=excluded_chapters)
     out: dict[str, dict] = {}
     for document in documents:
         out.update(project_shard(document))
@@ -161,15 +170,18 @@ def load_canonical_verses(ts_dir: Path) -> dict[str, dict]:
     return out
 
 
-def load_shard_occurrences(ts_dir: Path) -> list[dict]:
+def load_shard_occurrences(
+    ts_dir: Path, *, excluded_chapters: frozenset[int] = frozenset()
+) -> list[dict]:
     """Every occurrence of every verse across ``ts_dir``, chapter by chapter in
     audio order — ``project_shard_occurrences`` rows, the canonical one per ref
     flagged, each tagged with the ``chapter`` whose audio it was timed in (the
     shard's own chapter, which a verse spilled across an upstream file cut does
-    not share). The same audits as ``load_canonical_verses`` run first."""
+    not share). The same audits as ``load_canonical_verses`` run first, with
+    ``excluded_chapters`` skipped before decoding or auditing."""
     from qua_shared.timestamps_native import project_shard_occurrences
 
-    documents, _meta = _load_audited_shards(ts_dir)
+    documents, _meta = _load_audited_shards(ts_dir, excluded_chapters=excluded_chapters)
     return [
         {**row, "chapter": int(document["_meta"]["chapter"])}
         for document in documents

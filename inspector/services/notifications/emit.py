@@ -1,6 +1,6 @@
 """Fan a just-recorded event out to per-user notification rows.
 
-Two entry points, one per source write-path:
+Entry points cover the source write-paths:
 
 - ``emit_for_event`` — called from ``state._apply_event`` (and intake) INSIDE
   the live durable transaction, right after the transition row is appended.
@@ -8,8 +8,10 @@ Two entry points, one per source write-path:
   becomes one ``repo_notifications.create`` row (deduped on the transition id).
 - ``notify_flag_reply`` — called from the segment-save flow, which writes the
   bucket (not SQLite), so it opens its OWN ``durable_transaction``.
+- ``notify_owners_release_cut`` — reports publication or failure, listing
+  chapters left out because their upstream recording changed.
 
-Both are **best-effort**: the whole body is wrapped in try/except-log. Losing a
+All are **best-effort**: the whole body is wrapped in try/except-log. Losing a
 notification is acceptable; raising into the caller would roll back a lifecycle
 transition or a segment save, which is not. Self-suppression drops a target
 equal to the actor (you don't get notified for your own action), except for the
@@ -127,15 +129,15 @@ def notify_owners_release_cut(
     job_id: str,
     version: str | None,
     recitation_count: int = 0,
-    held: dict[str, list[str]] | None = None,
+    dropped: dict[str, list[str]] | None = None,
     failed: bool = False,
 ) -> int:
     """One card per review-alert recipient for a finished GitHub release cut.
 
-    ``held`` is the job's ``validation_summary.held_upstream_changes`` —
-    ``{slug: ["ch62 recording (465s → 321s)", …]}`` for recitations kept out
+    ``dropped`` is the job's ``validation_summary.dropped_upstream_chapters`` —
+    ``{slug: ["ch62 recording (465s → 321s)", …]}`` for chapters left out
     because their linked upstream audio is a different recording. The body
-    lists them so an owner knows which chapters to realign. Deduped on the job
+    names each recitation and its chapters to realign. Deduped on the job
     id; best-effort, like every other emitter. Returns the cards created.
     """
     try:
@@ -145,22 +147,24 @@ def notify_owners_release_cut(
         recipients = _review_alert_recipients()
         if not recipients:
             return 0
-        held = held or {}
+        dropped = dropped or {}
         lines = [
             f"{catalog.display_name(slug) or slug} ({slug}): {', '.join(chapters)}"
-            for slug, chapters in sorted(held.items())
+            for slug, chapters in sorted(dropped.items())
         ]
         if failed:
             title = copy.release_cut_failed()
             event = "release.failed"
-        elif held:
-            title = copy.release_cut_held(version or "", len(held))
+        elif dropped:
+            title = copy.release_cut_dropped(
+                version or "", sum(len(chapters) for chapters in dropped.values())
+            )
             event = "release.cut"
         else:
             title = copy.release_cut(version or "", recitation_count)
             event = "release.cut"
         body = (
-            "Held back — upstream audio is a different recording than the one aligned; "
+            "Chapters were left out of the release because their upstream audio changed; "
             "realign these chapters:\n" + "\n".join(lines)
             if lines
             else None
@@ -174,7 +178,11 @@ def notify_owners_release_cut(
                     slug=None,
                     title=title,
                     body=body,
-                    payload={"version": version, "job_id": job_id, "held": held},
+                    payload={
+                        "version": version,
+                        "job_id": job_id,
+                        "dropped_upstream_chapters": dropped,
+                    },
                     source_key=f"release:{job_id}",
                 ):
                     created += 1

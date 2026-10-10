@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""HF Job entrypoint: cut a global GitHub release (v2 track).
+"""HF Job entrypoint: cut a global GitHub release (schema 3).
 
 Reads the inspector DB (read-only) to discover every recitation eligible for
 GH releases (a current ``per_recitation_releases(track='ts')`` row), builds the
@@ -13,9 +13,10 @@ payload; Inspector's ``services.admin.jobs.cut_release.complete()`` inserts
 the ``gh_releases`` row + N ``gh_release_recitations`` rows and fires the
 public ``released`` event.
 
-A recitation whose linked upstream audio is now a different recording
-(``qua_shared.audio.upstream``) is held out of the cut; the completion webhook
-lists it under ``validation_summary.held_upstream_changes``.
+Chapters whose linked upstream audio is now a different recording
+(``qua_shared.audio.upstream``) are left out of every release artifact; a
+recitation with no remaining chapters is held out. The completion webhook
+lists the exclusions under ``validation_summary.dropped_upstream_chapters``.
 
 The HF Job NEVER writes the inspector DB. Reads only.
 
@@ -49,7 +50,7 @@ import sys
 import urllib.error
 import urllib.request
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -213,9 +214,11 @@ def _prior_release_members(conn: sqlite3.Connection) -> tuple[str | None, dict[s
 # ---------------------------------------------------------------------------
 
 
-def _load_occurrences(slug: str) -> list[dict]:
-    """Every recited occurrence of every verse, in audio order."""
-    return load_shard_occurrences(_bucket_root() / "reciters" / slug / "timestamps")
+def _load_occurrences(slug: str, excluded_chapters: frozenset[int] = frozenset()) -> list[dict]:
+    """Every recited occurrence from retained chapter shards, in audio order."""
+    return load_shard_occurrences(
+        _bucket_root() / "reciters" / slug / "timestamps", excluded_chapters=excluded_chapters
+    )
 
 
 def _occurrence_key(ref: str, layout: dict) -> tuple[int, int, int, int]:
@@ -224,9 +227,13 @@ def _occurrence_key(ref: str, layout: dict) -> tuple[int, int, int, int]:
     return chapter, int(layout["verse_start"]), int(layout["verse_end"]), ayah
 
 
-def _load_canonical_verses(slug: str) -> dict[str, dict]:
-    """Canonical verse map for ``slug`` (shared loader: project + dedup + merge)."""
-    return load_canonical_verses(_bucket_root() / "reciters" / slug / "timestamps")
+def _load_canonical_verses(
+    slug: str, excluded_chapters: frozenset[int] = frozenset()
+) -> dict[str, dict]:
+    """Canonical verse map from retained chapter shards (project + dedup + merge)."""
+    return load_canonical_verses(
+        _bucket_root() / "reciters" / slug / "timestamps", excluded_chapters=excluded_chapters
+    )
 
 
 def _build_tier_files(
@@ -433,7 +440,7 @@ def _json_model_bytes(model) -> bytes:
 
 
 def _audio_sources_from_manifest(
-    slug: str, audio_manifest: dict | None
+    slug: str, audio_manifest: dict | None, *, excluded_chapters: frozenset[int] = frozenset()
 ) -> tuple[dict[str, str], dict[str, int]]:
     """Return ``(chapter_urls, chapter_offsets_ms)`` from
     ``catalog/audio_manifest/<slug>.json``.
@@ -447,6 +454,8 @@ def _audio_sources_from_manifest(
     only when > 0 (combined files, or a single file with a trimmed lead-in).
     Mirrors ``publish_hf.publish_slug``'s per-row resolution so the two adapters
     agree on provenance + offset.
+    Excluded chapters contribute neither URLs nor offsets and are not checked
+    for public-source validity.
     """
     if not audio_manifest:
         return {}, {}
@@ -455,7 +464,9 @@ def _audio_sources_from_manifest(
         chapters = {
             key: chapter
             for key, chapter in chapters.items()
-            if (key.isdigit() or ":" in key) and isinstance(chapter, dict)
+            if (key.isdigit() or ":" in key)
+            and isinstance(chapter, dict)
+            and _verse_sort_key(key)[0] not in excluded_chapters
         }
         unlinked = chapters_without_public_source(chapters)
         if unlinked:
@@ -482,7 +493,10 @@ def _audio_sources_from_manifest(
     flat = {
         key: value.strip()
         for key, value in sorted(audio_manifest.items())
-        if (key.isdigit() or ":" in key) and isinstance(value, str) and value.strip()
+        if (key.isdigit() or ":" in key)
+        and isinstance(value, str)
+        and value.strip()
+        and _verse_sort_key(key)[0] not in excluded_chapters
     }
     return flat, {}
 
@@ -494,6 +508,7 @@ def _build_catalog_json(
     *,
     missing_surahs: str = "",
     missing_verses: str = "",
+    excluded_chapters: frozenset[int] = frozenset(),
 ) -> bytes:
     """Per-recitation catalog.json bytes (orjson-equivalent serialisation).
 
@@ -502,9 +517,11 @@ def _build_catalog_json(
     ``audio_category``. Plan §"GH release `catalog.json` schema": "fully
     populated for every chapter the recitation covers" — both shapes are
     "what the source audio actually serves" so this is the consumer-actionable
-    URL set without contraction.
+    URL set apart from ``excluded_chapters``, which are absent from the cut.
     """
-    audio_urls, audio_offsets = _audio_sources_from_manifest(rec["slug"], audio_manifest)
+    audio_urls, audio_offsets = _audio_sources_from_manifest(
+        rec["slug"], audio_manifest, excluded_chapters=excluded_chapters
+    )
     if not audio_urls:
         raise RuntimeError(f"{rec['slug']}: audio_manifest has no usable audio URLs")
     surahs = {key.split(":", 1)[0] for key in verses if not key.startswith("_")}
@@ -1094,13 +1111,13 @@ class _BuildContext:
     script_sha256: str
     prior_members: dict[str, dict]
     pads: PadParams
+    dropped_upstream_chapters: dict[str, dict[int, str]] = field(default_factory=dict)
 
 
-def _upstream_changes(eligible: list[dict]) -> dict[str, list[str]]:
-    """``{slug: ["ch62 recording (465s → 321s)", …]}`` for every eligible
-    recitation whose linked upstream audio is a different recording than the one
-    its timestamps were aligned on (``qua_shared.audio.upstream``) — held out."""
-    changed: dict[str, list[str]] = {}
+def _upstream_changes(eligible: list[dict]) -> dict[str, dict[int, str]]:
+    """``{slug: {62: "ch62 recording (465s → 321s)", …}}`` for chapters
+    whose upstream recording differs from the audio used for alignment."""
+    changed: dict[str, dict[int, str]] = {}
     for rec in eligible:
         path = _bucket_root() / "catalog" / "audio_manifest" / f"{rec['slug']}.json"
         try:
@@ -1109,7 +1126,7 @@ def _upstream_changes(eligible: list[dict]) -> dict[str, list[str]]:
             continue
         blocking = upstream.blocking_changes(chapters)
         if blocking:
-            changed[rec["slug"]] = [c.describe() for c in blocking]
+            changed[rec["slug"]] = {int(c.chapter.split(":", 1)[0]): c.describe() for c in blocking}
     return changed
 
 
@@ -1212,16 +1229,22 @@ def _validate_occurrences(
 
 def _build_member(rec: dict, ctx: _BuildContext) -> dict | None:
     """One recitation's tier files + catalog.json + member row (``None`` when it
-    has no shards). Pure function of the bucket + ``ctx``; safe in a worker."""
+    has no retained shards). Upstream exclusions apply before shard audits,
+    projection, audio-source validation and coverage. Safe in a worker."""
     from qua_shared.coverage import missing_coverage
     from qua_shared.surah_words import word_counts_for
     from qua_shared.timestamps_native import select_complete_verses
 
     slug = rec["slug"]
     log.info("  building %s...", slug)
-    verses = _load_canonical_verses(slug)
+    excluded_chapters = frozenset(ctx.dropped_upstream_chapters.get(slug, {}))
+    verses = {
+        ref: verse
+        for ref, verse in _load_canonical_verses(slug, excluded_chapters).items()
+        if ref.startswith("_") or _verse_sort_key(ref)[0] not in excluded_chapters
+    }
     if not verses:
-        log.warning("  %s: no timestamps shards — skipping", slug)
+        log.warning("  %s: no retained timestamps shards — skipping", slug)
         return None
 
     # The shards say which edition and how deep their timings go; the
@@ -1252,7 +1275,7 @@ def _build_member(rec: dict, ctx: _BuildContext) -> dict | None:
     # segments are all derived once. Each adapter selects its public view of
     # the SAME layout, so timing/token ownership cannot drift.
     layouts = build_verse_layouts(reshape_canonical(verses, ctx.digital_khatt_words), **ctx.pads)
-    raw = [o for o in _load_occurrences(slug) if o["ref"] in verses]
+    raw = [o for o in _load_occurrences(slug, excluded_chapters) if o["ref"] in verses]
     occurrences = _release_occurrences(raw, verses, layouts, ctx.digital_khatt_words, ctx.pads)
     rec_summary = _validate_occurrences(slug, occurrences, edition_counts, raw)
 
@@ -1292,6 +1315,7 @@ def _build_member(rec: dict, ctx: _BuildContext) -> dict | None:
         verses,
         missing_surahs=missing_surahs,
         missing_verses=missing_verses,
+        excluded_chapters=excluded_chapters,
     )
 
     # content_hash — over the DEEPEST emitted tier + catalog bytes. The
@@ -1321,7 +1345,7 @@ def _build_member(rec: dict, ctx: _BuildContext) -> dict | None:
         "tiers": tiers,
         "shard_riwayah": riwayah,
         "coverage_ayahs": coverage_ayahs,
-        "coverage_surahs": rec.get("chapter_count"),
+        "coverage_surahs": len({s for s, _a in present_refs}),
         "missing_surahs": missing_surahs,
         "missing_verses": missing_verses,
         "content_hash": content_hash,
@@ -1369,12 +1393,29 @@ def main() -> int:
         log.error("no eligible recitations — aborting")
         return 3
 
-    held = _upstream_changes(eligible)
-    if held:
-        for slug, chapters in held.items():
-            log.warning("  %s held: upstream audio changed — %s", slug, ", ".join(chapters[:10]))
-        eligible = [rec for rec in eligible if rec["slug"] not in held]
-        log.warning("%d recitation(s) held out of this cut", len(held))
+    dropped = _upstream_changes(eligible)
+    dropped_summary = {slug: list(chapters.values()) for slug, chapters in dropped.items()}
+    if dropped:
+        for slug, descriptions in dropped_summary.items():
+            log.warning("  %s: upstream chapters left out — %s", slug, ", ".join(descriptions[:10]))
+        retained = []
+        for rec in eligible:
+            ts_dir = _bucket_root() / "reciters" / rec["slug"] / "timestamps"
+            chapters = (
+                {
+                    int(p.name.split(".", 1)[0])
+                    for p in ts_dir.iterdir()
+                    if (p.name.endswith(".json") or p.name.endswith(".json.br"))
+                    and p.name.split(".", 1)[0].isdigit()
+                }
+                if ts_dir.exists()
+                else set()
+            )
+            if chapters and chapters <= dropped.get(rec["slug"], {}).keys():
+                log.warning("  %s held: every timestamp chapter was dropped", rec["slug"])
+            else:
+                retained.append(rec)
+        eligible = retained
         if not eligible:
             log.error("every eligible recitation is held — aborting")
             _post_webhook(
@@ -1384,7 +1425,7 @@ def main() -> int:
                 members=[],
                 launched_by=launched_by,
                 status="failed",
-                validation_summary={"held_upstream_changes": held},
+                validation_summary={"dropped_upstream_chapters": dropped_summary},
             )
             return 3
 
@@ -1419,6 +1460,7 @@ def main() -> int:
         script_sha256=script_sha256,
         prior_members=prior_members,
         pads=pads,
+        dropped_upstream_chapters=dropped,
     )
     try:
         members = _build_members(eligible, ctx)
@@ -1433,7 +1475,11 @@ def main() -> int:
             members=[],
             launched_by=launched_by,
             status="failed",
-            validation_summary={"slug": exc.slug, "summary": exc.summary},
+            validation_summary={
+                "slug": exc.slug,
+                "summary": exc.summary,
+                "dropped_upstream_chapters": dropped_summary,
+            },
         )
         return 4
     for m in members:
@@ -1486,6 +1532,7 @@ def main() -> int:
             members=[],
             launched_by=launched_by,
             status="failed",
+            validation_summary={"dropped_upstream_chapters": dropped_summary},
         )
         return 6
     log.info("computed version: %s", version)
@@ -1552,6 +1599,7 @@ def main() -> int:
             members=[],
             launched_by=launched_by,
             status="failed",
+            validation_summary={"dropped_upstream_chapters": dropped_summary},
         )
         return 15
     log.info("creating GH release %s on %s/%s ...", version, owner, repo)
@@ -1603,7 +1651,7 @@ def main() -> int:
         validation_summary={
             "violation_count": validation_summary_total["violation_count"],
             "by_kind": validation_summary_total["by_kind"],
-            "held_upstream_changes": held,
+            "dropped_upstream_chapters": dropped_summary,
         },
     )
 

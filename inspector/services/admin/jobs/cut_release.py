@@ -5,10 +5,11 @@ Launches an HF Job that runs ``qua_jobs/cut_release.py``. The job:
   1. Reads the bucket catalog to discover every recitation whose channel is
      ``gh_release_eligible`` AND has a current ``per_recitation_releases(track='ts')``.
   2. Builds per-recitation tier files (verse / word / letter — top-down
-     projection) + catalog.json + per-recitation manifest.json.
+     projection) + catalog.json from chapters whose upstream audio still
+     matches the alignment; holds out recitations with every chapter dropped.
   3. Packs each recitation into a ``<slug>.zip`` (store-only for `.gz` entries,
      deflate-9 for JSON; deterministic mtime=0).
-  4. Computes ``content_hash`` = SHA-256(letter_tier.json.gz_bytes ||
+  4. Computes ``content_hash`` = SHA-256(deepest_tier.json.gz_bytes ||
      catalog.json_bytes) per recitation.
   5. Builds the dataset-level ``manifest.json`` + ``CHANGELOG.md`` (diff
      against the previous gh_release).
@@ -18,7 +19,9 @@ Launches an HF Job that runs ``qua_jobs/cut_release.py``. The job:
 On webhook completion (with ``version`` in the payload), ``complete()`` here
 inserts a ``gh_releases`` row + N ``gh_release_recitations`` rows, fires
 ``released({track:'gh', version, recitation_count})`` and notifies owners —
-including any recitations the job held out for a changed upstream recording.
+including chapters the job left out for changed upstream recordings. The
+summary accepts ``dropped_upstream_chapters`` and ``held_upstream_changes``
+from jobs launched before deployment.
 
 Global single-flight: only one cut at a time across the system.
 """
@@ -237,7 +240,9 @@ def complete(
         job_id=job_id,
         version=version,
         recitation_count=len(members),
-        held=(validation_summary or {}).get("held_upstream_changes"),
+        dropped=(validation_summary or {}).get(
+            "dropped_upstream_chapters", (validation_summary or {}).get("held_upstream_changes")
+        ),
     )
 
     # Email subscribers opted into release notifications (best-effort). Past the

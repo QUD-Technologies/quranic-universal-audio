@@ -13,6 +13,9 @@ disabled (503): dev relies on the ``job_status`` poll fallback instead.
 The actual publish is idempotent + best-effort
 (``timestamps_jobs.complete_timestamps_job``), so a double-fire with the poll
 fallback, or a retry, is safe.
+Release-cut callbacks report excluded chapters through
+``dropped_upstream_chapters``; ``held_upstream_changes`` is also accepted for
+jobs launched before deployment.
 """
 
 from __future__ import annotations
@@ -212,7 +215,10 @@ def release_cut_complete():
         _notify.notify_owners_release_cut(
             job_id=job_id,
             version=version or None,
-            held=(body.get("validation_summary") or {}).get("held_upstream_changes"),
+            dropped=(body.get("validation_summary") or {}).get(
+                "dropped_upstream_chapters",
+                (body.get("validation_summary") or {}).get("held_upstream_changes"),
+            ),
             failed=True,
         )
         return jsonify({"ok": True, "skipped": "non-success status"})

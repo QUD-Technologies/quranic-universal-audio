@@ -1,8 +1,9 @@
 """Frozen title strings for per-user notifications.
 
-Every notification names its reciter — the title is computed once at emit time
-(``emit._reciter_name``) and interpolated here, then stored verbatim on the
-row. Kept in one module so the wording is easy to audit and unit-test.
+Recitation notifications name their reciter; release titles name the version
+and count the published recitations or excluded chapters. Titles are computed
+at emit time and stored verbatim on the row. Kept in one module so the wording
+is easy to audit and unit-test.
 """
 
 from __future__ import annotations
@@ -71,8 +72,8 @@ def release_cut(version: str, count: int) -> str:
     return f"GitHub release {version} published · {count} recitations"
 
 
-def release_cut_held(version: str, held: int) -> str:
-    return f"GitHub release {version} published · {held} recitation(s) held back"
+def release_cut_dropped(version: str, chapters: int) -> str:
+    return f"GitHub release {version} published · {chapters} chapter(s) left out"
 
 
 def release_cut_failed() -> str:
