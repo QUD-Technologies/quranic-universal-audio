@@ -318,3 +318,16 @@ def test_a_mount_file_newer_than_the_bucket_counts_as_unflushed(tmp_path):
     assert ts_backup._unflushed(local, remote(size=4))
     assert ts_backup._unflushed(local, None)
     assert not ts_backup._unflushed(None, remote())
+
+
+def test_a_cancel_during_the_profile_call_writes_no_profile(delivery, monkeypatch):
+    sent: list = []
+    _serve(monkeypatch, sent, failing=(), profile=PROFILE)
+    asked = lambda: any(url.endswith("/recitation-profile") for url, _, _ in sent)  # noqa: E731
+    monkeypatch.setattr(runner, "_canceled", lambda rec: asked())
+    record = runner.TsJobRecord(job_id="run14", slug="r", settings=TsJobSettings())
+    runner._run(record, "hafs", False)
+
+    assert asked() and not delivery.exists("reciters/r/recitation_profile.json")
+    assert delivery.read_bytes("reciters/r/timestamps/112.json.br") == b"shard-112"
+    assert _record(delivery, "run14")["status"] == "canceled"

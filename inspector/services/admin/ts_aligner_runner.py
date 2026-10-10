@@ -119,7 +119,7 @@ def _run(record: TsJobRecord, riwayah: str, full: bool) -> None:
             )
         record.status = "succeeded"
         if riwayah == DEFAULT_SDK_RIWAYAH and not _canceled(record):
-            _write_profile(record.slug, out.samples, emit)
+            _write_profile(record, out.samples, emit)
     except _Canceled:
         emit("canceled")
         record.status = "canceled"
@@ -204,10 +204,11 @@ def _counts(untimed: dict[str, dict]) -> str:
     return "; ".join(f"ch{ch} {untimed[ch]}" for ch in sorted(untimed, key=int))
 
 
-def _write_profile(slug: str, samples: dict[int, dict], emit) -> None:
+def _write_profile(record: TsJobRecord, samples: dict[int, dict], emit) -> None:
     """``recitation_profile.json`` from every chapter: ``samples`` for the chapters this run
-    built, the bucket shard for the rest (each must have one). A failure is logged and the
-    previous profile stays."""
+    built, the bucket shard for the rest (each must have one, flushed from the mount). A
+    failure is logged and the previous profile stays; a cancel during the call writes none."""
+    slug = record.slug
     try:
         chapters = aligner_timing.chapters_of(slug)
         shards_dir = storage_paths.reciter_file(slug, "timestamps")
@@ -217,9 +218,16 @@ def _write_profile(slug: str, samples: dict[int, dict], emit) -> None:
         if missing:
             emit(f"recitation profile not written: no shard for chapter(s) {missing}")
             return
+        pending = ts_backup.unflushed(shards_dir, [f"{c}.json.br" for c in stored])
+        if pending:
+            emit(f"recitation profile not written: {pending} not flushed to the bucket yet")
+            return
         inline = {c: samples[c] for c in chapters if c in samples}
         doc = aligner_timing.delivery_profile(slug, stored, inline)
         RecitationProfileDoc.model_validate(doc)
+        if _canceled(record):
+            emit("recitation profile not written: the run was canceled")
+            return
         get_backend().write_json_atomic(storage_paths.recitation_profile_path(slug), doc)
     except Exception as exc:  # noqa: BLE001 — the run's shards are live either way
         log.exception("[ts %s] recitation profile not written", slug)
