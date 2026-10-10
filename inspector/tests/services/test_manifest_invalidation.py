@@ -133,3 +133,20 @@ def test_manifest_cache_hit_when_db_seq_unchanged(monkeypatch):
     ts_manifest.manifest_bytes()  # same db_seq → no rebuild
     ts_manifest.manifest_bytes()
     assert calls == []
+
+
+def test_db_seq_rebuild_reuses_static_resources(monkeypatch):
+    """A rebuild on a ``db_seq`` bump re-reads state, not the static fonts/scripts."""
+    from services import db
+
+    built = []
+    monkeypatch.setattr(
+        ts_manifest, "_build_resource_bytes", lambda: built.append(1) or {"r": b"x"}
+    )
+    seq = iter(range(1, 100))
+    monkeypatch.setattr(db, "current_db_seq", lambda *a: next(seq))
+    ts_manifest.manifest_bytes()
+    first = ts_manifest._built_seq
+    ts_manifest.manifest_bytes()
+    assert ts_manifest._built_seq != first
+    assert built == [1]

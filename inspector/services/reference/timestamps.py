@@ -203,7 +203,8 @@ def _build_resource_bytes() -> dict[str, bytes]:
     bytes come from the bucket). ``digital_khatt`` ships uncompressed in the
     image and reads directly (HF auto-LFS is keyed on extension, so the
     ~10 MB ``*.json`` is exempt). A missing/unavailable resource is skipped,
-    never raised — the manifest must not 500 on a degraded resource."""
+    never raised — the manifest must not 500 on a degraded resource. The resources
+    are static, so a manifest rebuild reuses them; ``invalidate()`` drops them."""
     out: dict[str, bytes] = {}
     qpc = static_refs.load_qpc_bytes()
     if qpc:
@@ -367,8 +368,8 @@ def _ensure_built(*, include_everyayah: bool = False) -> None:
         _served_slugs_by_visibility[include_everyayah] = served
         _manifest_bytes_by_visibility[include_everyayah] = body
         _shard_lru.clear()
-        _resource_bytes.clear()
-        _resource_bytes.update(_build_resource_bytes())
+        if not _resource_bytes:
+            _resource_bytes.update(_build_resource_bytes())
         _built_seq_by_visibility[include_everyayah] = seq
         if not include_everyayah:
             # Preserve these names for existing diagnostics/tests and callers.

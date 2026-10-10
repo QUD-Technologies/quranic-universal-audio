@@ -555,10 +555,13 @@ def pop_audio_url_cache(slug: str) -> None:
 # ``services/audio/audio_meta._load_sidecar`` on first read. The inverse
 # index turns ``chapter_for_url`` / ``chapter_meta_for_url`` from O(N)
 # linear scans into O(1) dict lookups on the peaks fan-out hot path.
-# Lifecycle matches every other per-reciter cache: LRU-bounded, popped by
-# ``pop_audio_manifest_cache`` when a future probe-refresh path lands.
-_audio_manifest: _KeyedCache[dict] = _KeyedCache()
-_audio_manifest_url_index: _KeyedCache[dict[str, str]] = _KeyedCache()
+# LRU-bounded, popped by ``pop_audio_manifest_cache``. The bound must exceed the
+# released-reciter count: every TS manifest rebuild (each ``db_seq`` bump) walks
+# every released sidecar in a fixed order, which misses on every entry once the
+# set outgrows the cache. A parsed sidecar is ~60 KB.
+_AUDIO_MANIFEST_LRU_MAX = 512
+_audio_manifest: _KeyedCache[dict] = _KeyedCache(_AUDIO_MANIFEST_LRU_MAX)
+_audio_manifest_url_index: _KeyedCache[dict[str, str]] = _KeyedCache(_AUDIO_MANIFEST_LRU_MAX)
 
 
 def get_audio_manifest_cache(slug: str) -> dict | None:
