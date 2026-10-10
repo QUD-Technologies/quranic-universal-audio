@@ -4,8 +4,8 @@
  * The server projects `recitation_profile.json` into `TsRecitationProfile`
  * (madd types in display order, a chosen length only where Hafs allows one —
  * see `inspector/services/reference/recitation_profile.py`). `profileSections`
- * lays it out as a madd section and a ghunnah-and-pauses section, one row per
- * shown measure: a madd type with a length choice carries every length Hafs
+ * lays it out as a madd, a ghunnah and a pauses section, one row per shown
+ * measure: a madd type with a length choice carries every length Hafs
  * allows it, the one read marked.
  */
 
@@ -15,7 +15,7 @@ export type MaddKind = TsMaddRow['kind'];
 export type MaddLength = NonNullable<TsMaddRow['length']>;
 export type ProfileMeasure = MaddKind | 'ghunnah' | 'pauses';
 
-/** Counted ḥarakāt of each madd length. */
+/** Counted harakat of each madd length. */
 export const LENGTH_COUNTS: Record<MaddLength, number> = { qasr: 2, tawassut: 4, ishbaa: 6 };
 
 /** The lengths Hafs allows each madd type with a choice, shortest first. */
@@ -52,26 +52,26 @@ function maddRow(row: TsMaddRow): ProfileRow {
 }
 
 export interface ProfileSection {
-    section: 'madd' | 'sound';
+    section: 'madd' | 'ghunnah' | 'pauses';
     rows: ProfileRow[];
 }
 
-/** The madd section, then ghunnah and pauses; an empty section is dropped. */
+/** The madd, ghunnah and pauses sections; an empty section is dropped. */
 export function profileSections(profile: TsRecitationProfile | null): ProfileSection[] {
     if (!profile) return [];
-    const sound: ProfileRow[] = [];
-    if (profile.ghunnah_ms != null) sound.push({ measure: 'ghunnah', ms: profile.ghunnah_ms, lengths: [] });
-    if (profile.pause_ms != null) sound.push({ measure: 'pauses', ms: profile.pause_ms, lengths: [] });
+    const single = (measure: 'ghunnah' | 'pauses', ms: number | null | undefined): ProfileRow[] =>
+        ms == null ? [] : [{ measure, ms, lengths: [] }];
     const sections: ProfileSection[] = [
         { section: 'madd', rows: (profile.madd ?? []).map(maddRow) },
-        { section: 'sound', rows: sound },
+        { section: 'ghunnah', rows: single('ghunnah', profile.ghunnah_ms) },
+        { section: 'pauses', rows: single('pauses', profile.pause_ms) },
     ];
     return sections.filter((s) => s.rows.length > 0);
 }
 
-/** Milliseconds as seconds with two decimals, in the locale's digits ("1.64", "١٫٦٤"). */
-export function formatSeconds(ms: number, locale: string): string {
-    return new Intl.NumberFormat(locale === 'ar' ? 'ar-EG' : 'en', {
+/** Milliseconds as seconds with two decimals ("1.64"). */
+export function formatSeconds(ms: number): string {
+    return new Intl.NumberFormat('en', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
     }).format(ms / 1000);

@@ -8,7 +8,7 @@ describe('profileSections', () => {
     });
 
     it('lists madd types, then ghunnah and pauses, lengths only where Hafs allows a choice', () => {
-        const [madd, sound] = profileSections({
+        const [madd, ghunnah, pauses] = profileSections({
             madd: [
                 { kind: 'tabii', mean_ms: 349 },
                 { kind: 'munfasil', mean_ms: 1639, length: 'tawassut' },
@@ -26,10 +26,8 @@ describe('profileSections', () => {
             { length: 'tawassut', count: 4, chosen: true },
         ]);
         expect(madd?.rows[2]?.lengths.map((l) => [l.count, l.chosen])).toEqual([[2, false], [4, false], [6, true]]);
-        expect(sound).toEqual({
-            section: 'sound',
-            rows: [{ measure: 'ghunnah', ms: 919, lengths: [] }, { measure: 'pauses', ms: 453, lengths: [] }],
-        });
+        expect(ghunnah).toEqual({ section: 'ghunnah', rows: [{ measure: 'ghunnah', ms: 919, lengths: [] }] });
+        expect(pauses).toEqual({ section: 'pauses', rows: [{ measure: 'pauses', ms: 453, lengths: [] }] });
     });
 
     it('drops lengths for a choice type without a verdict and an empty section', () => {
@@ -40,9 +38,8 @@ describe('profileSections', () => {
 });
 
 describe('formatSeconds', () => {
-    it('gives two decimals in the locale digits', () => {
-        expect(formatSeconds(1639, 'en')).toBe('1.64');
-        expect(formatSeconds(453, 'en')).toBe('0.45');
-        expect(formatSeconds(1639, 'ar')).toBe('١٫٦٤');
+    it('gives two decimals in ASCII digits', () => {
+        expect(formatSeconds(1639)).toBe('1.64');
+        expect(formatSeconds(453)).toBe('0.45');
     });
 });
