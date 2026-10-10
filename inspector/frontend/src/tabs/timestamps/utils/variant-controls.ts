@@ -5,11 +5,11 @@
  * renderer's `VariantControls`: the numbers show the face this recitation was
  * read with, hovering one spotlights the cells another face would change, and
  * nothing is selectable. How a face was picked stays out of this public view.
- * `variantTipLines` is the host tooltip for a hovered number.
+ * `variantTipLines` is the host tooltip for a hovered number: the public
+ * selector title and option label, in the UI locale only.
  */
 
 import {
-    optionName,
     type VariantAffectedCells,
     type VariantControlDefinition,
     type VariantControlOccurrence,
@@ -19,6 +19,7 @@ import {
 import * as m from '$lib/paraglide/messages';
 import type { TsReadingVariant, TsVariantCells, TsVariantDefinition } from '../../../lib/types/generated/schemas';
 import type { TsShardReading } from '../../../lib/types/ts-client';
+import { choiceTitle, optionLabel } from '../domain/reading-choices';
 
 export type VariantCatalogue = Record<string, TsVariantDefinition>;
 
@@ -77,7 +78,7 @@ export function variantControlsFor(
     };
 }
 
-/** Tooltip lines for a hovered number: face, whose reading it is, scope. */
+/** Tooltip lines for a hovered number: face and whose reading it is, in the UI locale only. */
 export function variantTipLines(
     definition: VariantControlDefinition,
     occurrence: VariantControlOccurrence,
@@ -85,8 +86,7 @@ export function variantTipLines(
 ): string[] {
     const chosen = option === occurrence.selected;
     return [
-        `${definition.display_name}: ${optionName(option)}`,
+        `${choiceTitle(definition.id) ?? definition.display_name}: ${optionLabel(option)}`,
         chosen ? m.ts_variant_this_recitation() : m.ts_variant_other_reading(),
-        definition.description,
-    ].filter((line): line is string => Boolean(line));
+    ];
 }

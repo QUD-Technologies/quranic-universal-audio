@@ -32,6 +32,7 @@ from .bucket.segment import (
     SegmentFlag,
 )
 from .bucket.ts_job_record import TsJobRecord, TsJobSettings
+from .bucket.ts_readings import TsReadingOption, TsReadingRow, TsReadingsDoc, TsReadingVerse
 from .bucket.ts_shard import (
     TsAnimationTiming,
     TsColumnTiming,
@@ -361,5 +362,9 @@ __all__ = [
     "TsValidationDoc",
     "TsValidationMeta",
     "TsValidationVerse",
+    "TsReadingOption",
+    "TsReadingRow",
+    "TsReadingVerse",
+    "TsReadingsDoc",
     "VisitorDayStat",
 ]

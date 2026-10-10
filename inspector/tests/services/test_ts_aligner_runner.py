@@ -151,3 +151,13 @@ def test_launch_starts_an_aligner_run_by_default(monkeypatch):
 
     assert out == {"job_id": "ts-1", "url": None}
     assert started["slug"] == "r" and started["full"] is True and started["riwayah"] == "hafs"
+
+
+def test_a_run_rebuilds_the_readings_summary_before_closing(delivery, monkeypatch):
+    _serve(monkeypatch, [])
+    rebuilt = []
+    monkeypatch.setattr(runner.readings, "refresh_quietly", rebuilt.append)
+    record = runner.TsJobRecord(job_id="run9", slug="r", settings=TsJobSettings())
+    runner._run(record, "hafs", False)
+    assert rebuilt == ["r"]
+    assert _record(delivery, "run9")["ended_at"]

@@ -45,6 +45,7 @@ from .bucket.segment import (
 )
 from .bucket.segments_doc import SegmentsDoc
 from .bucket.ts_job_record import TsJobRecord, TsJobSettings
+from .bucket.ts_readings import TsReadingOption, TsReadingRow, TsReadingsDoc, TsReadingVerse
 from .bucket.ts_shard import (
     TsAnimationTiming,
     TsColumnTiming,
@@ -531,6 +532,10 @@ __all__ = [
     "PhonemeInterval",
     "TsWord",
     "TsVerseData",
+    "TsReadingOption",
+    "TsReadingRow",
+    "TsReadingVerse",
+    "TsReadingsDoc",
     "TsValidationDoc",
     "TsValidationMeta",
     "TsValidationVerse",

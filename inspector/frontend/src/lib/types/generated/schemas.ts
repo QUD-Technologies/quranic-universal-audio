@@ -2551,6 +2551,36 @@ export interface TsNativeProfile {
   };
   extra_phonemes: string[];
 }
+export interface TsReadingOption {
+  option: string;
+  verses?: TsReadingVerse[];
+}
+/**
+ * A verse an option was read at; ``label`` spans verses when the words cross one.
+ */
+export interface TsReadingVerse {
+  surah: number;
+  ayah: number;
+  label: string;
+}
+/**
+ * One selector at one word (two for a boundary selector), in mushaf order.
+ */
+export interface TsReadingRow {
+  selector: string;
+  key: string;
+  texts: string[];
+  options: TsReadingOption[];
+}
+/**
+ * The readings summary; ``rows`` is empty for a non-Hafs or pre-v15 delivery.
+ */
+export interface TsReadingsDoc {
+  schema_version?: number;
+  slug: string;
+  built_at?: string;
+  rows?: TsReadingRow[];
+}
 /**
  * Every reported verse for a reciter (``GET .../reports``).
  */
