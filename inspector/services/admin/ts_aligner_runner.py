@@ -9,9 +9,7 @@ for its times alone, timing only what is still stale (nothing, normally; every s
 (:func:`~services.timing.aligner_timing.delivery_lazim`) as the basis of their reading-variant
 picks. Times and shards are written as returned.
 
-Before anything is written the delivery's live ``timestamps/``, ``timing/`` and recitation
-profile are copied to a backup folder (:mod:`services.admin.ts_backup`, which documents the
-rollback); a failed backup fails the run untouched. Shards are written only when no built
+Shards are written only when no built
 chapter leaves a word, sound or rendered sakt untimed (the aligner's ``untimed`` counts, the
 batch re-time's publish gate); otherwise none are and the run fails naming the counts. A Hafs
 run that succeeds ends by writing ``recitation_profile.json`` and dropping the cached profile:
@@ -41,7 +39,7 @@ import uuid
 
 from qua_shared.riwayat import DEFAULT_SDK_RIWAYAH
 from qua_shared.schemas import RecitationProfileDoc, TsJobRecord, TsJobSettings
-from services.admin import ts_backup
+from services.admin import bucket_flush
 from services.reference import readings, recitation_profile
 from services.storage import storage_paths
 from services.storage.hf_bucket import StorageNotFound, get_backend
@@ -104,8 +102,6 @@ def _run(record: TsJobRecord, riwayah: str, full: bool) -> None:
             record.log_truncated = True
 
     try:
-        root, copied = ts_backup.backup(record.slug)
-        emit(f"backup: {root} ({', '.join(copied) or 'nothing live yet'})")
         out = _time_chapters(record, riwayah, full, emit)
         _write_validation(record.slug, out.failed, record.settings.chapters, out.model)
         if out.untimed:
@@ -218,7 +214,7 @@ def _write_profile(record: TsJobRecord, samples: dict[int, dict], emit) -> None:
         if missing:
             emit(f"recitation profile not written: no shard for chapter(s) {missing}")
             return
-        pending = ts_backup.unflushed(shards_dir, [f"{c}.json.br" for c in stored])
+        pending = bucket_flush.unflushed(shards_dir, [f"{c}.json.br" for c in stored])
         if pending:
             emit(f"recitation profile not written: {pending} not flushed to the bucket yet")
             return

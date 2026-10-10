@@ -200,39 +200,6 @@ def test_an_untimed_word_sound_or_sakt_writes_no_shard_and_fails_the_run(deliver
     assert not delivery.exists("reciters/r/recitation_profile.json")
 
 
-def test_live_timestamps_are_backed_up_before_the_run_writes(delivery, monkeypatch):
-    delivery.write_bytes_atomic("reciters/r/timestamps/112.json.br", b"live-112")
-    delivery.write_json_atomic("reciters/r/recitation_profile.json", {"schema_version": 1})
-    _serve(monkeypatch, [], failing=())
-    record = runner.TsJobRecord(job_id="run6", slug="r", settings=TsJobSettings())
-    runner._run(record, "fake", False)
-
-    (stamp,) = [d for d in delivery.list_dir("backups") if d.startswith("timestamps-pre-online-")]
-    root = f"backups/{stamp}/reciters/r"
-    assert delivery.read_bytes(f"{root}/timestamps/112.json.br") == b"live-112"
-    assert delivery.read_bytes(f"{root}/timing/112.json.br") == b"stored-112"
-    assert delivery.exists(f"{root}/recitation_profile.json")
-    assert delivery.read_bytes("reciters/r/timestamps/112.json.br") == b"shard-112"
-    assert any(f"backup: {root}" in line for line in _record(delivery, "run6")["logs"])
-
-
-def test_a_failed_backup_fails_the_run_before_anything_is_written(delivery, monkeypatch):
-    sent: list = []
-    _serve(monkeypatch, sent, failing=())
-
-    def broken(*_a, **_k):
-        raise OSError("copy refused")
-
-    monkeypatch.setattr(runner.ts_backup, "_copy_tree", broken)
-    record = runner.TsJobRecord(job_id="run7", slug="r", settings=TsJobSettings())
-    runner._run(record, "hafs", False)
-
-    assert sent == []
-    stored = _record(delivery, "run7")
-    assert stored["status"] == "failed" and "copy refused" in stored["error"]
-    assert delivery.read_bytes("reciters/r/timing/112.json.br") == b"stored-112"
-
-
 def test_a_hafs_run_writes_the_profile_and_drops_the_cached_one(delivery, monkeypatch):
     sent: list = []
     _serve(monkeypatch, sent, failing=(), profile=PROFILE)
@@ -303,7 +270,7 @@ def test_a_mount_file_newer_than_the_bucket_counts_as_unflushed(tmp_path):
     import os
     from types import SimpleNamespace
 
-    from services.admin import ts_backup
+    from services.admin import bucket_flush
 
     local = tmp_path / "1.json.br"
     local.write_bytes(b"abc")
@@ -313,11 +280,11 @@ def test_a_mount_file_newer_than_the_bucket_counts_as_unflushed(tmp_path):
     def remote(size=3, when=2000):
         return SimpleNamespace(size=size, mtime=at(when, datetime.UTC), uploaded_at=None)
 
-    assert not ts_backup._unflushed(local, remote())
-    assert ts_backup._unflushed(local, remote(when=500))
-    assert ts_backup._unflushed(local, remote(size=4))
-    assert ts_backup._unflushed(local, None)
-    assert not ts_backup._unflushed(None, remote())
+    assert not bucket_flush._unflushed(local, remote())
+    assert bucket_flush._unflushed(local, remote(when=500))
+    assert bucket_flush._unflushed(local, remote(size=4))
+    assert bucket_flush._unflushed(local, None)
+    assert not bucket_flush._unflushed(None, remote())
 
 
 def test_a_cancel_during_the_profile_call_writes_no_profile(delivery, monkeypatch):
