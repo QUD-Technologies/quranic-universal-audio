@@ -4,6 +4,7 @@ import {
     occasionIndexAt,
     resolveShuffleTick,
     shouldFireShuffle,
+    speechSpan,
     type ShuffleTickOccasion,
 } from '../shuffle-tick';
 
@@ -169,6 +170,25 @@ describe('shouldFireShuffle', () => {
 });
 
 describe('occasionIndexAt', () => {
+    it('follows the verse being read inside a segment that reads two verses', () => {
+        const shared: ShuffleTickOccasion[] = [
+            { ref: '18:1', startMs: 5000, endMs: 15000, speechStartMs: 5200, speechEndMs: 9000 },
+            { ref: '18:2', startMs: 5000, endMs: 15000, speechStartMs: 9000, speechEndMs: 14800 },
+        ];
+
+        expect(occasionIndexAt(shared, 6000)).toBe(0);
+        expect(occasionIndexAt(shared, 9500)).toBe(1);
+        expect(occasionIndexAt(shared, 14900)).toBe(1);
+    });
+
+    it('takes a by-surah verse speech span from its words', () => {
+        const words = [{ start: 0.2, end: 1.5 }, { start: 1.5, end: 4 }];
+
+        expect(speechSpan({ audio_category: 'by_surah_audio', time_start_ms: 5000, words }))
+            .toEqual({ speechStartMs: 5200, speechEndMs: 9000 });
+        expect(speechSpan({ audio_category: 'by_ayah_audio', time_start_ms: 0, words })).toEqual({});
+    });
+
     it('returns the index of the occasion whose span contains the playhead', () => {
         expect(occasionIndexAt(CONTIGUOUS, 1500)).toBe(1);
     });

@@ -25,6 +25,24 @@ export interface ShuffleTickOccasion {
     ref: string;
     startMs: number;
     endMs: number;
+    /** The verse's own words (chapter-absolute ms): narrower than the segment span
+     *  when one segment reads several verses. */
+    speechStartMs?: number;
+    speechEndMs?: number;
+}
+
+/** A by-surah verse's own speech span (chapter-absolute ms) from its words,
+ *  which are anchored at `time_start_ms`; empty for by-ayah audio or no words. */
+export function speechSpan(data: {
+    audio_category: string;
+    time_start_ms: number;
+    words: { start: number; end: number }[];
+}): { speechStartMs?: number; speechEndMs?: number } {
+    if (data.audio_category !== 'by_surah_audio' || data.words.length === 0) return {};
+    return {
+        speechStartMs: data.time_start_ms + Math.min(...data.words.map((w) => w.start)) * 1000,
+        speechEndMs: data.time_start_ms + Math.max(...data.words.map((w) => w.end)) * 1000,
+    };
 }
 
 export type ShuffleTickOutcome =
@@ -68,8 +86,9 @@ export function occasionIndexAt(occasions: ShuffleTickOccasion[], ms: number): n
     let hit = 0;
     for (let i = 0; i < occasions.length; i++) {
         const o = occasions[i]!;
-        if (ms >= o.startMs && ms < o.endMs) return i;
-        if (o.startMs <= ms) hit = i; // nearest preceding
+        const start = o.speechStartMs ?? o.startMs;
+        if (ms >= start && ms < (o.speechEndMs ?? o.endMs)) return i;
+        if (start <= ms) hit = i; // nearest preceding
     }
     return hit;
 }
