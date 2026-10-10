@@ -314,7 +314,8 @@ class SegAllResponse(BaseModel):
     """``GET /api/seg/all/<reciter>`` success body.
 
     ``audio_by_chapter`` / ``chapter_duration_ms_by_chapter`` are chapter-keyed
-    string maps; ``duration_ms_by_url`` is URL-keyed. ``pad_ms`` is the legacy
+    string maps; ``duration_ms_by_url`` and ``size_bytes_by_url`` (manifest size
+    of the aligned source file, gating direct CDN play) are URL-keyed. ``pad_ms`` is the legacy
     symmetric shim ``(pad_left_ms + pad_right_ms) // 2``.
     """
 
@@ -331,6 +332,7 @@ class SegAllResponse(BaseModel):
     audio_by_chapter: dict[str, str] = Field(default_factory=dict)
     chapter_duration_ms_by_chapter: dict[str, int] = Field(default_factory=dict)
     duration_ms_by_url: dict[str, int] = Field(default_factory=dict)
+    size_bytes_by_url: dict[str, int] = Field(default_factory=dict)
     reciter_vbr_chapters: list[int] = Field(default_factory=list)
     pad_ms: int
     pad_left_ms: int

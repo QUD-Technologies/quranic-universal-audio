@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { mp3Head } from '../../../../../lib/playback/__tests__/mp3-fixtures';
-import { _resetPlayUrlForTest } from '../../../../../lib/playback/play-url';
+import { _resetPlayUrlForTest, registerExpectedSizes } from '../../../../../lib/playback/play-url';
 import { shadowPrewarm } from '../../../../../lib/playback/shadow-audio';
 
 import type { SegAllResponse } from '../../../../../lib/types/generated/schemas';
@@ -240,8 +240,13 @@ describe('warmSegChapter', () => {
     });
 
     it('direct CDN: probes, shadow-warms the chapter, Range-warms the CDN itself', async () => {
-        fetchMock.mockImplementation(() =>
-            Promise.resolve(new Response(mp3Head({ tag: 'Info' }) as BodyInit, { status: 206 })));
+        const head = mp3Head({ tag: 'Info' });
+        const size = 1_000_000;
+        registerExpectedSizes({ [CDN]: size });
+        fetchMock.mockImplementation(() => Promise.resolve(new Response(head as BodyInit, {
+            status: 206,
+            headers: { 'Content-Range': `bytes 0-${head.length - 1}/${size}` },
+        })));
         warmSegChapter(makeSeg({ audio_url: CDN }), 'r');
         await flush(); await flush();
         expect(shadowPrewarm).toHaveBeenCalledWith(CDN);

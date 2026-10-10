@@ -288,7 +288,7 @@ def test_public_reciter_detail_snapshot(flask_client):
 
 def test_audio_surahs_snapshot(flask_client, tmp_reciter_dir):
     """Install a 2-chapter audio_manifest sidecar (one with duration, one
-    without) and snapshot the derived ``{url, duration_ms}`` map."""
+    without) and snapshot the derived ``{url, duration_ms, size_bytes}`` map."""
     from services import cache, storage_paths
     from tests.conftest import _seed_state
 
@@ -300,7 +300,11 @@ def test_audio_surahs_snapshot(flask_client, tmp_reciter_dir):
         json.dumps(
             {
                 "chapters": {
-                    "1": {"url": "https://cdn.example/1.mp3", "duration_sec": 12.5},
+                    "1": {
+                        "url": "https://cdn.example/1.mp3",
+                        "duration_sec": 12.5,
+                        "size_bytes": 200_000,
+                    },
                     "2": {"url": "https://cdn.example/2.mp3"},
                 }
             }

@@ -2,10 +2,12 @@
   "surahs": {
     "1": {
       "duration_ms": 12500,
+      "size_bytes": 200000,
       "url": "https://cdn.example/1.mp3"
     },
     "2": {
       "duration_ms": null,
+      "size_bytes": null,
       "url": "https://cdn.example/2.mp3"
     }
   }

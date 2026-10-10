@@ -246,9 +246,7 @@ def seg_all(reciter):
         return jsonify(ErrorEnvelope(error="Reciter not found").model_dump(exclude_none=True)), 404
 
     # Chapter audio URLs come from the bucket audio_manifest sidecar
-    # (catalog/audio_manifest/<slug>.json) — the single source of truth
-    # post Migration #5. The legacy per-entry ``audio`` field is no longer
-    # written by the extractor and no longer read here.
+    # (catalog/audio_manifest/<slug>.json), the single source of truth.
     from services.audio.audio_meta import chapter_urls
 
     viewer = current_user()
@@ -309,11 +307,18 @@ def seg_all(reciter):
     # waveform fetch return truncated/empty peaks and the canvas paints blank.
     # URL-keyed (not chapter-keyed) so by_ayah deliveries — where each ayah
     # is its own audio file — are clamped correctly per-ayah.
+    # ``size_bytes_by_url`` carries the manifest size of the source file the
+    # delivery was aligned on; the FE plays a CDN URL directly only when the
+    # live file still has that size (a replaced file would desync playback).
     duration_ms_by_url: dict[str, int] = {}
+    size_bytes_by_url: dict[str, int] = {}
     for key, url in (chapter_urls(reciter) or {}).items():
         meta = chapter_meta(reciter, key)
         if not isinstance(meta, dict):
             continue
+        size_bytes = meta.get("size_bytes")
+        if isinstance(url, str) and url and isinstance(size_bytes, int) and size_bytes > 0:
+            size_bytes_by_url[url] = size_bytes
         duration_sec = meta.get("duration_sec")
         if (
             isinstance(url, str)
@@ -341,6 +346,7 @@ def seg_all(reciter):
         "audio_by_chapter": audio_by_chapter,
         "chapter_duration_ms_by_chapter": chapter_duration_ms_by_chapter,
         "duration_ms_by_url": duration_ms_by_url,
+        "size_bytes_by_url": size_bytes_by_url,
         "reciter_vbr_chapters": vbr_chapters_for_reciter(reciter),
         # Symmetric shim: total padding == 2 * pad_ms ≈ pad_left + pad_right.
         "pad_ms": (pad_left_ms + pad_right_ms) // 2,

@@ -27,6 +27,7 @@ def test_quranicaudio_route_keeps_manifest_url_and_duration(flask_client, monkey
                     "1": {
                         "url": manifest_url,
                         "duration_sec": 47.054567,
+                        "size_bytes": 761_984,
                     }
                 }
             }
@@ -42,6 +43,7 @@ def test_quranicaudio_route_keeps_manifest_url_and_duration(flask_client, monkey
             "1": {
                 "url": manifest_url,
                 "duration_ms": 47055,
+                "size_bytes": 761_984,
             }
         }
     }

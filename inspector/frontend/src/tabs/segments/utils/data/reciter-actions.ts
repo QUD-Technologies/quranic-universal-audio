@@ -4,12 +4,14 @@
  *
  * Fetches the full segment corpus on the critical path, then lets validation,
  * stats, and history populate independently. Chapter-select options come from
- * `segAllData` reactively.
+ * `segAllData` reactively. Each load registers the manifest size per chapter
+ * URL with `play-url` so direct CDN play is gated on an unchanged file.
  */
 
 import { get } from 'svelte/store';
 
 import { fetchJson } from '../../../../lib/api';
+import { registerExpectedSizes } from '../../../../lib/playback/play-url';
 import { loadQuranRefs, quranRefs } from '../../../../lib/refs/quran-refs';
 import { deliveryRiwayah } from '../../../dashboard/stores/catalog-data';
 import type { SegAllResponse, SegValidateResponse } from '../../../../lib/types/generated/schemas';
@@ -74,6 +76,7 @@ export async function reloadSegAll(): Promise<void> {
             console.error('Error loading all segments:', (all as any).error);
             return;
         }
+        registerExpectedSizes(all.size_bytes_by_url ?? {});
         segAllData.set(_hydrateSegAll(all));
         reciterVbrChapters.set(new Set(all.reciter_vbr_chapters ?? []));
     } catch (e) {
@@ -115,6 +118,7 @@ export async function reloadCurrentReciter(): Promise<void> {
                 console.error('Error loading all segments:', (all as any).error);
                 return;
             }
+            registerExpectedSizes(all.size_bytes_by_url ?? {});
             segAllData.set(_hydrateSegAll(all));
             reciterVbrChapters.set(new Set(all.reciter_vbr_chapters ?? []));
             preconnectOrigins(Object.values(all.audio_by_chapter ?? {}));

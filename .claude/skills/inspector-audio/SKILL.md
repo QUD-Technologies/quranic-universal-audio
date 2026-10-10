@@ -43,7 +43,7 @@ chapter URL (CDN, in catalog/audio_manifest/<slug>.json)
         │
         ▼
 [wire]    /api/seg/audio-proxy/<reciter>?url=…                                  (chapter MP3)           routes/audio/proxy.py
-          ↳ FE only wraps when the CDN host fails the CORS+Range probe OR the file's first frame carries a `Xing` tag OR an untagged file's sniffed frames miss the nominal byte rate (lib/playback/play-url.ts + mp3-header.ts — Chrome TOC-seeks `Xing` files ±seconds; bucket remux is `Info`); other CORS-ok CDN files are played DIRECT
+          ↳ FE only wraps when the CDN host fails the CORS+Range probe OR the file's first frame carries a `Xing` tag OR an untagged file's sniffed frames miss the nominal byte rate OR the live file size differs from (or lacks) the manifest `size_bytes` (lib/playback/play-url.ts + mp3-header.ts — Chrome TOC-seeks `Xing` files ±seconds; bucket remux is `Info`; a CDN can swap a chapter for a different recording); other CORS-ok CDN files are played DIRECT
           /api/seg/segment-clip/<reciter>?url=…&start_ms=…&end_ms=…            (VBR fallback, ffmpeg -ss/-t -vn)  routes/audio/clip.py
           /api/seg/peaks/<reciter>?chapters=…&h=…                              (slim int8 envelopes)   routes/segments/peaks.py
           /api/audio/surahs/<cat>/<src>/<slug>                                 (dashboard player {url,duration_ms})  routes/audio/metadata.py

@@ -12,7 +12,7 @@ audio_meta_bp = Blueprint("audio_meta", __name__, url_prefix="/api/audio")
 
 @audio_meta_bp.route("/surahs/<category>/<source>/<slug>")
 def audio_surahs(category, source, slug):
-    """Return per-chapter ``{url, duration_ms}`` for a delivery.
+    """Return per-chapter ``{url, duration_ms, size_bytes}`` for a delivery.
 
     Reads the per-delivery audio_manifest sidecar from
     ``<bucket>/catalog/audio_manifest/<slug>.json``. ``duration_ms`` is
@@ -26,6 +26,9 @@ def audio_surahs(category, source, slug):
     into the slim peaks header (``reciters/<slug>/peaks/<ch>.json.gz``) via
     ``audio_fetch.read_prefetched_peaks_duration_ms``. Stays ``None`` only
     when peaks are also absent.
+
+    ``size_bytes`` passes the sidecar's source-file size through (``None`` when
+    absent); the FE plays the CDN URL directly only when the live file matches.
     """
     if not state_service.has_audio_access(slug):
         return jsonify(ErrorEnvelope(error="Reciter not found").model_dump(exclude_none=True)), 404
@@ -55,8 +58,10 @@ def audio_surahs(category, source, slug):
             duration_ms = (
                 int(round(duration_sec * 1000)) if isinstance(duration_sec, (int, float)) else None
             )
+            size = v.get("size_bytes")
+            size_bytes = size if isinstance(size, int) and size > 0 else None
         elif isinstance(v, str):
-            url, duration_ms = v, None
+            url, duration_ms, size_bytes = v, None, None
         else:
             continue
         if duration_ms is None:
@@ -64,7 +69,7 @@ def audio_surahs(category, source, slug):
             # the duration baked into the slim peaks header so the dashboard
             # scrubber shows a real length instead of 0:00.
             duration_ms = audio_fetch.read_prefetched_peaks_duration_ms(slug, url)
-        surahs[k] = {"url": url, "duration_ms": duration_ms}
+        surahs[k] = {"url": url, "duration_ms": duration_ms, "size_bytes": size_bytes}
     cache.set_audio_url_cache(key, surahs)
     return jsonify(_serialize_surahs(surahs))
 
@@ -73,6 +78,6 @@ def _serialize_surahs(surahs: dict[str, dict]) -> dict:
     """Serialize the per-chapter ``surahs`` map through the wire model.
 
     Dumps with ``by_alias`` and no ``exclude_none`` so the required-nullable
-    ``duration_ms`` key remains present when no length is known.
+    ``duration_ms`` / ``size_bytes`` keys remain present when unknown.
     """
     return AudioSurahsResponse.model_validate({"surahs": surahs}).model_dump(by_alias=True)

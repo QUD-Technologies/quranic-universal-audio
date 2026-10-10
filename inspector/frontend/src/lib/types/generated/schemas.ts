@@ -690,12 +690,15 @@ export interface Announcement {
  * One chapter's playback metadata in the ``surahs`` map.
  *
  * ``duration_ms`` is ``None`` only when the manifest carries no duration and
- * the slim-peaks fallback also cannot provide one. Both keys are always
- * serialized.
+ * the slim-peaks fallback also cannot provide one. ``size_bytes`` is the
+ * manifest size of the source file the delivery was aligned on; the FE plays
+ * the CDN URL directly only when the live file still has that size. All keys
+ * are always serialized.
  */
 export interface AudioSurahEntry {
   url: string;
   duration_ms: number | null;
+  size_bytes: number | null;
 }
 /**
  * ``GET /api/audio/surahs/<category>/<source>/<slug>`` success body.
@@ -1687,7 +1690,8 @@ export interface SamplesListResponse {
  * ``GET /api/seg/all/<reciter>`` success body.
  *
  * ``audio_by_chapter`` / ``chapter_duration_ms_by_chapter`` are chapter-keyed
- * string maps; ``duration_ms_by_url`` is URL-keyed. ``pad_ms`` is the legacy
+ * string maps; ``duration_ms_by_url`` and ``size_bytes_by_url`` (manifest size
+ * of the aligned source file, gating direct CDN play) are URL-keyed. ``pad_ms`` is the legacy
  * symmetric shim ``(pad_left_ms + pad_right_ms) // 2``.
  */
 export interface SegAllResponse {
@@ -1700,6 +1704,9 @@ export interface SegAllResponse {
     [k: string]: number;
   };
   duration_ms_by_url?: {
+    [k: string]: number;
+  };
+  size_bytes_by_url?: {
     [k: string]: number;
   };
   reciter_vbr_chapters?: number[];
