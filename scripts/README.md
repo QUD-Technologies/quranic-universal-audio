@@ -61,6 +61,7 @@ no-op-or-error by design. Idempotent `backfill_*`/`purge_*`/`convert_*` stay in
 - `backfill_*` (5), `convert_peaks_v2_to_v3`, `derive_pipeline_meta`, `rollback_peaks_slim` — re-runnable artefact backfills / conversions
 - `purge_pad_migration`, `purge_stale_wraps` — strip stale records from `detailed.json` / `edit_history`
 - `unignore_category` — bulk-revert `ignore_issue` ops (re-runnable data-fix)
+- `replay_lost_edits` — dry-run-first write-back of segment edits logged in `edit_history.jsonl` but missing from `detailed.json` (`--execute` writes; restart the Space after)
 - `patch_release_audio_sources` — rewrite a shipped GH release's `catalog.json` to native source URLs + `chapter_offsets_ms` (re-runnable; no-op once the `cut_release` fix shipped)
 
 ### `diagnostics/`

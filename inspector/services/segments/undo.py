@@ -1,6 +1,8 @@
 """Undo operations: batch reversal, snapshot verification, segment restoration.
 
 No Flask imports -- all functions accept parameters and return plain dicts.
+An undo runs under ``data_loader.detailed_lock`` like a save, so it never
+overlaps another write of the same reciter's ``detailed.json``.
 """
 
 from datetime import UTC, datetime
@@ -14,7 +16,7 @@ from services.reference.delivery_edition import sdk_riwayah_for
 from services.segments.save import persist_detailed
 from services.segments.stamping import stamp_segment
 from services.storage import cache, data_dir
-from services.storage.data_loader import load_detailed
+from services.storage.data_loader import detailed_lock, load_detailed
 from utils.references import chapter_from_ref
 from utils.uuid7 import uuid7
 
@@ -357,6 +359,11 @@ def undo_batch(reciter: str, target_batch_id: str, *, actor: Actor) -> dict | tu
     panel can attribute who undid the batch (separate from who originally
     saved it).
     """
+    with detailed_lock(reciter):
+        return _undo_batch(reciter, target_batch_id, actor=actor)
+
+
+def _undo_batch(reciter: str, target_batch_id: str, *, actor: Actor) -> dict | tuple:
     all_records = parse_history_for_reciter(reciter)
     if not all_records:
         return {"error": "No edit history found"}, 404
@@ -467,6 +474,17 @@ def undo_ops(
 
     Returns result dict or ``(error_dict, status)``.
     """
+    with detailed_lock(reciter):
+        return _undo_ops(reciter, target_batch_id, requested_op_ids, actor=actor)
+
+
+def _undo_ops(
+    reciter: str,
+    target_batch_id: str,
+    requested_op_ids: set[str],
+    *,
+    actor: Actor,
+) -> dict | tuple:
     all_records = parse_history_for_reciter(reciter)
     if not all_records:
         return {"error": "No edit history found"}, 404
