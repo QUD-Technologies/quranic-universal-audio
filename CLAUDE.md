@@ -16,7 +16,7 @@ Same code, two profiles selected by env:
 | State + catalog + access + audit + activity + claims + requests | SQLite `inspector.db` (`services/db/`), full-file synced to bucket `db/inspector.db` | same |
 | Per-reciter content | bucket `reciters/<slug>/` via `services/storage/data_dir.py` | same |
 | Bucket access | auto-mounted via `hf-mount` FUSE at `inspector/.bucket/{dev,prod}/` (gitignored) if the binary is on PATH; otherwise falls back to `hffs.cat_file` (~50-500× slower reads). Opt out with `INSPECTOR_AUTO_MOUNT=0` | NFS mount provided by the HF Space runtime |
-| Audio | URL-templated via catalog, proxied through `/api/seg/audio-proxy/` (streams from CDN when bucket has no chapter) | same; bucket audio is populated offline by katana extraction (`.local/extraction/upload_to_bucket.py`) |
+| Audio | URL-templated via catalog, proxied through `/api/seg/audio-proxy/` (streams from CDN when bucket has no chapter) | same; bucket audio is written by the align pipeline's acquire stage ([`align-pipeline.md`](docs/reference/align-pipeline.md)) |
 | Workers | flask dev server | gunicorn-gthread, **`-w 1`** (single-worker invariant) |
 
 The prod Space is the only thing that uses `QUD-Technologies/quranic-inspector-bucket` (prod) — it sets `INSPECTOR_BUCKET_REPO` explicitly. Every **non-deployed** process (local dev, scripts) defaults to the dev bucket `QUD-Technologies/quranic-inspector-bucket-dev`.

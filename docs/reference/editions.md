@@ -199,7 +199,7 @@ for a non-Hafs delivery (**D12**). `auto_split_v1.json` publishes the delivery's
 section refs while measuring their word counts in Hafs — the space the aligner's
 word list lives in.
 
-The extraction runbook is `.claude/skills/segments-extraction/` in the `qua` repo.
+Extraction runs through the native align pipeline ([`align-pipeline.md`](align-pipeline.md)).
 
 ### Segments tab
 

@@ -3,10 +3,8 @@
 Single GET route. Lookup order:
 
 1. **Bucket-resident audio** — ``reciters/<slug>/audio/<chapter>.mp3`` written
-   by the katana extraction pipeline (`.local/extraction/upload_to_bucket.py`).
-   Served via ``range_file.send_range_file`` (1 MB reads, Range + 304). The
-   ``-c:a copy -f mp3`` step in ``audio_persist.py`` injects an Xing/Info
-   header so the browser computes ``<audio>.duration`` correctly.
+   by the align pipeline's acquire / split HF jobs.
+   Served via ``range_file.send_range_file`` (1 MB reads, Range + 304).
 2. **CDN stream-through** — for slugs the extraction pipeline hasn't
    reached yet (anonymous browsing, pre-extraction onboarding, by_ayah
    deliveries). We stream the upstream response through Flask instead of

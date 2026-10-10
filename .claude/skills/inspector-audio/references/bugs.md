@@ -49,7 +49,7 @@ Symptom → likely root → first probe. Ordered by area, not severity. VBR-only
 
 | Symptom | Likely root | First probe |
 |---|---|---|
-| Audio/peaks never appear on bucket for a slug | Katana extraction didn't run / upload didn't finish (`_done.json` absent) | `hf bucket ls reciters/<slug>/audio/` — no `_done.json` ⇒ not fully uploaded. Re-run `.local/extraction/upload_to_bucket.py`. |
+| Audio/peaks never appear on bucket for a slug | The align run's acquire / split stage didn't finish | Check the run in Admin → Requests (`GET …/align/status`); retry the run. |
 
 ## Audio proxy / serving
 

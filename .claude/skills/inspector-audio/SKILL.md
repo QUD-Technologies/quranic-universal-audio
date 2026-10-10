@@ -7,12 +7,12 @@ description: Inspector audio subsystem — everything between bytes-on-disk and 
 
 Audio subsystem skill. Standalone — references below split by layer so the skill can grow new branches (per-codec, per-feature, per-platform) without bloating one doc.
 
-Spans two arcs: the **runtime** path (bytes-on-disk → `<audio>`) and the **upstream handoff** (contributor source links → a reviewable `reciters/<slug>/` folder). The native align pipeline (Requests-tab Align, incl. online playlist intake) or offline Katana extraction writes the bucket content; `auto_detect` reconciles it into the lifecycle. See `references/extraction-intake.md`.
+Spans two arcs: the **runtime** path (bytes-on-disk → `<audio>`) and the **upstream handoff** (contributor source links → a reviewable `reciters/<slug>/` folder). The native align pipeline (Requests-tab Align, incl. online playlist intake) writes the bucket content; `auto_detect` reconciles it into the lifecycle. See `references/extraction-intake.md`.
 
 ## Two corrections to hold (the docs used to lie about both)
 
 1. **The CDN tier is a same-origin 200/206 stream, not a 302.** `audio_source.resolve` is three tiers — local Path → in-mem bytes → CDN — and the CDN tier is served by `_stream_cdn` same-origin with `Access-Control-Allow-Origin: *`. The old 302 was removed because it silenced `<audio crossorigin>` + the Web Audio kill-switch. There is **no disk-cache tier**.
-2. **No prefetch worker, no GC sweeper, `_done.json` not read at runtime.** Bucket audio + peaks are written once — by the align pipeline's `acquire_audio` / `split_audio` HF jobs or by Katana extraction — and only **read** by the serving path. Nothing warms the bucket, nothing GCs it. The reconciler keys on the DB state row (`AWAITING_ALIGNMENT`), not the sentinel. "Audio missing on the bucket" is an extraction/upload problem.
+2. **No prefetch worker, no GC sweeper, `_done.json` not read at runtime.** Bucket audio + peaks are written once — by the align pipeline's `acquire_audio` / `split_audio` HF jobs — and only **read** by the serving path. Nothing warms the bucket, nothing GCs it. The reconciler keys on the DB state row (`AWAITING_ALIGNMENT`), not the sentinel. "Audio missing on the bucket" is an extraction/upload problem.
 
 ## Topology
 
@@ -26,7 +26,7 @@ Spans two arcs: the **runtime** path (bytes-on-disk → `<audio>`) and the **ups
 chapter URL (CDN, in catalog/audio_manifest/<slug>.json)
         │
         ▼
-[writers]  align pipeline HF jobs (acquire_audio / split_audio) or Katana extraction (audio_persist.py + upload_to_bucket.py)
+[writers]  align pipeline HF jobs (acquire_audio / split_audio)
                                    ──►  bucket: reciters/<slug>/audio/<ch>.mp3      (Xing TOC injected if VBR)
                                    ──►  bucket: reciters/<slug>/peaks/<ch>.json.gz  (slim int8, schema v3)
                                    ──►  bucket: reciters/<slug>/audio/_done.json    (written last; offline audit only — NOT read at runtime)
@@ -81,7 +81,7 @@ VBR routing fork is **per-chapter**, not per-reciter. Decided by `audio_meta.is_
 ## Conventions
 
 - File-absolute milliseconds outside `AudioPort`, clip-relative inside. Any caller writing `el.currentTime` directly is a bug.
-- Bucket audio + peaks are written offline (**Katana extraction** `audio_persist.py` + `upload_to_bucket.py`) and only **read** at runtime — no in-Space fetch worker, no GC sweeper. Audio + peaks persist indefinitely. (FE-side `warmup.ts` / `shadow-audio.ts` are *browser* warmups — HTTP Range / element-pool — unrelated to the removed backend worker.)
+- Bucket audio + peaks are written by the align pipeline's HF jobs (`qua_jobs/acquire_audio.py`, `qua_jobs/split_audio.py`) and only **read** at runtime; reciters aligned before the pipeline carry audio + peaks from the retired Katana extraction (`audio_persist.py`, Xing-injected when VBR) — no in-Space fetch worker, no GC sweeper. Audio + peaks persist indefinitely. (FE-side `warmup.ts` / `shadow-audio.ts` are *browser* warmups — HTTP Range / element-pool — unrelated to the removed backend worker.)
 - Manifest sidecar `catalog/audio_manifest/<slug>.json` is the **single source of truth** for VBR routing and chapter ↔ URL reverse lookup (cached as `_audio_manifest` + an O(1) `_audio_manifest_url_index`). Built offline by `scripts/audio/probe_audio_meta.py`. Never resolve chapter URLs through `detailed.json` — its per-entry `audio` field is `""` post-migration-#5.
 - Style across references: terse, table-first, file-path-anchored. When the live filesystem drifts, fix the matching reference — don't add a new layer.
 - **This skill is the ground truth for audio** — by design there is no `docs/reference/audio.md` (`docs/reference/README.md` carves audio out to here). The reference docs only *touch* audio as thin pointers: the route map in `architecture.md`, the playback stores in `frontend.md`, audio manifests in `catalog.md`. Keep those thin and consistent with this skill; the depth lives here.
