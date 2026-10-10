@@ -15,7 +15,7 @@
      * Both come from `reading-profile-source` (`GET /api/ts/readings/<slug>` and
      * `GET /api/ts/profile/<slug>`), cached per delivery.
      */
-    import { fmtNum, i18n } from '../../../lib/i18n/locale.svelte';
+    import { i18n } from '../../../lib/i18n/locale.svelte';
     import * as m from '../../../lib/paraglide/messages';
     import { pendingTsNavigation } from '../../../lib/stores/navigation';
     import type { TsReadingVerse } from '../../../lib/types/generated/schemas';
@@ -65,7 +65,7 @@
     const verseTitle = (verse: TsReadingVerse): string =>
         m.ts_readings_go_to({ surah: surahName(verse.surah, i18n.locale), ref: verse.label });
 
-    const seconds = (ms: number): string => m.ts_profile_seconds({ n: formatSeconds(ms, i18n.locale) });
+    const seconds = (ms: number): string => m.ts_profile_seconds({ n: formatSeconds(ms) });
 </script>
 
 {#key i18n.locale}
@@ -82,7 +82,10 @@
         {:else}
             {#each loadState.profile as section (section.section)}
                 <section class="rp-group" aria-labelledby="{PANEL_ID}-{section.section}">
-                    <h3 id="{PANEL_ID}-{section.section}" class="rp-group-title">{SECTION_TITLE[section.section]()}</h3>
+                    <h3 id="{PANEL_ID}-{section.section}" class="rp-group-title rp-stat-head">
+                        <span>{SECTION_TITLE[section.section]()}</span>
+                        {#if section.section === 'madd'}<span class="rp-avg">{m.ts_profile_average()}</span>{/if}
+                    </h3>
                     <ul class="rp-stats">
                         {#each section.rows as row (row.measure)}
                             {@const chosen = row.lengths.find((l) => l.chosen)}
@@ -93,7 +96,7 @@
                                         <span class="rp-length-name">{LENGTH_LABEL[chosen.length]()}</span>
                                         <span class="rp-counts" aria-hidden="true">
                                             {#each row.lengths as l (l.length)}
-                                                <span class="rp-count" class:chosen={l.chosen}>{fmtNum(l.count)}</span>
+                                                <span class="rp-count" class:chosen={l.chosen}>{l.count}</span>
                                             {/each}
                                         </span>
                                     </span>
@@ -199,6 +202,12 @@
         font-weight: 600;
         color: var(--text-muted);
     }
+    .rp-stat-head {
+        display: flex;
+        justify-content: space-between;
+        padding-inline: var(--s-1) var(--s-2);
+    }
+    .rp-avg { font-weight: 400; }
     .rp-stats {
         list-style: none;
         margin: 0;

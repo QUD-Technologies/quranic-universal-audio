@@ -387,17 +387,17 @@
   "ts_profile_madd_lazim": "لازم",
   "ts_profile_madd_arid": "عارض للسكون",
   "ts_profile_madd_leen": "لين",
-  "ts_profile_ghunnah": "الغنة",
-  "ts_profile_pauses": "الوقفات",
   "ts_profile_length_qasr": "قصر",
   "ts_profile_length_tawassut": "توسط",
   "ts_profile_length_ishbaa": "إشباع",
   "ts_profile_counts_qasr": "حركتان",
-  "ts_profile_counts_tawassut": "٤ حركات",
-  "ts_profile_counts_ishbaa": "٦ حركات",
+  "ts_profile_counts_tawassut": "4 حركات",
+  "ts_profile_counts_ishbaa": "6 حركات",
   "ts_profile_length_option": "{length} · {counts}",
   "ts_profile_seconds": "{n} ث",
   "ts_profile_mean": "المتوسط {duration}",
   "ts_profile_madd_title": "المد",
-  "ts_profile_sound_title": "الغنة والوقفات"
+  "ts_profile_ghunnah_title": "الغنة",
+  "ts_profile_pauses_title": "الوقف",
+  "ts_profile_average": "متوسط المدة"
 }
