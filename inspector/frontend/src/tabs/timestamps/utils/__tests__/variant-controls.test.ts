@@ -86,12 +86,10 @@ describe('variant tips', () => {
         expect(variantTipLines(definition, occurrence, 'tashil')).toEqual([
             'Question hamza before al-: Tashil',
             'This recitation',
-            'Hamzat al-wasl after the question hamza.',
         ]);
         expect(variantTipLines(definition, occurrence, 'ibdal')).toEqual([
             'Question hamza before al-: Ibdal',
             'Other reading',
-            'Hamzat al-wasl after the question hamza.',
         ]);
     });
 });

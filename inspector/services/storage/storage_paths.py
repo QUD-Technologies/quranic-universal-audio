@@ -164,6 +164,16 @@ def ts_validation_path(slug: str) -> str:
     return reciter_file(slug, "ts_validation.json")
 
 
+def readings_path(slug: str) -> str:
+    """Readings summary — ``readings.json``: what a Hafs delivery reads wherever the riwayah
+    allows a choice, folded from its v15 shards by ``services/reference/readings.py``.
+
+    Beside the shards rather than in ``timestamps/``, which holds only per-chapter shards.
+    Schema: ``qua_shared/schemas/bucket/ts_readings.py``.
+    """
+    return reciter_file(slug, "readings.json")
+
+
 def auto_split_path(slug: str) -> str:
     """Auto-split cursor sidecar — per-seg precomputed cursors + refs.
 

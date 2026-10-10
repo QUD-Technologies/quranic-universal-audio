@@ -1,63 +1,71 @@
-# Readings profile — Timestamps tab
+# Readings panel — Timestamps tab
 
 A public view of how the selected recitation reads wherever Hafs allows more than one way. It shows
-what the reciter reads and nothing about how that was decided.
+what the reciter reads, never how that was decided.
 
-Prototype: `inspector/frontend/src/tabs/timestamps/components/ReadingProfile.svelte`, built on
-`domain/reading-choices.ts` (catalogue and labels), `utils/reading-profile.ts` (shard → profile) and
-`services/reading-profile-source.ts` (loader). Screenshots in this folder are real local captures
-against prod data (`launch.py --mode prod`, read-only).
+| Piece | Where |
+|---|---|
+| Panel | `inspector/frontend/src/tabs/timestamps/components/ReadingProfile.svelte`, docked by `TimestampsFooterLeft.svelte` |
+| Layout and labels | `tabs/timestamps/domain/reading-choices.ts`, `utils/reading-profile.ts`, `services/reading-profile-source.ts` |
+| Summary builder | `inspector/services/reference/readings.py` |
+| Stored summary | `reciters/<slug>/readings.json`; schema `qua_shared/schemas/bucket/ts_readings.py` (`TsReadingsDoc`, codegen'd to `schemas.ts`) |
+| Route | `GET /api/ts/readings/<slug>` in `inspector/routes/timestamps/timestamps.py` |
 
-## Placement and form
+Screenshots in this folder are local captures of the real stack against prod data, read-only
+(`launch.py --mode prod`).
 
-- **Trigger:** a double-height footer button right of the recitation picker chip, the same height
-  and surface as the shuffle button. It has a fork glyph (two ways to read), with the label
-  "Readings" / "الأوجه" under it on screens wider than 1280px and the glyph alone below that. It
-  shows only for Hafs deliveries.
-- **Panel:** a drop-up anchored to the trigger, like the picker drop-up: `panel` surface, 8px radius,
-  `--shadow-pop`, width up to 520px, height up to 78vh, scrolling inside. On screens 640px and
-  narrower it becomes a fixed sheet with 16px gutters above the player.
-- **Why a drop-up rather than inline:** the Timestamps view is meant to stay calm (PRODUCT.md,
-  principle 2). The profile is reference material that belongs to the recitation, not to the
-  current verse. It sits next to the control that picks the recitation and stays out of the frame
-  until someone opens it. An inline element would add permanent chrome to every verse.
+## Placement
+
+The panel is a side panel docked to the open recitation picker at the picker's height
+(`min(600px, 74vh)`). No extra button opens it: opening the picker shows it whenever the selected
+recitation is Hafs, and for any other riwayah nothing is rendered. Overflow scrolls inside the panel.
+
+At 760px and narrower, the picker and the panel stack in one sheet with 16px gutters above the player.
+The list takes the top half and the panel the bottom half, and the page gets no horizontal scroll.
+
+Read as a strip in the footer beside the picker chip, at the chip's height, the panel was tried
+first and rejected. At 1440px the footer's left zone leaves about 150px beside the chip, enough for
+one word. The rows also pushed the Report and surah controls into the transport.
 
 ## Content
 
-Header: "Readings" / "أوجه القراءة", then the reciter's Latin and Arabic names, then one intro line.
+- The panel has a heading ("Readings" / "أوجه القراءة").
+- Group headings come in this order: Hamza, Letters and vowels, Joining words, Brief pause, Stopping
+  and starting. A group appears only when it has rows.
+- Each group has one row per word. The row shows the word in `--font-quran` (DigitalKhatt) beside its
+  options, in the family's order.
+  - An option the reciter reads gets a filled accent check, a bold label and its verse chips.
+  - An option the reciter never reads is a dimmed ring and label, with no caption.
+- When occurrences differ, both options are marked. For example, Qatami reads ءَآللَّهُ as ibdal at
+  27:59 and as tashil at 10:59.
+- There are no descriptions, intro or "Other reading" captions.
+- Labels follow the UI locale only and are never bilingual.
 
-Groups are listed in this order and appear only when they have rows: Hamza → Letters and vowels →
-Joining words → Brief pause → Stopping and starting.
+**Verse chips** show `s:v`, or `s:v1–v2` when the words cross a verse end. Each chip carries a small
+go-to arrow pointing up and onward. The arrow mirrors in RTL. On hover or focus the chip fills, its
+border turns accent and the arrow nudges outward. The accessible name is "Go to Yunus 10:59" /
+"انتقل إلى يونس 10:59".
 
-Inside a group, each **family** (selectors that share one explanation) has a title, a plain-language
-description, and one **word row** per word:
+Clicking a chip sets `pendingTsNavigation {surah, ayah, autoplay: true, slug}`, the channel the
+Bookmarks panel uses, and closes the picker. In the live capture, clicking 10:59 loaded and played
+10:59 for Qatami (`qatami-en-dark-after-jump-10-59.png`).
 
-- **Word:** the reading's own word text from the shard, set in `--font-quran` (DigitalKhatt). A
-  boundary choice shows both words.
-- **Options:** every option in the family's order. An option the reciter reads gets a filled accent
-  check, a bold label and one accent `s:v` chip per verse. An option they never read gets an empty
-  ring and the muted text "Other reading" / "وجه آخر". In English the Arabic term also appears next
-  to the label (Ibdal إبدال).
-- When occurrences differ, both options are marked as read, each with its own verses. For example,
-  Qatami reads ءَآللَّهُ as ibdal at 27:59 and as tashil at 10:59.
+**Per-row hover** (`variantTipLines`) shows the family title and option label in the UI locale,
+then "This recitation" / "Other reading". The producer's English description line is gone.
 
-| Family | Selectors | Group | Options |
+| Group | Family title (hover) | Selectors | Options |
 |---|---|---|---|
-| Question hamza before al- / همزة الاستفهام قبل «ال» | istifham_article (one row per word: ءَآلذَّكَرَيْنِ, ءَآلْـَٔـٰنَ, ءَآللَّهُ) | Hamza | ibdal, tashil |
-| Seen or ṣād / السين أو الصاد | yabsut, bastah, almusaytirun, bimusaytir | Letters | seen, saad |
-| Fatha or damma / الفتح أو الضم | daaf_haraka | Letters | fatha, damma |
-| Nūn and Yā-Sīn, joined on / «ن» و«يس» عند الوصل | noon_wasl, yaseen_wasl | Joining | izhar, idgham |
-| Merging into the next word / الإدغام في الكلمة التالية | irkab_maana, yalhath_dhalik | Joining | idgham, izhar |
-| Pause between words / السكت بين الكلمتين | iwaja_qayyima, man_raq, bal_ran | Brief pause | sakt, idraj |
-| Māliyah, halaka / «ماليه هلك» | maliyah_halak | Brief pause | sakt, idgham |
-| Last letter when stopping / الحرف الأخير عند الوقف | yaa_aatani_waqf, salasila_waqf | Stopping | ithbat, hadhf |
-| Starting from al-ism / الابتداء بـ«الاسم» | alism_ibtidaa | Stopping | hamza, lam |
+| Hamza / الهمز | Question hamza before al- / همزة الاستفهام قبل «ال» | istifham_article, one row per word | ibdal, tashil |
+| Letters and vowels / الحروف والحركات | Seen or ṣād / السين أو الصاد | yabsut, bastah, almusaytirun, bimusaytir | seen, saad |
+|  | Fatha or damma / الفتح أو الضم | daaf_haraka | fatha, damma |
+| Joining words / الوصل والإدغام | Nūn and Yā-Sīn, joined on / «ن» و«يس» عند الوصل | noon_wasl, yaseen_wasl | izhar, idgham |
+|  | Merging into the next word / الإدغام في الكلمة التالية | irkab_maana, yalhath_dhalik | idgham, izhar |
+| Brief pause / السكت | Pause between words / السكت بين الكلمتين | iwaja_qayyima, man_raq, bal_ran | sakt, idraj |
+|  | Māliyah, halaka / «ماليه هلك» | maliyah_halak | sakt, idgham |
+| Stopping and starting / الوقف والابتداء | Last letter when stopping / الحرف الأخير عند الوقف | yaa_aatani_waqf, salasila_waqf | ithbat, hadhf |
+|  | Starting from al-ism / الابتداء بـ«الاسم» | alism_ibtidaa | hamza, lam |
 
-The descriptions are in `messages/{en,ar}.json` under `ts_readings_*_desc`.
-
-### Option labels
-
-| id | en | ar |
+| Option | en | ar |
 |---|---|---|
 | ibdal | Ibdal | إبدال |
 | tashil | Tashil | تسهيل |
@@ -74,64 +82,50 @@ The descriptions are in `messages/{en,ar}.json` under `ts_readings_*_desc`.
 | hamza | Hamza | همزة |
 | lam | Lam | لام |
 
-The per-row hover tooltip (`variantTipLines`) uses the same family title and option label in
-place of the old title-cased id. This change is implemented.
+## Behaviour rules (server builder)
 
-## Behaviour rules
-
-- **Shown selectors only.** A selector absent from `CHOICES` is never shown. This covers the nasal
-  places, all `raa_*` selectors and `tamanna_noon`.
-- **Conditional rows come from the data.** The producer writes a variant on a reading only when
-  that reading met the occurrence's condition: it stopped there (waqf), joined there (wasl or sakt
-  boundary), or started there (ibtidaa). The profile lists only what is present, so those rows
-  appear only when they applied. For example, Fatih has no `yaseen_wasl` row because he stopped
-  after Yā-Sīn, and neither reciter has a `noon_wasl` or waqf row.
-- **Picks without evidence (`by: "default"`) are dropped**, so the panel never claims a reading
-  the reciter was not shown to make. Neither reciter has one today.
-- **Deduped and ordered:** repeated readings of the same verse fold into one chip. Chips,
-  families and word rows follow mushaf order. An occurrence that crosses a verse end is labelled
-  `36:1–2` and links to its first verse.
-- **Jump:** a chip sets `pendingTsNavigation` with `{surah, ayah, autoplay: true, slug}`, which is
-  the same channel the Bookmarks panel and flag notifications use. The Timestamps tab then routes it
-  through `jumpToTarget`, and the panel closes. This was verified live: clicking 10:59 loaded and
-  played 10:59 for Qatami.
-- **States:**
-  - Loading shows "Gathering readings… n of 17 surahs" with the shared spinner.
-  - An error shows a message and a "Try again" button.
-  - A recitation without v15 shards shows the empty line "No recorded reading choices yet".
-- **Keyboard and accessibility:**
-  - The trigger is a `button` with `aria-expanded` and `aria-controls`, and opening the panel
-    moves focus into it.
-  - The panel is a non-modal `role="dialog"`. Escape closes it and returns focus to the trigger,
-    and a click outside closes it.
-  - Chips are buttons with an accent focus ring and an `aria-label` such as "Go to Yunus 10:59".
-- **RTL:** the layout uses logical properties, so in Arabic the word sits on the right and the
-  options on the left. Chips are `dir="ltr"` so `10:59` never flips, and digits stay Western.
-- **Themes:** the panel uses tokens only, so light and dark both follow `theming.md`.
+- **Shown selectors only** (`readings.SHOWN`). Never shown: the nasal places, the `raa_*`
+  selectors and `tamanna_noon`.
+- **Conditional rows come from the data.** A shard carries a variant only where its condition held:
+  stopped there (waqf), joined there (wasl or a sakt boundary), or started there (ibtidaa). So those
+  rows appear only where they applied. Fatih has no `yaseen_wasl` row because he stopped after Yā-Sīn.
+- **`by: "default"` picks are dropped:** without evidence they say nothing about the reciter.
+- **One row per selector and word.** `istifham_article` splits into ءَآلذَّكَرَيْنِ, ءَآلْـَٔـٰنَ and
+  ءَآللَّهُ. Rows follow mushaf order; repeated readings of a verse fold into one chip.
+- **Non-Hafs, pre-v15:** a non-Hafs delivery gets empty `rows` with no shard read. Pre-v15 shards
+  contribute nothing.
 
 ## Data path
 
-**Prototype (client-side, real data):** on first open, the client fetches the reciter's raw shards
-through `shard_url_template`. It reads only the 17 chapters that can hold a shown selector
-(`CHOICE_CHAPTERS`), 4 at a time, keeps only the variant hits and drops each shard. If the first
-shard is older than v15, it stops early. The result is cached per delivery for the session. The
-cost is about 17 × 2 MB of JSON. That is fine against the CDN but slow against the local prod
-bucket: about 9 s once the backend is warm, and minutes when cold.
+`readings.build(slug)` reads the 17 chapters that can hold a shown selector, through
+`data_dir.read_timestamps_chapter`, and folds them into `TsReadingsDoc`. The summary is written in
+three situations:
 
-**Production (proposed):** the shard producer (`qua_sdk.integrations.shard_variants`) should also
-write a per-delivery `reciters/<slug>/timestamps/readings.json`. It would hold the shown
-occurrences `{id, chosen, words: ["s:v:w"], texts: [...]}`, already filtered by the same rules
-(shown, active, not `default`). The Inspector would serve it at `GET /api/ts/readings/<slug>`,
-which is a few KB and cacheable. The client would then call `buildProfile` on it unchanged, and the
-trigger could hide for deliveries without the file instead of showing an empty state.
+- **Online (aligner timestamps run):** `ts_aligner_runner._run` rebuilds it after the run's shards
+  are written, whatever the outcome, before closing the run record.
+- **Offline (Katana publish):** the `ts-refreshed` internal notice rebuilds it on a background
+  thread.
+- **Lazily:** `GET /api/ts/readings/<slug>` builds and stores it when it is missing or invalid.
+
+A read-only backend (prod mode locally) cannot store it, so it keeps the built summary in process
+memory instead. The route has the same visibility gate as `/shard` (`is_viewable`) and returns
+`no-store`. The client makes one request per delivery and caches it for the session; there is no
+shard fanout.
+
+**Path choice:** `readings.json` sits at the reciter root next to `ts_validation.json`, not in
+`timestamps/`. Bucket tooling (`scripts/bucket/bucket_reciters.py`, `upload_bucket_reciter.py`)
+treats every file in `timestamps/` as a shard.
+
+**Cost:** a cold first build reads 17 shards. Against the prod bucket over hffs locally that took
+about 108 s. Afterwards the stored file serves in milliseconds.
 
 ## Open questions
 
-1. Should a `by: "default"` pick appear (for example as "not determined"), or stay hidden as now?
-2. "Readings" / "الأوجه" as the public name: is "Reading choices" clearer to non-specialists?
-3. Should `daaf_haraka` show its three occurrences as one chip (30:54, the current behaviour) or
-   one chip per word?
-4. The descriptions need review by a qualified teacher, especially the Arabic.
-5. The app shell itself overflows at phone width (header tabs and footer). The panel copes, but the
-   footer at 390px is crowded.
-6. Jumping currently autoplays, matching bookmarks. Should it keep the current play state instead?
+1. **Panel placement:** I read "next to the recitation picker, the same height as the picker" as
+   docking beside the picker drop-up, so the panel shows while the picker is open. If it should stay
+   on screen with the picker closed, the footer has no room at 1440px. It would need its own place,
+   such as a column of the Timestamps view.
+2. **Backfill:** existing v15 reciters get their summary on the first request (about 108 s against
+   the prod bucket). A one-off `refresh` per released Hafs reciter after deploy would avoid that wait.
+3. Should a `by: "default"` pick appear at all?
+4. The Arabic wording needs review by a qualified teacher.

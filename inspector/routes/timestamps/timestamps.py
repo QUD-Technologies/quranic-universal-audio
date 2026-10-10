@@ -2,7 +2,8 @@
 
 ``/manifest`` and ``/shard/<reciter>/<int:chapter>`` read from
 ``<INSPECTOR_BUCKET_MOUNT>/reciters/<slug>/timestamps/...`` (composed in
-``services/timestamps.py``). ``/config`` advertises manifest + shard URL
+``services/timestamps.py``). ``/readings/<reciter>`` serves the readings summary
+(``services/reference/readings.py``). ``/config`` advertises manifest + shard URL
 templates so the frontend doesn't need its own env knob.
 """
 
@@ -27,6 +28,7 @@ from services import state as state_service
 from services import timestamps as ts_serve
 from services.audio_meta import vbr_chapters_for_reciter
 from services.auth import capabilities as _capabilities
+from services.reference import readings as readings_service
 from utils.decorators import require_capability
 from utils.json_response import orjson_response
 
@@ -174,6 +176,26 @@ def ts_validation(user, reciter):
     if doc is None:
         return jsonify(ErrorEnvelope(error="Not found").model_dump(exclude_none=True)), 404
     return orjson_response(doc)
+
+
+@ts_bp.route("/readings/<reciter>")
+def ts_readings(reciter):
+    """What a Hafs recitation reads wherever the riwayah allows a choice (``TsReadingsDoc``).
+
+    Read from ``reciters/<slug>/readings.json``, built from the shards on first request
+    when missing. Same visibility as ``/shard``; a non-Hafs delivery gets empty ``rows``.
+    """
+    user = auth_service.current_user()
+    if not ts_serve.is_viewable(
+        reciter,
+        allow_unreleased=_capabilities.can(user, "timestamps.view_unreleased"),
+        include_everyayah=user is not None and permissions.is_owner(user),
+    ):
+        return jsonify(ErrorEnvelope(error="Reciter not found").model_dump(exclude_none=True)), 404
+    return orjson_response(
+        readings_service.doc(reciter).model_dump(mode="json"),
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @ts_bp.route("/resource/<name>")

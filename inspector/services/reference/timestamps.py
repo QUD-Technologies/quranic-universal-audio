@@ -639,18 +639,30 @@ def ts_validation_doc(
     owner-preview-only traffic, and the file is re-written whenever a job
     re-runs — reading the small doc directly avoids a stale cache.
     """
-    _ensure_built(include_everyayah=include_everyayah)
-    row = state_service.get_row(reciter)
-    if row is None or row.visibility.value != "public":
-        return None
-    delivery = catalog_service.find_delivery(reciter)
-    if delivery is not None and is_everyayah_channel(delivery.channel) and not include_everyayah:
-        return None
-    if reciter not in _served_slugs_by_visibility[include_everyayah] and not allow_unreleased:
+    if not is_viewable(
+        reciter, allow_unreleased=allow_unreleased, include_everyayah=include_everyayah
+    ):
         return None  # not viewable → route returns 404
     # Viewable but never run with probe beams → empty doc (not a 404) so the
     # FE can render an empty panel.
     return data_dir.read_ts_validation_doc(reciter) or {"_meta": {}, "verses": {}}
+
+
+def is_viewable(
+    reciter: str,
+    allow_unreleased: bool = False,
+    include_everyayah: bool = False,
+) -> bool:
+    """Whether a reciter's timestamps artefacts may be served: public, its channel
+    visible to the caller, and released or under owner preview (``allow_unreleased``)."""
+    _ensure_built(include_everyayah=include_everyayah)
+    row = state_service.get_row(reciter)
+    if row is None or row.visibility.value != "public":
+        return False
+    delivery = catalog_service.find_delivery(reciter)
+    if delivery is not None and is_everyayah_channel(delivery.channel) and not include_everyayah:
+        return False
+    return reciter in _served_slugs_by_visibility[include_everyayah] or allow_unreleased
 
 
 def resource_bytes(name: str) -> bytes | None:

@@ -85,6 +85,13 @@ after its complete replacement bytes pass validation. A chapter failure leaves
 the prior object intact. Affected-chapter regeneration does not rewrite other
 chapters.
 
+From the shards, the Inspector derives `reciters/<slug>/readings.json`: what a Hafs delivery reads
+wherever the riwayah allows a choice (`TsReadingsDoc`, built by
+`inspector/services/reference/readings.py`, served at `GET /api/ts/readings/<slug>`). An aligner
+run rebuilds it before closing its record, the `ts-refreshed` notice rebuilds it for offline
+publishes, and the route builds it on first request when it is missing. Non-Hafs deliveries get an
+empty summary.
+
 ## Single-flight and stale runs
 
 Launching is gated on the reciter's newest `reciters/<slug>/jobs/ts/<run_id>.json`

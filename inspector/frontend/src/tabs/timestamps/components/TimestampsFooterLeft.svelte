@@ -6,8 +6,9 @@
      * drop-up lists the other TS-capable reciters.
      *
      * The analysis cluster (loop / letters / phonemes / translations / help)
-     * lives in the player CENTER — see TimestampsFooterAnalysis. A Hafs
-     * recitation also gets the reading-profile button (ReadingProfile). The
+     * lives in the player CENTER — see TimestampsFooterAnalysis. For a Hafs
+     * recitation the open drop-up carries the readings side panel
+     * (ReadingProfile) at its side, at the drop-up's height. The
      * bookmark + panel buttons live on the now-reciting filmstrip.
      */
     import { onMount, tick } from 'svelte';
@@ -92,6 +93,7 @@
     const curSlug = $derived($playerContext.delivery?.slug ?? '');
     const curEntry = $derived(findTsEntryBySlug($catalogData.reciters, manifestSlugs, curSlug));
     const hasMany = $derived(entries.length > 1);
+    const showReadings = $derived(!!curEntry && isHafs(curEntry.delivery.riwayah));
 
     function closePicker(): void {
         pickerOpen = false;
@@ -158,6 +160,7 @@
         </button>
 
         {#if pickerOpen && hasMany}
+            <div class="dropup-shell" class:with-readings={showReadings}>
             <div class="dropup" role="listbox" aria-label={m.ts_footer_picker_listbox_aria_label()}>
                 <div class="dropup-search">
                     <SearchInput
@@ -213,16 +216,12 @@
                     {/each}
                 </div>
             </div>
+            {#if showReadings && curEntry}
+                <ReadingProfile slug={curEntry.delivery.slug} onjump={closePicker} />
+            {/if}
+            </div>
         {/if}
     </div>
-
-    {#if curEntry && isHafs(curEntry.delivery.riwayah)}
-        <ReadingProfile
-            slug={curEntry.delivery.slug}
-            reciterName={curEntry.reciter.name}
-            reciterNameAr={curEntry.reciter.name_ar}
-        />
-    {/if}
 
     <!-- Tri-state shuffle cycle (double-height, right of the picker). The
          Mushaf view reads on in order, so shuffle is off there. -->
@@ -314,23 +313,41 @@
     .picker-trigger:disabled { opacity: 0.7; }
     .muted { color: var(--text-muted); padding-inline: var(--s-2); font-size: var(--fs-meta); }
 
-    .dropup {
+    /* The drop-up and, for a Hafs recitation, the readings panel beside it at the
+       same height. A fixed height keeps the panel still while the list filters. */
+    .dropup-shell {
         position: absolute;
         bottom: calc(100% + var(--s-2));
         inset-inline-start: 0;
+        z-index: 50;
+        display: flex;
+        align-items: stretch;
+        gap: var(--s-2);
+        max-height: min(720px, 80vh);
+    }
+    .dropup-shell.with-readings { height: min(600px, 74vh); }
+    .dropup {
         min-width: 320px;
         max-width: 480px;
-        max-height: min(720px, 80vh);
         overflow: hidden;
         background: var(--panel);
         border: 1px solid var(--border-default);
         border-radius: var(--r-3);
         box-shadow: 0 16px 48px oklch(0 0 0 / 0.45);
-        z-index: 50;
         padding: var(--s-2);
         display: flex;
         flex-direction: column;
         gap: var(--s-2);
+    }
+    @media (max-width: 760px) {
+        .dropup-shell {
+            position: fixed;
+            inset-inline: var(--s-4);
+            bottom: calc(var(--player-h, 72px) + var(--s-6));
+            flex-direction: column;
+        }
+        .dropup-shell.with-readings { height: min(720px, 76vh); }
+        .dropup { min-width: 0; max-width: none; flex: 1 1 50%; min-height: 0; }
     }
     .dropup-search {
         flex: 0 0 auto;

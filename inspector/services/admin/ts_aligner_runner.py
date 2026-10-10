@@ -13,7 +13,9 @@ picks. Times and shards are written as returned.
 batch Space wrote) and works on a daemon thread, stamping the record ``succeeded`` or
 ``failed`` at the end, so completion, releases and the automations read it unchanged. A
 chapter with a failed segment keeps its previous shards and fails the run; a record marked
-``canceled`` stops the run before its next chapter and stays canceled.
+``canceled`` stops the run before its next chapter and stays canceled. Whatever the outcome,
+the delivery's readings summary (:mod:`services.reference.readings`) is rebuilt from the shards
+now in the bucket before the record is closed.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ import threading
 import uuid
 
 from qua_shared.schemas import TsJobRecord, TsJobSettings
+from services.reference import readings
 from services.storage import storage_paths
 from services.storage.hf_bucket import StorageNotFound, get_backend
 from services.timing import aligner_timing
@@ -105,6 +108,7 @@ def _run(record: TsJobRecord, riwayah: str, full: bool) -> None:
         record.error = str(exc)[:500]
     if record.status != "canceled" and _canceled(record):
         record.status = "canceled"
+    readings.refresh_quietly(record.slug)
     record.ended_at = _now()
     _write(record)
 

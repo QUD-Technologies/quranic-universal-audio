@@ -5,8 +5,8 @@
  * renderer's `VariantControls`: the numbers show the face this recitation was
  * read with, hovering one spotlights the cells another face would change, and
  * nothing is selectable. How a face was picked stays out of this public view.
- * `variantTipLines` is the host tooltip for a hovered number, titled with the
- * public selector title and option label.
+ * `variantTipLines` is the host tooltip for a hovered number: the public
+ * selector title and option label, in the UI locale only.
  */
 
 import {
@@ -78,7 +78,7 @@ export function variantControlsFor(
     };
 }
 
-/** Tooltip lines for a hovered number: face, whose reading it is, scope. */
+/** Tooltip lines for a hovered number: face and whose reading it is, in the UI locale only. */
 export function variantTipLines(
     definition: VariantControlDefinition,
     occurrence: VariantControlOccurrence,
@@ -88,6 +88,5 @@ export function variantTipLines(
     return [
         `${choiceTitle(definition.id) ?? definition.display_name}: ${optionLabel(option)}`,
         chosen ? m.ts_variant_this_recitation() : m.ts_variant_other_reading(),
-        definition.description,
-    ].filter((line): line is string => Boolean(line));
+    ];
 }
