@@ -236,6 +236,9 @@ def align_env(tmp_path, monkeypatch):
     )
     started: list[str] = []
     monkeypatch.setattr(runner, "ensure_worker", lambda run: started.append(run["run_id"]))
+    from qua_shared.audio import upstream
+
+    monkeypatch.setattr(upstream, "probe", lambda url: {"error": "offline"})
     progress._reset_for_tests()
     auto_detect._reset_seen_for_tests()
 
@@ -245,6 +248,31 @@ def align_env(tmp_path, monkeypatch):
     auto_detect._reset_seen_for_tests()
     audio_meta._clear_for_test()
     _hf_bucket.reset_backend()
+
+
+def test_start_refuses_a_replaced_upstream_recording(align_env, monkeypatch):
+    from qua_shared.audio import upstream
+    from services.admin.align_pipeline import runs
+    from services.audio import audio_meta
+
+    audio_meta._stage_for_test(
+        SLUG,
+        {
+            "schema_version": 1,
+            "slug": SLUG,
+            "_meta": {"checksum": "x", "chapter_count": 1, "category": "by_surah"},
+            "chapters": {
+                "112": {"url": "https://cdn/112.mp3", "size_bytes": 1000, "duration_sec": 60}
+            },
+        },
+    )
+    monkeypatch.setattr(upstream, "probe", lambda url: {"size": 800, "duration_s": 40.0})
+
+    with pytest.raises(runs.AlignRunError) as exc:
+        runs.start(SLUG, OWNER)
+
+    assert exc.value.status == 409
+    assert "ch112 recording (60s → 40s)" in str(exc.value)
 
 
 def test_start_retry_cancel_lifecycle(align_env):
