@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import logging
 
+from qua_shared.audio import upstream
 from qua_shared.riwayat import DEFAULT_RIWAYAH, UnsupportedRiwayah, resolve_sdk_slug
 from qua_shared.schemas import Actor, AlignRunStatus, ReciterState
+from services.audio import audio_meta
 from services.db import repo_align_runs, repo_catalog
 from services.db.sync import durable_transaction
 from services.state import state as state_service
@@ -69,6 +71,14 @@ def start(
         raise AlignRunError(f"{slug}: {exc}", 400) from exc
     if not groups:
         raise AlignRunError(f"{slug}: audio manifest lists no chapters or sources", 400)
+    changed = upstream.blocking_changes(audio_meta.manifest_chapters(slug))
+    if changed:
+        listed = ", ".join(c.describe() for c in changed[:5])
+        raise AlignRunError(
+            f"{slug}: upstream audio changed since intake ({listed}); "
+            "refresh those chapters before aligning",
+            409,
+        )
     units = sum(g.weight for g in groups)
     try:
         riwayah = resolve_sdk_slug(delivery.riwayah or DEFAULT_RIWAYAH)

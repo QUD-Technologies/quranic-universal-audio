@@ -239,6 +239,11 @@ remote `http(s)` URLs outside the Inspector bucket. A chapter with no such link 
 offline intake, #285, or a bare bucket URL) is **fatal**: the cut aborts and `publish_hf` refuses the slug,
 naming the chapters — repair the manifest, never ship the path. The manifest schema also rejects a local
 path at write time (see [catalog.md](catalog.md)).
+Before building, the cut range-reads every eligible chapter's upstream link
+(`qua_shared.audio.upstream`); a different recording than the one aligned (size changed,
+duration off by more than 2 s) aborts the cut (exit 17, `failed` webhook with
+`validation_summary.upstream_changes`). `scripts/diagnostics/upstream_drift.py` reports the
+same check fleet-wide.
 `chapter_offsets_ms` is **omitted from the JSON when empty** (model_serializer on `ReleaseCatalogAudio`),
 so CDN by-surah catalogs stay byte-stable and their `content_hash` doesn't churn.
 

@@ -320,6 +320,9 @@ On Khalid al-Qahtani's 187 reviewed lattice pauses the rule keeps all 13 WAQF an
   same `qua_domain` reverse projection the save path uses), so the aligner
   ships nothing extra.
 - Missing `INSPECTOR_EXTRACTION_SECRET` / HF token → `503`.
+- A chapter whose upstream file is now a different recording than the manifest describes
+  (`qua_shared.audio.upstream`: size changed and duration off by more than 2 s) → `409`,
+  naming the chapters. Re-encodes, tag edits, dead links and probe errors do not block.
 
 ## Online intake (plan → mint → align)
 

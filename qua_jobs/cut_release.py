@@ -13,6 +13,9 @@ payload; Inspector's ``services.admin.jobs.cut_release.complete()`` inserts
 the ``gh_releases`` row + N ``gh_release_recitations`` rows and fires the
 public ``released`` event.
 
+A recitation whose linked upstream audio is now a different recording
+(``qua_shared.audio.upstream``) aborts the cut before anything is built.
+
 The HF Job NEVER writes the inspector DB. Reads only.
 
 Env:
@@ -52,6 +55,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from qua_shared.audio import upstream  # noqa: E402
 from qua_shared.audio.sources import (  # noqa: E402
     chapters_without_public_source,
     public_source_url,
@@ -1091,6 +1095,23 @@ class _BuildContext:
     pads: PadParams
 
 
+def _upstream_changes(eligible: list[dict]) -> dict[str, list[str]]:
+    """``{slug: ["ch62 recording (465s → 321s)", …]}`` for every eligible
+    recitation whose linked upstream audio is a different recording than the one
+    its timestamps were aligned on (``qua_shared.audio.upstream``)."""
+    changed: dict[str, list[str]] = {}
+    for rec in eligible:
+        path = _bucket_root() / "catalog" / "audio_manifest" / f"{rec['slug']}.json"
+        try:
+            chapters = json.loads(path.read_bytes()).get("chapters") or {}
+        except (OSError, json.JSONDecodeError):
+            continue
+        blocking = upstream.blocking_changes(chapters)
+        if blocking:
+            changed[rec["slug"]] = [c.describe() for c in blocking]
+    return changed
+
+
 class _FatalViolations(Exception):
     """A reciter failed the hard boundary invariants; the whole cut aborts."""
 
@@ -1346,6 +1367,24 @@ def main() -> int:
     if not eligible:
         log.error("no eligible recitations — aborting")
         return 3
+
+    changed = _upstream_changes(eligible)
+    if changed:
+        for slug, chapters in changed.items():
+            log.error("  %s: upstream audio changed — %s", slug, ", ".join(chapters[:10]))
+        log.error(
+            "%d recitation(s) link upstream audio that no longer matches — aborting", len(changed)
+        )
+        _post_webhook(
+            version=version_override or "",
+            job_id=job_id,
+            external_uri="",
+            members=[],
+            launched_by=launched_by,
+            status="failed",
+            validation_summary={"upstream_changes": changed},
+        )
+        return 17
 
     # 2. Build per-recitation artifacts and accumulate member rows.
     refs_dir = _code_root() / "data"

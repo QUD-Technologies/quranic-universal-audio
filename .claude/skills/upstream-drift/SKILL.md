@@ -47,4 +47,7 @@ chapters with their then → now size, duration and format. Do not edit manifest
 or delivery state from this audit: any fix (re-intake, manifest backfill) is a prod write that
 needs the user's go.
 
+The same classifier (`qua_shared.audio.upstream`) guards the pipeline: Align start refuses a
+`recording` change with 409, and the GitHub release cut aborts on one.
+
 Related: `inspector-audio` skill (`references/bugs.md`, the CDN-swap row) for the playback side.

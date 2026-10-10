@@ -7,17 +7,8 @@ lifecycle states, the audio manifest's ``size_bytes`` / ``duration_sec`` and the
 ``reciters/<slug>/audio/<ch>.mp3`` sizes, then range-reads each upstream URL's head
 (``qua_shared.mp3_probe``) for its current size and duration.
 
-Verdicts per chapter:
-
-  ok          upstream size equals the manifest size (else the bucket copy's, when the
-              manifest has none)
-  recording   size differs and duration differs by more than ``DURATION_TOL_S`` —
-              a different recording; playback and timing are out of sync
-  reencode    size differs, duration within tolerance, bitrate or sample rate differs
-  tag_edit    size differs by under ``TAG_EDIT_BYTES``, same duration — metadata only
-  resized     size differs, same duration and format (cause unknown)
-  gone        upstream answers 404 / 410
-  error       network / parse failure (retried once)
+Verdicts are ``qua_shared.audio.upstream.classify``'s; a manifest without ``size_bytes`` is
+compared with the bucket copy's size and format.
 
 Skipped: YouTube / Google Drive / SoundCloud sources, combined-file chapters (``source_url``
 set), and chapters whose url is not http(s). Read-only: one bucket listing per delivery, two
@@ -36,7 +27,6 @@ import json
 import sqlite3
 import sys
 import tempfile
-import urllib.error
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -46,13 +36,9 @@ sys.path.insert(0, str(ROOT / "scripts" / "bucket"))
 import _bootstrap as bs  # noqa: E402
 
 from qua_shared import mp3_probe  # noqa: E402
+from qua_shared.audio import upstream  # noqa: E402
 
 DEFAULT_STATES = ("released", "under_review", "awaiting_review", "awaiting_alignment")
-SKIP_HOSTS = ("youtube.com", "youtu.be", "drive.google.com", "docs.google.com", "soundcloud.com")
-HEAD_BYTES = 16384
-DURATION_TOL_S = 2.0
-TAG_EDIT_BYTES = 65536
-WORKERS = 16
 DRIFT = ("recording", "reencode", "resized", "tag_edit", "gone")
 
 
@@ -85,73 +71,16 @@ def bucket_sizes(fs, bucket: str, slug: str) -> dict[str, int]:
     }
 
 
-def checkable(entry: dict) -> bool:
-    url = entry.get("url") or ""
-    return (
-        url.startswith(("http://", "https://"))
-        and not entry.get("source_url")
-        and not any(h in url for h in SKIP_HOSTS)
-    )
-
-
-def probe(url: str) -> dict:
-    """Upstream ``size`` / ``duration_s`` / ``kbps`` / ``sr`` from a head read, or an error."""
-    for attempt in range(2):
-        try:
-            buf, total, tag = mp3_probe._fetch(mp3_probe.canonical_archive_url(url), HEAD_BYTES)
-            break
-        except urllib.error.HTTPError as e:
-            if e.code in (404, 410):
-                return {"gone": e.code}
-            if attempt:
-                return {"error": f"http {e.code}"}
-        except Exception as e:  # noqa: BLE001 — one retry, then reported
-            if attempt:
-                return {"error": f"{type(e).__name__}: {e}"[:120]}
-    foff, h = mp3_probe._first_frame(buf, mp3_probe._skip_id3(buf))
-    if h is None:
-        return {"size": total, "error": "no mp3 frame in head"}
-    frames = mp3_probe._xing_frames(buf, foff, h)
-    if frames:
-        duration = frames * h["spf"] / h["sr"]
-    elif total:
-        duration = (total - tag) * 8 / (h["kbps"] * 1000)
-    else:
-        duration = None
-    return {"size": total, "duration_s": duration, "kbps": h["kbps"], "sr": h["sr"]}
-
-
 def bucket_head(fs, bucket: str, slug: str, chapter: str) -> dict:
     """``kbps`` / ``sr`` of the bucket copy's first frame (for a manifest without them)."""
     path = bs.abs_path(bucket, f"reciters/{slug}/audio/{chapter}.mp3")
     try:
         tag = mp3_probe._skip_id3(bs.rl(fs.cat_file, path, start=0, end=10))
-        buf = bs.rl(fs.cat_file, path, start=tag, end=tag + HEAD_BYTES)
+        buf = bs.rl(fs.cat_file, path, start=tag, end=tag + upstream.HEAD_BYTES)
     except Exception:  # noqa: BLE001 — the comparison falls back to size alone
         return {}
     _foff, h = mp3_probe._first_frame(buf, 0)
     return {"kbps": h["kbps"], "sr": h["sr"]} if h else {}
-
-
-def verdict(entry: dict, held: int | None, up: dict, then: dict) -> str:
-    if "gone" in up:
-        return "gone"
-    if up.get("size") is None:
-        return "error"
-    expected = entry.get("size_bytes") or held
-    if expected is None or up["size"] == expected:
-        return "ok" if expected is not None else "error"
-    duration, aligned = up.get("duration_s"), entry.get("duration_sec")
-    if duration is not None and aligned is not None and abs(duration - aligned) > DURATION_TOL_S:
-        return "recording"
-    if abs(up["size"] - expected) < TAG_EDIT_BYTES:
-        return "tag_edit"
-    kbps = then.get("kbps") or entry.get("bitrate_kbps")
-    if (kbps and up.get("kbps") and up["kbps"] != kbps) or (
-        then.get("sr") and up.get("sr") and up["sr"] != then["sr"]
-    ):
-        return "reencode"
-    return "resized"
 
 
 def check(fs, bucket: str, slug: str, state: str) -> tuple[list[dict], int]:
@@ -166,17 +95,17 @@ def check(fs, bucket: str, slug: str, state: str) -> tuple[list[dict], int]:
     held = bucket_sizes(fs, bucket, slug)
     chapters = manifest.get("chapters") or {}
     numbered = [(k, e) for k, e in chapters.items() if k.isdigit() and isinstance(e, dict)]
-    todo = [(k, e) for k, e in numbered if checkable(e)]
-    with cf.ThreadPoolExecutor(WORKERS) as ex:
-        probes = list(ex.map(lambda ke: probe(ke[1]["url"]), todo))
+    todo = [(k, e) for k, e in numbered if upstream.checkable(e)]
+    with cf.ThreadPoolExecutor(upstream.WORKERS) as ex:
+        probes = list(ex.map(lambda ke: upstream.probe(ke[1]["url"]), todo))
     rows = []
     for (key, entry), up in zip(todo, probes, strict=True):
         then = {}
-        if verdict(entry, held.get(key), up, then) in ("resized", "reencode"):
+        if upstream.classify(entry, up, expected_size=held.get(key)) in ("resized", "reencode"):
             then = bucket_head(fs, bucket, slug, key)
         rows.append({
             "slug": slug, "state": state, "chapter": int(key), "url": entry["url"],
-            "verdict": verdict(entry, held.get(key), up, then),
+            "verdict": upstream.classify(entry, up, expected_size=held.get(key), held=then),
             "bucket_kbps": then.get("kbps"), "bucket_sr": then.get("sr"),
             "manifest_size": entry.get("size_bytes"), "bucket_size": held.get(key),
             "manifest_duration_s": entry.get("duration_sec"), "manifest_kbps": entry.get("bitrate_kbps"),
