@@ -116,7 +116,7 @@ The six checklist keys mirror to the FE copy module at `inspector/frontend/src/t
 Two gates run inside `_h_marked_ready` before the transition is accepted:
 
 1. **Checklist completeness.** Every key in the live validate result's `checklist_keys` MUST be `True`; the others are not shown and may be `False`. A box is shown only when one of its categories (`CHECKLIST_CATEGORIES` in `qua_shared/schemas/wire/mark_ready.py`) ever had an item for the reciter — listed now (resolved included; low confidence only under the strict cutoff), in a segment's `ignored_categories`, or edited from its card (`op_context_category`; failed also counts an edit of a segment with no `matched_ref`) — see `services/validation/checklist_scope.py`. Any shown key `False` → `InvalidTransition("checklist incomplete", details={unchecked: [...]})`. `splits_wasl_waqf` now attests that every Low Confidence Waqf cut is tagged wasl or waqf.
-2. **Blocking validation counts.** The handler calls `services.validation.validate_reciter_segments(slug)` and checks the five keys in `BLOCKING_COUNT_KEYS` (`qua_shared/schemas/wire/mark_ready.py`) against the live `category_counts` — `missed_waqf` counts items with an unlabelled cut (`boundary_adj` is owner-only and `cross_verse` a review aid — both deliberately absent):
+2. **Blocking validation counts.** The handler calls `services.validation.validate_reciter_segments(slug)` and checks the five keys in `BLOCKING_COUNT_KEYS` (`qua_shared/schemas/wire/mark_ready.py`) against the live `category_counts` — `missed_waqf` counts items with an unlabelled cut (`cross_verse` is a review aid and deliberately absent):
 
    | Key | Accordion |
    |---|---|

@@ -196,7 +196,6 @@ def _seg(uid: str, ref: str, **extra) -> dict:
         "time_start": 0,
         "time_end": 3000,
         "qalqala_letter": None,
-        "is_boundary_adj": False,
         **extra,
     }
 
@@ -214,7 +213,7 @@ def _fitted(entry: dict, seg: dict) -> dict:
 
 
 def _flags(seg: dict, **kw) -> dict:
-    return classify_flags(seg, "1", False, 1, 1, 1, 1, 4, set(), None, **kw)
+    return classify_flags(seg, "1", False, 1, 1, 1, 1, **kw)
 
 
 def test_flags_default_false_without_sidecars():
@@ -272,8 +271,6 @@ def _detail(entries, **kw):
         entries,
         is_by_ayah=False,
         word_counts={(1, 1): 4, (1, 2): 4},
-        canonical=None,
-        single_word_verses=set(),
         **kw,
     )
 

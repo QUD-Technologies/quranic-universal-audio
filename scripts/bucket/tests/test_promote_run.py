@@ -299,7 +299,8 @@ def test_stamping_is_unconditional(monkeypatch, harness):
     _run(monkeypatch)
     segs = _published(h, "detailed.json")["entries"][0]["segments"]
     assert len(segs) == len(_SEGMENTS)
-    assert all("is_boundary_adj" in seg for seg in segs)
+    # 75:27:3 ends on qaf; the stamp is the only writer of ``qalqala_letter``.
+    assert segs[4]["qalqala_letter"] == "ق"
 
 
 def test_done_sentinel_is_the_last_write(monkeypatch, harness):

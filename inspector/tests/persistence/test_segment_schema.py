@@ -31,7 +31,6 @@ def _slim_seg() -> dict:
         "matched_ref": "1:1:1-1:1:4",
         "confidence": 1.0,
         "qalqala_letter": None,
-        "is_boundary_adj": False,
     }
 
 
@@ -52,7 +51,6 @@ def _legacy_seg() -> dict:
         "phonemes_asr": "b i s m i ll a: h i rˤrˤ aˤ ħ m a: n i rˤrˤ aˤ ħ i: m",
         "confidence": 1.0,
         "qalqala_letter": None,
-        "is_boundary_adj": False,
         "has_repeated_words": False,
     }
 
@@ -76,7 +74,6 @@ def _wrap_seg() -> dict:
         "matched_ref": "2:30:1-2:30:24",
         "confidence": 0.95,
         "qalqala_letter": "ق",
-        "is_boundary_adj": True,
         "wrap_word_ranges": [["2:30:11", "2:30:11", "2:30:24"]],
         "segment_uid": "019e32bb-bef6-7132-b006-72aa4ee485cb",
     }
@@ -106,6 +103,12 @@ def test_legacy_seg_with_dead_fields_rejected():
         DetailedSegment.model_validate(_legacy_seg())
 
 
+def test_published_is_boundary_adj_is_ignored():
+    """A published seg carrying ``is_boundary_adj`` validates; the dump sheds it."""
+    m = DetailedSegment.model_validate({**_slim_seg(), "is_boundary_adj": True})
+    assert "is_boundary_adj" not in m.model_dump()
+
+
 def test_failed_alignment_seg_validates():
     m = DetailedSegment.model_validate(_failed_alignment_seg())
     assert m.matched_ref == ""
@@ -116,7 +119,6 @@ def test_wrap_seg_validates():
     m = DetailedSegment.model_validate(_wrap_seg())
     assert m.wrap_word_ranges is not None
     assert m.qalqala_letter == "ق"
-    assert m.is_boundary_adj is True
     assert m.segment_uid is not None
 
 
@@ -192,10 +194,6 @@ def test_slim_seg_emits_slim_shape():
     # qalqala_letter is None in input — exclude_none drops it. But the
     # default is also None, so excluded.
     assert "qalqala_letter" not in out
-    # is_boundary_adj=False is the default; with exclude_none it stays
-    # (None vs False distinction). Migration #5 emits it anyway since it
-    # IS persisted; verify it's there.
-    assert out["is_boundary_adj"] is False
     # The four banned-or-deferred-drop fields are absent from input + None
     # default → must be absent from output.
     for banned in ("matched_text", "phonemes_asr", "wrap_word_ranges", "segment_uid"):

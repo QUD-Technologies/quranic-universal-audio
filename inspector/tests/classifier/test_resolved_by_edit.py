@@ -6,8 +6,8 @@ edit_history.jsonl, builds a {uid: {category, ...}} index, injects
 ``_resolved_by_edit`` onto each segment, and the classifier suppresses
 the listed categories without writing to ``ignored_categories``.
 
-Scope: ``boundary_adj``, ``audio_bleeding``, ``repetitions``,
-``basmala_amin``, ``low_confidence_v2``. ``cross_verse`` and
+Scope: ``audio_bleeding``, ``repetitions``, ``basmala_amin``,
+``low_confidence_v2``, ``missed_waqf``. ``cross_verse`` and
 chapter/verse-level categories are excluded -- they stay until the validator
 clears them. ``qalqala`` is view-only (mirrors ``muqattaat``) and is also
 excluded so the flag stays after edits. ``low_confidence`` (v1) is excluded
@@ -38,14 +38,14 @@ from services.validation.classifier import (
 
 
 def test_is_resolved_by_edit_reads_seg_field():
-    seg = {"_resolved_by_edit": {"boundary_adj"}}
-    assert is_resolved_by_edit(seg, "boundary_adj") is True
+    seg = {"_resolved_by_edit": {"repetitions"}}
+    assert is_resolved_by_edit(seg, "repetitions") is True
     assert is_resolved_by_edit(seg, "audio_bleeding") is False
 
 
 def test_is_resolved_by_edit_no_field():
-    assert is_resolved_by_edit({}, "boundary_adj") is False
-    assert is_resolved_by_edit({"_resolved_by_edit": set()}, "boundary_adj") is False
+    assert is_resolved_by_edit({}, "repetitions") is False
+    assert is_resolved_by_edit({"_resolved_by_edit": set()}, "repetitions") is False
 
 
 def test_classify_drops_low_confidence_v2_when_resolved_by_edit():
@@ -66,9 +66,6 @@ def test_classify_drops_low_confidence_v2_when_resolved_by_edit():
         s_ayah=1,
         e_ayah=1,
         s_word=1,
-        e_word=4,
-        single_word_verses=set(),
-        canonical=None,
         probe_failed_uids={"uid-V"},
     )
     assert flags["low_confidence_v2"] is False
@@ -89,23 +86,20 @@ def test_classify_keeps_low_confidence_v2_without_resolved_by_edit():
         s_ayah=1,
         e_ayah=1,
         s_word=1,
-        e_word=4,
-        single_word_verses=set(),
-        canonical=None,
         probe_failed_uids={"uid-V"},
     )
     assert flags["low_confidence_v2"] is True
 
 
 def test_is_suppressed_for_combines_ignored_and_resolved():
-    seg_ignored = {"ignored_categories": ["boundary_adj"]}
-    assert is_suppressed_for(seg_ignored, "boundary_adj") is True
+    seg_ignored = {"ignored_categories": ["repetitions"]}
+    assert is_suppressed_for(seg_ignored, "repetitions") is True
 
     seg_resolved = {"_resolved_by_edit": {"audio_bleeding"}}
     assert is_suppressed_for(seg_resolved, "audio_bleeding") is True
 
     seg_neither = {}
-    assert is_suppressed_for(seg_neither, "boundary_adj") is False
+    assert is_suppressed_for(seg_neither, "repetitions") is False
 
 
 def test_basmala_amin_resolved_by_edit_suppresses():
@@ -118,8 +112,8 @@ def test_basmala_amin_resolved_by_edit_suppresses():
 
 
 def test_resolves_by_edit_set_contains_only_soft_categories():
-    """The set must match the user's pick: boundary_adj / audio_bleeding /
-    repetitions / basmala_amin / low_confidence_v2.
+    """The set must match the user's pick: audio_bleeding / repetitions /
+    basmala_amin / low_confidence_v2 / missed_waqf.
 
     ``qalqala`` is intentionally excluded — it's view-only (like ``muqattaat``)
     so editing a qalqala-flagged seg leaves the flag in place for the next
@@ -133,7 +127,6 @@ def test_resolves_by_edit_set_contains_only_soft_categories():
     """
     assert RESOLVES_BY_EDIT_CATEGORIES == frozenset(
         {
-            "boundary_adj",
             "audio_bleeding",
             "repetitions",
             "low_confidence_v2",
@@ -175,7 +168,7 @@ def test_build_index_from_single_op(monkeypatch, tmp_path):
                     {
                         "op_id": "o1",
                         "op_type": "trim_segment",
-                        "op_context_category": "boundary_adj",
+                        "op_context_category": "repetitions",
                         "targets_after": [{"segment_uid": "uid-A"}],
                     },
                 ],
@@ -183,7 +176,7 @@ def test_build_index_from_single_op(monkeypatch, tmp_path):
         ],
     )
     idx = build_resolved_by_edit_index("r1")
-    assert idx == {"uid-A": {"boundary_adj"}}
+    assert idx == {"uid-A": {"repetitions"}}
 
 
 def test_build_index_skips_excluded_categories(monkeypatch, tmp_path):
@@ -236,7 +229,7 @@ def test_build_index_accumulates_categories_per_uid(monkeypatch, tmp_path):
                     {
                         "op_id": "o1",
                         "op_type": "trim_segment",
-                        "op_context_category": "boundary_adj",
+                        "op_context_category": "repetitions",
                         "targets_after": [{"segment_uid": "uid-A"}],
                     },
                     {
@@ -250,7 +243,7 @@ def test_build_index_accumulates_categories_per_uid(monkeypatch, tmp_path):
         ],
     )
     idx = build_resolved_by_edit_index("r1")
-    assert idx == {"uid-A": {"boundary_adj", "audio_bleeding"}}
+    assert idx == {"uid-A": {"repetitions", "audio_bleeding"}}
 
 
 def test_build_index_includes_basmala_amin(monkeypatch, tmp_path):

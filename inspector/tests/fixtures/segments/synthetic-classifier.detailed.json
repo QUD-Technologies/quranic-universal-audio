@@ -17,7 +17,6 @@
       "low_confidence",
       "repetitions",
       "audio_bleeding",
-      "boundary_adj",
       "cross_verse",
       "qalqala",
       "muqattaat"
@@ -36,7 +35,7 @@
           {"index": 1, "expected_categories": ["low_confidence"], "notes": "confidence 0.65 < 0.80 → low_confidence and low_confidence_detail"},
           {"index": 2, "expected_categories": ["repetitions"], "notes": "wrap_word_ranges populated → repetitions"},
           {"index": 3, "expected_categories": ["audio_bleeding"], "notes": "matched_ref points to 5:1:1 but entry_ref is 1 → audio_bleeding"},
-          {"index": 4, "expected_categories": ["boundary_adj"], "notes": "single-word matched_ref 1:6:1-1:6:1, not a STANDALONE_REF, not a MUQATTAAT verse → boundary_adj"},
+          {"index": 4, "expected_categories": [], "notes": "single-word matched_ref 1:6:1-1:6:1 → no category"},
           {"index": 5, "expected_categories": ["cross_verse"], "notes": "matched_ref spans 1:7:1 to 1:7:4 inside one ayah BUT we set s_ayah != e_ayah by spanning 1:5:7-1:6:1 → cross_verse"},
           {"index": 6, "expected_categories": ["qalqala"], "notes": "matched_text ends in qalqala letter (د) → qalqala"}
         ]

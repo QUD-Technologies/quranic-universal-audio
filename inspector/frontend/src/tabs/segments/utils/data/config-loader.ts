@@ -16,10 +16,7 @@ type SegConfigApiResponse = {
     trim_dim_alpha?: number;
     validation_categories?: string[];
     low_conf_default_threshold?: number;
-    muqattaat_verses?: Array<[number, number]>;
     qalqala_letters?: string[];
-    standalone_refs?: Array<[number, number, number]>;
-    standalone_words?: string[];
     muqattaat_words?: Array<[number, number, number]>;
     accordion_context?: Record<string, string>;
     riwayah?: string;
@@ -32,9 +29,9 @@ const _validAnim = new Set<string>(Object.values(SCROLL_ANIM_MODES));
  * and return CSS var strings `{ fontSize, wordSpacing }` so the tab can apply
  * them to its root element.
  *
- * The coordinate vocabularies are edition-specific — the muqattaat openings,
- * the standalone allow-lists and their skeletons all move between riwayat — so
- * a reciter switch across editions must re-fetch, not reuse.
+ * The coordinate vocabularies are edition-specific — the muqattaat openings
+ * move between riwayat — so a reciter switch across editions must re-fetch,
+ * not reuse.
  *
  * Responses are not last-write-wins: the backend echoes the edition it answered
  * for, and a stale one is discarded. Two fetches race on every tab open, and on
@@ -59,11 +56,8 @@ export async function loadSegConfig(
         if (_wanted !== riwayah) return { fontSize: '', wordSpacing: '' };
         segConfig.set({
             validationCategories: cfg.validation_categories ?? null,
-            muqattaatVerses: cfg.muqattaat_verses ? new Set(cfg.muqattaat_verses.map(([s, a]) => `${s}:${a}`)) : null,
             muqattaatWords: cfg.muqattaat_words ? new Set(cfg.muqattaat_words.map(([s, a, w]) => `${s}:${a}:${w}`)) : null,
             qalqalaLetters: cfg.qalqala_letters ? new Set(cfg.qalqala_letters) : null,
-            standaloneRefs: cfg.standalone_refs ? new Set(cfg.standalone_refs.map(([s, a, w]) => `${s}:${a}:${w}`)) : null,
-            standaloneWords: cfg.standalone_words ? new Set(cfg.standalone_words) : null,
             lcDefaultThreshold: cfg.low_conf_default_threshold ?? 80,
             accordionContext: cfg.accordion_context ?? null,
             trimPadLeft: cfg.trim_pad_left ?? 500,

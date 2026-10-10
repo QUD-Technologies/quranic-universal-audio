@@ -5,9 +5,7 @@
       "qalqala_letter": null
     },
     "019d5c88-1111-7000-a000-000000000002": {
-      "categories": [
-        "boundary_adj"
-      ],
+      "categories": [],
       "qalqala_letter": null
     },
     "019d5c88-1111-7000-a000-000000000003": {
@@ -19,12 +17,10 @@
       "qalqala_letter": null
     }
   },
-  "category_counts": {
-    "boundary_adj": 1
-  },
+  "category_counts": {},
   "_meta": {
     "fixture": "synthetic-structural",
-    "generator": "inspector.tests.parity.snapshot_expected_outputs",
-    "policy": "post-Phase-2 unified classifier"
+    "generator": "scripts/codegen/regen_classifier_baselines.py",
+    "policy": "unified classifier"
   }
 }

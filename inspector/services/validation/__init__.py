@@ -24,7 +24,6 @@ from services.activity.history_query import (
 from services.reference.delivery_edition import sdk_riwayah_for
 from services.storage import cache
 from services.storage.data_loader import (
-    get_single_word_verses,
     get_word_counts,
     load_detailed,
     load_false_split,
@@ -37,13 +36,8 @@ from services.storage.data_loader import (
 )
 from services.validation._missing import _build_missing_words
 from services.validation._structural import _check_structural_errors
-
-# The phonemic side of boundary_adj is persisted as ``is_boundary_adj`` at
-# extraction / backfill time (``scripts/backfills/backfill_boundary_adj.py``);
-# the classifier reads it, so canonical=None throughout the runtime path.
 from services.validation.checklist_scope import applicable_checklist_keys
 from services.validation.classifier import (
-    _check_boundary_adj,
     classify_entry,
     classify_flags,
     classify_segment,
@@ -181,12 +175,6 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
     # that are not missing and misses ones that are.
     riwayah = sdk_riwayah_for(reciter)
     word_counts = get_word_counts(riwayah)
-    # canonical=None: the phonemic side of boundary_adj is captured at backfill
-    # time onto each seg's ``is_boundary_adj`` field. Classifier short-circuits
-    # on the persisted value; legacy segs without the field fall through to
-    # compute_is_boundary_adj with canonical=None → structural side only.
-    canonical = None
-    single_word_verses = get_single_word_verses(riwayah)
 
     meta = cache.get_seg_meta(reciter)
     is_by_ayah = is_by_ayah_source(meta.get("audio_source", ""))
@@ -195,8 +183,8 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
     # field is consulted by ``is_resolved_by_edit`` during this validate pass
     # and stripped from every seg before returning so it never reaches disk
     # via the cached entries list. Categories are limited to the soft set in
-    # ``RESOLVES_BY_EDIT_CATEGORIES`` (boundary_adj / audio_bleeding /
-    # repetitions / low_confidence_v2) -- this is what makes those cards
+    # ``RESOLVES_BY_EDIT_CATEGORIES`` (audio_bleeding / repetitions /
+    # low_confidence_v2) -- this is what makes those cards
     # disappear from the accordion once the user has edited from them.
     _injected_segs: list[dict] = []
     if resolved_idx:
@@ -219,8 +207,6 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
         entries,
         is_by_ayah,
         word_counts,
-        canonical,
-        single_word_verses,
         probe_failed_uids=probe_failed_uids,
         deleted_basmala_chapters=deleted_basmala_chapters,
         hidden_pause_map=hidden_pause_map,
@@ -263,7 +249,6 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
         "unmarked_wasl": len(detail["unmarked_wasl"]),
         "repetitions": len(detail["repetitions"]),
         "audio_bleeding": len(detail["audio_bleeding"]),
-        "boundary_adj": len(detail["boundary_adj"]),
         "cross_verse": unresolved_cross_verse,
         "qalqala": len(detail["qalqala"]),
         "muqattaat": len(detail["muqattaat"]),
@@ -282,7 +267,6 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
         "missed_waqf": detail["missed_waqf"],
         "false_split": detail["false_split"],
         "unmarked_wasl": detail["unmarked_wasl"],
-        "boundary_adj": detail["boundary_adj"],
         "cross_verse": detail["cross_verse"],
         "audio_bleeding": detail["audio_bleeding"],
         "repetitions": detail["repetitions"],

@@ -94,19 +94,6 @@ def test_repetitions_only_wrap_word_ranges():
     assert "repetitions" in result2
 
 
-def test_boundary_adj_classify_structural_only():
-    """``boundary_adj`` is structural-only — classification result is identical
-    whether or not canonical phonemes are supplied. Regression guard against
-    re-introducing the retired phonemic tail-match branch."""
-    seg = {
-        "matched_ref": "1:6:1-1:6:1",
-        "confidence": 1.0,
-    }
-    plain = _classify(seg, entry_ref="1", is_by_ayah=False, canonical=None)
-    with_canonical = _classify(seg, entry_ref="1", is_by_ayah=False, canonical=["dummy"])
-    assert ("boundary_adj" in plain) == ("boundary_adj" in with_canonical)
-
-
 def test_qalqala_letter_field_populated():
     """Qalqala-classified segment carries a qalqala_letter field with the actual final letter."""
     from services.validation.classifier import classify_segment_full  # type: ignore
@@ -190,8 +177,6 @@ def test_basmala_amin_detail_uses_last_segment_overlapping_1_7():
         entries,
         is_by_ayah=False,
         word_counts={(1, ayah): (1 if ayah < 7 else 4) for ayah in range(1, 8)},
-        canonical=None,
-        single_word_verses=set(),
     )
 
     assert [item["segment_uid"] for item in detail["basmala_amin"]] == [
@@ -245,8 +230,6 @@ def test_basmala_amin_detail_does_not_promote_when_last_1_7_suppressed():
         entries,
         is_by_ayah=False,
         word_counts={(1, ayah): (1 if ayah < 7 else 4) for ayah in range(1, 8)},
-        canonical=None,
-        single_word_verses=set(),
     )
 
     # Only 1:1 should remain. The 1:7 slot is empty because the canonical
@@ -285,8 +268,6 @@ def test_basmala_amin_detail_drops_first_1_1_when_suppressed():
         entries,
         is_by_ayah=False,
         word_counts={(1, ayah): (1 if ayah < 7 else 4) for ayah in range(1, 8)},
-        canonical=None,
-        single_word_verses=set(),
     )
 
     assert [item["segment_uid"] for item in detail["basmala_amin"]] == ["one-seven"]
@@ -316,8 +297,6 @@ def test_basmala_amin_detail_omits_neighboring_fatiha_verses():
         entries,
         is_by_ayah=False,
         word_counts={(1, ayah): 1 for ayah in range(1, 8)},
-        canonical=None,
-        single_word_verses=set(),
     )
 
     assert [item["segment_uid"] for item in detail["basmala_amin"]] == ["one-1", "one-7"]
@@ -333,8 +312,6 @@ def _missing_words_for_entries(
         entries,
         is_by_ayah=False,
         word_counts=word_counts,
-        canonical=None,
-        single_word_verses=set(),
     )
     return _build_missing_words(detail["verse_segments"], word_counts, detail["sequence_gaps"])
 

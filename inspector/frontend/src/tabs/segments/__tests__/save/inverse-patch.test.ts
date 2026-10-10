@@ -73,7 +73,7 @@ describe('applyInversePatchToSegments', () => {
 
     it('reverts an ignore_issue (ignored_categories restored)', () => {
         const before = seg({ segment_uid: 'a', chapter: 1, time_start: 0 });
-        const after: Segment = { ...before, ignored_categories: ['boundary_adj'] };
+        const after: Segment = { ...before, ignored_categories: ['repetitions'] };
         const patch: EditOpPatch = {
             before: [snap(before)], after: [snap(after)],
             removedIds: [], insertedIds: [], affectedChapterIds: [1],

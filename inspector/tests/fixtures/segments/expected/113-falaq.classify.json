@@ -27,9 +27,7 @@
       "qalqala_letter": "د"
     },
     "019d5c88-f560-7000-a000-000000000005": {
-      "categories": [
-        "boundary_adj"
-      ],
+      "categories": [],
       "qalqala_letter": null
     },
     "019d5c88-f560-7000-a000-000000000006": {
@@ -39,20 +37,17 @@
       "qalqala_letter": null
     },
     "019d5c88-f560-7000-a000-000000000007": {
-      "categories": [
-        "boundary_adj"
-      ],
+      "categories": [],
       "qalqala_letter": null
     }
   },
   "category_counts": {
     "qalqala": 3,
-    "boundary_adj": 2,
     "cross_verse": 1
   },
   "_meta": {
     "fixture": "113-falaq",
-    "generator": "inspector.tests.parity.snapshot_expected_outputs",
-    "policy": "post-Phase-2 unified classifier"
+    "generator": "scripts/codegen/regen_classifier_baselines.py",
+    "policy": "unified classifier"
   }
 }

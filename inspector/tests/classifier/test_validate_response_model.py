@@ -24,7 +24,6 @@ _DETAIL_LIST_KEYS = (
     "failed",
     "low_confidence",
     "low_confidence_v2",
-    "boundary_adj",
     "cross_verse",
     "audio_bleeding",
     "repetitions",
@@ -59,8 +58,6 @@ def test_missed_basmala_item_with_time_validates_through_response():
         entries,
         is_by_ayah=False,
         word_counts={(13, 1): 3},
-        canonical=None,
-        single_word_verses=set(),
         deleted_basmala_chapters=deleted,
     )
 
@@ -113,8 +110,6 @@ def test_validate_response_accepts_multi_category_detail():
         entries,
         is_by_ayah=False,
         word_counts={(1, 2): 4, (1, 5): 7, (1, 6): 3},
-        canonical=None,
-        single_word_verses=set(),
     )
 
     # The fixture is chosen to fire several distinct item shapes — assert they

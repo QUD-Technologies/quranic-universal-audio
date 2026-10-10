@@ -174,7 +174,6 @@ def test_validate_any_item_union_accepts_every_variant(installed):
         "failed",
         "low_confidence",
         "low_confidence_v2",
-        "boundary_adj",
         "cross_verse",
         "audio_bleeding",
         "repetitions",

@@ -44,3 +44,11 @@ def test_word_edit_rejects_stale_or_invalid_or_non_sample():
     result = _apply_word_timing_op(matching, updates, reciter="sample--abc", chapter=112)
     assert result is not None and result[1] == 400
     assert segment["word_timings"][0]["end_ms"] == 400
+
+
+def test_word_edit_accepts_a_published_is_boundary_adj():
+    matching, updates, segment, _ = _fixture()
+    segment["is_boundary_adj"] = True
+    segment["ignored_categories"] = ["boundary_adj"]
+    assert _apply_word_timing_op(matching, updates, reciter="sample--abc", chapter=112) is None
+    assert segment["word_timings"][0]["end_ms"] == 410

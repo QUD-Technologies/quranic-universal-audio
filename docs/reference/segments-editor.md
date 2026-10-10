@@ -48,7 +48,7 @@ Each user action dispatches a `SegmentCommand` through `applyCommand`. `confiden
 
 | Op | Command type | Confidence after | FE module | BE handling |
 |---|---|---|---|---|
-| Trim | `trim` | `1.0` | `utils/edit/trim.ts`, `trim-zoom.ts`, `enter.ts` | full_replace path; `_make_seg` + `_stamp_persisted_classifier_fields` |
+| Trim | `trim` | `1.0` | `utils/edit/trim.ts`, `trim-zoom.ts`, `enter.ts` | full_replace path; `_make_seg` + `stamping.stamp_segment` |
 | Split | `split` | children inherit parent (→ `1.0` on later ref-edit) | `utils/edit/split.ts`, `split-zoom.ts`, `enter.ts` | full_replace; new child UIDs persisted |
 | Merge | `merge` | `1.0` | `utils/edit/merge.ts` | full_replace; consumed UID dropped, kept UID = earlier seg |
 | Edit reference | `editReference` (`op_type` `edit_reference` \| `confirm_reference`) | `1.0` | `utils/edit/reference.ts` (`beginRefEdit`/`commitRefEdit`) | patch path (field-level) or full_replace |
@@ -172,7 +172,7 @@ Client → server, ordered. Mutating routes require `@require_same_origin` → `
 4. **Save (server)** — `services/segments/save.py::save_seg_data`:
    1. `_validate_command_envelopes` — every op with a `type` must carry a `command` whose `type` is in `_ALLOWED_COMMAND_TYPES` and equals `op.type`. (Patch-style ops without `type` pass through.)
    2. `load_detailed(reciter)`; filter `matching` entries for `chapter`; build `(existing_by_time, existing_by_uid)` lookups (`adapters/save_payload.build_seg_lookups`).
-   3. Apply: `_apply_full_replace` (rebuilds `segments` via `adapters/save_payload.make_seg`; by_ayah routes each payload seg to its entry by `audio_url`) or `_apply_patch` (field-level by `index`). Both call `_stamp_persisted_classifier_fields` (sets `qalqala_letter` via `compute_qalqala_letter`, `is_boundary_adj` structural-only) so the validate fast-path reads persisted fields instead of recomputing.
+   3. Apply: `_apply_full_replace` (rebuilds `segments` via `adapters/save_payload.make_seg`; by_ayah routes each payload seg to its entry by `audio_url`) or `_apply_patch` (field-level by `index`). Both call `stamping.stamp_segment` (sets `qalqala_letter` via `compute_qalqala_letter`, plus projection provenance) so the validate fast-path reads the persisted field instead of recomputing.
    4. `_persist_and_record`: `_validate_op_patches` → `persist_detailed` (atomic `detailed.json` write through `data_dir.write_detailed_doc`, then `rebuild_segments_json`) → build batch (`schema_version`, `batch_id=uuid7()`, `chapter`, `saved_at_utc`, `save_mode`, `operations`, `actor`) with `_ensure_patch_on_ops` + `_attach_classified_issues` → `data_dir.append_edit_history` → `append_peaks_records` (op_peaks) → cache invalidation.
    5. Returns `{"ok": True}` or `({"error": ...}, status)`.
 5. **Refresh (client)** — on success: `refreshValidation()` FIRST (ships new `split_group_index`), then deferred `clearSavedOps` per chapter, then `resetHistoryLoader()` so the next History open re-fetches.
@@ -183,7 +183,7 @@ Cache invalidation (`services/storage/cache.py`): `pop_seg_caches_affected_by_se
 
 ### detailed.json segment shape — `qua_shared/schemas/bucket/segment.py`
 
-`DetailedSegment` (`extra="forbid"`): required `time_start`/`time_end`/`matched_ref`; `qalqala_letter`, `is_boundary_adj`, `confidence`, `wrap_word_ranges`, `segment_uid`, optional historical/sample `word_timings`, `ignored_categories`, `ignored` (legacy wildcard), `is_wasl`, `flag` (`SegmentFlag | None`, see [Flagged issues](#flagged-issues)). Writers emit via `model_dump(exclude_none=True)`. A structural save preserves `word_timings` only when the row's bounds and reference are unchanged; a trim or reference edit drops them as stale. Migration #5 dead fields stripped on read with INFO log: `matched_text`, `phonemes_asr`, `has_repeated_words`, plus snapshot-only `audio_url`/`chapter`/`entry_ref`/`index_at_save`/`display_text`. Unknown keys → WARNING + strip (writer-drift signal). `DetailedEntry` strips legacy `audio`. Both extraction (`.local/extraction/segments/outputs.py`) and Inspector save MUST round-trip through these models.
+`DetailedSegment` (`extra="forbid"`): required `time_start`/`time_end`/`matched_ref`; `qalqala_letter`, `confidence`, `wrap_word_ranges`, `segment_uid`, optional historical/sample `word_timings`, `ignored_categories`, `ignored` (legacy wildcard), `is_wasl`, `flag` (`SegmentFlag | None`, see [Flagged issues](#flagged-issues)). Writers emit via `model_dump(exclude_none=True)`. A structural save preserves `word_timings` only when the row's bounds and reference are unchanged; a trim or reference edit drops them as stale. Migration #5 dead fields stripped on read with INFO log: `matched_text`, `phonemes_asr`, `has_repeated_words`, plus snapshot-only `audio_url`/`chapter`/`entry_ref`/`index_at_save`/`display_text`. Unknown keys → WARNING + strip (writer-drift signal). A published `is_boundary_adj` is discarded on read. `DetailedEntry` strips legacy `audio`. Both extraction (`.local/extraction/segments/outputs.py`) and Inspector save MUST round-trip through these models.
 
 ### Sample word-timing editor
 

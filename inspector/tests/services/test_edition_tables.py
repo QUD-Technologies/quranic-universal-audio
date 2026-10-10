@@ -11,16 +11,10 @@ from __future__ import annotations
 
 import pytest
 
-from constants import MUQATTAAT_VERSES, STANDALONE_REFS, STANDALONE_WORDS
+from constants import MUQATTAAT_VERSES
 from services.reference import edition_tables, editions
 
-TABLES = (
-    "muqattaat_words",
-    "muqattaat_verses",
-    "standalone_refs",
-    "standalone_words",
-    "single_word_verses",
-)
+TABLES = ("muqattaat_words",)
 has_editions = pytest.mark.skipif(
     not editions.available(), reason="qua-domain not installed (Hafs-only runtime)"
 )
@@ -39,9 +33,6 @@ def _clear_edition_caches():
 
 def test_hafs_tables_are_the_frozen_constants():
     assert edition_tables.muqattaat_words("hafs") == {(s, a, 1) for s, a in MUQATTAAT_VERSES}
-    assert edition_tables.muqattaat_verses("hafs") == MUQATTAAT_VERSES
-    assert edition_tables.standalone_refs("hafs") == STANDALONE_REFS
-    assert edition_tables.standalone_words("hafs") == STANDALONE_WORDS
     assert edition_tables.fatiha_last_ayah("hafs") == 7
     assert edition_tables.basmala_is_numbered("hafs") is True
 
@@ -52,20 +43,6 @@ def test_hafs_tables_build_without_the_optional_package(monkeypatch):
     monkeypatch.setattr(editions, "_module", lambda: None)
     for table in TABLES:
         assert getattr(edition_tables, table)("hafs")
-
-
-def test_a_muqattaat_verse_can_run_on_past_its_opening_letters():
-    # Why the two muqattaat tables must stay separate. 13:1 opens with
-    # alif-lam-mim-ra and then continues for eight more words, so the
-    # boundary-adjustment exemption (verse-keyed) covers words the muqattaat
-    # flag (word-keyed) must not.
-    from services.storage.data_loader import get_word_counts
-
-    counts = get_word_counts()
-    assert counts[(13, 1)] > 1
-    assert {counts[key] for key in MUQATTAAT_VERSES} != {1}
-    assert (13, 1) in edition_tables.muqattaat_verses("hafs")
-    assert (13, 1, 5) not in edition_tables.muqattaat_words("hafs")
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +73,7 @@ def test_shuba_tables_really_go_through_the_projection():
     original = edition_tables.editions.projection
     edition_tables.editions.projection = spy
     try:
-        edition_tables.standalone_refs("shuba")
+        edition_tables.muqattaat_words("shuba")
     finally:
         edition_tables.editions.projection = original
     assert calls and set(calls) == {"shuba"}
@@ -109,51 +86,14 @@ def test_shuba_tables_really_go_through_the_projection():
 
 @has_editions
 @pytest.mark.parametrize("riwayah", ("warsh", "qalun"))
-def test_four_standalone_refs_renumber_under_the_medinan_count(riwayah):
-    projected = edition_tables.standalone_refs(riwayah)
-    assert len(projected) == len(STANDALONE_REFS)
-    assert projected - STANDALONE_REFS == {
-        (43, 34, 1),
-        (44, 27, 1),
-        (44, 35, 9),
-        (46, 34, 22),
-    }
-
-
-@has_editions
-@pytest.mark.parametrize("riwayah", ("warsh", "qalun"))
-def test_one_standalone_skeleton_is_respelled_and_the_rest_hold(riwayah):
-    projected = edition_tables.standalone_words(riwayah)
-    assert len(projected) == len(STANDALONE_WORDS)
-    # wa-bi-al-layl loses its alif-wasla form; a Hafs skeleton would never match.
-    assert projected - STANDALONE_WORDS == {"وباليل"}
-    assert STANDALONE_WORDS - projected == {"وبٱليل"}
-
-
-@has_editions
-@pytest.mark.parametrize("riwayah", ("warsh", "qalun"))
 def test_the_two_shura_openings_share_one_verse_but_stay_two_words(riwayah):
     # Hafs 42:1 and 42:2 are two one-word verses; Warsh merges them into a
-    # single verse of two words. The word table keeps both openings; the verse
-    # table necessarily loses one entry.
+    # single verse of two words. The word table keeps both openings.
     words = edition_tables.muqattaat_words(riwayah)
     assert len(words) == len(MUQATTAAT_VERSES)
     assert (42, 1, 1) in words
     assert (42, 1, 2) in words
     assert (42, 2, 1) not in words
-
-    verses = edition_tables.muqattaat_verses(riwayah)
-    assert len(verses) == len(MUQATTAAT_VERSES) - 1
-    assert (42, 2) not in verses
-
-
-@has_editions
-@pytest.mark.parametrize("riwayah", ("warsh", "qalun"))
-def test_only_three_verses_stay_one_word_long(riwayah):
-    # 28 -> 3. This is the concrete reason a Hafs-derived single-word-verse set
-    # cannot be reused: in Warsh, 2:1 is an eight-word verse.
-    assert edition_tables.single_word_verses(riwayah) == {(55, 63), (89, 1), (93, 1)}
-    assert (2, 1) not in edition_tables.single_word_verses(riwayah)
 
 
 @has_editions
@@ -167,6 +107,6 @@ def test_the_amin_check_still_looks_at_fatihas_seventh_verse(riwayah):
 
 @has_editions
 def test_tables_are_memoised_per_edition():
-    first = edition_tables.standalone_refs("warsh")
-    assert edition_tables.standalone_refs("warsh") is first
-    assert edition_tables.standalone_refs("qalun") is not first
+    first = edition_tables.muqattaat_words("warsh")
+    assert edition_tables.muqattaat_words("warsh") is first
+    assert edition_tables.muqattaat_words("qalun") is not first

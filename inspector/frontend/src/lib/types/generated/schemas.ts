@@ -49,7 +49,6 @@ export type SegValAnyItem =
   | SegValMissedWaqfItem
   | SegValFalseSplitItem
   | SegValUnmarkedWaslItem
-  | SegValBoundaryAdjItem
   | SegValCrossVerseItem
   | SegValAudioBleedingItem
   | SegValRepetitionItem
@@ -936,8 +935,6 @@ export interface DetailedEntry {
  * Persisted classifier optimisations (migrate_wip §2):
  *   - ``qalqala_letter`` — last Arabic letter when it's in the qalqala set
  *     (ق ط ب ج د), else ``None``. Default ``None`` for legacy data.
- *   - ``is_boundary_adj`` — pad-floor boundary flag (structural + phoneme
- *     tail). Default ``False`` for legacy data.
  *
  * Optional content fields:
  *   - ``confidence`` — DP alignment confidence in ``[0.0, 1.0]``. Failed
@@ -969,7 +966,6 @@ export interface DetailedSegment {
   time_end: number;
   matched_ref: string;
   qalqala_letter?: string | null;
-  is_boundary_adj?: boolean;
   confidence?: number;
   wrap_word_ranges?: string[][] | null;
   segment_uid?: string | null;
@@ -1802,10 +1798,7 @@ export interface SegConfigResponse {
   low_conf_default_threshold: number;
   validation_categories: string[];
   riwayah: string;
-  muqattaat_verses: [unknown, unknown][];
   qalqala_letters: string[];
-  standalone_refs: [unknown, unknown, unknown][];
-  standalone_words: string[];
   muqattaat_words: [unknown, unknown, unknown][];
   low_confidence_threshold: number;
   accordion_context: {
@@ -2202,17 +2195,6 @@ export interface SegValUnmarkedWaslItem {
   boundary: SegValFalseSplitBoundary;
 }
 /**
- * ``boundary_adj`` — a segment whose boundary may need adjustment.
- */
-export interface SegValBoundaryAdjItem {
-  chapter: number;
-  seg_index: number;
-  segment_uid?: string | null;
-  ref: string;
-  verse_key: string;
-  classified_issues?: string[];
-}
-/**
  * ``cross_verse`` — a segment spanning a verse boundary.
  *
  * ``verse_joins`` lists each verse end inside the segment with its stored
@@ -2336,7 +2318,6 @@ export interface SegValidateResponse {
   missed_waqf?: SegValMissedWaqfItem[] | null;
   false_split?: SegValFalseSplitItem[] | null;
   unmarked_wasl?: SegValUnmarkedWaslItem[] | null;
-  boundary_adj?: SegValBoundaryAdjItem[];
   cross_verse?: SegValCrossVerseItem[];
   audio_bleeding?: SegValAudioBleedingItem[];
   repetitions?: SegValRepetitionItem[];

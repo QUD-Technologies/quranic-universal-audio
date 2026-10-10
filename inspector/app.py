@@ -95,9 +95,6 @@ from services.data_loader import load_surah_info_lite
 from services.errors import Codes, error_body
 from services.reference.delivery_edition import RiwayahMismatch
 from services.reference.editions import EditionsUnavailable, RefNotInEdition
-
-# Phonemizer was eagerly initialized here. It's now imported lazily inside
-# scripts/backfills/backfill_boundary_adj.py (the only remaining consumer).
 from services.secrets_guard import MissingSecret, get_session_secret
 from services.state.state import InvalidTransition, NotAuthorizedForTransition, UnknownReciter
 from services.storage.hf_bucket import StorageReadOnly
@@ -662,12 +659,6 @@ if __name__ == "__main__":
             "and visit http://localhost:5173 (Vite proxies /api + /audio to this Flask).",
             FRONTEND_DIST / "index.html",
         )
-
-    # Phonemizer is no longer used by the validate runtime path; the phonemic
-    # side of boundary_adj is captured at backfill / extraction time and
-    # persisted as ``is_boundary_adj`` on every segment. The remaining
-    # consumer is ``scripts/backfills/backfill_boundary_adj.py`` (offline)
-    # which imports lazily on demand.
 
     # Timestamp data loads lazily on first request now (per-reciter cache in
     # services/data_loader.py). The earlier eager preload pinned ~22 MB *

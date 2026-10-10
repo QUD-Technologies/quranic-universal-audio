@@ -66,7 +66,7 @@ export interface FilteredItemSummary {
 /** Short-label dictionary for issue-delta badges (preserved verbatim). */
 export const SHORT_LABELS: Record<string, string> = {
     failed: 'fail', low_confidence: 'low conf', low_confidence_v2: 'low conf',
-    boundary_adj: 'boundary', cross_verse: 'cross', missing_words: 'gaps',
+    cross_verse: 'cross', missing_words: 'gaps',
     audio_bleeding: 'bleed', repetitions: 'reps',
     qalqala: 'qalqala',
 };

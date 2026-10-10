@@ -39,10 +39,10 @@ describe('command/auto-suppress (decoupled)', () => {
       segmentUid: 'uid-as',
       matched_ref: '1:1:1-1:1:1',
       matched_text: 'x',
-      sourceCategory: 'boundary_adj',
+      sourceCategory: 'repetitions',
     };
     const r = applyCommand(baseState(), cmd);
-    expect(r.operation.op_context_category).toBe('boundary_adj');
+    expect(r.operation.op_context_category).toBe('repetitions');
   });
 
   it('trim with sourceCategory does not mutate ignored_categories', () => {
@@ -79,7 +79,7 @@ describe('command/auto-suppress (decoupled)', () => {
       type: 'trim',
       segmentUid: 'uid-as',
       delta: { time_start: 100, time_end: 900 },
-      sourceCategory: 'boundary_adj',
+      sourceCategory: 'repetitions',
     };
     const r = applyCommand(state, cmd);
     const updated = r.nextState.byId['uid-as']!;

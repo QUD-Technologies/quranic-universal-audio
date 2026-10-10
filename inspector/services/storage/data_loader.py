@@ -11,8 +11,8 @@ filesystem access to ``RECITATION_SEGMENTS_PATH``. Static reference data
 (qpc_hafs, surah_info, digital_khatt) still lives in the image at
 ``INSPECTOR_DATA_DIR`` and is read directly.
 
-The four reference accessors — ``get_dk_words_flat``, ``get_word_counts``,
-``get_single_word_verses``, ``word_has_stop`` — take a riwayah, defaulting to
+The three reference accessors — ``get_dk_words_flat``, ``get_word_counts``,
+``word_has_stop`` — take a riwayah, defaulting to
 Hafs. The Hafs branch reads the bundled files exactly as before (so every
 existing call site is byte-identical); every other edition is served from
 ``services.reference.editions``, which owns the optional ``qua_domain``
@@ -407,10 +407,7 @@ def get_word_counts(riwayah: str = DEFAULT_SDK_RIWAYAH) -> dict[tuple[int, int],
     (6,214 ayahs against Hafs's 6,236), so a Hafs verse key can be out of range
     there entirely.
 
-    The Hafs branch loads ``surah_info.json`` and also primes
-    ``cache.set_single_word_verses_cache`` with the derived
-    ``{(surah, ayah): wc == 1}`` set so classifier / save callers don't rebuild
-    it per call.
+    The Hafs branch loads ``surah_info.json`` once and caches it.
     """
     if riwayah != DEFAULT_SDK_RIWAYAH:
         from services.reference import editions
@@ -428,31 +425,7 @@ def get_word_counts(riwayah: str = DEFAULT_SDK_RIWAYAH) -> dict[tuple[int, int],
             for v in data["verses"]:
                 wc[(int(surah_str), v["verse"])] = v["num_words"]
     cache.set_word_counts_cache(wc)
-    cache.set_single_word_verses_cache({k for k, v in wc.items() if v == 1})
     return wc
-
-
-def get_single_word_verses(riwayah: str = DEFAULT_SDK_RIWAYAH) -> set[tuple[int, int]]:
-    """``(surah, ayah)`` keys whose verse is exactly one word long.
-
-    Hafs has 28, Warsh/Qalun 3 — the muqattaat openings are standalone verses
-    in the Kufan count and swallowed into longer verses in the Medinan one. The
-    edition-aware set lives in ``services.reference.edition_tables``; this
-    accessor is the Hafs one the save/stamping paths already hold.
-
-    Derived from ``get_word_counts()`` once at first read; cached for the
-    process lifetime alongside word_counts (both immutable post-boot).
-    """
-    if riwayah != DEFAULT_SDK_RIWAYAH:
-        from services.reference import edition_tables
-
-        return set(edition_tables.single_word_verses(riwayah))
-    cached = cache.get_single_word_verses_cache()
-    if cached is not None:
-        return cached
-    # Force compute via get_word_counts (which primes the swv cache).
-    get_word_counts()
-    return cache.get_single_word_verses_cache() or set()
 
 
 def load_surah_info_lite() -> dict:

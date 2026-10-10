@@ -4,17 +4,13 @@ import { SCROLL_ANIM_DEFAULT, type ScrollAnimMode } from '../../../lib/utils/con
 
 export interface SegConfig {
     validationCategories: string[] | null;
-    /** `"<surah>:<ayah>"` of verses that OPEN with the disconnected letters. */
-    muqattaatVerses: Set<string> | null;
     /**
-     * `"<surah>:<ayah>:<word>"` of the openings themselves. Not derivable from
-     * `muqattaatVerses` — Warsh merges two Hafs openings into one verse, so
-     * that verse carries a muqattaat at word 1 AND at word 2.
+     * `"<surah>:<ayah>:<word>"` of the disconnected-letters openings. Warsh
+     * merges two Hafs openings into one verse, so that verse carries a
+     * muqattaat at word 1 AND at word 2.
      */
     muqattaatWords: Set<string> | null;
     qalqalaLetters: Set<string> | null;
-    standaloneRefs: Set<string> | null;
-    standaloneWords: Set<string> | null;
     lcDefaultThreshold: number;
     accordionContext: Record<string, string> | null;
     trimPadLeft: number;
@@ -25,11 +21,8 @@ export interface SegConfig {
 
 const _defaults: SegConfig = {
     validationCategories: null,
-    muqattaatVerses: null,
     muqattaatWords: null,
     qalqalaLetters: null,
-    standaloneRefs: null,
-    standaloneWords: null,
     lcDefaultThreshold: 80,
     accordionContext: null,
     trimPadLeft: 500,

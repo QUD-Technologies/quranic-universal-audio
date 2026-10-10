@@ -3,7 +3,6 @@ import type { Locale } from '$lib/i18n/locale-store';
 import { IssueRegistry } from '../domain/registry';
 
 import basmalaAminGuide from './accordion/basmala_amin.guide';
-import boundaryAdjGuide from './accordion/boundary_adj.guide';
 import crossVerseGuide from './accordion/cross_verse.guide';
 import failedGuide from './accordion/failed.guide';
 import flaggingGuide from './accordion/flagging.guide';
@@ -26,7 +25,6 @@ const accordionGuides: Readonly<Record<string, string>> = Object.freeze({
     missing_words: missingWordsGuide,
     low_confidence: lowConfidenceGuide,
     low_confidence_v2: lowConfidenceV2Guide,
-    boundary_adj: boundaryAdjGuide,
     repetitions: repetitionsGuide,
     cross_verse: crossVerseGuide,
     missed_waqf: missedWaqfGuide,
@@ -116,7 +114,6 @@ export const ALL_GUIDE_KEYS: readonly string[] = Object.freeze([
     'missing_verses',
     'missing_words',
     'low_confidence',
-    'boundary_adj',
     'repetitions',
     'cross_verse',
     'missed_waqf',

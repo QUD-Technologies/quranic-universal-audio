@@ -53,7 +53,6 @@ def clean_validation(monkeypatch):
                 "low_confidence": 0,
                 "low_confidence_v2": 0,
                 "missed_waqf": 0,
-                "boundary_adj": 0,
                 "cross_verse": 0,
                 "basmala_amin": 0,
             },
@@ -450,7 +449,6 @@ def test_mark_ready_rejects_nonzero_blocking_counts(
             "category_counts": {
                 "low_confidence": 3,
                 "low_confidence_v2": 0,
-                "boundary_adj": 0,
                 "cross_verse": 0,
                 "basmala_amin": 0,
                 "repetitions": 0,
@@ -500,7 +498,6 @@ def test_mark_ready_lc_count_uses_strict_threshold_not_detail(
             "category_counts": {
                 "low_confidence": 3,
                 "low_confidence_v2": 0,
-                "boundary_adj": 0,
                 "cross_verse": 0,
                 "basmala_amin": 0,
                 "repetitions": 0,
@@ -530,7 +527,6 @@ def test_mark_ready_lc_count_uses_strict_threshold_not_detail(
             "category_counts": {
                 "low_confidence": 2,
                 "low_confidence_v2": 0,
-                "boundary_adj": 0,
                 "cross_verse": 0,
                 "basmala_amin": 0,
                 "repetitions": 0,

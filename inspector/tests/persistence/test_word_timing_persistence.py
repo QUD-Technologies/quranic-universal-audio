@@ -66,7 +66,6 @@ def test_patch_drops_word_timings_after_reference_change(monkeypatch):
     existing = _existing()
     matching = [{"ref": "1", "segments": [existing]}]
     monkeypatch.setattr(save, "normalize_ref_with_wc", lambda ref, _riwayah: ref)
-    monkeypatch.setattr(save, "get_single_word_verses", lambda _riwayah: set())
     monkeypatch.setattr(save, "stamp_segment", lambda *_args: None)
 
     save._apply_patch(

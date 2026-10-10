@@ -11,9 +11,8 @@ the caching live in one place.
 `qua_domain`'s Hafs index carries the same 77,433 word refs as the Inspector's
 `data/qpc_hafs.json`, but a *different* QPC glyph variant: 44,481 of those words
 spell differently (U+0652 vs U+06E1, tatweel dagger-alif vs combined). Swapping
-the Hafs display path onto it would silently change every rendered segment,
-every `qalqala_letter` derivation, and every `STANDALONE_WORDS` skeleton match
-across the 37 published reciters.
+the Hafs display path onto it would silently change every rendered segment
+and every `qalqala_letter` derivation across the 37 published reciters.
 
 So Hafs keeps `qpc_hafs.json` + DigitalKhatt, exactly as the aligner app does,
 and only `warsh`/`qalun`/`shuba` take text and font from here.

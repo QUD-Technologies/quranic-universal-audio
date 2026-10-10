@@ -81,8 +81,7 @@ describe('mark-ready copy module', () => {
     it('blocking count keys exactly match the backend list', () => {
         // The backend enforces the same keys via BLOCKING_COUNT_KEYS in
         // qua_shared/schemas/wire/mark_ready.py — these must stay aligned.
-        // `boundary_adj` is owner-only (see the owner-only test above) and
-        // `cross_verse` is a review aid with nothing to do, so neither gates.
+        // `cross_verse` is a review aid with nothing to do, so it never gates.
         expect([...BLOCKING_COUNT_KEYS].sort()).toEqual([
             'basmala_amin',
             'low_confidence',

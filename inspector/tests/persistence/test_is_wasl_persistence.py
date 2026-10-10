@@ -21,7 +21,6 @@ def _seg(is_wasl: bool) -> dict:
 def test_patch_applies_is_wasl(monkeypatch, before, sent):
     seg = _seg(before)
     monkeypatch.setattr(save, "normalize_ref_with_wc", lambda ref, _riwayah: ref)
-    monkeypatch.setattr(save, "get_single_word_verses", lambda _riwayah: set())
     monkeypatch.setattr(save, "stamp_segment", lambda *_args: None)
 
     save._apply_patch(
@@ -39,7 +38,6 @@ def test_patch_applies_is_wasl(monkeypatch, before, sent):
 def test_patch_without_is_wasl_keeps_it(monkeypatch):
     seg = _seg(True)
     monkeypatch.setattr(save, "normalize_ref_with_wc", lambda ref, _riwayah: ref)
-    monkeypatch.setattr(save, "get_single_word_verses", lambda _riwayah: set())
     monkeypatch.setattr(save, "stamp_segment", lambda *_args: None)
 
     save._apply_patch(

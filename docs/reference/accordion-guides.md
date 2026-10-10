@@ -16,7 +16,7 @@ Frontend-bundled guide templates for the validation-accordion help modal (`Accor
 | `inspector/frontend/src/tabs/segments/components/validation/GuidesGateModal.svelte` | First-edit onboarding gate + browsable guide index + optional collapsed keyboard-shortcuts reference (playback + editing only) (Svelte 5 runes) |
 | `inspector/frontend/src/tabs/segments/stores/guides.ts` | `guideModal` store + `openGuideModal()`/`closeGuideModal()` — the lifted modal host |
 
-Current categories (each `accordion/<cat>.guide.ts`, registered in `registry.ts`): `failed`, `missing_verses` (prose-only), `missing_words`, `low_confidence`, `low_confidence_v2` (re-exports `low_confidence`), `boundary_adj`, `repetitions`, `cross_verse`, `missed_waqf` (Low Confidence Waqf, prose-only), `qalqala`, `muqattaat` (prose-only), `basmala_amin`. Categories without a guide (e.g. `structural_errors`, `audio_bleeding`) hide the `?` button via `hasAccordionGuide()`.
+Current categories (each `accordion/<cat>.guide.ts`, registered in `registry.ts`): `failed`, `missing_verses` (prose-only), `missing_words`, `low_confidence`, `low_confidence_v2` (re-exports `low_confidence`), `repetitions`, `cross_verse`, `missed_waqf` (Low Confidence Waqf, prose-only), `qalqala`, `muqattaat` (prose-only), `basmala_amin`. Categories without a guide (e.g. `structural_errors`, `audio_bleeding`) hide the `?` button via `hasAccordionGuide()`.
 
 Plus one **non-category** guide: `general_editing` (first in `REQUIRED_GUIDE_KEYS`) — the illustrated **editing guide**. It teaches the editing UI itself (segment anatomy, every edit op, special ops, saving/history) rather than a validation flag, so it is **never** surfaced as a per-accordion `?` (no validation category ever equals `general_editing`) — only in the `GuidesGateModal` list and the top entry point. Its source is just an `# Editing guide` H1 (supplies the title) + a `::component{name="editing-guide"}` directive; the whole body is hand-authored Svelte under `guides/editing/`.
 
@@ -89,7 +89,7 @@ against the `GUIDE_VIEW_KEYS` allowlist in `inspector/constants.py`, and
 collapse), `ALL_GUIDE_KEYS` (every storable key — mirrors `GUIDE_VIEW_KEYS`),
 `REQUIRED_GUIDE_KEYS` (the gate set — `ALL_GUIDE_KEYS` minus aliases minus the
 guides of **owner-only** validation categories, i.e. rows with
-`IssueRegistry[cat].ownerOnly`; currently that drops `boundary_adj` and `qalqala`) minus the review-only guides (`REVIEW_ONLY_GUIDE_KEYS`: `missed_waqf`, a category only `segments.view_boundary_review` holders see, and `cross_verse`, which asks nothing),
+`IssueRegistry[cat].ownerOnly`; currently that drops `qalqala`) minus the review-only guides (`REVIEW_ONLY_GUIDE_KEYS`: `missed_waqf`, a category only `segments.view_boundary_review` holders see, and `cross_verse`, which asks nothing),
 `isGuideRead(guidesRead, category)`, `allGuidesRead(guidesRead)`. The FE-only
 `CurrentUser.guides_read` is updated optimistically by `markGuideReadLocally`
 after a successful POST.

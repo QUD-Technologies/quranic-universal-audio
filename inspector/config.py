@@ -94,7 +94,6 @@ ACCORDION_CONTEXT = {
     "failed": "shown",
     "missing_words": "shown",
     "low_confidence": "hidden",
-    "boundary_adj": "hidden",
     "repetitions": "hidden",
     "cross_verse": "hidden",
     "muqattaat": "hidden",

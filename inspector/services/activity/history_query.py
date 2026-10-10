@@ -38,7 +38,6 @@ logger = logging.getLogger(__name__)
 # lists it as a ``resolved`` item rather than an open one.
 RESOLVES_BY_EDIT_CATEGORIES: frozenset[str] = frozenset(
     {
-        "boundary_adj",
         "audio_bleeding",
         "repetitions",
         "low_confidence_v2",

@@ -1,11 +1,9 @@
 {
   "audio_bleeding": [],
   "basmala_amin": [],
-  "boundary_adj": [],
   "category_counts": {
     "audio_bleeding": 0,
     "basmala_amin": 0,
-    "boundary_adj": 0,
     "cross_verse": 0,
     "failed": 0,
     "false_split": 0,

@@ -132,8 +132,6 @@ class DetailedSegment(BaseModel):
     Persisted classifier optimisations (migrate_wip §2):
       - ``qalqala_letter`` — last Arabic letter when it's in the qalqala set
         (ق ط ب ج د), else ``None``. Default ``None`` for legacy data.
-      - ``is_boundary_adj`` — pad-floor boundary flag (structural + phoneme
-        tail). Default ``False`` for legacy data.
 
     Optional content fields:
       - ``confidence`` — DP alignment confidence in ``[0.0, 1.0]``. Failed
@@ -170,7 +168,6 @@ class DetailedSegment(BaseModel):
 
     # === Persisted classifier optimisations ===
     qalqala_letter: str | None = None
-    is_boundary_adj: bool = False
 
     # === Optional content ===
     confidence: float = Field(0.0, ge=0.0, le=1.0)
@@ -182,6 +179,14 @@ class DetailedSegment(BaseModel):
     word_timings: list[DetailedWordTiming] | None = None
     pauses: list[DetailedPause] | None = None
     join_verdicts: list[JoinVerdict] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_is_boundary_adj(cls, data: Any) -> Any:
+        """Published segments may carry ``is_boundary_adj``; it is ignored."""
+        if isinstance(data, dict) and "is_boundary_adj" in data:
+            data = {k: v for k, v in data.items() if k != "is_boundary_adj"}
+        return data
 
     @model_validator(mode="after")
     def _validate_join_verdicts(self) -> DetailedSegment:

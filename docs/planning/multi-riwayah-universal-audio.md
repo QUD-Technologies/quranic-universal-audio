@@ -22,7 +22,7 @@ All settled. Do not re-litigate.
 
 | # | Decision | Rationale |
 |---|---|---|
-| **D1** | The hardcoded coordinate tables (`MUQATTAAT_VERSES`, `STANDALONE_REFS`, `STANDALONE_WORDS`, `single_word_verses`) are **projected through `qua_domain`**, never duplicated per edition. WAS: projection is at **word granularity**, not verse granularity. | Owner decision. Word granularity is forced by the data: Warsh/Qalun merge Hafs `2:1`+`2:2` into Warsh `2:1` (8 words), so `(surah, ayah)` membership would suppress `boundary_adj` across a whole merged verse and over-flag `muqattaat`. Word granularity is **provably identity for Hafs** (every Hafs muqattaat verse has exactly one word). |
+| **D1** | The hardcoded coordinate table (`MUQATTAAT_VERSES`) is **projected through `qua_domain`**, never duplicated per edition. WAS: projection is at **word granularity**, not verse granularity. | Owner decision. Word granularity is forced by the data: Warsh/Qalun merge Hafs `2:1`+`2:2` into Warsh `2:1` (8 words), so `(surah, ayah)` membership would over-flag `muqattaat` across a whole merged verse. Word granularity is **provably identity for Hafs** (every Hafs muqattaat verse has exactly one word). |
 | **D2** | Shard format: `schema_version: 14` + `profile: "word" \| "native"` discriminator. Existing Hafs v13 shards are **not restamped**; absent `profile` reads as `native`; native meta accepts `Literal[13, 14]`. | Owner decision. One path, one LRU, one route, one release loader. 37 reciters x 114 chapters stay untouched. |
 | **D3** | `basmala_amin`: the sounded-Basmala sub-check is emitted **only when the edition numbers the Basmala as `1:1`**, resolved via `load_edition_projection(riw).relation_for_source("1:1:1").kind != "opening_basmala"`. The Amin check and the missed-Basmala augmentation stay for **all** riwayat; the Amin check resolves the edition's last Fatiha verse via `get_surah(1, riw).ayah_count`. | Owner decision. Verified: `kind == "mapped"` for hafs/shuba, `"opening_basmala"` for warsh/qalun. All four editions currently have `ayah_count == 7` for surah 1 — derive it anyway, never hardcode. |
 | **D4** | Verse word counts and per-word info go through the edition index. WAS: **Hafs keeps reading `data/surah_info.json` at runtime**, guarded by a parity test against `load_edition_index("hafs")`. | Owner decision. Verified: the two sources are already identical — 6,236 verses, 77,433 words, zero diffs. Keeping the Hafs runtime path on `surah_info.json` means the Hafs hot path is byte-identical and works with `qua_domain` absent; the parity test makes them one source of truth in practice. |
@@ -443,15 +443,12 @@ New module `inspector/services/reference/edition_tables.py`:
 
 ```python
 def muqattaat_words(riw: str)    -> frozenset[tuple[int, int, int]]
-def standalone_refs(riw: str)    -> frozenset[tuple[int, int, int]]
-def standalone_words(riw: str)   -> frozenset[str]      # bare skeletons
-def single_word_verses(riw: str) -> frozenset[tuple[int, int]]
 def fatiha_last_ayah(riw: str)   -> int
 def basmala_is_numbered(riw: str) -> bool
 ```
 
 Derivation: for each Hafs entry, `projection.project_range(<hafs word ref>)` gives the target word
-refs (skeletons via `strip_quran_deco` on the target text). **Hafs derivation is the identity and
+refs. **Hafs derivation is the identity and
 reproduces `inspector/constants.py` exactly** — that is the gate (§10).
 
 Measured outputs, verified against the packaged assets:
@@ -459,30 +456,21 @@ Measured outputs, verified against the packaged assets:
 | Table | hafs | shuba | warsh | qalun |
 |---|---|---|---|---|
 | `muqattaat_words` | 30 | 30 (identity) | **30** — Hafs `(42,1,1)`+`(42,2,1)` collapse into Warsh `42:1:1`+`42:1:2`, still two words | 30 |
-| `muqattaat_verses` | 30 | 30 (identity) | **29** — the same merge, counted verse-wise | 29 |
-| `standalone_refs` | 10 | 10 (identity) | 10, **4 shift**: `43:35:1`->`43:34:1`, `44:37:9`->`44:35:9`, `46:35:22`->`46:34:22`, `44:28:1`->`44:27:1` | same 4 |
-| `standalone_words` (skeletons) | 8 | 8 (identity) | 8, **1 changes** — `وبٱليل` -> `وباليل` (confirmed) | same |
-| — derivation | — | — | NOT a projection of `standalone_refs` (an unrelated *ref* allow-list): scan the 633 Hafs words whose skeleton is in the set, project each, take target spellings | same |
-| `single_word_verses` | **28** | 28 (identity) | **3** (`55:63`, `89:1`, `93:1`) | 3 |
 | Fatiha ayah count / word counts | 7 / `(4,4,2,3,4,3,9)` | 7 / same | 7 / `(4,2,3,4,3,4,5)` | 7 / same |
 | `1:1:1` projection kind | `mapped` | `mapped` | `opening_basmala` | `opening_basmala` |
 
-WAS: the `single_word_verses` collapse from 28 to 3 is *why* verse-granularity projection is wrong
-(D1): in Warsh, `2:1` is an 8-word verse whose **first word** is the muqattaat.
+Verse-granularity projection is wrong (D1): in Warsh, `2:1` is an 8-word verse whose **first word**
+is the muqattaat.
 
 ### 5.1 Call-site rewrites (Hafs-identical by construction)
 
 | Site | Today | After |
 |---|---|---|
-| `classifier.py:131` | `if (surah, s_ayah) in MUQATTAAT_VERSES` | `if (surah, s_ayah) in muqattaat_verses(riw)` — **CORRECTED during implementation.** The plan proposed narrowing this to `muqattaat_words`, on the premise that every Hafs muqattaat verse is one word long. Measured: false — 13:1 opens with the letters and runs on for eight more words, and `{word_counts[v] for v in MUQATTAAT_VERSES}` is `{1, 3, 4, 5, 6, 10, ...}`. Narrowing would newly flag one-word segments deep inside those verses across the 37 published Hafs reciters. The exemption stays verse-keyed; `edition_tables` therefore exposes **both** tables |
-| `classifier.py:136` | `(surah, s_ayah, s_word) not in STANDALONE_REFS` | `... not in standalone_refs(riw)` |
-| `classifier.py:138` | `strip_quran_deco(text) not in STANDALONE_WORDS` | `... not in standalone_words(riw)` |
 | `classifier.py:312` | `s_word == 1 and (surah, s_ayah) in MUQATTAAT_VERSES` | `(surah, s_ayah, s_word) in muqattaat_words(riw)` — word-keyed is right *here*: Hafs-identical by construction, and Warsh's merged 42:1 carries a second opening at word 2 |
-| `data_loader.get_single_word_verses()` | Hafs-derived singleton | `single_word_verses(riw)` |
 | `routes/segments/data.py:68-71` (`/api/seg/config`) | global Hafs tables | `?riwayah=<slug>` query param, default `hafs_an_asim`; the default response is byte-identical (snapshot-pinned) |
 | `data_loader.word_has_stop` -> `constants.STOP_SIGNS` | 4 fixed glyphs | `editions.stop_signs(riw)` — Warsh/Qalun have only U+06D6 (9,948 occurrences, semantics `optional_stop`); Hafs/Shuba keep the 6-sign inventory |
 
-`constants.py` keeps the four literals as the **Hafs frozen baseline**, annotated as "identity
+`constants.py` keeps `MUQATTAAT_VERSES` as the **Hafs frozen baseline**, annotated as "identity
 input to `edition_tables`; asserted equal to the derived Hafs table" — so `docs/reference/validation.md`
 and the accordion guides stay readable.
 
@@ -545,7 +533,7 @@ Each is independently committable. Repo is QUA (Inspector) unless marked **qua**
 - Unblocks: P2, P5, P6, P7.
 
 ### P2 — edition-scoped reference data
-- `inspector/services/storage/data_loader.py` — `get_word_counts(riw)`, `get_single_word_verses(riw)`, `word_has_stop(..., riw)`; Hafs branch reads `surah_info.json` unchanged (D4).
+- `inspector/services/storage/data_loader.py` — `get_word_counts(riw)`, `word_has_stop(..., riw)`; Hafs branch reads `surah_info.json` unchanged (D4).
 - `inspector/services/reference/quran_refs.py` — `_build(riw)`, `build_payload(riw)`, `payload_hash(riw)`, `dk_text_for_ref(ref, riw)`; payload gains `riwayah` + `verse_marker_prefix`.
 - **new** `inspector/services/reference/edition_tables.py` (§5).
 - `inspector/routes/public/static.py` — `/api/static/edition/<riwayah>/refs.json` + `/version` + `/font.<ext>` (immutable, sha256 ETag). No capability gate (D16).
@@ -595,7 +583,7 @@ Each is independently committable. Repo is QUA (Inspector) unless marked **qua**
 - Thread the riwayah from `cache.get_seg_meta(reciter)["riwayah"]` -> catalog delivery -> `to_sdk_slug`.
 - `inspector/config.py` per-edition thresholds (§5.3).
 - `routes/segments/data.py` `/api/seg/config?riwayah=`.
-- `scripts/backfills/backfill_boundary_adj.py`, `scripts/backfills/purge_stale_wraps.py` — accept a riwayah.
+- `scripts/backfills/purge_stale_wraps.py` — accepts a riwayah.
 - Gates: `test_classifier_hafs_output_unchanged`, `test_edition_tables_hafs_identity`, new `test_classifier_warsh.py`, `seg_validate.json` snapshot unchanged.
 
 ### P6 — Segments tab *(depends on P2, P5)*
@@ -708,15 +696,14 @@ code — the edition assets already exist at `qua@c334291`.
 | 5 | `low_confidence` | keep | per-edition threshold dict, all four equal at first release (D19) |
 | 6 | `low_confidence_v2` | disabled for non-Hafs | sidecar not produced; registry row stays, count 0, accordion hides |
 | 7 | `audio_bleeding` | keep | `seg_belongs_to_entry` containment in target coords |
-| 8 | `boundary_adj` | keep, remap | word-granularity muqattaat + standalone tables + `single_word_verses` (28 -> 3 for Warsh) |
-| 9 | `repetitions` | keep | pure `wrap_word_ranges` geometry |
-| 10 | `cross_verse` | keep | target ayah numbering |
-| 11 | `qalqala` | keep | `compute_qalqala_letter` -> `dk_text_for_ref(ref, riw)`; the letters are edition-invariant |
-| 12 | `muqattaat` | keep, remap | word-granularity (`2:1:1` fires in Warsh, `2:1:2..8` do not) |
-| 13 | `basmala_amin` | rework | §5.2 |
-| 14 | `hidden_pause` | keep | none |
-| 15 | `false_split` | keep | none |
-| 16 | `unmarked_wasl` | keep | target ayah numbering |
+| 8 | `repetitions` | keep | pure `wrap_word_ranges` geometry |
+| 9 | `cross_verse` | keep | target ayah numbering |
+| 10 | `qalqala` | keep | `compute_qalqala_letter` -> `dk_text_for_ref(ref, riw)`; the letters are edition-invariant |
+| 11 | `muqattaat` | keep, remap | word-granularity (`2:1:1` fires in Warsh, `2:1:2..8` do not) |
+| 12 | `basmala_amin` | rework | §5.2 |
+| 13 | `hidden_pause` | keep | none |
+| 14 | `false_split` | keep | none |
+| 15 | `unmarked_wasl` | keep | target ayah numbering |
 
 No registry row is added or removed, so the `registry.py` <-> `registry.ts` parity test is untouched.
 
@@ -743,9 +730,9 @@ No registry row is added or removed, so the `registry.py` <-> `registry.ts` pari
 | Test | Asserts |
 |---|---|
 | `test_surah_info_matches_edition_index` | `data/surah_info.json` counts == `load_edition_index("hafs")` (6,236 verses / 77,433 words / 0 diffs) |
-| `test_hafs_tables_are_projection_identity` | derived `muqattaat_words("hafs")`, `standalone_refs`, `standalone_words`, `single_word_verses` == `inspector/constants.py` exactly |
+| `test_hafs_tables_are_projection_identity` | derived `muqattaat_words("hafs")` == `inspector/constants.py` exactly |
 | `test_classifier_hafs_output_unchanged` | `classify_segment` over the committed fixtures is identical with and without `qua_domain` importable |
-| `test_edition_tables_warsh` | the 4 shifted standalone refs, the dropped `(42,2)`, `single_word_verses == 3`, the changed skeleton |
+| `test_edition_tables_warsh` | the merged Shura openings `42:1:1` + `42:1:2`, the dropped `(42,2,1)` |
 | `test_basmala_amin_edition_rules` | Hafs emits the `1:1` sub-check; Warsh does not; both emit Amin + missed-Basmala |
 | `test_ts_shard_word_profile` | round-trip byte-equality, forward-compat `_meta` extra, each closure failure |
 | `test_word_shard_audit` | dense word ids, part closure, monotonic intervals, invalid target ref rejected, `words_sha256` mismatch rejected |
@@ -878,9 +865,9 @@ Out of scope; the timing contract is Hafs-proxy word-only.
 
 | # | Risk | Guard |
 |---|---|---|
-| R1 | Swapping Hafs display text onto `qua_domain`'s `hafs.words` changes 44,481 word glyphs, silently shifting every `dk_text_for_ref` derivation, every `qalqala_letter`, every `STANDALONE_WORDS` skeleton match | D5: Hafs never reads `qua_domain` text. Enforced by a test that `editions.word_map("hafs")` raises — the Hafs branch must go through `get_dk_words_flat()` |
-| R2 | Edition word counts diverge from `surah_info.json` and re-stamp `is_boundary_adj` / `missing_words` on 37 reciters | Verified equal (0 diffs) + `test_surah_info_matches_edition_index` in CI; Hafs runtime path unchanged (D4) |
-| R3 | A verse-granularity projection of `MUQATTAAT_VERSES` suppresses `boundary_adj` across a whole Warsh merged verse | D1 word-granularity + `test_hafs_tables_are_projection_identity` |
+| R1 | Swapping Hafs display text onto `qua_domain`'s `hafs.words` changes 44,481 word glyphs, silently shifting every `dk_text_for_ref` derivation, every `qalqala_letter` | D5: Hafs never reads `qua_domain` text. Enforced by a test that `editions.word_map("hafs")` raises — the Hafs branch must go through `get_dk_words_flat()` |
+| R2 | Edition word counts diverge from `surah_info.json` and shift `missing_words` on 37 reciters | Verified equal (0 diffs) + `test_surah_info_matches_edition_index` in CI; Hafs runtime path unchanged (D4) |
+| R3 | A verse-granularity projection of `MUQATTAAT_VERSES` flags `muqattaat` across a whole Warsh merged verse | D1 word-granularity + `test_hafs_tables_are_projection_identity` |
 | R4 | A per-edition cache key is forgotten and Warsh word counts serve a Hafs reciter | Every new cache keyed on SDK slug; the `quran-refs` sessionStorage key includes the riwayah; a test asserts two editions produce different `payload_hash()` |
 | R5 | `qua_domain` absent in prod (PAT rotated) so a Warsh delivery renders Hafs coordinates and a reviewer saves wrong refs | D17: fail loudly (503), never fall back. `test_editions_unavailable_fails_loudly` |
 | R6 | Restamping the 37 reciters' v13 shards | D2: never restamped. Native meta accepts `Literal[13,14]`; `shard_profile` defaults to `"native"` |
@@ -889,4 +876,4 @@ Out of scope; the timing contract is Hafs-proxy word-only.
 | R9 | A new anon-eligible capability breaks three hardcoded test lists | D16: no new capability |
 | R10 | `validation.md` keeps promising a drift harness nobody can run, so the next agent skips a real gate | D13 / P0: replace with the three real gates |
 | R11 | The sparse clone pulls the whole pack on a slow builder and times out the Space build | `--filter=blob:none --depth 1 --no-checkout` + `sparse-checkout`; the stage is cached and independent of the app layers |
-| R12 | A Warsh delivery is admitted by `auto_detect` before P5 lands, stamping Hafs-derived `is_boundary_adj` into `detailed.json` | The admission guard refuses non-Hafs while `INSPECTOR_MULTI_RIWAYAH=0`; keep it `0` on prod until P5+P6 are verified on dev |
+| R12 | A Warsh delivery is admitted by `auto_detect` before P5 lands, stamping Hafs-derived `qalqala_letter` into `detailed.json` | The admission guard refuses non-Hafs while `INSPECTOR_MULTI_RIWAYAH=0`; keep it `0` on prod until P5+P6 are verified on dev |

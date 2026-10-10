@@ -50,8 +50,6 @@ def _call(entries, deleted: set[int] | None):
         entries,
         is_by_ayah=False,
         word_counts=word_counts,
-        canonical=None,
-        single_word_verses=set(),
         probe_failed_uids=None,
         deleted_basmala_chapters=deleted,
     )

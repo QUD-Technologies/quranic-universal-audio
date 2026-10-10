@@ -34,7 +34,6 @@ from services.reference.delivery_edition import sdk_riwayah_for
 from services.segments.stamping import stamp_segment
 from services.storage import cache, data_dir, storage_paths
 from services.storage.data_loader import (
-    get_single_word_verses,
     get_word_counts,
     load_detailed,
     load_probe_v2,
@@ -340,14 +339,13 @@ def _apply_full_replace(
     input validation failure (propagated by the caller as the route response).
     """
     word_counts = get_word_counts(riwayah)
-    single_word_verses = get_single_word_verses(riwayah)
     if len(matching) == 1:
         new_segs = [
             _make_seg(s, existing_by_time, existing_by_uid, word_counts)
             for s in updates["segments"]
         ]
         for seg in new_segs:
-            stamp_segment(seg, single_word_verses, riwayah)
+            stamp_segment(seg, riwayah)
         matching[0]["segments"] = new_segs
         return None
 
@@ -385,7 +383,7 @@ def _apply_full_replace(
             }, 400
 
         new_seg = _make_seg(s, existing_by_time, existing_by_uid, word_counts)
-        stamp_segment(new_seg, single_word_verses, riwayah)
+        stamp_segment(new_seg, riwayah)
         candidates[0]["segments"].append(new_seg)
     return None
 
@@ -397,7 +395,6 @@ def _apply_patch(matching: list[dict], updates: dict, riwayah: str = DEFAULT_SDK
         for seg in e.get("segments", []):
             flat_segments.append(seg)
 
-    single_word_verses = get_single_word_verses(riwayah)
     for upd in updates["segments"]:
         idx = upd.get("index")
         if idx is not None and 0 <= idx < len(flat_segments):
@@ -424,7 +421,7 @@ def _apply_patch(matching: list[dict], updates: dict, riwayah: str = DEFAULT_SDK
             if upd.get("is_wasl") is not None:
                 flat_segments[idx]["is_wasl"] = bool(upd["is_wasl"])
             # Re-stamp persisted classifier fields since matched_ref/text changed.
-            stamp_segment(flat_segments[idx], single_word_verses, riwayah)
+            stamp_segment(flat_segments[idx], riwayah)
 
 
 def _apply_word_timing_op(matching: list[dict], updates: dict, *, reciter: str, chapter: int):

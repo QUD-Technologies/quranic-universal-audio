@@ -13,7 +13,6 @@ VALIDATION_CATEGORIES = (
     "missed_waqf",
     "false_split",
     "unmarked_wasl",
-    "boundary_adj",
     "cross_verse",
     "missing_words",
     "audio_bleeding",
@@ -40,7 +39,6 @@ GUIDE_VIEW_KEYS = (
     "missing_verses",
     "missing_words",
     "low_confidence",
-    "boundary_adj",
     "repetitions",
     "cross_verse",
     "missed_waqf",
@@ -104,32 +102,6 @@ MUQATTAAT_VERSES = {
 
 # Qalqala letters
 QALQALA_LETTERS = {"\u0642", "\u0637", "\u0628", "\u062c", "\u062f"}
-
-# Known standalone single-word segment references (surah, ayah, word) tuples
-STANDALONE_REFS = {
-    (9, 13, 13),
-    (16, 16, 1),
-    (43, 35, 1),
-    (70, 11, 1),
-    (79, 27, 6),
-    (37, 9, 1),
-    (37, 24, 1),
-    (44, 37, 9),
-    (46, 35, 22),
-    (44, 28, 1),
-}
-
-# Known standalone single-word segment texts (bare-skeleton form)
-STANDALONE_WORDS = {
-    "\u0643\u0644\u0627",  # \u0643\u0644\u0627
-    "\u0630\u0644\u0643",  # \u0630\u0644\u0643
-    "\u0643\u0630\u0644\u0643",  # \u0643\u0630\u0644\u0643
-    "\u0633\u0628\u062d\u0646\u0647\u06e5",  # \u0633\u0628\u062d\u0646\u0647\u06e5
-    "\u0628\u0644\u0649",  # \u0628\u0644\u0649
-    "\u0641\u0648\u0643\u0647",  # \u0641\u0648\u0643\u0647 (\u0641\u0648\u0627\u0643\u0647)
-    "\u0648\u0628\u0671\u0644\u064a\u0644",  # \u0648\u0628\u0671\u0644\u064a\u0644
-    "\u0647\u0630\u0627",  # \u0647\u0630\u0627
-}
 
 # Phonemes that indicate a long vowel at word boundary
 BOUNDARY_VOWELS = {"a:", "a\u02e4:", "u:", "i:"}

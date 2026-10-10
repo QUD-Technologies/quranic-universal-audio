@@ -25,7 +25,6 @@ HAFS_SEG = {
     "time_end": 5400,
     "matched_ref": "1:1:1-1:1:4",
     "qalqala_letter": None,
-    "is_boundary_adj": False,
     "confidence": 1.0,
     "segment_uid": "0198e0a1-0000-7000-8000-000000000001",
 }
@@ -34,9 +33,9 @@ HAFS_SEG = {
 def test_hafs_segment_round_trips_byte_identically():
     """No NEW key may appear in a Hafs seg's serialization.
 
-    ``is_boundary_adj``/``is_wasl`` are non-None-defaulted booleans that
-    ``exclude_none`` keeps — that predates this change (writers omit ``is_wasl``
-    when False via ``adapters/save_payload``, not via the model). The property
+    ``is_wasl`` is a non-None-defaulted boolean that ``exclude_none`` keeps
+    (writers omit it when False via ``adapters/save_payload``, not via the
+    model). The property
     under test is that the two provenance fields add nothing for Hafs.
     """
     seg = parse_detailed_segment(HAFS_SEG)
@@ -47,7 +46,6 @@ def test_hafs_segment_round_trips_byte_identically():
         "time_start",
         "time_end",
         "matched_ref",
-        "is_boundary_adj",
         "confidence",
         "segment_uid",
         "is_wasl",

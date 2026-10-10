@@ -149,22 +149,13 @@ Two consequences worth stating outright:
   locations are Hafs.** They do not match for a renumbered surah, so the word
   filter reads the segment's `source_ref` span (`raw_v2._source_verse_keys`).
 
-The hardcoded classifier tables are projected through `qua_domain`, never
+The hardcoded classifier table is projected through `qua_domain`, never
 duplicated per edition — see `services/reference/edition_tables.py`. Hafs is the
 identity there (it returns the constants and never touches the package).
 
 | Table | hafs | shuba | warsh / qalun |
 |---|---|---|---|
-| `muqattaat_words` | 30 | 30 | 30 |
-| `muqattaat_verses` | 30 | 30 | **29** |
-| `standalone_refs` | 10 | 10 | 10, four renumbered |
-| `standalone_words` | 8 | 8 | 8, one respelled |
-| `single_word_verses` | 28 | 28 | **3** |
-
-> **A muqattaat verse is not always one word.** 13:1 runs on for eight more
-> words after `الٓمٓر`. That is why the boundary-adjacency exemption is keyed on
-> the **verse** (`muqattaat_verses`) while the `muqattaat` flag is keyed on the
-> **word** (`muqattaat_words`). Do not collapse the two tables.
+| `muqattaat_words` | 30 | 30 | 30 — Hafs 42:1:1 + 42:2:1 land in one verse as 42:1:1 + 42:1:2 |
 
 ---
 

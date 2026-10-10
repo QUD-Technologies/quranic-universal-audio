@@ -626,22 +626,6 @@ def set_word_counts_cache(wc: dict[tuple[int, int], int]) -> None:
     _word_counts.set(wc)
 
 
-# Single-word verses — derived from word_counts, computed once and cached
-# alongside it. Used by the classifier's muqattaat / basmala_amin rules and
-# the save-time persisted-classifier-fields stamp. Three callsites used to
-# rebuild this O(6236) comprehension fresh each call; the singleton matches
-# the lifetime of ``_word_counts`` (immutable post-boot).
-_single_word_verses: _SingletonCache[set[tuple[int, int]]] = _SingletonCache()
-
-
-def get_single_word_verses_cache():
-    return _single_word_verses.get()
-
-
-def set_single_word_verses_cache(swv: set[tuple[int, int]]) -> None:
-    _single_word_verses.set(swv)
-
-
 # QPC / DK data
 _qpc: _SingletonCache[dict[str, dict]] = _SingletonCache()
 _dk: _SingletonCache[dict[str, dict]] = _SingletonCache()

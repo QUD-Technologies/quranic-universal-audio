@@ -14,7 +14,7 @@ def strip_quran_deco(text: str) -> str:
     Memoized: Quranic text strings repeat heavily across segments (most match
     a small set of canonical verse texts), and the NFD + per-char category
     scan is hot under ``validate_reciter_segments`` (called from
-    ``last_arabic_letter`` and the classifier's STANDALONE_WORDS check).
+    ``last_arabic_letter``).
     """
     text = _ud.normalize("NFD", text)
     out = []

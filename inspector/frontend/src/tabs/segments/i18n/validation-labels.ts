@@ -19,7 +19,6 @@ export const VALIDATION_TITLE: Readonly<Record<string, () => string>> = Object.f
     low_confidence_v2: m.segments_validation_low_confidence_v2_title,
     repetitions: m.segments_validation_repetitions_title,
     audio_bleeding: m.segments_validation_audio_bleeding_title,
-    boundary_adj: m.segments_validation_boundary_adj_title,
     cross_verse: m.segments_validation_cross_verse_title,
     missed_waqf: m.segments_validation_missed_waqf_title,
     qalqala: m.segments_validation_qalqala_title,

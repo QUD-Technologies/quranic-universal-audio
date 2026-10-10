@@ -43,9 +43,8 @@ ChecklistKey = Literal[
 #
 # An owner-only category (registry ``owner_only``) must never appear here:
 # it is invisible to the reviewer, so blocking on it would leave them
-# staring at a count they cannot open, let alone resolve. That is why
-# ``boundary_adj`` is absent despite still being classified and surfaced to
-# owners; ``cross_verse`` is a review aid with nothing to do.
+# staring at a count they cannot open, let alone resolve. ``cross_verse`` is a
+# review aid with nothing to do.
 # ``mark-ready-copy.test.ts`` asserts the rule.
 BLOCKING_COUNT_KEYS: tuple[str, ...] = (
     "low_confidence",
@@ -62,7 +61,7 @@ BLOCKING_COUNT_KEYS: tuple[str, ...] = (
 CHECKLIST_CATEGORIES: dict[str, tuple[str, ...]] = {
     "failed_alignments": ("failed",),
     "missing_words": ("missing_words", "missing_verses"),
-    "low_confidence": ("low_confidence", "low_confidence_v2", "boundary_adj"),
+    "low_confidence": ("low_confidence", "low_confidence_v2"),
     "repetitions": ("repetitions",),
     "splits_wasl_waqf": ("missed_waqf",),
     "basmala_amin_intros": ("basmala_amin",),

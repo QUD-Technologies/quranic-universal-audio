@@ -1,8 +1,8 @@
 """Per-segment detail-list builder for validate_reciter_segments.
 
 Iterates entries and returns the detail lists (failed, low_confidence,
-boundary_adj, cross_verse, audio_bleeding, repetitions, muqattaat,
-qalqala, basmala_amin) plus the verse_segments coverage map. Each detail item carries a
+cross_verse, audio_bleeding, repetitions, muqattaat, qalqala, basmala_amin)
+plus the verse_segments coverage map. Each detail item carries a
 ``classified_issues`` field — the full category list the segment matches
 under the unified classifier (forward-compat for multi-category card
 indicators on the frontend).
@@ -240,8 +240,6 @@ def _build_detail_lists(
     entries: list[dict],
     is_by_ayah: bool,
     word_counts: dict,
-    canonical: dict | None,
-    single_word_verses: set,
     probe_failed_uids: set | None = None,
     deleted_basmala_chapters: set[int] | None = None,
     hidden_pause_map: dict[str, dict] | None = None,
@@ -255,7 +253,7 @@ def _build_detail_lists(
     Returns a dict with keys:
       chapter_seg_idx, verse_segments,
       failed, low_confidence, low_confidence_v2, hidden_pause, missed_waqf,
-      false_split, unmarked_wasl, boundary_adj, cross_verse, audio_bleeding, repetitions,
+      false_split, unmarked_wasl, cross_verse, audio_bleeding, repetitions,
       muqattaat, qalqala, basmala_amin.
 
     ``hidden_pause_map`` / ``missed_waqf_map`` / ``false_split_map`` /
@@ -292,7 +290,6 @@ def _build_detail_lists(
     missed_waqf: list[dict] = []
     false_split: list[dict] = []
     unmarked_wasl: list[dict] = []
-    boundary_adj: list[dict] = []
     cross_verse: list[dict] = []
     audio_bleeding: list[dict] = []
     repetitions: list[dict] = []
@@ -453,9 +450,6 @@ def _build_detail_lists(
                 s_ayah,
                 e_ayah,
                 s_word,
-                e_word,
-                single_word_verses,
-                canonical,
                 probe_failed_uids=probe_failed_uids,
                 hidden_pause_uids=hidden_pause_map,
                 missed_waqf_uids=missed_waqf_map,
@@ -593,18 +587,6 @@ def _build_detail_lists(
                         "seg_index": i,
                         "segment_uid": seg_uid,
                         "ref": matched_ref,
-                        "classified_issues": classified,
-                    }
-                )
-
-            if flags["boundary_adj"]:
-                boundary_adj.append(
-                    {
-                        "chapter": chapter,
-                        "seg_index": i,
-                        "segment_uid": seg_uid,
-                        "ref": matched_ref,
-                        "verse_key": f"{surah}:{s_ayah}",
                         "classified_issues": classified,
                     }
                 )
@@ -751,7 +733,6 @@ def _build_detail_lists(
         "missed_waqf": missed_waqf,
         "false_split": false_split,
         "unmarked_wasl": unmarked_wasl,
-        "boundary_adj": boundary_adj,
         "cross_verse": cross_verse,
         "audio_bleeding": audio_bleeding,
         "repetitions": repetitions,

@@ -204,7 +204,6 @@ def test_mark_ready_propagates_to_all_endpoints(
             "category_counts": {
                 "low_confidence": 0,
                 "low_confidence_v2": 0,
-                "boundary_adj": 0,
                 "cross_verse": 0,
                 "basmala_amin": 0,
                 "repetitions": 0,

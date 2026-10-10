@@ -26,19 +26,17 @@ Public surface
     ``low_confidence_detail``, and ``end_of_verse``. Used by callers that
     want the auxiliary fields alongside the category list.
 
-``classify_entry(entry, ..., canonical=None) -> dict``
+``classify_entry(entry, ...) -> dict``
     Walks every segment in an entry, returning
     ``{segment_uid: {"categories": [...], "qalqala_letter": str|None}}``.
     Segments without a ``segment_uid`` get a synthesized index-based key
     (``f"_idx:{i}"``) so the result is always a complete map.
 
-Tie-breakers (B-1 / B-2 / B-3)
-------------------------------
+Tie-breakers
+------------
 
 - ``repetitions``: ``wrap_word_ranges`` only — ``has_repeated_words`` alone
   does not classify.
-- ``boundary_adj``: structural rule first; phoneme-tail mismatch is an
-  optional second signal when ``canonical`` is provided.
 - ``audio_bleeding``: ``seg_belongs_to_entry`` against the parsed entry-ref
   structure. Audio-URL comparisons are not part of the rule.
 """
@@ -51,9 +49,7 @@ from typing import Any
 from config import LOW_CONFIDENCE_DETAIL_THRESHOLD, LOW_CONFIDENCE_THRESHOLDS
 from qua_shared.riwayat import DEFAULT_SDK_RIWAYAH
 from services.reference import edition_tables
-from services.reference.quran_refs import dk_text_for_ref
 from services.validation.registry import PER_SEGMENT_CATEGORIES
-from utils.arabic_text import strip_quran_deco
 from utils.references import seg_belongs_to_entry
 
 # ---------------------------------------------------------------------------
@@ -100,89 +96,6 @@ def is_suppressed_for(seg: dict, category: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Boundary-adjustment rule
-# ---------------------------------------------------------------------------
-
-
-def compute_is_boundary_adj(
-    seg: dict,
-    surah: int,
-    s_ayah: int,
-    s_word: int,
-    e_word: int,
-    single_word_verses: set,
-    canonical: dict | None = None,
-    riwayah: str = DEFAULT_SDK_RIWAYAH,
-) -> bool:
-    """Raw boundary-adjustment computation — NO suppression check.
-
-    Used by every writer that persists the field (save.py, backfill script,
-    extraction pipeline) AND by ``_check_boundary_adj`` as the fall-through
-    path. Splitting the suppression check out lets us persist a value that
-    matches across all writers regardless of runtime ignore state.
-
-    Rule: one-word segment outside the muqattaʼat / single-word-verse /
-    standalone-ref / standalone-word allow-list.
-
-    ``canonical`` is accepted for back-compat but ignored — the phonemic
-    side was retired in Migration #5 along with ``phonemes_asr``, so
-    structural-only is now the canonical signal. Kept in the signature so
-    callers (save, backfill, extraction outputs.py) don't need touching.
-
-    Every table is read in ``riwayah``'s own coordinates. The muqattaat
-    exemption stays VERSE-keyed: it covers words far past the opening letters
-    (13:1 runs on for eight more), and narrowing it to the opening word would
-    newly flag one-word segments across the published Hafs corpus.
-    """
-    _ = canonical  # retired; see docstring
-    if (surah, s_ayah) in edition_tables.muqattaat_verses(riwayah):
-        return False
-    if (surah, s_ayah) in single_word_verses:
-        return False
-
-    if s_word == e_word and (surah, s_ayah, s_word) not in edition_tables.standalone_refs(riwayah):
-        text = dk_text_for_ref(seg.get("matched_ref"), riwayah)
-        if strip_quran_deco(text) not in edition_tables.standalone_words(riwayah):
-            return True
-
-    return False
-
-
-def _check_boundary_adj(
-    seg: dict,
-    surah: int,
-    s_ayah: int,
-    s_word: int,
-    e_word: int,
-    single_word_verses: set,
-    canonical: dict | None,
-    riwayah: str = DEFAULT_SDK_RIWAYAH,
-) -> bool:
-    """Apply boundary-adjustment, honoring runtime suppression.
-
-    Reads the persisted ``is_boundary_adj`` field when present — stamped at
-    save / backfill / extraction time via ``compute_is_boundary_adj``.
-    Legacy segs without the field fall through to a fresh computation. The
-    suppression check is applied here (the persisted value is the raw
-    rule output; suppression layers on top).
-    """
-    if is_suppressed_for(seg, "boundary_adj"):
-        return False
-    if "is_boundary_adj" in seg:
-        return bool(seg["is_boundary_adj"])
-    return compute_is_boundary_adj(
-        seg,
-        surah,
-        s_ayah,
-        s_word,
-        e_word,
-        single_word_verses,
-        canonical,
-        riwayah,
-    )
-
-
-# ---------------------------------------------------------------------------
 # matched_ref parsing
 # ---------------------------------------------------------------------------
 
@@ -220,9 +133,6 @@ def classify_flags(
     s_ayah: int,
     e_ayah: int,
     s_word: int,
-    e_word: int,
-    single_word_verses: set,
-    canonical: dict | None,
     probe_failed_uids: set | None = None,
     hidden_pause_uids: Container[str] | None = None,
     missed_waqf_uids: Container[str] | None = None,
@@ -235,7 +145,7 @@ def classify_flags(
     Keys:
       - ``failed``, ``audio_bleeding``, ``repetitions``, ``low_confidence``,
         ``low_confidence_detail``, ``low_confidence_v2``, ``hidden_pause``,
-        ``missed_waqf``, ``false_split``, ``unmarked_wasl``, ``cross_verse``, ``boundary_adj``,
+        ``missed_waqf``, ``false_split``, ``unmarked_wasl``, ``cross_verse``,
         ``muqattaat``, ``qalqala``: bool.
       - ``qalqala_letter``: ``str | None`` — populated when ``qalqala`` fires.
       - ``end_of_verse``: bool — reserved (callers pass ``word_counts`` to
@@ -263,7 +173,6 @@ def classify_flags(
         "false_split": False,
         "unmarked_wasl": False,
         "cross_verse": False,
-        "boundary_adj": False,
         "muqattaat": False,
         "qalqala": False,
         "qalqala_letter": None,
@@ -317,17 +226,12 @@ def classify_flags(
     if seg_uid and unmarked_wasl_uids and seg_uid in unmarked_wasl_uids:
         result["unmarked_wasl"] = not is_suppressed_for(seg, "unmarked_wasl")
 
-    if s_ayah != e_ayah:
-        if not is_ignored_for(seg, "cross_verse"):
-            result["cross_verse"] = True
-    else:
-        result["boundary_adj"] = _check_boundary_adj(
-            seg, surah, s_ayah, s_word, e_word, single_word_verses, canonical, riwayah
-        )
+    if s_ayah != e_ayah and not is_ignored_for(seg, "cross_verse"):
+        result["cross_verse"] = True
 
-    # Word-keyed, unlike the boundary-adj exemption above: Warsh merges Hafs's
-    # 42:1 and 42:2 into one verse, so BOTH of its first two words are muqattaat
-    # openings. For Hafs this is exactly `s_word == 1 and verse in MUQATTAAT`.
+    # Word-keyed: Warsh merges Hafs's 42:1 and 42:2 into one verse, so BOTH of
+    # its first two words are muqattaat openings. For Hafs this is exactly
+    # `s_word == 1 and verse in MUQATTAAT`.
     if (surah, s_ayah, s_word) in edition_tables.muqattaat_words(riwayah):
         if not is_ignored_for(seg, "muqattaat"):
             result["muqattaat"] = True
@@ -377,9 +281,6 @@ def classify_segment(
     s_ayah: int | None = None,
     e_ayah: int | None = None,
     s_word: int | None = None,
-    e_word: int | None = None,
-    single_word_verses: set | None = None,
-    canonical: dict | None = None,
     detail: bool = False,
     probe_failed_uids: set | None = None,
     hidden_pause_uids: Container[str] | None = None,
@@ -391,8 +292,7 @@ def classify_segment(
     """Classify one segment and return the category list.
 
     Numeric position parameters (``surah``, ``s_ayah``, ``e_ayah``,
-    ``s_word``, ``e_word``) are derived from ``seg["matched_ref"]`` when
-    omitted. ``single_word_verses`` defaults to the empty set.
+    ``s_word``) are derived from ``seg["matched_ref"]`` when omitted.
 
     Pass ``detail=True`` to surface the 1.00 cutoff under the synthetic
     ``low_confidence_detail`` category — used by the validation API to
@@ -406,11 +306,11 @@ def classify_segment(
     if not matched_ref:
         return ["failed"] if not is_ignored_for(seg, "failed") else []
 
-    if surah is None or s_ayah is None or e_ayah is None or s_word is None or e_word is None:
+    if surah is None or s_ayah is None or e_ayah is None or s_word is None:
         parsed = _parse_matched_ref(matched_ref)
         if parsed is None:
             return []
-        d_surah, d_s_ayah, d_s_word, d_e_ayah, d_e_word = parsed
+        d_surah, d_s_ayah, d_s_word, d_e_ayah, _ = parsed
         if surah is None:
             surah = d_surah
         if s_ayah is None:
@@ -419,8 +319,6 @@ def classify_segment(
             s_word = d_s_word
         if e_ayah is None:
             e_ayah = d_e_ayah
-        if e_word is None:
-            e_word = d_e_word
 
     flags = classify_flags(
         seg,
@@ -430,9 +328,6 @@ def classify_segment(
         s_ayah,
         e_ayah,
         s_word,
-        e_word,
-        single_word_verses or set(),
-        canonical,
         probe_failed_uids=probe_failed_uids,
         hidden_pause_uids=hidden_pause_uids,
         missed_waqf_uids=missed_waqf_uids,
@@ -452,9 +347,6 @@ def classify_segment_full(
     s_ayah: int | None = None,
     e_ayah: int | None = None,
     s_word: int | None = None,
-    e_word: int | None = None,
-    single_word_verses: set | None = None,
-    canonical: dict | None = None,
     detail: bool = False,
     probe_failed_uids: set | None = None,
     hidden_pause_uids: Container[str] | None = None,
@@ -482,7 +374,7 @@ def classify_segment_full(
             "end_of_verse": False,
         }
 
-    if surah is None or s_ayah is None or e_ayah is None or s_word is None or e_word is None:
+    if surah is None or s_ayah is None or e_ayah is None or s_word is None:
         parsed = _parse_matched_ref(matched_ref)
         if parsed is None:
             return {
@@ -491,7 +383,7 @@ def classify_segment_full(
                 "low_confidence_detail": False,
                 "end_of_verse": False,
             }
-        d_surah, d_s_ayah, d_s_word, d_e_ayah, d_e_word = parsed
+        d_surah, d_s_ayah, d_s_word, d_e_ayah, _ = parsed
         if surah is None:
             surah = d_surah
         if s_ayah is None:
@@ -500,8 +392,6 @@ def classify_segment_full(
             s_word = d_s_word
         if e_ayah is None:
             e_ayah = d_e_ayah
-        if e_word is None:
-            e_word = d_e_word
 
     flags = classify_flags(
         seg,
@@ -511,9 +401,6 @@ def classify_segment_full(
         s_ayah,
         e_ayah,
         s_word,
-        e_word,
-        single_word_verses or set(),
-        canonical,
         probe_failed_uids=probe_failed_uids,
         hidden_pause_uids=hidden_pause_uids,
         missed_waqf_uids=missed_waqf_uids,
@@ -533,8 +420,6 @@ def classify_entry(
     entry: dict,
     *,
     is_by_ayah: bool | None = None,
-    single_word_verses: set | None = None,
-    canonical: dict | None = None,
     detail: bool = False,
     probe_failed_uids: set | None = None,
     hidden_pause_uids: Container[str] | None = None,
@@ -561,8 +446,6 @@ def classify_entry(
             seg,
             entry_ref=entry_ref,
             is_by_ayah=is_by_ayah,
-            single_word_verses=single_word_verses,
-            canonical=canonical,
             detail=detail,
             probe_failed_uids=probe_failed_uids,
             hidden_pause_uids=hidden_pause_uids,
@@ -586,5 +469,4 @@ __all__ = [
     "classify_segment",
     "classify_segment_full",
     "classify_entry",
-    "_check_boundary_adj",
 ]

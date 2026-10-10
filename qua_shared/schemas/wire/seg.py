@@ -93,15 +93,9 @@ class SegConfigResponse(BaseModel):
     validation_categories: list[str]
     #: Inspector slug of the edition the vocabularies below describe.
     riwayah: str
-    #: Verses that OPEN with the disconnected letters. Verse-keyed because the
-    #: boundary-adjustment exemption covers the whole verse, not just the
-    #: opening word (13:1 runs on past the letters).
-    muqattaat_verses: list[tuple[int, int]]
     qalqala_letters: list[str]
-    standalone_refs: list[tuple[int, int, int]]
-    standalone_words: list[str]
-    #: Word refs that ARE a disconnected-letters opening. Distinct from
-    #: ``muqattaat_verses``: a Warsh verse can hold two of them.
+    #: Word refs that ARE a disconnected-letters opening; a Warsh verse can
+    #: hold two of them.
     muqattaat_words: list[tuple[int, int, int]]
     #: Confidence below which a segment is flagged; per edition (D19).
     low_confidence_threshold: float
@@ -661,19 +655,6 @@ class SegValUnmarkedWaslItem(BaseModel):
     boundary: SegValFalseSplitBoundary
 
 
-class SegValBoundaryAdjItem(BaseModel):
-    """``boundary_adj`` — a segment whose boundary may need adjustment."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    chapter: int
-    seg_index: int
-    segment_uid: str | None = None
-    ref: Ref
-    verse_key: VerseRef
-    classified_issues: list[str] = Field(default_factory=list)
-
-
 class SegValVerseJoin(BaseModel):
     """One verse end inside a cross-verse segment and its stored answer (``None`` = unanswered)."""
 
@@ -801,7 +782,6 @@ SegValAnyItemUnion = (
     | SegValMissedWaqfItem
     | SegValFalseSplitItem
     | SegValUnmarkedWaslItem
-    | SegValBoundaryAdjItem
     | SegValCrossVerseItem
     | SegValAudioBleedingItem
     | SegValRepetitionItem
@@ -890,7 +870,6 @@ class SegValidateResponse(BaseModel):
     missed_waqf: list[SegValMissedWaqfItem] | None = None
     false_split: list[SegValFalseSplitItem] | None = None
     unmarked_wasl: list[SegValUnmarkedWaslItem] | None = None
-    boundary_adj: list[SegValBoundaryAdjItem] = Field(default_factory=list)
     cross_verse: list[SegValCrossVerseItem] = Field(default_factory=list)
     audio_bleeding: list[SegValAudioBleedingItem] = Field(default_factory=list)
     repetitions: list[SegValRepetitionItem] = Field(default_factory=list)

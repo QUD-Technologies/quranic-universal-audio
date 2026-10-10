@@ -7,7 +7,7 @@ Usually it is present in a segment's audio but the model did not detect it — a
 
 Sometimes both the audio and the word(s) is missing. Fill it and adjust the segment boundary to cover it. 
 
-A word present in the text but audio is partially / fully missing in the segment tends to surface under Low Confidence or Boundary Adjustment instead.
+A word present in the text but audio is partially / fully missing in the segment tends to surface under Low Confidence instead.
 
 > By the end this should be zero — every recited word placed, unless there are issues in the audio.
 

@@ -383,7 +383,7 @@ def test_assemble_publishes_reciter_and_auto_detect_fires(align_env):
     ]
     assert segs[1]["segment_uid"]  # the waqf row got its uid
     assert _TIMED == [(SLUG, 112, {"riwayah": "hafs"})]
-    assert "qalqala_letter" in segs[0] or "is_boundary_adj" in segs[0]  # stamped
+    assert "qalqala_letter" in segs[0]  # stamped
 
     history = [
         json.loads(line)

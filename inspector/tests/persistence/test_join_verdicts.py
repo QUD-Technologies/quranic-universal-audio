@@ -45,7 +45,6 @@ def test_patch_and_undo_roundtrip(monkeypatch):
     before = seg(is_wasl=False)
     current = seg(is_wasl=False)
     monkeypatch.setattr(save, "normalize_ref_with_wc", lambda ref, _riwayah: ref)
-    monkeypatch.setattr(save, "get_single_word_verses", lambda _riwayah: set())
     monkeypatch.setattr(save, "stamp_segment", lambda *_: None)
     payload = {
         "segment_uid": "root",
