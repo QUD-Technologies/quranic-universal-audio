@@ -390,6 +390,19 @@ function _chimeArmed(): boolean {
     return get(segmentEndChimeEnabled) && get(autoPlayEnabled);
 }
 
+/** A VBR chapter plays one segment's clip at a time (`AudioPort.loadCovering`),
+ *  so main-list autoplay cannot run on through the file: each play is bounded
+ *  and its boundary loads the next segment's clip. */
+function _playsClips(): boolean {
+    return segPort.source?.vbr === true;
+}
+
+/** Whether the active play needs a per-segment boundary: accordion plays,
+ *  autoplay off, an armed chime, or a clip transport. */
+function _needsBoundary(origin: 'main' | 'accordion' | undefined): boolean {
+    return origin === 'accordion' || !get(autoPlayEnabled) || _chimeArmed() || _playsClips();
+}
+
 /**
  * How long playback is held silent around the chime. The chime itself is
  * `CHIME_TOTAL_MS`; the remainder is air on either side so the beep reads as a
@@ -539,12 +552,14 @@ function _onRangeBoundary(ev: { reason: string }): void {
             }
             return;
         }
-        // Main-list autoplay, bounded only because the chime is armed (see
-        // `ensureBoundedRange`). The chapter audio would have run straight on,
-        // so "advancing" is just resuming where we stopped — then re-point the
-        // range at the segment we are now inside so the next boundary fires.
-        if (get(autoPlayEnabled) && _chimeArmed() && active) {
-            const resumeAt = segPort.currentTimeMs();
+        // Main-list autoplay, bounded because the chime is armed or the chapter
+        // plays as clips (see `_needsBoundary`). Chapter audio would have run
+        // straight on, so "advancing" is resuming where we stopped and
+        // re-pointing the range at the segment we are now inside; a clip holds
+        // only the segment that ended, so the next one loads its own.
+        if (get(autoPlayEnabled) && active) {
+            const ended = getSegByChapterIndex(active.chapter, active.index);
+            const resumeAt = Math.max(segPort.currentTimeMs(), ended?.time_end ?? 0);
             _chimeSegmentEnd(() => {
                 const nextSeg = _segAtOrAfter(resumeAt);
                 if (!nextSeg) {
@@ -554,6 +569,10 @@ function _onRangeBoundary(ev: { reason: string }): void {
                     segCurrentIdx.set(-1);
                     _segRange?.dispose();
                     _segRange = null;
+                    return;
+                }
+                if (_playsClips()) {
+                    playFromSegment(nextSeg.index, nextSeg.chapter ?? active.chapter, nextSeg.time_start);
                     return;
                 }
                 setPlayingSegment({ chapter: nextSeg.chapter ?? active.chapter, index: nextSeg.index });
@@ -625,8 +644,9 @@ export function ensureBoundedRange(): void {
     // tab throttles to ~1/s, long enough to sail past several short segments
     // between ticks. So an armed chime opts main-list autoplay into the same
     // bounded range the accordion uses; `_onRangeBoundary` then chimes and
-    // resumes. Chime off, this is exactly the old chapter-continuous path.
-    const needBounded = active.origin === 'accordion' || !get(autoPlayEnabled) || _chimeArmed();
+    // resumes. A clip transport is bounded for the same reason: its file ends
+    // with the segment.
+    const needBounded = _needsBoundary(active.origin);
 
     if (needBounded && !_segRange) {
         // Wrap the currently-playing segment in a stop-policy range so
@@ -781,12 +801,14 @@ export function playFromSegment(
     // Tear down any prior segment-bounded range. Playback regimes:
     //   - chapter mode + autoplay ON  → no AudioRange. Seek + play, chapter
     //                                    audio plays through naturally...
-    //   - ...UNLESS the segment-end chime is armed, which needs a real
-    //                                    boundary to fire on. Then bounded,
-    //                                    and `_onRangeBoundary` chimes and
-    //                                    resumes. MUST match the condition in
-    //                                    `ensureBoundedRange`, which is what
-    //                                    reconciles a mid-play toggle.
+    //   - ...UNLESS the segment-end chime is armed (it needs a real
+    //                                    boundary to fire on) or the chapter
+    //                                    plays as VBR clips (the clip ends
+    //                                    with the segment). Then bounded, and
+    //                                    `_onRangeBoundary` chimes and resumes
+    //                                    or loads the next clip. `_needsBoundary`
+    //                                    is shared with `ensureBoundedRange`,
+    //                                    which reconciles a mid-play toggle.
     //   - chapter mode + autoplay OFF → AudioRange with `stop` policy.
     //                                    Pauses at seg.time_end.
     //   - accordion play              → AudioRange with `stop` policy.
@@ -809,7 +831,7 @@ export function playFromSegment(
     // edit-mode exit can trigger that rebuild mid-play.
     _activeGroupEndMs = endMs > seg.time_end ? endMs : null;
     _activePlayStartMs = seekMs;
-    const bounded = isAccordionPlay || !get(autoPlayEnabled) || _chimeArmed();
+    const bounded = _needsBoundary(isAccordionPlay ? 'accordion' : 'main');
 
     if (bounded) {
         _segRange = new AudioRange({
