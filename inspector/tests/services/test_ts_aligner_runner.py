@@ -72,6 +72,7 @@ def _serve(
             "lazim_ms": [400.0 + ch],
             "coverage": {"shard_sounds_null": 0, **left} if json["shards"] else None,
             "untimed": left if json["shards"] else None,
+            "profile_samples": {"tabii": [ch]} if json["shards"] else None,
         })  # fmt: skip
 
     monkeypatch.setattr(requests, "post", post)
@@ -243,10 +244,11 @@ def test_a_hafs_run_writes_the_profile_and_drops_the_cached_one(delivery, monkey
 
     url, body, _ = sent[-1]
     assert url == "https://aligner/api/v1/extraction/recitation-profile"
-    assert body == {"shard_refs": {
-        "112": "hf://buckets/o/b/reciters/r/timestamps/112.json.br",
-        "113": "hf://buckets/o/b/reciters/r/timestamps/113.json.br",
-    }}  # fmt: skip
+    # The run's chapter goes as the samples its shard call returned, the rest by shard.
+    assert body == {
+        "shard_refs": {"113": "hf://buckets/o/b/reciters/r/timestamps/113.json.br"},
+        "samples": {"112": {"tabii": [112]}},
+    }
     assert delivery.read_json("reciters/r/recitation_profile.json") == PROFILE
     assert dropped == ["r"] and _record(delivery, "run8")["status"] == "succeeded"
 
@@ -276,3 +278,43 @@ def test_a_profile_the_aligner_refuses_leaves_the_run_succeeded(delivery, monkey
     assert stored["status"] == "succeeded"
     assert any("recitation profile not written" in line for line in stored["logs"])
     assert not delivery.exists("reciters/r/recitation_profile.json")
+
+
+def test_a_cancel_during_the_build_writes_no_shard_or_profile(delivery, monkeypatch):
+    sent: list = []
+    _serve(monkeypatch, sent, failing=(), profile=PROFILE)
+    record = runner.TsJobRecord(job_id="run13", slug="r", settings=TsJobSettings())
+    calls = []
+
+    def canceled(rec):
+        calls.append(1)
+        return len(calls) > 4  # before each of the four chapter calls: running
+
+    monkeypatch.setattr(runner, "_canceled", canceled)
+    runner._run(record, "hafs", False)
+
+    assert not delivery.exists("reciters/r/timestamps/112.json.br")
+    assert not any(url.endswith("/recitation-profile") for url, _, _ in sent)
+    assert _record(delivery, "run13")["status"] == "canceled"
+
+
+def test_a_mount_file_newer_than_the_bucket_counts_as_unflushed(tmp_path):
+    import datetime
+    import os
+    from types import SimpleNamespace
+
+    from services.admin import ts_backup
+
+    local = tmp_path / "1.json.br"
+    local.write_bytes(b"abc")
+    os.utime(local, (1000, 1000))
+    at = datetime.datetime.fromtimestamp
+
+    def remote(size=3, when=2000):
+        return SimpleNamespace(size=size, mtime=at(when, datetime.UTC), uploaded_at=None)
+
+    assert not ts_backup._unflushed(local, remote())
+    assert ts_backup._unflushed(local, remote(when=500))
+    assert ts_backup._unflushed(local, remote(size=4))
+    assert ts_backup._unflushed(local, None)
+    assert not ts_backup._unflushed(None, remote())

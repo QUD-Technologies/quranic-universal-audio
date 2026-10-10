@@ -1,11 +1,13 @@
 """Pre-publish backup of a delivery's timestamps before a timestamps run writes over them.
 
 :func:`backup` copies the delivery's live ``timestamps/`` and ``timing/`` trees and its
-``recitation_profile.json`` server-side to
-``backups/timestamps-pre-online-<UTC>/reciters/<slug>/`` (the batch re-time's
-``timestamps-pre-neural`` scheme, online variant), skipping what the delivery does not have yet.
-On the bucket a tree goes through ``huggingface_hub.copy_files`` with a trailing slash on the
-source, which copies its contents instead of nesting the folder; the copy is then listed back.
+``recitation_profile.json`` to ``backups/timestamps-pre-online-<UTC>/reciters/<slug>/`` (the
+batch re-time's ``timestamps-pre-neural`` scheme, online variant), skipping what the delivery
+does not have yet. On the bucket a tree is copied server-side with ``huggingface_hub.copy_files``
+and a trailing slash on the source, which copies its contents instead of nesting the folder; a
+file the mount holds newer than the bucket (written, not flushed yet) is then uploaded from the
+mount over its copy, and the backup is listed back against the live tree. The profile is read
+and written whole.
 
 Rollback: copy each backed-up tree's contents back over the live one with the same trailing
 slash, e.g. ``copy_files("hf://buckets/<bucket>/backups/timestamps-pre-online-<UTC>/reciters/
@@ -44,20 +46,14 @@ def backup(slug: str) -> tuple[str, list[str]]:
     copied = []
     try:
         for name in TREES:
-            live = storage_paths.reciter_file(slug, name)
-            names = _files(backend, live)
-            if not names:
-                continue
-            _copy_tree(backend, live, f"{root}/{name}")
-            missing = names - _files(backend, f"{root}/{name}")
-            if missing:
-                raise BackupError(f"{name}: {len(missing)} file(s) missing from the backup")
-            copied.append(name)
+            if _copy_tree(backend, storage_paths.reciter_file(slug, name), f"{root}/{name}"):
+                copied.append(name)
         for name in FILES:
             try:
-                backend.copy(storage_paths.reciter_file(slug, name), f"{root}/{name}")
+                data = backend.read_bytes(storage_paths.reciter_file(slug, name))
             except StorageNotFound:
                 continue
+            _put(backend, f"{root}/{name}", data)
             copied.append(name)
     except BackupError:
         raise
@@ -66,26 +62,58 @@ def backup(slug: str) -> tuple[str, list[str]]:
     return root, copied
 
 
-def _files(backend, path: str) -> set[str]:
-    """The file names under ``path``; on the bucket as its API lists them, not the mount."""
-    if isinstance(backend, BucketBackend):
-        from huggingface_hub import list_bucket_tree
-
-        prefix = f"{path}/"
-        items = list_bucket_tree(resolve_bucket_repo(), prefix=prefix, recursive=True)
-        return {
-            item.path[len(prefix) :]
-            for item in items
-            if item.type == "file" and item.path.startswith(prefix)
-        }
-    return set(backend.list_dir_strict(path))
-
-
-def _copy_tree(backend, src: str, dst: str) -> None:
-    if isinstance(backend, BucketBackend):
+def _copy_tree(backend, src: str, dst: str) -> bool:
+    """Copy ``src``'s files into ``dst``; False when ``src`` has none."""
+    if not isinstance(backend, BucketBackend):
+        if not backend.list_dir_strict(src):
+            return False
+        backend.copy(src, dst)
+        return True
+    remote = _remote(src)
+    local = {n for n in backend.list_dir_strict(src) if ".tmp." not in n}
+    if not remote and not local:
+        return False
+    if remote:
         from huggingface_hub import copy_files
 
         bucket = f"hf://buckets/{resolve_bucket_repo()}"
         copy_files(f"{bucket}/{src}/", f"{bucket}/{dst}")
+    for name in sorted(local):
+        if _unflushed(backend.local_path(f"{src}/{name}"), remote.get(name)):
+            _put(backend, f"{dst}/{name}", backend.read_bytes(f"{src}/{name}"))
+    missing = (set(remote) | local) - set(_remote(dst))
+    if missing:
+        raise BackupError(f"{src}: {len(missing)} file(s) missing from the backup")
+    return True
+
+
+def _remote(path: str) -> dict:
+    """``{name: BucketFile}`` of the files under ``path`` as the bucket API lists them."""
+    from huggingface_hub import list_bucket_tree
+
+    prefix = f"{path}/"
+    items = list_bucket_tree(resolve_bucket_repo(), prefix=prefix, recursive=True)
+    return {
+        item.path[len(prefix) :]: item
+        for item in items
+        if item.type == "file" and item.path.startswith(prefix)
+    }
+
+
+def _unflushed(local, remote) -> bool:
+    """Whether the mount's copy of a file is newer than the bucket's (or the bucket lacks it)."""
+    if local is None:
+        return False
+    if remote is None:
+        return True
+    stamp = remote.mtime or remote.uploaded_at
+    stat = local.stat()
+    return stat.st_size != remote.size or stamp is None or stat.st_mtime > stamp.timestamp()
+
+
+def _put(backend, path: str, data: bytes) -> None:
+    """Write to the bucket itself, past the mount's debounced flush."""
+    if isinstance(backend, BucketBackend):
+        backend.write_bytes_direct(path, data)
     else:
-        backend.copy(src, dst)
+        backend.write_bytes_atomic(path, data)

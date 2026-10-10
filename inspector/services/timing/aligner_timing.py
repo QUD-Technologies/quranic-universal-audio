@@ -9,8 +9,9 @@ segments need; one it builds while decoding a whole file comes back and is store
 chapter are serialised (:func:`chapter_lock`) so a timestamps run and a post-save re-time
 never interleave their read and write of one times file. Built shards come back with the
 chapter's ``coverage`` and its ``untimed`` words, sounds and sakt, the gate a timestamps run
-publishes them under. ``POST /api/v1/extraction/recitation-profile``
-(:func:`delivery_profile`) summarizes a Hafs delivery's shards in the bucket into its
+publishes them under, and a Hafs chapter's ``profile_samples``. ``POST
+/api/v1/extraction/recitation-profile`` (:func:`delivery_profile`) summarizes a Hafs delivery,
+each chapter by those samples or by its shard in the bucket, into its
 ``recitation_profile.json`` document.
 """
 
@@ -105,9 +106,10 @@ def time_chapter(
 ) -> dict | None:
     """Bring ``chapter``'s stored times up to date with its current segments and write them;
     returns the aligner's reply (``timed``/``kept``/``failed``, ``failed_segments``,
-    ``model``, ``shards``, ``lazim_ms``, and with shards ``coverage``/``untimed``), or ``None``
-    when the chapter has no segments any more. ``delivery_lazim_ms`` (:func:`delivery_lazim`) is the basis of the shards' variant
-    picks. The segments are read under the chapter's lock, so a later save's re-time always
+    ``model``, ``shards``, ``lazim_ms``; with shards ``coverage``, ``untimed`` and
+    ``profile_samples``), or ``None`` when the chapter has no segments any more.
+    ``delivery_lazim_ms`` (:func:`delivery_lazim`) is the basis of the shards' variant picks.
+    The segments are read under the chapter's lock, so a later save's re-time always
     runs after this one and writes last."""
     with chapter_lock(slug, chapter):
         detailed = read_detailed(slug)
@@ -178,13 +180,15 @@ def delivery_lazim(slug: str, replies: dict[int, dict]) -> list[float]:
     return out
 
 
-def delivery_profile(slug: str, chapters: list[int]) -> dict:
-    """The recitation profile document of ``slug``'s shards for ``chapters`` (all of them)."""
+def delivery_profile(slug: str, stored: list[int], samples: dict[int, dict]) -> dict:
+    """The recitation profile document of ``slug`` from the bucket shards of the ``stored``
+    chapters and the ``samples`` (chapter -> ``profile_samples``) of the others."""
     refs = {
         str(c): f"hf://buckets/{resolve_bucket_repo()}/{storage_paths.timestamps_path_br(slug, c)}"
-        for c in chapters
+        for c in stored
     }
-    return _post({"shard_refs": refs}, "profile", route=_PROFILE_ROUTE)["profile"]
+    body = {"shard_refs": refs, "samples": {str(c): s for c, s in samples.items()}}
+    return _post(body, "profile", route=_PROFILE_ROUTE)["profile"]
 
 
 def _audio_ref(slug: str, ref) -> str:
