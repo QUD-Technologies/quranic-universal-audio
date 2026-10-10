@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import threading
 
-from qua_shared.schemas import Actor
+from qua_shared.schemas import Actor, Role
 from services.segments import save
 from services.storage import cache, storage_paths
 from services.storage.hf_bucket import get_backend
@@ -53,7 +53,7 @@ def test_overlapping_saves_of_different_chapters_all_persist(
     and ``112`` then writes its older copy over it, dropping ``1``'s edit."""
     _install_three_chapters(tmp_reciter_dir, load_fixture)
     payloads = {ch: _ignore_first_segment(ch) for ch in CHAPTERS}
-    actor = Actor(hf_user_id="test-user-1", login_at_time="alice", role="contributor")
+    actor = Actor(hf_user_id="test-user-1", login_at_time="alice", role=Role.CONTRIBUTOR)
 
     stalled_loaded = threading.Event()
     release_stalled = threading.Event()
