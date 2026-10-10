@@ -1382,10 +1382,11 @@ import type { Segment } from '../../../../lib/types/view-models';
         font-size: 10.5px; font-family: var(--font-mono); color: var(--text-secondary); white-space: nowrap;
     }
     .seg-chip-warn { background: var(--state-error-bg); border-color: oklch(0.86 0.130 75 / 0.4); color: var(--state-error-fg); }
+    /* No transition: a fading-out word re-lit for a frame on later style
+       recalcs, flashing the previous word on every step. */
     .seg-review-word {
         display: inline;
         border-radius: 0.25em;
-        transition: color var(--t-fast) var(--ease-out-quart), background var(--t-fast) var(--ease-out-quart);
     }
     .seg-review-word.active {
         color: var(--accent-fg);
