@@ -39,24 +39,46 @@ def delivery(state_persistence, monkeypatch):
     return backend
 
 
-def _serve(monkeypatch, sent: list, *, fail: int | None = None):
+PROFILE = {"schema_version": 1, "madd": {"tabii": {"n": 2, "mean_ms": 300}}}
+
+
+def _serve(
+    monkeypatch,
+    sent: list,
+    *,
+    fail: int | None = None,
+    failing: tuple[int, ...] = (113,),
+    untimed: dict[int, dict] | None = None,
+    profile: dict | None = None,
+):
     import requests
 
     def post(url, json, headers, timeout):
         sent.append((url, json, headers))
+        if url.endswith("/recitation-profile"):
+            if profile is None:
+                return _Reply({"code": "shard_not_profilable"}, status=422)
+            return _Reply({"profile": profile, "chapters": len(json["shard_refs"])})
         ch = json["chapter"]
         if ch == fail:
             return _Reply({"code": "chapter_timing_failed"}, status=502)
+        left = (untimed or {}).get(ch, {})
         return _Reply({
             "model": "head@1",
             "times": base64.b64encode(f"times-{ch}".encode()).decode(),
             "shards": {str(ch): base64.b64encode(f"shard-{ch}".encode()).decode()},
             "timed": 1, "kept": 0, "failed": 0,
-            "failed_segments": [{"seg": 0}] if ch == 113 else [],
+            "failed_segments": [{"seg": 0}] if ch in failing else [],
             "lazim_ms": [400.0 + ch],
+            "coverage": {"shard_sounds_null": 0, **left} if json["shards"] else None,
+            "untimed": left if json["shards"] else None,
         })  # fmt: skip
 
     monkeypatch.setattr(requests, "post", post)
+
+
+def _timing_calls(sent: list) -> list:
+    return [b for url, b, _ in sent if url.endswith("/extraction/timing")]
 
 
 def _record(backend, run_id: str) -> dict:
@@ -70,7 +92,7 @@ def test_a_run_times_each_chapter_and_writes_times_shards_and_record(delivery, m
     runner._run(record, "hafs", False)
 
     # Times for every chapter, then shards for the chapters without a failed segment.
-    assert [(b["chapter"], b["shards"]) for _, b, _ in sent] == [
+    assert [(b["chapter"], b["shards"]) for b in _timing_calls(sent)] == [
         (112, False), (113, False), (112, True)
     ]  # fmt: skip
     url, body, headers = sent[0]
@@ -113,7 +135,7 @@ def test_a_scoped_run_keeps_other_chapters_failures(delivery, monkeypatch):
     record = runner.TsJobRecord(job_id="run2", slug="r", settings=TsJobSettings(chapters=[112]))
     runner._run(record, "hafs", True)
 
-    assert [(b["chapter"], b["full"], b["shards"]) for _, b, _ in sent] == [
+    assert [(b["chapter"], b["full"], b["shards"]) for b in _timing_calls(sent)] == [
         (112, True, False), (112, False, True)
     ]  # fmt: skip
     validation = json.loads(delivery.read_bytes("reciters/r/ts_validation.json"))
@@ -161,3 +183,96 @@ def test_a_run_rebuilds_the_readings_summary_before_closing(delivery, monkeypatc
     runner._run(record, "hafs", False)
     assert rebuilt == ["r"]
     assert _record(delivery, "run9")["ended_at"]
+
+
+def test_an_untimed_word_sound_or_sakt_writes_no_shard_and_fails_the_run(delivery, monkeypatch):
+    sent: list = []
+    _serve(monkeypatch, sent, failing=(), untimed={113: {"sakt_untimed": 1}})
+    record = runner.TsJobRecord(job_id="run5", slug="r", settings=TsJobSettings())
+    runner._run(record, "hafs", False)
+
+    assert not delivery.exists("reciters/r/timestamps/112.json.br")
+    assert not delivery.exists("reciters/r/timestamps/113.json.br")
+    stored = _record(delivery, "run5")
+    assert stored["status"] == "failed"
+    assert "ch113 {'sakt_untimed': 1}" in stored["error"] and "no shards" in stored["error"]
+    assert not delivery.exists("reciters/r/recitation_profile.json")
+
+
+def test_live_timestamps_are_backed_up_before_the_run_writes(delivery, monkeypatch):
+    delivery.write_bytes_atomic("reciters/r/timestamps/112.json.br", b"live-112")
+    delivery.write_json_atomic("reciters/r/recitation_profile.json", {"schema_version": 1})
+    _serve(monkeypatch, [], failing=())
+    record = runner.TsJobRecord(job_id="run6", slug="r", settings=TsJobSettings())
+    runner._run(record, "fake", False)
+
+    (stamp,) = [d for d in delivery.list_dir("backups") if d.startswith("timestamps-pre-online-")]
+    root = f"backups/{stamp}/reciters/r"
+    assert delivery.read_bytes(f"{root}/timestamps/112.json.br") == b"live-112"
+    assert delivery.read_bytes(f"{root}/timing/112.json.br") == b"stored-112"
+    assert delivery.exists(f"{root}/recitation_profile.json")
+    assert delivery.read_bytes("reciters/r/timestamps/112.json.br") == b"shard-112"
+    assert any(f"backup: {root}" in line for line in _record(delivery, "run6")["logs"])
+
+
+def test_a_failed_backup_fails_the_run_before_anything_is_written(delivery, monkeypatch):
+    sent: list = []
+    _serve(monkeypatch, sent, failing=())
+
+    def broken(*_a, **_k):
+        raise OSError("copy refused")
+
+    monkeypatch.setattr(runner.ts_backup, "_copy_tree", broken)
+    record = runner.TsJobRecord(job_id="run7", slug="r", settings=TsJobSettings())
+    runner._run(record, "hafs", False)
+
+    assert sent == []
+    stored = _record(delivery, "run7")
+    assert stored["status"] == "failed" and "copy refused" in stored["error"]
+    assert delivery.read_bytes("reciters/r/timing/112.json.br") == b"stored-112"
+
+
+def test_a_hafs_run_writes_the_profile_and_drops_the_cached_one(delivery, monkeypatch):
+    sent: list = []
+    _serve(monkeypatch, sent, failing=(), profile=PROFILE)
+    dropped = []
+    monkeypatch.setattr(runner.recitation_profile, "drop", dropped.append)
+    record = runner.TsJobRecord(job_id="run8", slug="r", settings=TsJobSettings(chapters=[112]))
+    delivery.write_bytes_atomic("reciters/r/timestamps/113.json.br", b"live-113")
+    runner._run(record, "hafs", False)
+
+    url, body, _ = sent[-1]
+    assert url == "https://aligner/api/v1/extraction/recitation-profile"
+    assert body == {"shard_refs": {
+        "112": "hf://buckets/o/b/reciters/r/timestamps/112.json.br",
+        "113": "hf://buckets/o/b/reciters/r/timestamps/113.json.br",
+    }}  # fmt: skip
+    assert delivery.read_json("reciters/r/recitation_profile.json") == PROFILE
+    assert dropped == ["r"] and _record(delivery, "run8")["status"] == "succeeded"
+
+
+def test_no_profile_without_every_chapters_shard_or_outside_hafs(delivery, monkeypatch):
+    sent: list = []
+    _serve(monkeypatch, sent, failing=(), profile=PROFILE)
+    record = runner.TsJobRecord(job_id="run10", slug="r", settings=TsJobSettings(chapters=[112]))
+    runner._run(record, "hafs", False)
+    assert not delivery.exists("reciters/r/recitation_profile.json")
+    assert any(
+        "no shard for chapter(s) [113]" in line for line in _record(delivery, "run10")["logs"]
+    )
+
+    record = runner.TsJobRecord(job_id="run11", slug="r", settings=TsJobSettings())
+    runner._run(record, "warsh", False)
+    assert not any(url.endswith("/recitation-profile") for url, _, _ in sent)
+    assert _record(delivery, "run11")["status"] == "succeeded"
+
+
+def test_a_profile_the_aligner_refuses_leaves_the_run_succeeded(delivery, monkeypatch):
+    _serve(monkeypatch, [], failing=(), profile=None)
+    record = runner.TsJobRecord(job_id="run12", slug="r", settings=TsJobSettings())
+    runner._run(record, "hafs", False)
+
+    stored = _record(delivery, "run12")
+    assert stored["status"] == "succeeded"
+    assert any("recitation profile not written" in line for line in stored["logs"])
+    assert not delivery.exists("reciters/r/recitation_profile.json")

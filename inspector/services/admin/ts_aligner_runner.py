@@ -9,6 +9,15 @@ for its times alone, timing only what is still stale (nothing, normally; every s
 (:func:`~services.timing.aligner_timing.delivery_lazim`) as the basis of their reading-variant
 picks. Times and shards are written as returned.
 
+Before anything is written the delivery's live ``timestamps/``, ``timing/`` and recitation
+profile are copied to a backup folder (:mod:`services.admin.ts_backup`, which documents the
+rollback); a failed backup fails the run untouched. Shards are written only when no built
+chapter leaves a word, sound or rendered sakt untimed (the aligner's ``untimed`` counts, the
+batch re-time's publish gate); otherwise none are and the run fails naming the counts. A Hafs
+run that succeeds with every chapter's shard in the bucket ends by writing
+``recitation_profile.json`` (summarized on the aligner from the delivery's shards) and dropping
+the cached profile; a profile that cannot be built is logged and leaves the run succeeded.
+
 ``start_run`` writes the ``running`` run record (``jobs/ts/<run_id>.json``, the shape the
 batch Space wrote) and works on a daemon thread, stamping the record ``succeeded`` or
 ``failed`` at the end, so completion, releases and the automations read it unchanged. A
@@ -27,8 +36,10 @@ import logging
 import threading
 import uuid
 
-from qua_shared.schemas import TsJobRecord, TsJobSettings
-from services.reference import readings
+from qua_shared.riwayat import DEFAULT_SDK_RIWAYAH
+from qua_shared.schemas import RecitationProfileDoc, TsJobRecord, TsJobSettings
+from services.admin import ts_backup
+from services.reference import readings, recitation_profile
 from services.storage import storage_paths
 from services.storage.hf_bucket import StorageNotFound, get_backend
 from services.timing import aligner_timing
@@ -90,14 +101,22 @@ def _run(record: TsJobRecord, riwayah: str, full: bool) -> None:
             record.log_truncated = True
 
     try:
-        failed, model = _time_chapters(record, riwayah, full, emit)
+        root, copied = ts_backup.backup(record.slug)
+        emit(f"backup: {root} ({', '.join(copied) or 'nothing live yet'})")
+        failed, model, untimed = _time_chapters(record, riwayah, full, emit)
         _write_validation(record.slug, failed, record.settings.chapters, model)
+        if untimed:
+            raise RuntimeError(
+                f"untimed words, sounds or sakt: {_counts(untimed)}; no shards were written"
+            )
         if failed:
             raise RuntimeError(
                 f"segments failed in chapter(s) {sorted(map(int, failed))}; their shards were "
                 "left as they were (ts_validation.json lists the segments)"
             )
         record.status = "succeeded"
+        if riwayah == DEFAULT_SDK_RIWAYAH:
+            _write_profile(record.slug, emit)
     except _Canceled:
         emit("canceled")
         record.status = "canceled"
@@ -113,10 +132,13 @@ def _run(record: TsJobRecord, riwayah: str, full: bool) -> None:
     _write(record)
 
 
-def _time_chapters(record: TsJobRecord, riwayah, full, emit) -> tuple[dict[str, list], str]:
+def _time_chapters(
+    record: TsJobRecord, riwayah, full, emit
+) -> tuple[dict[str, list], str, dict[str, dict]]:
     """Each wanted chapter's times brought current, then its shards built and written, unless
-    a segment failed: that chapter's shards stay as they were. Stops before a chapter once
-    the run is canceled."""
+    a segment failed: that chapter's shards stay as they were. No shard is written when a built
+    chapter leaves anything untimed. Returns the failed segments, the model and the untimed
+    counts by chapter. Stops before a chapter once the run is canceled."""
     slug, chapters = record.slug, record.settings.chapters
     wanted = [c for c in aligner_timing.chapters_of(slug) if not chapters or c in chapters]
     emit(f"{len(wanted)} chapter(s), {riwayah}, full={full}")
@@ -126,17 +148,71 @@ def _time_chapters(record: TsJobRecord, riwayah, full, emit) -> tuple[dict[str, 
     emit(f"variant basis: {len(lazim)} madd lazim")
     ready = [c for c in timed if str(c) not in failed]
     built = _pass(record, ready, emit, riwayah=riwayah, shards=True, delivery_lazim_ms=lazim)
-    backend = get_backend()
     for chapter, reply in built.items():
         if reply["failed_segments"]:
             failed[str(chapter)] = reply["failed_segments"]
-            continue
-        for shard_chapter, shard in reply["shards"].items():
-            backend.write_bytes_atomic(
-                storage_paths.timestamps_path_br(slug, shard_chapter), base64.b64decode(shard)
-            )
+    publish = {c: r for c, r in built.items() if str(c) not in failed}
+    untimed = _untimed(publish, emit)
+    if not untimed:
+        backend = get_backend()
+        for reply in publish.values():
+            for shard_chapter, shard in reply["shards"].items():
+                backend.write_bytes_atomic(
+                    storage_paths.timestamps_path_br(slug, shard_chapter), base64.b64decode(shard)
+                )
     model = next((r["model"] for r in (*built.values(), *timed.values())), "")
-    return failed, model
+    return failed, model, untimed
+
+
+def _untimed(replies: dict[int, dict], emit) -> dict[str, dict]:
+    """``{chapter: untimed counts}`` of the built chapters that leave something untimed. A reply
+    without coverage comes from an aligner that predates the gate: logged, not counted."""
+    out: dict[str, dict] = {}
+    totals: dict[str, int] = {}
+    unreported = []
+    for chapter, reply in replies.items():
+        if reply.get("coverage") is None:
+            unreported.append(chapter)
+            continue
+        for key, n in reply["coverage"].items():
+            totals[key] = totals.get(key, 0) + n
+        if reply.get("untimed"):
+            out[str(chapter)] = reply["untimed"]
+    if unreported:
+        emit(f"coverage not reported by the aligner for chapter(s) {sorted(unreported)}: ungated")
+        log.warning("[ts] the aligner reported no coverage for chapter(s) %s", sorted(unreported))
+    if totals:
+        emit(f"coverage: {totals}")
+    if out:
+        emit(f"untimed: {_counts(out)}; no shards written")
+    return out
+
+
+def _counts(untimed: dict[str, dict]) -> str:
+    return "; ".join(f"ch{ch} {untimed[ch]}" for ch in sorted(untimed, key=int))
+
+
+def _write_profile(slug: str, emit) -> None:
+    """``recitation_profile.json`` from every chapter's shard, when each chapter has one; a
+    failure is logged and the previous profile stays."""
+    try:
+        chapters = aligner_timing.chapters_of(slug)
+        shards_dir = storage_paths.reciter_file(slug, "timestamps")
+        present = set(get_backend().list_dir_strict(shards_dir))
+        missing = [c for c in chapters if f"{c}.json.br" not in present]
+        if missing:
+            emit(f"recitation profile not written: no shard for chapter(s) {missing}")
+            return
+        doc = aligner_timing.delivery_profile(slug, chapters)
+        RecitationProfileDoc.model_validate(doc)
+        get_backend().write_json_atomic(storage_paths.recitation_profile_path(slug), doc)
+    except Exception as exc:  # noqa: BLE001 — the run's shards are live either way
+        log.exception("[ts %s] recitation profile not written", slug)
+        emit(f"recitation profile not written: {type(exc).__name__}: {str(exc)[:300]}")
+        return
+    finally:
+        recitation_profile.drop(slug)
+    emit(f"recitation profile written from {len(chapters)} chapter shard(s)")
 
 
 def _pass(record: TsJobRecord, chapters: list[int], emit, **kwargs) -> dict[int, dict]:
@@ -150,9 +226,10 @@ def _pass(record: TsJobRecord, chapters: list[int], emit, **kwargs) -> dict[int,
         if reply is None:
             continue
         out[chapter] = reply
+        untimed = f", untimed {reply['untimed']}" if reply.get("untimed") else ""
         emit(
             f"ch{chapter} {step}: timed {reply['timed']}, kept {reply['kept']}, "
-            f"failed {reply['failed']} ({reply['model']})"
+            f"failed {reply['failed']}{untimed} ({reply['model']})"
         )
     return out
 

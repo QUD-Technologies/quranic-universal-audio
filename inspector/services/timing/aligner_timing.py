@@ -7,7 +7,11 @@ is unchanged, times the rest with the neural timing head, and returns the chapte
 frame index (``audio_frames/<chapter>.bin``) lets the aligner read only the frames a few
 segments need; one it builds while decoding a whole file comes back and is stored. Calls for the same
 chapter are serialised (:func:`chapter_lock`) so a timestamps run and a post-save re-time
-never interleave their read and write of one times file.
+never interleave their read and write of one times file. Built shards come back with the
+chapter's ``coverage`` and its ``untimed`` words, sounds and sakt, the gate a timestamps run
+publishes them under. ``POST /api/v1/extraction/recitation-profile``
+(:func:`delivery_profile`) summarizes a Hafs delivery's shards in the bucket into its
+``recitation_profile.json`` document.
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from services.storage.hf_bucket import StorageNotFound, get_backend, resolve_buc
 log = logging.getLogger("inspector")
 
 _ROUTE = "/api/v1/extraction/timing"
+_PROFILE_ROUTE = "/api/v1/extraction/recitation-profile"
 #: A long chapter decodes and times in about a minute on the GPU; the CPU fallback takes
 #: several times that.
 _READ_TIMEOUT_S = 3600
@@ -100,8 +105,8 @@ def time_chapter(
 ) -> dict | None:
     """Bring ``chapter``'s stored times up to date with its current segments and write them;
     returns the aligner's reply (``timed``/``kept``/``failed``, ``failed_segments``,
-    ``model``, ``shards``, ``lazim_ms``), or ``None`` when the chapter has no segments any
-    more. ``delivery_lazim_ms`` (:func:`delivery_lazim`) is the basis of the shards' variant
+    ``model``, ``shards``, ``lazim_ms``, and with shards ``coverage``/``untimed``), or ``None``
+    when the chapter has no segments any more. ``delivery_lazim_ms`` (:func:`delivery_lazim`) is the basis of the shards' variant
     picks. The segments are read under the chapter's lock, so a later save's re-time always
     runs after this one and writes last."""
     with chapter_lock(slug, chapter):
@@ -128,7 +133,7 @@ def time_chapter(
                 "shards": shards,
                 "delivery_lazim_ms": delivery_lazim_ms,
             },
-            chapter,
+            f"ch{chapter}",
         )
         get_backend().write_bytes_atomic(
             storage_paths.timing_path_br(slug, chapter), base64.b64decode(reply["times"])
@@ -173,6 +178,15 @@ def delivery_lazim(slug: str, replies: dict[int, dict]) -> list[float]:
     return out
 
 
+def delivery_profile(slug: str, chapters: list[int]) -> dict:
+    """The recitation profile document of ``slug``'s shards for ``chapters`` (all of them)."""
+    refs = {
+        str(c): f"hf://buckets/{resolve_bucket_repo()}/{storage_paths.timestamps_path_br(slug, c)}"
+        for c in chapters
+    }
+    return _post({"shard_refs": refs}, "profile", route=_PROFILE_ROUTE)["profile"]
+
+
 def _audio_ref(slug: str, ref) -> str:
     return f"hf://buckets/{resolve_bucket_repo()}/reciters/{slug}/audio/{ref}.mp3"
 
@@ -192,7 +206,7 @@ def _store_frames(slug: str, frames: dict[str, str]) -> None:
             log.exception("[timing %s] storing the frame index of %s failed", slug, ref)
 
 
-def _post(body: dict, chapter: int) -> dict:
+def _post(body: dict, label: str, *, route: str = _ROUTE) -> dict:
     import requests
 
     headers = {
@@ -200,11 +214,11 @@ def _post(body: dict, chapter: int) -> dict:
         "X-Extraction-Secret": aligner_params.extraction_secret(),
     }
     resp = requests.post(
-        aligner_params.aligner_url() + _ROUTE,
+        aligner_params.aligner_url() + route,
         json=body,
         headers=headers,
         timeout=(60, _READ_TIMEOUT_S),
     )
     if resp.status_code // 100 != 2:
-        raise TimingCallError(f"ch{chapter}: aligner {resp.status_code}: {resp.text[:300]}")
+        raise TimingCallError(f"{label}: aligner {resp.status_code}: {resp.text[:300]}")
     return resp.json()

@@ -1,7 +1,8 @@
 """Per-delivery recitation profile — ``reciters/<slug>/recitation_profile.json``.
 
-Written by the batch re-time (sibling repo ``qua``,
-``qua_sdk.integrations.recitation_profile``) for Hafs deliveries: per madd type the
+Written for Hafs deliveries by the batch re-time and at the end of an Inspector timestamps
+run (both from sibling repo ``qua``'s ``qua_sdk.integrations.recitation_profile``, the latter
+through the aligner's ``/extraction/recitation-profile``): per madd type the
 occurrence count and mean duration, a ``verdict`` (with its ``share``) for the types with
 a length choice, then ghunnah and silence. A type with no occurrences has a null
 ``mean_ms`` and no verdict. Produced outside this repo, so unknown keys are ignored.
