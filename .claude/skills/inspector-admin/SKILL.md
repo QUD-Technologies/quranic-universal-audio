@@ -49,6 +49,7 @@ Every script:
 | `scripts/admin_perms.py {matrix,set,reset} [--cap ID --tier T --allowed {0,1}]` | Owner-only capability overrides. |
 | `scripts/admin_db.py exec "SQL" [--write]` | Raw SQL against the pulled DB. Read-only by default; `--write` opens the writer + syncs back. |
 | `scripts/admin_reciter.py SLUG` | One-shot dump: state row, claim, recent transitions, linked TS-job ids+statuses, bucket file inventory. |
+| `scripts/admin_readings.py [SLUG ...] [--force]` | Write `reciters/<slug>/readings.json` (Timestamps readings panel) for released Hafs deliveries missing a current one. Bucket file writes only, no Space pause. |
 | `scripts/admin_catalog.py {reciter,delivery,source,channel,vocab} {list,show,add,edit} [...]` | Catalog CRUD over `services/state/catalog.py` — reciter/delivery/source/channel add+edit, vocab/list/show reads. `edit` surface mirrors the service (reciter: name/country/notes; delivery: riwayah/style/recording_context/recording_year). |
 
 ## Common recipes
@@ -70,6 +71,10 @@ python .claude/skills/inspector-admin/scripts/admin_reciter.py <slug> --prod
 # Preview and cut a global GH release
 python .claude/skills/inspector-admin/scripts/admin_release.py preview --prod
 python .claude/skills/inspector-admin/scripts/admin_release.py cut --prod --yes-prod --monitor
+
+# Pre-build the readings panel summaries so no visitor pays the cold build
+python .claude/skills/inspector-admin/scripts/admin_readings.py --prod --dry-run
+python .claude/skills/inspector-admin/scripts/admin_readings.py --prod --yes-prod
 
 # Emergency read-only SQL
 python .claude/skills/inspector-admin/scripts/admin_db.py exec "select slug, state, marked_ready from delivery_states where state='under_review'" --prod

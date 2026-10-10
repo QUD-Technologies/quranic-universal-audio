@@ -89,8 +89,11 @@ From the shards, the Inspector derives `reciters/<slug>/readings.json`: what a H
 wherever the riwayah allows a choice (`TsReadingsDoc`, built by
 `inspector/services/reference/readings.py`, served at `GET /api/ts/readings/<slug>`). An aligner
 run rebuilds it before closing its record, the `ts-refreshed` notice rebuilds it for offline
-publishes, and the route builds it on first request when it is missing. Non-Hafs deliveries get an
-empty summary.
+publishes, `admin_readings.py` (inspector-admin skill) pre-builds it for released deliveries, and the
+route builds it on first request when it is missing or of an older `schema_version` (single-flight
+per slug; the build reads only the shard readings that carry variants). Each verse carries the
+`start_ms` of the part read that way, so a jump lands on that rendition. Non-Hafs deliveries get
+an empty summary.
 
 The batch re-time also publishes `reciters/<slug>/recitation_profile.json` for Hafs deliveries:
 per madd type the mean duration and, where Hafs allows a length choice, the length read, then

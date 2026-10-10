@@ -164,3 +164,96 @@ def test_doc_builds_and_stores_on_first_request(hafs, monkeypatch):
     assert written["reciters/r/readings.json"]["rows"]
     readings.invalidate()
     assert readings.doc("r") == first
+
+
+def _compact(*readings_):
+    """A shard serialized like the builders write it: compact, pydantic field order."""
+    doc = {
+        "_meta": {"schema_version": 15, "variant_catalogue": CATALOGUE},
+        "readings": [
+            {"id": f"r{i}", "parts": [], "render": r["render"], "timing": {"w": []}}
+            | ({"variants": r["variants"]} if r["variants"] else {})
+            for i, r in enumerate(readings_)
+        ],
+    }
+    return json.dumps(doc, ensure_ascii=False, separators=(",", ":")).encode()
+
+
+def test_variant_view_decodes_only_readings_with_variants():
+    body = _compact(
+        _reading([("10:50:1", "قُلْ")]),
+        _reading([("10:51:7", "ءَآلْـَٔـٰنَ")], _variant("istifham_article", "tashil", [0])),
+        _reading([("10:52:1", "ثُمَّ")]),
+        _reading([("10:91:1", "ءَآلْـَٔـٰنَ")], _variant("istifham_article", "tashil", [0])),
+    )
+    view = readings.variant_view(body)
+    assert [r["id"] for r in view["readings"]] == ["r1", "r3"]
+    assert readings.shard_hits(view) == readings.shard_hits(json.loads(body))
+
+
+def test_variant_view_reads_any_other_layout_whole():
+    body = json.dumps(SHARDS[10]).encode()
+    assert readings.variant_view(body) == SHARDS[10]
+
+
+def test_concurrent_first_requests_build_once(hafs, monkeypatch):
+    import threading
+    import time
+
+    from services.storage.hf_bucket import StorageNotFound
+
+    builds = []
+
+    class Backend:
+        def read_json(self, path):
+            raise StorageNotFound(path)
+
+        def write_json_atomic(self, path, obj):
+            pass
+
+    def slow_build(slug):
+        builds.append(slug)
+        time.sleep(0.2)
+        return readings.TsReadingsDoc(slug=slug)
+
+    monkeypatch.setattr(readings, "get_backend", lambda: Backend())
+    monkeypatch.setattr(readings, "build", slow_build)
+    threads = [threading.Thread(target=readings.doc, args=("r",)) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(5)
+    assert builds == ["r"]
+
+
+def test_verse_read_twice_jumps_to_the_rendition_that_read_the_option():
+    stopped = {"parts": [["68:1", 14570, 17780, 0, 1]], "render": {"w": [["68:1:1", "نٓ", []]]}}
+    joined = {
+        "parts": [["68:1", 24245, 32995, 0, 5]],
+        "render": {"w": [[f"68:1:{i}", "w", []] for i in range(1, 6)]},
+        "variants": [_variant("noon_wasl", "izhar", [0])],
+    }
+    shard = _shard(stopped, joined)
+    shard["_meta"]["variant_catalogue"]["noon_wasl"] = {"options": ["izhar", "idgham"]}
+    (row,) = readings.fold(readings.shard_hits(shard))
+    (verse,) = row.options[0].verses
+    assert (verse.label, verse.start_ms) == ("68:1", 24245)
+
+
+def test_older_stored_summary_is_rebuilt(hafs, monkeypatch):
+    from services.storage.hf_bucket import StorageNotFound
+
+    stored = {"reciters/r/readings.json": {"schema_version": 1, "slug": "r", "rows": []}}
+
+    class Backend:
+        def read_json(self, path):
+            if path not in stored:
+                raise StorageNotFound(path)
+            return stored[path]
+
+        def write_json_atomic(self, path, obj):
+            stored[path] = obj
+
+    monkeypatch.setattr(readings, "get_backend", lambda: Backend())
+    assert readings.doc("r").rows
+    assert stored["reciters/r/readings.json"]["schema_version"] == readings.READINGS_SCHEMA_VERSION

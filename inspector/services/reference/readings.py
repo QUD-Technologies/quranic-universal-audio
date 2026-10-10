@@ -5,25 +5,35 @@ selector and word (``istifham_article`` splits into its three words), each listi
 with the verses read that way. A shard carries a variant only where its condition held
 (stopped, joined or started there), so waqf/wasl/ibtidaa rows appear only where they applied.
 Picks made without evidence (``by: "default"``) and selectors outside ``SHOWN`` are dropped.
+Each verse carries the start of the part the option was read in (``start_ms``), so a verse
+recited twice — stopped, then again joined — jumps to the rendition that read that way.
+
+The build reads its shards in parallel and decodes only ``_meta`` and the readings that carry
+``variants`` (``variant_view``), not the whole shard.
 
 ``refresh(slug)`` builds and writes ``reciters/<slug>/readings.json``; the aligner timestamps
-run and the ``ts-refreshed`` notice call it after new shards land. ``doc(slug)`` serves the
-stored summary, building it on first request when it is missing. A non-Hafs delivery always
-gets an empty summary.
+run, the ``ts-refreshed`` notice and the ``admin_readings.py`` backfill call it. ``doc(slug)``
+serves the stored summary, building it on first request when it is missing or of an older
+``schema_version``; builds of one slug
+are single-flight. A non-Hafs delivery always gets an empty summary.
 """
 
 from __future__ import annotations
 
-import json
 import logging
+import re
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
+import orjson
 from pydantic import ValidationError
 
 from qua_shared.riwayat import DEFAULT_SDK_RIWAYAH, UnsupportedRiwayah, resolve_sdk_slug
 from qua_shared.schemas import TsReadingOption, TsReadingRow, TsReadingsDoc, TsReadingVerse
+from qua_shared.schemas.bucket.ts_readings import READINGS_SCHEMA_VERSION
 from services.state import catalog as catalog_service
+from services.state import state as state_service
 from services.storage import data_dir, storage_paths
 from services.storage.hf_bucket import StorageError, StorageNotFound, get_backend
 
@@ -68,7 +78,18 @@ _WORD_FORMS = {
     },
 }
 
+_READ_WORKERS = 8
+
+# Shards are compact pydantic dumps: ``_meta`` first, each reading opening with its ``id`` then
+# ``parts``, ``variants`` its last key and ``readings`` the document's last key.
+_META_OPEN = b'{"_meta":'
+_READINGS_OPEN = b',"readings":['
+_READING_ID = b'{"id":"'
+_READING_OPEN = re.compile(rb'\{"id":"[^"]*","parts":')
+_VARIANTS_KEY = b'"variants":'
+
 _cache: dict[str, TsReadingsDoc] = {}
+_slug_locks: dict[str, threading.Lock] = {}
 _lock = threading.Lock()
 
 
@@ -80,6 +101,49 @@ def is_hafs(slug: str) -> bool:
         return resolve_sdk_slug(delivery.riwayah) == DEFAULT_SDK_RIWAYAH
     except UnsupportedRiwayah:
         return False
+
+
+def released_hafs_slugs() -> list[str]:
+    return [
+        row.slug
+        for row in state_service.all_rows()
+        if row.state.value == "released" and is_hafs(row.slug)
+    ]
+
+
+def variant_view(body: bytes) -> dict:
+    """A shard's ``_meta`` and only its readings carrying ``variants``; any other layout whole."""
+    try:
+        return _variant_slices(body)
+    except ValueError:
+        return orjson.loads(body)
+
+
+def _variant_slices(body: bytes) -> dict:
+    if not body.startswith(_META_OPEN):
+        raise ValueError("shard does not open with _meta")
+    first = _READING_OPEN.search(body)
+    meta_end = body.rfind(_READINGS_OPEN, 0, first.start() if first else len(body))
+    if meta_end < 0:
+        raise ValueError("shard has no readings list")
+    readings = []
+    pos = meta_end
+    while (key := body.find(_VARIANTS_KEY, pos)) >= 0:
+        start = _reading_start(body, key)
+        following = _READING_OPEN.search(body, key)
+        end = following.start() - 1 if following else len(body) - 2  # drop "," or "]}"
+        readings.append(orjson.loads(body[start:end]))
+        pos = end
+    return {"_meta": orjson.loads(body[len(_META_OPEN) : meta_end]), "readings": readings}
+
+
+def _reading_start(body: bytes, before: int) -> int:
+    start = body.rfind(_READING_ID, 0, before)
+    while start >= 0 and not _READING_OPEN.match(body, start):
+        start = body.rfind(_READING_ID, 0, start)
+    if start < 0:
+        raise ValueError("variants outside a reading")
+    return start
 
 
 def shard_hits(shard: dict) -> list[dict]:
@@ -99,6 +163,7 @@ def shard_hits(shard: dict) -> list[dict]:
                 continue
             hits.append(
                 {
+                    "start_ms": _part_start(reading.get("parts") or [], ids[0]),
                     "selector": sel,
                     "option": variant["chosen"],
                     "options": list((catalogue.get(sel) or {}).get("options") or []),
@@ -109,15 +174,24 @@ def shard_hits(shard: dict) -> list[dict]:
     return hits
 
 
+def _part_start(parts: list, word: int) -> int | None:
+    """Start ms of the part (``[ref, start, end, first, count]``) holding word index ``word``."""
+    for _ref, start, _end, first, count in parts:
+        if first <= word < first + count:
+            return start
+    return None
+
+
 def _ref_key(ref: str) -> tuple[int, ...]:
     return tuple(int(part) for part in ref.split(":"))
 
 
-def _verse(refs: list[str]) -> TsReadingVerse:
+def _verse(hit: dict) -> TsReadingVerse:
+    refs = hit["refs"]
     surah, ayah = _ref_key(refs[0])[:2]
     last = _ref_key(refs[-1])[1]
     label = f"{surah}:{ayah}–{last}" if last != ayah else f"{surah}:{ayah}"
-    return TsReadingVerse(surah=surah, ayah=ayah, label=label)
+    return TsReadingVerse(surah=surah, ayah=ayah, label=label, start_ms=hit["start_ms"])
 
 
 def _row_key(hit: dict) -> str:
@@ -126,14 +200,14 @@ def _row_key(hit: dict) -> str:
 
 
 def fold(hits: list[dict]) -> list[TsReadingRow]:
-    """Rows in mushaf order; each option's verses deduped and sorted."""
+    """Rows in mushaf order; each option's verses deduped (first rendition kept) and sorted."""
     rows: dict[str, dict] = {}
-    for hit in sorted(hits, key=lambda h: _ref_key(h["refs"][0])):
+    for hit in sorted(hits, key=lambda h: (_ref_key(h["refs"][0]), h["start_ms"] or 0)):
         row = rows.setdefault(_row_key(hit), {"hit": hit, "options": {}})
         for option in hit["options"]:
             row["options"].setdefault(option, {})
-        verse = _verse(hit["refs"])
-        row["options"].setdefault(hit["option"], {})[verse.label] = verse
+        verse = _verse(hit)
+        row["options"].setdefault(hit["option"], {}).setdefault(verse.label, verse)
     return [
         TsReadingRow(
             selector=row["hit"]["selector"],
@@ -156,17 +230,26 @@ def build(slug: str) -> TsReadingsDoc:
     built_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     if not is_hafs(slug):
         return TsReadingsDoc(slug=slug, built_at=built_at)
-    hits: list[dict] = []
-    for chapter in CHAPTERS:
-        body = data_dir.read_timestamps_chapter(slug, chapter)
-        if body is None:
-            continue
-        hits.extend(shard_hits(json.loads(body)))
+    with ThreadPoolExecutor(max_workers=_READ_WORKERS, thread_name_prefix="readings") as pool:
+        bodies = pool.map(lambda chapter: data_dir.read_timestamps_chapter(slug, chapter), CHAPTERS)
+        hits = [
+            hit for body in bodies if body is not None for hit in shard_hits(variant_view(body))
+        ]
     return TsReadingsDoc(slug=slug, built_at=built_at, rows=fold(hits))
+
+
+def _slug_lock(slug: str) -> threading.Lock:
+    with _lock:
+        return _slug_locks.setdefault(slug, threading.Lock())
 
 
 def refresh(slug: str) -> TsReadingsDoc:
     """Build the summary and store it; a failed write still serves the built summary."""
+    with _slug_lock(slug):
+        return _refresh(slug)
+
+
+def _refresh(slug: str) -> TsReadingsDoc:
     summary = build(slug)
     try:
         get_backend().write_json_atomic(
@@ -194,6 +277,17 @@ def refresh_in_background(slug: str) -> None:
     ).start()
 
 
+def stored_doc(slug: str) -> TsReadingsDoc | None:
+    """The stored summary, or ``None`` when it is missing, invalid or of an older schema."""
+    try:
+        stored = TsReadingsDoc.model_validate(
+            get_backend().read_json(storage_paths.readings_path(slug))
+        )
+    except (StorageNotFound, ValidationError):
+        return None
+    return stored if stored.schema_version == READINGS_SCHEMA_VERSION else None
+
+
 def doc(slug: str) -> TsReadingsDoc:
     """The stored summary, built and stored on first request when it is missing."""
     with _lock:
@@ -202,15 +296,17 @@ def doc(slug: str) -> TsReadingsDoc:
         return cached
     if not is_hafs(slug):
         return TsReadingsDoc(slug=slug)
-    try:
-        stored = TsReadingsDoc.model_validate(
-            get_backend().read_json(storage_paths.readings_path(slug))
-        )
-    except (StorageNotFound, ValidationError):
-        return refresh(slug)
-    with _lock:
-        _cache[slug] = stored
-    return stored
+    with _slug_lock(slug):
+        with _lock:
+            cached = _cache.get(slug)
+        if cached is not None:
+            return cached
+        stored = stored_doc(slug)
+        if stored is None:
+            return _refresh(slug)
+        with _lock:
+            _cache[slug] = stored
+        return stored
 
 
 def invalidate() -> None:

@@ -108,6 +108,7 @@
         type TsFocusWaslGroup,
         type TsLoadedVerse,
     } from './stores/verse';
+    import { occasionIndexOfRef } from './utils/occasion-index';
     import { occasionIndexAt, resolveShuffleTick, shouldFireShuffle, speechSpan } from './utils/shuffle-tick';
     import { setupZoomLifecycle } from './utils/zoom';
 
@@ -155,6 +156,8 @@
     /** Set when a context switch should seek to a specific verse once the new
      *  chapter's data + audio are ready (shuffle / validation jump / entry). */
     let pendingSeekRef: string | null = null;
+    /** Chapter ms picking which occasion of `pendingSeekRef` to land on. */
+    let pendingSeekMs: number | null = null;
     let shuffleFiredForIdx = -1; // guard so the shuffle fires once per occasion
 
     /** Loop is anchored to the occasion that was in focus when the loop was
@@ -299,6 +302,7 @@
         cacheReciter(delivery.slug);
         const chapter = target?.chapter ?? 1;
         pendingSeekRef = target?.verseRef ?? null;
+        pendingSeekMs = null;
         _autoplayPending = autoplay;
         playerContext.update((s) => ({
             ...s,
@@ -377,6 +381,7 @@
             const valid = blockChapters[0];
             if (valid && valid !== chapter) {
                 pendingSeekRef = null;
+                pendingSeekMs = null;
                 playerContext.update((s) => ({ ...s, surahNum: valid, positionMs: 0 }));
             }
             return;
@@ -458,8 +463,9 @@
             // Apply a queued seek (entry / shuffle / validation jump), else focus
             // the verse under the current playhead.
             if (pendingSeekRef) {
-                const i = firstOccasionIndexOfRef(pendingSeekRef);
+                const i = occasionIndexOfRef(chapterOccasions, pendingSeekRef, pendingSeekMs);
                 pendingSeekRef = null;
+                pendingSeekMs = null;
                 if (i >= 0) {
                     const v = chapterOccasions[i]!;
                     setFocusByIndex(i);
@@ -766,6 +772,7 @@
         setIsPlaying(shouldPlay);
 
         pendingSeekRef = c.target.verseRef; // syncChapter focuses it once data lands
+        pendingSeekMs = null;
         _autoplayPending = false;           // already playing the adopted element
         playerContext.update((s) => ({
             ...s,
@@ -854,17 +861,19 @@
         chapter: number,
         verseRef: string,
         autoplay = true,
+        timeMs: number | null = null,
     ): Promise<void> {
         const curSlug = get(playerContext).delivery?.slug ?? '';
         const curChapter = get(playerContext).surahNum ?? 0;
         if (slug === curSlug && chapter === curChapter) {
-            const i = firstOccasionIndexOfRef(verseRef);
+            const i = occasionIndexOfRef(chapterOccasions, verseRef, timeMs);
             if (i >= 0) seekFocus(i, autoplay);
             return;
         }
         const entry = findTsEntryBySlug(get(catalogData).reciters, manifestSlugs, slug);
         if (!entry) return;
         pendingSeekRef = verseRef;
+        pendingSeekMs = timeMs;
         _autoplayPending = autoplay || !dashPort.paused; // keep or create playback across the jump
         playerContext.update((s) => ({
             ...s,
@@ -936,12 +945,14 @@
         ayah: number;
         autoplay: boolean;
         slug?: string;
+        timeMs?: number;
     }): void {
         navHandled = true;
         pendingTsNavigation.set(null);
         if (nav.slug) {
-            // Flag-notification redirect — go to that exact reciter + verse.
-            void jumpToTarget(nav.slug, nav.surah, `${nav.surah}:${nav.ayah}`, nav.autoplay);
+            // Flag-notification / readings-panel redirect — that exact reciter + verse
+            // (and rendition, when `timeMs` is given).
+            void jumpToTarget(nav.slug, nav.surah, `${nav.surah}:${nav.ayah}`, nav.autoplay, nav.timeMs ?? null);
         } else {
             void loadBookmarkedVerse(nav.surah, nav.ayah, nav.autoplay);
         }
@@ -955,6 +966,7 @@
                 const shard = await loadChapterShard(e.delivery.slug, surah);
                 if (!chapterVerseRefs(shard).includes(verseRef)) continue;
                 pendingSeekRef = verseRef;
+                pendingSeekMs = null;
                 _autoplayPending = autoplay;
                 playerContext.update((s) => ({
                     ...s,
