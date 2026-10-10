@@ -2,8 +2,8 @@
 
 One click in **Admin → Requests** takes a delivery from `awaiting_alignment` to
 `awaiting_review` on the Spaces that already exist. No Katana, no laptop, no
-new engines. Replaces the offline `segments-extraction` runbook for by_surah
-deliveries in any supported riwayah, including playlist deliveries: the
+new engines. It is the extraction path for by_surah deliveries in any
+supported riwayah, including playlist deliveries: the
 aligner detects which surahs each playlist file holds (one, several, a juz', or
 part of a long surah) and the run cuts them into chapters. Titles are never read.
 
@@ -129,8 +129,7 @@ to CPU still counts as GPU, not as the CPU slot. The Requests payload carries
 `exempt`) on the open facet for `intake.align` holders; the Align CTA shows the
 counters and disables a spent lane.
 
-Parameters (`params.py`): model `Large` (the same `hetchyy/r7` checkpoint as the
-Katana extraction), `pad_left_ms=100`, `pad_right_ms=100`, `min_silence_floor_ms=50`,
+Parameters (`params.py`): model `Large` (the `hetchyy/r7` checkpoint), `pad_left_ms=100`, `pad_right_ms=100`, `min_silence_floor_ms=50`,
 matcher/thresholds = whatever the Space runs, `include_merge_groups=true`,
 `include_auto_split_timings=true`, `discard_session=true`, no full word-timestamp
 pass, no aligner-side split. Only Auto Split candidates are timed — the aligner's
@@ -395,7 +394,7 @@ the scraped Drive listing key. The app itself needs `yt-dlp` (in
 
 ## Not built yet
 
-by_ayah deliveries, Katana runbook removal, prod rollout
+by_ayah deliveries, prod rollout
 (`INSPECTOR_ALIGN_PIPELINE` stays unset on prod).
 
 The pause-sidecar builder receives live detailed entries and skips joins with
