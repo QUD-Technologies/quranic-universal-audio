@@ -502,7 +502,9 @@ def _missed_waqf_after_sidecars(align_env, monkeypatch, neural):
         },
     )
     stage_sidecars.run(SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"})
-    return staging.read_json(staging.sidecar_path(SLUG, run.run_id, "missed_waqf_v2.json"))
+    staged = staging.read_json(staging.sidecar_path(SLUG, run.run_id, "missed_waqf_v2.json"))
+    assert staged is not None
+    return staged
 
 
 def test_sidecars_stage_merges_the_neural_missed_waqf(align_env, monkeypatch):
