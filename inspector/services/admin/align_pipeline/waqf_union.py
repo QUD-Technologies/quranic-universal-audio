@@ -47,24 +47,29 @@ def _both(neural: dict, lattice: dict) -> dict:
     }
 
 
+def _keyed(item: dict | None) -> dict[tuple[str, str], dict]:
+    """``item``'s cuts by the join they cut (a cut naming no join is dropped)."""
+    out = {}
+    for cut in (item or {}).get("cuts") or []:
+        join = _join(cut)
+        if join is not None:
+            out[join] = cut
+    return out
+
+
 def merge_item(neural: dict | None, lattice: dict | None) -> dict | None:
     """The card for one segment from its neural and matcher-lattice items (either may be absent)."""
-    lattice_cuts = [
-        c for c in (lattice or {}).get("cuts") or [] if (_join(c) or ("",))[0] not in SAKT_AFTER
-    ]
-    if neural is None and not lattice_cuts:
-        return None
-    by_join: dict[tuple[str, str], dict] = {}
-    for cut in lattice_cuts:
-        by_join[_join(cut)] = cut
-    for cut in (neural or {}).get("cuts") or []:
-        key = _join(cut)
-        by_join[key] = _both(cut, by_join[key]) if key in by_join else cut
-    cuts = sorted(by_join.values(), key=lambda c: c["cursor_ms"])
+    by_join = {j: c for j, c in _keyed(lattice).items() if j[0] not in SAKT_AFTER}
+    for join, cut in _keyed(neural).items():
+        by_join[join] = _both(cut, by_join[join]) if join in by_join else cut
     base = neural or lattice
+    if base is None or not by_join:
+        return neural
+    joins = sorted(by_join, key=lambda j: by_join[j]["cursor_ms"])
+    cuts = [by_join[j] for j in joins]
     cursors = [c["cursor_ms"] for c in cuts]
     span = _span(base)
-    refs = None if span is None else _pieces(span, [_join(c) for c in cuts])
+    refs = None if span is None else _pieces(span, joins)
     if cursors != sorted(set(cursors)) or (base.get("refs") is not None and refs is None):
         return neural
     return {**base, "cursors": cursors, "refs": refs, "score": max(c["score"] for c in cuts),

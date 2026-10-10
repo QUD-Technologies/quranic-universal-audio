@@ -21,6 +21,7 @@ def test_a_join_both_arms_flag_is_one_cut_with_both_axes():
 
     item = waqf_union.merge_item(neural, lattice)
 
+    assert item is not None
     assert item["cursors"] == [4000], "the neural cursor"
     assert item["cuts"][0]["axes"] == ["neural", "lattice"]
     assert set(item["cuts"][0]["evidence"]) == {"neural", "lattice"}
@@ -33,6 +34,7 @@ def test_different_joins_of_one_segment_make_one_card_with_both_cuts():
 
     item = waqf_union.merge_item(neural, lattice)
 
+    assert item is not None
     assert item["cursors"] == [4000, 7000]
     assert item["refs"] == ["2:5:1-2:5:3", "2:5:4-2:5:6", "2:5:7-2:5:9"]
 
