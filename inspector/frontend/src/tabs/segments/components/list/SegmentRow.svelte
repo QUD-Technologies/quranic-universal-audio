@@ -57,6 +57,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     import { activeFilters } from '../../stores/filters';
     import { savedFilterView } from '../../stores/navigation';
     import { isSampleMode } from '../../stores/samples';
+    import { ensureWordTimes, timesForCard, wordTimes } from '../../stores/word-times';
     import { missingWordsSegKeys } from '../../stores/validation';
     import { deriveRowChips, type RowChip } from '../../utils/samples/chips';
     import { displayWordsForTimings, timingsMatchRef } from '../../utils/samples/word-timing';
@@ -331,6 +332,21 @@ import type { Segment } from '../../../../lib/types/view-models';
         $quranRefs?.verse_word_counts,
         $quranRefs?.verse_marker_prefix ?? '۝',
     );
+    // Outside review samples the highlight follows the stored segment times.
+    $: if (!$isSampleMode) ensureWordTimes($selectedReciter, rowChapter);
+    $: storedWords = $isSampleMode ? [] : timesForCard($wordTimes, rowChapter, seg);
+    $: highlightTimings = $isSampleMode
+        ? reviewWordTimings
+        : (timingsMatchRef(bodyRef, storedWords) ? storedWords : []);
+    $: highlightDisplayWords = $isSampleMode
+        ? reviewDisplayWords
+        : displayWordsForTimings(
+            highlightTimings,
+            bodyText,
+            $quranRefs?.dk_words,
+            $quranRefs?.verse_word_counts,
+            $quranRefs?.verse_marker_prefix ?? '۝',
+        );
     let wordEditing = false;
     let wordDraft: { start_ms: number; end_ms: number }[] = [];
     let wordLockedIndex: number | null = null;
@@ -1322,15 +1338,15 @@ import type { Segment } from '../../../../lib/types/view-models';
             {/if}
         </div>
         <div class="seg-text-body" class:seg-history-changed={changedRef} class:word-edit-hidden={wordEditing}>
-            {#if reviewDisplayWords.length > 0}
-                {#each reviewWordTimings as word, wordIndex (`${word.location}:${word.start_ms}`)}
+            {#if highlightDisplayWords.length > 0}
+                {#each highlightTimings as word, wordIndex (`${word.location}:${word.start_ms}`)}
                     <span
                         class="seg-review-word"
                         class:active={$isMainAudioPlaying
                             && $activeWordCursor?.chapter === rowChapter
                             && $activeWordCursor?.index === seg.index
                             && $activeWordCursor?.wordIndex === wordIndex}
-                    >{reviewDisplayWords[wordIndex]}</span>{#if wordIndex < reviewWordTimings.length - 1}{' '}{/if}
+                    >{highlightDisplayWords[wordIndex]}</span>{#if wordIndex < highlightTimings.length - 1}{' '}{/if}
                 {/each}
             {:else}
                 {bodyText}

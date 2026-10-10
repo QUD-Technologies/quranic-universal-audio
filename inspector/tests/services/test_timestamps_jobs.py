@@ -69,6 +69,7 @@ def test_launch_posts_space_and_links_run(monkeypatch):
     from services.storage import cache as _cache
     from services.storage import data_loader
 
+    monkeypatch.setenv("INSPECTOR_TS_ENGINE", "space")
     monkeypatch.setattr(state_service, "get_row", lambda slug: object())
     posted = {}
 

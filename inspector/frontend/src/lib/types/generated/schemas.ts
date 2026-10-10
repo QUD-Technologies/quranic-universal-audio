@@ -1972,6 +1972,22 @@ export interface SegSegmentPeaks {
   peaks?: [unknown, unknown][];
 }
 /**
+ * One segment's stored word intervals and the span they were timed on.
+ */
+export interface SegStoredTimes {
+  start_ms: number;
+  end_ms: number;
+  words: SegStoredWordTime[];
+}
+/**
+ * One word interval from the stored segment times, chapter-audio ms.
+ */
+export interface SegStoredWordTime {
+  location: string;
+  start_ms: number;
+  end_ms: number;
+}
+/**
  * ``POST /api/seg/undo-batch/<reciter>`` request body.
  */
 export interface SegUndoBatchRequest {
@@ -2058,8 +2074,8 @@ export interface SegValLowConfidenceItem {
   classified_issues?: string[];
 }
 /**
- * ``low_confidence_v2`` — a segment flagged by the extraction-time MFA
- * tight-beam probe. No confidence score; the signal is binary.
+ * ``low_confidence_v2`` — a segment the neural timing checks found fitting its
+ * text poorly (``low_confidence_v2.json``). No confidence score; the signal is binary.
  */
 export interface SegValLowConfidenceV2Item {
   ref: string;
@@ -2098,8 +2114,9 @@ export interface SegValHiddenPauseBoundary {
  * ``axes`` names the offline arms that agree on the cut (``trio`` = collar
  * boundary head, ``lite`` = lite student, ...). ``evidence`` is the
  * per-axis raw measurement block, passed through for the card. ``silence_*_ms``
- * is the pause the cut-timing pass measured around the cursor (``timing_source``
- * names how): a WAQF answer splits with that gap.
+ * is the pause around the cursor (``timing_source`` names how it was measured: the
+ * cut-timing pass's ``psil`` / ``energy``, or the ``neural`` timing head's decoded
+ * pause): a WAQF answer splits with that gap.
  */
 export interface SegValHiddenPauseCut {
   cursor_ms?: number | null;
@@ -2114,7 +2131,7 @@ export interface SegValHiddenPauseCut {
   };
   silence_start_ms?: number | null;
   silence_end_ms?: number | null;
-  timing_source?: ("psil" | "energy") | null;
+  timing_source?: ("psil" | "energy" | "neural") | null;
 }
 /**
  * ``missed_waqf`` — an offline phoneme + silence detector heard the
@@ -2361,9 +2378,9 @@ export interface SegValStats {
   pause_dur_max: number;
 }
 /**
- * ``low_confidence_v2_meta`` — provenance of the MFA tight-beam probe
- * sidecar. Open shape: the ``_meta`` block of ``low_confidence_v2.json`` is
- * passed through verbatim from the extraction stage.
+ * ``low_confidence_v2_meta`` — provenance of the Low Confidence sidecar.
+ * Open shape: the ``_meta`` block of ``low_confidence_v2.json`` is passed through
+ * verbatim from the extraction stage.
  */
 export interface SegValProbeMeta {
   [k: string]: unknown;
@@ -2377,6 +2394,17 @@ export interface SegValProbeMeta {
  */
 export interface SegValBoundaryMeta {
   [k: string]: unknown;
+}
+/**
+ * ``GET /api/seg/word-times/<reciter>/<chapter>``: stored word intervals.
+ *
+ * ``segments`` maps a segment uid to its timed words; a segment whose stored
+ * times no longer match it (span or timed ref changed since timing) is absent.
+ */
+export interface SegWordTimesResponse {
+  segments: {
+    [k: string]: SegStoredTimes;
+  };
 }
 export interface TsCompactRender {
   v: 1;
@@ -2573,7 +2601,7 @@ export interface TsReportTarget {
  */
 export interface TsReportSnapshot {
   native_schema_version?: 2 | null;
-  shard_schema_version?: 12 | 13 | 14;
+  shard_schema_version?: 12 | 13 | 14 | 15;
   shard_profile?: "native" | "word";
   native?: {
     [k: string]: unknown;
@@ -2659,26 +2687,73 @@ export interface TsShardDoc {
   readings: TsShardReading[];
 }
 export interface TsShardMeta {
-  schema_version: 13 | 14;
+  schema_version: 13 | 15;
   chapter: number;
   audio_category: string;
   phonemizer_version: string;
   native_schema_version: 2;
   renderer_codec_version: 1;
   native_profile: TsNativeProfile;
+  variant_catalogue?: {
+    [k: string]: TsVariantDefinition;
+  } | null;
+  variant_policy?: string | null;
   [k: string]: unknown;
+}
+export interface TsVariantDefinition {
+  name: string;
+  description: string | null;
+  /**
+   * @minItems 2
+   */
+  options: [string, string, ...string[]];
+  default: string;
 }
 export interface TsShardReading {
   id: string;
   parts: [unknown, unknown, unknown, unknown, unknown][];
   render: TsCompactRender;
   timing: TsShardTiming;
+  variants?: TsReadingVariant[] | null;
 }
 export interface TsShardTiming {
   w: [unknown, unknown][];
   s: [unknown, unknown][];
   a: [unknown, unknown][];
   c: [unknown, unknown, unknown][];
+}
+/**
+ * One shown variant occurrence. ``words``/``targets`` are reading word ids,
+ * ``boundary`` a native boundary id (from 1); ``affected`` has one entry per
+ * option not chosen, in the rendered reading's ids.
+ */
+export interface TsReadingVariant {
+  id: string;
+  chosen: string;
+  /**
+   * @minItems 1
+   * @maxItems 2
+   */
+  words: [number] | [number, number];
+  /**
+   * @minItems 1
+   */
+  targets: [number, ...number[]];
+  anchor: "word" | "boundary";
+  boundary: number | null;
+  by: "scored" | "tie" | "length" | "majority" | "pause" | "default";
+  score: number | null;
+  affected: {
+    [k: string]: TsVariantCells;
+  };
+}
+/**
+ * Rendered-reading cells another option changes: column, sound and boundary ids.
+ */
+export interface TsVariantCells {
+  c: number[];
+  s: number[];
+  b: number[];
 }
 /**
  * The ``ts_validation.json`` document — meta + verse-keyed flags.
@@ -2729,7 +2804,7 @@ export interface TsWordShardMeta {
   riwayah: string;
   edition_id: string;
   words_sha256: string;
-  timing_provider: "hafs_proxy_mfa";
+  timing_provider: "hafs_proxy_mfa" | "hafs_proxy_neural";
   reference_riwayah: string;
   reference_id: string;
   projection_id?: string | null;

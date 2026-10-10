@@ -3,11 +3,13 @@
 Builds every chapter's ``ChapterCandidate`` from the staged aligner results (the
 same adaptation assemble uses, so the sidecars index exactly the rows that get
 published) and streams ``POST /api/v1/extraction/sidecars``. Auto Split reuses
-the align stage's candidate-only interactive timings; Low Confidence keeps its
-independent MFA probe. The Space runs one sidecar job at a time; a 409 waits and
-retries. ``missed_waqf_v2`` (Low Confidence Waqf) and ``verse_ends_v1`` are built
-here from the staged rows' lattice pauses, word timings and the chapters' baked
-loudness levels, without the Space (``pause_sidecar``).
+the align stage's candidate-only interactive timings; Low Confidence is the review
+policy over the neural timing head's checks, run on the Space. The Space runs one
+sidecar job at a time; a 409 waits and retries. ``missed_waqf_v2`` (Low Confidence
+Waqf) and ``verse_ends_v1`` are built here from the staged rows' lattice pauses, word
+timings and the chapters' baked loudness levels, without the Space
+(``pause_sidecar``). A segment gets one card: one in Low Confidence is dropped from
+Low Confidence Waqf, its fit being too poor to trust a stop inside it.
 """
 
 from __future__ import annotations
@@ -76,9 +78,16 @@ def run(
     sources: dict[int, str],
 ) -> None:
     _stage_missed_waqf(slug, run_id, params, chapters, sources)
-    if staging.read_json(staging.sidecar_path(slug, run_id, AUTO_SPLIT_FILE)) is not None:
+    if staging.read_json(staging.sidecar_path(slug, run_id, AUTO_SPLIT_FILE)) is None:
+        _stage_space_sidecars(slug, run_id, params, chapters, sources)
+    else:
         log.info("align %s: sidecars already staged, skipped", run_id)
-        return
+    _one_card(slug, run_id)
+
+
+def _stage_space_sidecars(
+    slug: str, run_id: str, params: AlignParams, chapters: list[int], sources: dict[int, str]
+) -> None:
     candidates, auto_split_timings = payloads_for(slug, run_id, chapters, sources, params.riwayah)
     body = {
         "slug": slug,
@@ -100,6 +109,20 @@ def run(
         )
     staging.write_json(staging.sidecar_path(slug, run_id, AUTO_SPLIT_FILE), result["auto_split_v1"])
     log.info("align %s: sidecars staged", run_id)
+
+
+def _one_card(slug: str, run_id: str) -> None:
+    """Drop the Low Confidence Waqf items of segments already in Low Confidence."""
+    low = staging.read_json(staging.sidecar_path(slug, run_id, LOW_CONFIDENCE_FILE)) or {}
+    path = staging.sidecar_path(slug, run_id, MISSED_WAQF_FILE)
+    missed = staging.read_json(path) or {}
+    flagged = set(low.get("failures") or []) & set(missed.get("by_uid") or {})
+    if not flagged:
+        return
+    by_uid = {uid: item for uid, item in missed["by_uid"].items() if uid not in flagged}
+    meta = {**missed.get("_meta", {}), "segments": len(by_uid), "low_confidence": len(flagged)}
+    staging.write_json(path, {**missed, "_meta": meta, "by_uid": by_uid})
+    log.info("align %s: %d Low Confidence Waqf item(s) left to Low Confidence", run_id, len(flagged))
 
 
 def _stage_missed_waqf(

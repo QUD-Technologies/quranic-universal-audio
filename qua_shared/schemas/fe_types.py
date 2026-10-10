@@ -168,6 +168,8 @@ from .wire.seg import (
     SegSaveResponse,
     SegSegmentPeaksRequest,
     SegSegmentPeaksResponse,
+    SegStoredTimes,
+    SegStoredWordTime,
     SegUndoBatchRequest,
     SegUndoOpsRequest,
     SegUndoResponse,
@@ -177,6 +179,7 @@ from .wire.seg import (
     SegValidateResponse,
     SegValMissedWaqfItem,
     SegValUnmarkedWaslItem,
+    SegWordTimesResponse,
 )
 from .wire.timestamps import TsConfigResponse, TsManifestResponse
 from .wire.ts_reports import (
@@ -210,6 +213,9 @@ __all__ = [
     "SegAllResponse",
     "SegConfigResponse",
     "SegDataResponse",
+    "SegStoredTimes",
+    "SegStoredWordTime",
+    "SegWordTimesResponse",
     "SegPeaksResponse",
     "SegReciter",
     "SegRecitersResponse",

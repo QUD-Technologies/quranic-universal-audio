@@ -85,7 +85,9 @@ import { getRowEntriesFor } from './row-registry';
 import { heardTimeMs } from './heard-time';
 import { resolveSegSource } from './source';
 import { warmSeg } from './warmup';
-import { wordIndexAt } from '../samples/word-timing';
+import { type WordInterval, timingsMatchRef, wordIndexAt } from '../samples/word-timing';
+import { isSampleMode } from '../../stores/samples';
+import { ensureWordTimes, storedWordTimes } from '../../stores/word-times';
 
 // ---------------------------------------------------------------------------
 // Module-local state
@@ -208,6 +210,16 @@ const _drawLoop: AnimationLoop = createAnimationLoop(() => {
  *
  * @returns true when it seeked or stopped (caller skips this frame's draw).
  */
+/** The word intervals the playing card highlights: a review sample's own timings, else
+ *  the stored segment times (a card without valid ones refetches its chapter's). */
+function _highlightTimings(seg: Segment, chapter: number): WordInterval[] {
+    if (get(isSampleMode)) return seg.word_timings ?? [];
+    const stored = storedWordTimes(chapter, seg);
+    if (timingsMatchRef(seg.matched_ref, stored)) return stored;
+    ensureWordTimes(get(selectedReciter), chapter, true);
+    return [];
+}
+
 function _maybeSkipDeletedGap(timeMs: number): boolean {
     if (get(editMode)) return false;
     if (_segRange) return false; // bounded range owns its own boundary policy
@@ -1355,7 +1367,7 @@ export function drawActivePlayhead(timeMs?: number): void {
     // instead of vanishing (drawSegPlayhead skips out-of-range times). Visual
     // only — control paths keep the raw clock.
     const displayT = Math.min(seg.time_end, Math.max(seg.time_start, heardTimeMs(time, _activePlayStartMs)));
-    const activeWordIndex = wordIndexAt(displayT, seg.word_timings);
+    const activeWordIndex = wordIndexAt(displayT, _highlightTimings(seg, active.chapter));
     setActiveWordCursor(activeWordIndex >= 0
         ? { chapter: active.chapter, index: active.index, wordIndex: activeWordIndex }
         : null);

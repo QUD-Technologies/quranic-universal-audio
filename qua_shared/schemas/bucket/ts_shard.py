@@ -3,25 +3,34 @@
 Two profiles share the path and the Brotli envelope, discriminated by
 ``_meta.profile``:
 
-- **``native``** (schema 13, and 14 once a native document is next rebuilt) —
+- **``native``** (schema 15; 13 is still read until the fleet is re-timed) —
   the full phonemizer projection: cells, sounds, rule occurrences, animation
-  tokens. Requires quranic-phonemizer, so it exists only for Hafs.
+  tokens. Requires quranic-phonemizer, so it exists only for Hafs. v15 adds a
+  reading's variant faces (``variants``) with the chapter's
+  ``_meta.variant_catalogue`` and ``variant_policy``.
 - **``word``** (schema 14) — word intervals and provenance only, for a riwayah
   timed through the Hafs MFA proxy. No phones, no letters, no cell geometry;
   those shapes belong to the Hafs reference script and cannot be honestly
   synthesised for another edition.
 
-``profile`` is **absent on every existing v13 object** and reads as ``native``,
-so the 37 published Hafs reciters are never restamped. Dispatch through
+``profile`` is **absent on every native object** and reads as ``native``.
+Dispatch through
 ``qua_shared.timestamps_shards.shard_profile`` / ``parse_shard`` rather than
 matching on ``schema_version`` alone.
 """
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from qua_shared.riwayat import DEFAULT_SDK_RIWAYAH, SUPPORTED_RIWAYAT
 
@@ -31,7 +40,8 @@ from qua_shared.riwayat import DEFAULT_SDK_RIWAYAH, SUPPORTED_RIWAYAT
 #: every reader from letters to words.
 _WORD_PROFILE_RIWAYAT = frozenset(SUPPORTED_RIWAYAT.values()) - {DEFAULT_SDK_RIWAYAH}
 
-TS_SHARD_SCHEMA_VERSION = 14
+#: The native version the SDK builders stamp; the word profile is 14.
+TS_SHARD_SCHEMA_VERSION = 15
 TsShardProfile = Literal["native", "word"]
 
 TsShardPart = tuple[str, int, int, int, int]
@@ -43,6 +53,21 @@ TsColumnTiming = tuple[str | int, int | None, int | None]
 
 class _Closed(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class _OmitsAbsentV15(BaseModel):
+    """Dumps without the v15 fields a document does not carry, so a v13/v14
+    document round-trips to its own bytes."""
+
+    v15_fields: ClassVar[tuple[str, ...]] = ()
+
+    @model_serializer(mode="wrap")
+    def _omit_absent(self, handler):
+        data = handler(self)
+        for name in self.v15_fields:
+            if getattr(self, name) is None:
+                data.pop(name, None)
+        return data
 
 
 class TsCompactRender(_Closed):
@@ -85,11 +110,59 @@ class TsShardTiming(_Closed):
         return self
 
 
-class TsShardReading(_Closed):
+class TsVariantCells(_Closed):
+    """Rendered-reading cells another option changes: column, sound and boundary ids."""
+
+    c: list[int]
+    s: list[int]
+    b: list[int]
+
+
+class TsReadingVariant(_Closed):
+    """One shown variant occurrence. ``words``/``targets`` are reading word ids,
+    ``boundary`` a native boundary id (from 1); ``affected`` has one entry per
+    option not chosen, in the rendered reading's ids."""
+
+    id: str = Field(min_length=1)
+    chosen: str = Field(min_length=1)
+    words: list[int] = Field(min_length=1, max_length=2)
+    targets: list[int] = Field(min_length=1)
+    anchor: Literal["word", "boundary"]
+    boundary: int | None
+    by: Literal["scored", "tie", "length", "majority", "pause", "default"]
+    score: float | None
+    affected: dict[str, TsVariantCells]
+
+    @model_validator(mode="after")
+    def _anchor(self):
+        if (self.anchor == "boundary") != (self.boundary is not None):
+            raise ValueError("variant boundary must be set exactly for a boundary anchor")
+        if self.chosen in self.affected:
+            raise ValueError("variant affected lists its chosen option")
+        return self
+
+
+class TsVariantDefinition(_Closed):
+    name: str = Field(min_length=1)
+    description: str | None
+    options: list[str] = Field(min_length=2)
+    default: str
+
+    @model_validator(mode="after")
+    def _default(self):
+        if self.default not in self.options:
+            raise ValueError("variant default is not an option")
+        return self
+
+
+class TsShardReading(_OmitsAbsentV15, _Closed):
+    v15_fields: ClassVar[tuple[str, ...]] = ("variants",)
+
     id: str = Field(min_length=1)
     parts: list[TsShardPart]
     render: TsCompactRender
     timing: TsShardTiming
+    variants: list[TsReadingVariant] | None = None
 
     @model_validator(mode="after")
     def _closure(self):
@@ -104,7 +177,20 @@ class TsShardReading(_Closed):
                 raise ValueError("invalid compact part")
             if first + count > len(self.render.w):
                 raise ValueError("compact part references unknown words")
+        for variant in self.variants or ():
+            self._variant_ranges(variant)
         return self
+
+    def _variant_ranges(self, variant: TsReadingVariant) -> None:
+        words, sounds = range(len(self.render.w)), range(len(self.render.p))
+        boundaries = range(1, len(self.render.b) + 1)
+        if not set(variant.words) | set(variant.targets) <= set(words):
+            raise ValueError(f"variant {variant.id} references unknown words")
+        if variant.boundary is not None and variant.boundary not in boundaries:
+            raise ValueError(f"variant {variant.id} anchors an unknown boundary")
+        for cells in variant.affected.values():
+            if not set(cells.s) <= set(sounds) or not set(cells.b) <= set(boundaries):
+                raise ValueError(f"variant {variant.id} affects unknown sounds or boundaries")
 
 
 class TsNativeProfile(_Closed):
@@ -114,11 +200,11 @@ class TsNativeProfile(_Closed):
     extra_phonemes: list[str]
 
 
-class TsShardMeta(BaseModel):
+class TsShardMeta(_OmitsAbsentV15, BaseModel):
     model_config = ConfigDict(extra="allow")
+    v15_fields: ClassVar[tuple[str, ...]] = ("variant_catalogue", "variant_policy")
 
-    #: 13 is every object written before the word profile existed; 14 is the
-    #: current version. Both are native.
+    #: 15 is what the builders write; 13 is read until every reciter is re-timed.
     #:
     #: There is deliberately NO ``profile`` field here. The native meta is the
     #: one the Flask shard route serves as byte-passthrough, so a defaulted
@@ -127,13 +213,15 @@ class TsShardMeta(BaseModel):
     #: discriminator is read from the raw dict by
     #: ``qua_shared.timestamps_shards.shard_profile``. ``extra="allow"`` means
     #: a document that does carry ``profile: "native"`` still validates.
-    schema_version: Literal[13, 14]
+    schema_version: Literal[13, 15]
     chapter: int = Field(ge=1, le=114)
     audio_category: str = Field(min_length=1)
     phonemizer_version: str = Field(min_length=1)
     native_schema_version: Literal[2]
     renderer_codec_version: Literal[1]
     native_profile: TsNativeProfile
+    variant_catalogue: dict[str, TsVariantDefinition] | None = None
+    variant_policy: str | None = None
 
 
 class TsShardDoc(_Closed):
@@ -141,6 +229,21 @@ class TsShardDoc(_Closed):
 
     meta: TsShardMeta = Field(alias="_meta")
     readings: list[TsShardReading]
+
+    @model_validator(mode="after")
+    def _variants(self):
+        catalogue = self.meta.variant_catalogue or {}
+        shown = [v for reading in self.readings for v in reading.variants or ()]
+        if (shown or catalogue) and self.meta.schema_version < 15:
+            raise ValueError("reading variants need schema v15")
+        for variant in shown:
+            spec = catalogue.get(variant.id)
+            if spec is None:
+                raise ValueError(f"variant {variant.id} is not in the chapter catalogue")
+            others = set(spec.options) - {variant.chosen}
+            if variant.chosen not in spec.options or set(variant.affected) != others:
+                raise ValueError(f"variant {variant.id} names unknown options")
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +303,7 @@ class TsWordShardMeta(BaseModel):
     #: How the intervals were obtained. Only one provider exists: MFA against
     #: the Hafs acoustic model using Hafs proxy phones. Recorded so a consumer
     #: can tell a proxy timing from a future native one without guessing.
-    timing_provider: Literal["hafs_proxy_mfa"]
+    timing_provider: Literal["hafs_proxy_mfa", "hafs_proxy_neural"]
     reference_riwayah: str = Field(min_length=1)
     reference_id: str = Field(min_length=1)
     #: The static Hafs->target map applied, or ``None`` for an identity result.
@@ -247,6 +350,7 @@ __all__ = [
     "TsColumnTiming",
     "TsCompactRender",
     "TsNativeProfile",
+    "TsReadingVariant",
     "TsShardDoc",
     "TsShardMeta",
     "TsShardPart",
@@ -255,6 +359,8 @@ __all__ = [
     "TsShardTiming",
     "TsSoundTiming",
     "TsAnimationTiming",
+    "TsVariantCells",
+    "TsVariantDefinition",
     "TsWordBoundary",
     "TsWordRow",
     "TsWordShardDoc",

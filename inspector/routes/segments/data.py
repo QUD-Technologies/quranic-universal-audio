@@ -27,6 +27,7 @@ from qua_shared.schemas.wire.seg import (
     SegConfigResponse,
     SegDataResponse,
     SegRecitersResponse,
+    SegWordTimesResponse,
 )
 from services import cache
 from services import state as state_service
@@ -43,6 +44,7 @@ from services.reference.editions import EditionsUnavailable
 from services.segments.flags import flag_view
 from services.segments_query import get_chapter_data
 from services.state import catalog as catalog_service
+from services.timing import word_times
 from services.validation.registry import ALL_CATEGORIES
 from utils.formatting import slug_to_name
 from utils.json_response import orjson_cached_response, orjson_response
@@ -164,6 +166,30 @@ def seg_data(reciter, chapter):
     if result is None:
         return jsonify(ErrorEnvelope(error="Chapter not found").model_dump(exclude_none=True)), 404
     model = SegDataResponse.model_validate(result)
+    return orjson_cached_response(model.model_dump(**_DUMP))
+
+
+@seg_data_bp.route("/word-times/<reciter>/<int:chapter>")
+def seg_word_times(reciter, chapter):
+    """Return the chapter's stored word intervals for the segment cards' word highlight.
+
+    Read from the stored segment times (``services.timing.word_times``); a segment
+    whose times are stale is absent until the background re-time stores new ones.
+    """
+    if not state_service.has_content_access(reciter):
+        return jsonify(ErrorEnvelope(error="Chapter not found").model_dump(exclude_none=True)), 404
+    entries = [e for e in load_detailed(reciter) or [] if chapter_from_ref(e["ref"]) == chapter]
+    doc = word_times.read_doc(reciter, chapter)
+    counts = None
+    if doc and any(s.get("source_ref") for e in entries for s in e.get("segments", [])):
+        try:
+            from services.reference import editions
+
+            counts = editions.word_counts(sdk_riwayah_for(reciter))
+        except (RiwayahMismatch, UnsupportedRiwayah, EditionsUnavailable):
+            counts = None
+    segments = word_times.chapter_word_times(entries, doc, counts)
+    model = SegWordTimesResponse.model_validate({"segments": segments})
     return orjson_cached_response(model.model_dump(**_DUMP))
 
 

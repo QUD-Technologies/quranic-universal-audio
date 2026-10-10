@@ -31,6 +31,8 @@ from qua_shared.schemas.config.pending_requests import ProposedEdits
 from services.state import state as state_service
 
 SLUG = "rec_align"
+#: ``(slug, chapter, kwargs)`` of each stubbed ``aligner_timing.time_chapter`` call.
+_TIMED: list[tuple] = []
 OWNER = Actor(hf_user_id="u-owner", login_at_time="owner", role=Role.OWNER)
 
 
@@ -190,6 +192,14 @@ def align_env(tmp_path, monkeypatch):
     monkeypatch.setenv("INSPECTOR_HF_TOKEN", "hf_test")
     backend = _hf_bucket.FilesystemBackend(tmp_path)
     _hf_bucket.set_backend(backend)
+    from services.timing import aligner_timing
+
+    _TIMED.clear()
+    monkeypatch.setattr(
+        aligner_timing,
+        "time_chapter",
+        lambda slug, chapter, **kw: _TIMED.append((slug, chapter, kw)),
+    )
     _seed_catalog(
         vocab=Vocab(
             riwayat=[Riwayah(slug="hafs", short="H", name="Hafs")],
@@ -372,6 +382,7 @@ def test_assemble_publishes_reciter_and_auto_detect_fires(align_env):
         "112:3:1-112:4:5",
     ]
     assert segs[1]["segment_uid"]  # the waqf row got its uid
+    assert _TIMED == [(SLUG, 112, {"riwayah": "hafs"})]
     assert "qalqala_letter" in segs[0] or "is_boundary_adj" in segs[0]  # stamped
 
     history = [
@@ -580,3 +591,24 @@ def test_sidecars_stage_builds_missed_waqf_v2_and_assemble_publishes_it(align_en
         started_at="2026-09-13T00:00:00Z",
     )
     assert backend.exists(f"reciters/{SLUG}/missed_waqf_v2.json")
+
+
+def test_sidecars_stage_leaves_a_low_confidence_segment_one_card(align_env):
+    from services.admin.align_pipeline import runs, stage_sidecars, staging
+    from services.admin.align_pipeline.params import AlignParams
+
+    _backend, _started = align_env
+    run = runs.start(SLUG, OWNER)
+    path = staging.sidecar_path(SLUG, run.run_id, "missed_waqf_v2.json")
+    staging.write_json(path, {"_meta": {"kind": "missed_waqf", "segments": 2},
+                              "by_uid": {"a": {"cursors": [1]}, "b": {"cursors": [2]}}})  # fmt: skip
+    staging.write_json(staging.sidecar_path(SLUG, run.run_id, "auto_split_v1.json"), {"by_uid": {}})
+    staging.write_json(
+        staging.sidecar_path(SLUG, run.run_id, "low_confidence_v2.json"), {"failures": ["b", "c"]}
+    )
+
+    stage_sidecars.run(SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"})
+
+    staged = staging.read_json(path) or {}
+    assert list(staged["by_uid"]) == ["a"]
+    assert staged["_meta"]["segments"] == 1 and staged["_meta"]["low_confidence"] == 1

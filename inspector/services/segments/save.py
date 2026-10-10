@@ -39,6 +39,7 @@ from services.storage.data_loader import (
     load_detailed,
     load_probe_v2,
 )
+from services.timing import retime_queue
 from services.validation.registry import filter_persistent_ignores
 from services.validation.snapshot_classifier import classify_snapshot
 from utils.references import chapter_from_ref, normalize_ref
@@ -245,11 +246,13 @@ def _attach_classified_issues(
     return out
 
 
-def persist_detailed(reciter: str, meta: dict, entries: list[dict]) -> None:
-    """Write detailed.json atomically; rebuild segments.json.
+def persist_detailed(reciter: str, meta: dict, entries: list[dict], chapters) -> None:
+    """Write detailed.json atomically; rebuild segments.json; re-time ``chapters``.
 
     Shared helper consumed by both undo.py and (internally) save_seg_data.
-    Does NOT append history — callers are responsible for that.
+    Does NOT append history — callers are responsible for that. The changed
+    ``chapters`` get their stored segment times brought up to date in the
+    background (:mod:`services.timing.retime_queue`).
 
     v2: writes go through ``data_dir`` (storage backend). No ``.bak`` files
     (audit log + edit_history.jsonl are the recovery surface). No file
@@ -262,6 +265,7 @@ def persist_detailed(reciter: str, meta: dict, entries: list[dict]) -> None:
             seg.pop("_resolved_by_edit", None)
     data_dir.write_detailed_doc(reciter, {"_meta": meta, "entries": entries})
     rebuild_segments_json(reciter, entries)
+    retime_queue.schedule(reciter, chapters)
 
 
 def normalize_ref_with_wc(ref: str, riwayah: str = DEFAULT_SDK_RIWAYAH) -> str:
@@ -672,7 +676,7 @@ def _persist_and_record(
         return {"error": patch_err}, 400
 
     # Write detailed.json + rebuild segments.json via storage backend.
-    persist_detailed(reciter, meta, entries)
+    persist_detailed(reciter, meta, entries, [chapter])
 
     # Each operation's snapshots gain a ``classified_issues`` field so the
     # frontend history-delta path reads it directly off the saved record

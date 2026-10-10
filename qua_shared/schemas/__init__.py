@@ -235,6 +235,8 @@ from .wire.seg import (
     SegSegmentPeaksRequestItem,
     SegSegmentPeaksResponse,
     SegSlimPeaks,
+    SegStoredTimes,
+    SegStoredWordTime,
     SegUndoBatchRequest,
     SegUndoOpsRequest,
     SegUndoResponse,
@@ -265,6 +267,7 @@ from .wire.seg import (
     SegValStructuralErrorItem,
     SegValUnmarkedWaslItem,
     SegValVerseJoin,
+    SegWordTimesResponse,
 )
 from .wire.timestamps import (
     Letter,
@@ -290,6 +293,9 @@ __all__ = [
     "SegAllSegment",
     "SegConfigResponse",
     "SegDataResponse",
+    "SegStoredTimes",
+    "SegStoredWordTime",
+    "SegWordTimesResponse",
     "SegDataSegment",
     "SegmentFlagView",
     "SegmentsChapterSummary",

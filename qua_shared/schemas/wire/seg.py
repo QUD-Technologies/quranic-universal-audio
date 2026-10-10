@@ -184,6 +184,38 @@ class SegWordTiming(BaseModel):
     end_ms: int
 
 
+class SegStoredWordTime(BaseModel):
+    """One word interval from the stored segment times, chapter-audio ms."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    location: Ref
+    start_ms: int
+    end_ms: int
+
+
+class SegStoredTimes(BaseModel):
+    """One segment's stored word intervals and the span they were timed on."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    start_ms: int
+    end_ms: int
+    words: list[SegStoredWordTime]
+
+
+class SegWordTimesResponse(BaseModel):
+    """``GET /api/seg/word-times/<reciter>/<chapter>``: stored word intervals.
+
+    ``segments`` maps a segment uid to its timed words; a segment whose stored
+    times no longer match it (span or timed ref changed since timing) is absent.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    segments: dict[str, SegStoredTimes]
+
+
 class SegDataSegment(BaseModel):
     """A segment row as emitted by ``GET /api/seg/data`` (chapter-scoped).
 
@@ -494,8 +526,8 @@ class SegValLowConfidenceItem(BaseModel):
 
 
 class SegValLowConfidenceV2Item(BaseModel):
-    """``low_confidence_v2`` — a segment flagged by the extraction-time MFA
-    tight-beam probe. No confidence score; the signal is binary."""
+    """``low_confidence_v2`` — a segment the neural timing checks found fitting its
+    text poorly (``low_confidence_v2.json``). No confidence score; the signal is binary."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -513,8 +545,9 @@ class SegValHiddenPauseCut(BaseModel):
     ``axes`` names the offline arms that agree on the cut (``trio`` = collar
     boundary head, ``lite`` = lite student, ...). ``evidence`` is the
     per-axis raw measurement block, passed through for the card. ``silence_*_ms``
-    is the pause the cut-timing pass measured around the cursor (``timing_source``
-    names how): a WAQF answer splits with that gap."""
+    is the pause around the cursor (``timing_source`` names how it was measured: the
+    cut-timing pass's ``psil`` / ``energy``, or the ``neural`` timing head's decoded
+    pause): a WAQF answer splits with that gap."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -528,7 +561,7 @@ class SegValHiddenPauseCut(BaseModel):
     evidence: dict[str, Any] = Field(default_factory=dict)
     silence_start_ms: int | None = None
     silence_end_ms: int | None = None
-    timing_source: Literal["psil", "energy"] | None = None
+    timing_source: Literal["psil", "energy", "neural"] | None = None
 
 
 class SegValHiddenPauseBoundary(BaseModel):
@@ -785,9 +818,9 @@ class SegValAnyItem(RootModel[SegValAnyItemUnion]):
 
 
 class SegValProbeMeta(BaseModel):
-    """``low_confidence_v2_meta`` — provenance of the MFA tight-beam probe
-    sidecar. Open shape: the ``_meta`` block of ``low_confidence_v2.json`` is
-    passed through verbatim from the extraction stage."""
+    """``low_confidence_v2_meta`` — provenance of the Low Confidence sidecar.
+    Open shape: the ``_meta`` block of ``low_confidence_v2.json`` is passed through
+    verbatim from the extraction stage."""
 
     model_config = ConfigDict(extra="allow")
 

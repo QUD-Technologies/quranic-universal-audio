@@ -126,7 +126,7 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         persistsIgnore: true,
         scope: 'per_segment',
         displayTitle: 'Low Confidence v2',
-        description: 'MFA tight-beam probe disagreed with the DP alignment for these segments. Treat as a second-opinion warning.',
+        description: 'The neural timing head fits these segments poorly against their text (a wrong or shifted reference, noise, or a misread). Treat as a second-opinion warning.',
         sorts: [{ kind: 'quran_order', default: true }],
     },
     repetitions: {

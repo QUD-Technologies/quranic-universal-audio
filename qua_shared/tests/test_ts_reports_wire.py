@@ -142,6 +142,8 @@ def test_snapshot_is_schema_guarded():
         }
     )
     assert snapshot.native == {"id": 1}
+    v15 = TsReportSnapshot.model_validate({"shard_schema_version": 15, "native": {}})
+    assert v15.shard_schema_version == 15
     with pytest.raises(ValidationError):
         TsReportSnapshot.model_validate(
             {"native_schema_version": 1, "shard_schema_version": 12, "native": {}}

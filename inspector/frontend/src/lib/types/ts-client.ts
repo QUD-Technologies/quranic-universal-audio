@@ -1,13 +1,18 @@
 /**
  * Timestamps-tab client types — FE-only.
  *
- * The timing view is assembled client-side from native v13 readings. Shard
+ * The timing view is assembled client-side from native readings. Shard
  * metadata and timing sidecars reuse generated wire types; native phonemizer
  * documents reuse the renderer package types.
  */
 
 import type { WirePayload } from '@quranic-phonemizer/cells';
-import type { TsShardMeta, TsWordShardMeta } from './generated/schemas';
+import type {
+    TsReadingVariant,
+    TsShardMeta,
+    TsVariantDefinition,
+    TsWordShardMeta,
+} from './generated/schemas';
 import type { VerseRef } from './view-models';
 
 // ---------------------------------------------------------------------------
@@ -162,7 +167,7 @@ export interface TsCatalogResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Native shard v13
+// Native shard
 // ---------------------------------------------------------------------------
 
 export interface TsShardPart {
@@ -220,6 +225,10 @@ export interface TsShardReading {
         boundaries: TsBoundaryTiming[];
         columns: TsColumnTiming[];
     };
+    /** v15: the reading faces shown for this reading, absent when none is. */
+    variants?: TsReadingVariant[];
+    /** The chapter's definitions of `variants[].id`, copied from `_meta`. */
+    variantCatalogue?: Record<string, TsVariantDefinition>;
 }
 
 export interface TsNativeShardResponse {

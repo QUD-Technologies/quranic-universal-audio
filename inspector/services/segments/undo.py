@@ -430,7 +430,7 @@ def undo_batch(reciter: str, target_batch_id: str, *, actor: Actor) -> dict | tu
         # about the ref, not a 409 about the batch, and a write-time
         # ValidationError is a fault rather than a conflict.
         _restamp(entries, affected_chapters, riwayah)
-        persist_detailed(reciter, meta, entries)
+        persist_detailed(reciter, meta, entries, affected_chapters)
         persisted = True
     finally:
         if not persisted:
@@ -541,7 +541,7 @@ def undo_ops(
         # about the ref, not a 409 about the batch, and a write-time
         # ValidationError is a fault rather than a conflict.
         _restamp(entries, affected_chapters, riwayah)
-        persist_detailed(reciter, meta, entries)
+        persist_detailed(reciter, meta, entries, affected_chapters)
         persisted = True
     finally:
         if not persisted:

@@ -6,8 +6,10 @@ chapter sources, sidecars, coverage), synthesises the run manifest the shared
 from the blobs acquire already baked, so no audio is decoded in-process.
 ``auto_detect`` then sees ``detailed.json`` and fires ``alignment_completed``.
 The staged verse-end verdicts are then applied to the published delivery
-(``services.segments.verse_end_verdicts``); a ``published.json`` marker lets a
-retry skip straight to them.
+(``services.segments.verse_end_verdicts``), and every chapter's segment times are
+stored (``services.timing``: the aligner's neural head on the final segments); a
+``published.json`` marker lets a retry skip straight to them, and a retry times only
+the chapters still untimed.
 
 Guarded: the slug must still be awaiting alignment (or merely catalogued) and
 have no ``detailed.json`` — a delivery that got content some other way is never
@@ -29,8 +31,9 @@ from services.segments import verse_end_verdicts
 from services.state import state as state_service
 from services.storage import cache, storage_paths
 from services.storage.hf_bucket import StorageNotFound, get_backend
+from services.timing import aligner_timing
 
-from . import adapt, staging
+from . import adapt, progress, staging
 from . import params as _params
 from .manifest import PIPELINE_ACTOR
 from .params import AlignParams
@@ -72,10 +75,29 @@ def run(
         staging.write_json(published, {"artifacts": built_count})
     verse_ends = staging.read_json(staging.sidecar_path(slug, run_id, VERSE_ENDS_FILE)) or {}
     applied = verse_end_verdicts.apply(slug, verse_ends.get("by_uid") or {}, PIPELINE_ACTOR)
+    _store_times(slug, run_id, params.riwayah)
     if not _params.keep_staging():
         staging.delete_run(slug, run_id)
     log.info("align %s: verse ends applied for %s: %s", run_id, slug, applied)
     return {"artifacts": built_count, "chapters": len(chapters)}
+
+
+def _store_times(slug: str, run_id: str, riwayah: str) -> None:
+    """Time every chapter of the published delivery; raises after trying them all when
+    any failed, so a retry times what is left."""
+    if not aligner_timing.enabled():
+        return
+    failed = []
+    for chapter in aligner_timing.chapters_of(slug):
+        progress.check_cancel(run_id)
+        progress.set_detail(run_id, timing_chapter=chapter)
+        try:
+            aligner_timing.time_chapter(slug, chapter, riwayah=riwayah)
+        except Exception:  # noqa: BLE001 — every chapter is tried; the run fails after
+            log.exception("align %s: timing chapter %s failed", run_id, chapter)
+            failed.append(chapter)
+    if failed:
+        raise AssembleError(f"{slug}: segment timing failed for chapters {failed}")
 
 
 def _publish(slug, run_id, params, chapters, sources, started_at) -> int:

@@ -86,6 +86,7 @@ The image bakes the **dev** bucket as default (`INSPECTOR_BUCKET_REPO=QUD-Techno
 | `ACQUIRE_WORKERS` (job env) | one per vCPU, max 8 | Chapters the acquire job fetches + encodes at once. |
 | `INSPECTOR_PUBLIC_BASE_URL` | empty | Public https root the daemon threads into job completion webhooks (no `request.url_root` in a thread). Required for automated GH cuts — the cut job is webhook-only. Set as a Space variable per environment. |
 | `INSPECTOR_TS_STALE_RUN_HOURS` | `6` | How long a `running` timestamps run-log record may sit before the single-flight guard treats it as dead (a Space restart mid-run never stamps it terminal). |
+| `INSPECTOR_TS_ENGINE` | `aligner` | Where timing runs: `aligner` (neural timing on the aligner Space at `INSPECTOR_ALIGNER_URL`: segment times stored at align and after saves, shards built from them) or `space` (the MFA batch timing Space below, timestamps runs only; nothing is stored at align or after saves). |
 | `INSPECTOR_TS_SPACE_URL` | `https://qud-technologies-qua-batch-timing-prod.hf.space` | Persistent production timing Space used for timestamp generation. Override only for an isolated environment. |
 | `INSPECTOR_TS_SPACE_REPO` | `QUD-Technologies/qua-batch-timing-prod` | Hub repo backing the timing URL. The Inspector uses its owner-scoped `HF_TOKEN` to wake this Space after the free-hardware inactivity pause. |
 

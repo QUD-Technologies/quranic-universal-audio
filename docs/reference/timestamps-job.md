@@ -1,11 +1,33 @@
 # Timestamp generation
 
-Timestamps are produced on the batch timing Space (ADR 0002 slice B), not an
-in-container HF Job. The Inspector fires a run with a signed POST to the Space's
-`/internal/v1/timestamps` route (`services/admin/ts_space_client.py`); the Space
-aligns and writes native timestamp-shard v13 + `ts_validation.json` straight to
-the inspector bucket, plus a run-log record the Inspector polls every 120 seconds
-(`services/admin/timestamps_jobs.py`). QUA is a pure consumer of the shards. The
+Timestamps come from the neural timing head on the aligner Space. Each chapter's
+segment times are stored beside its shard, `reciters/<slug>/timing/<chapter>.json.br`
+(one entry per `segment_uid`: the ref and span it was timed with, words with their
+letters and sounds, the model). Every call goes through the aligner's
+`POST /api/v1/extraction/timing` (`services/timing/aligner_timing.py`): it receives a
+chapter's detailed.json entries, their bucket audio and the stored times, keeps every
+time whose segment is unchanged and times the rest.
+
+- **Align** stores them: the run's assemble stage times every chapter's final segments.
+- **Saves and undos** re-time their chapter in the background
+  (`services/timing/retime_queue.py`); only the changed segments are timed.
+- **Segment cards** read them back (`GET /api/seg/word-times/<reciter>/<chapter>`) and
+  light the sounding word while a card plays.
+- **A timestamps run** (`services/admin/ts_aligner_runner.py`) calls twice per chapter:
+  first for its times (current already, normally, so nothing is timed), then for its native
+  shards, sending the madd lāzim lengths of the whole delivery as the basis of the shards'
+  reading-variant picks. A chapter with a failed segment keeps its previous shards and fails
+  the run; so does a failed call, before any shard is built. The run
+  writes the same run-log record (`reciters/<slug>/jobs/ts/<run_id>.json`) the batch
+  Space wrote, so completion, releases and the automations
+  (`services/admin/timestamps_jobs.py`) are unchanged.
+
+Bulk re-timing for a new model is an offline Katana batch (qua `engines/timing-batch`,
+`qua_timing_batch.retime`) that writes the same two files.
+
+`INSPECTOR_TS_ENGINE=space` sends runs to the MFA batch timing Space instead
+(`services/admin/ts_space_client.py`, `/internal/v1/timestamps`), which writes
+shards and `ts_validation.json` directly. QUA is a pure consumer of the shards. The
 complete stored contract is [shards.md](shards.md).
 
 ## Responsibilities
@@ -14,7 +36,7 @@ The producer owns acoustic work only:
 
 - resolve recorded segments and their connected-wasl relationships;
 - obtain chapter audio;
-- run MFA with the pinned acoustic model and emphatic-fatha-only token inventory;
+- time each segment with the neural timing head (`timing.neural_head@v1`);
 - recover word, sound, and written-letter intervals;
 - pass timing occurrences to the SDK v13 builder;
 - validate and deterministically Brotli-compress each chapter;
@@ -24,13 +46,13 @@ It does not construct frontend cells, rename tajweed rules, synthesize bridges, 
 
 ## Native build
 
-The Space's whole-verse producer passes timing occurrences to the SDK v13 shard builder.
+The aligner's chapter route passes the stored times, as timing occurrences, to the SDK v13 shard builder.
 
 For each chapter the builder:
 
 1. Orders original occurrences by absolute audio time.
 2. Joins adjacent occurrences while the preceding occurrence carries `wasl`.
-3. Phonemizes each maximal connected reading once with quranic-phonemizer 3.0.
+3. Phonemizes each maximal connected reading once with the pinned quranic-phonemizer.
 4. Builds native schema-2 analysis, source, and transformed-cell documents using `emphatic_fatha`, `emphatic_ikhfaa`, `imala`, and `tashil` for display.
 5. Checks the recovered acoustic sound sequence against the acoustic native surface.
 6. Transfers word and sound intervals to native IDs and recuts written-letter intervals to source-unit IDs.
@@ -41,11 +63,12 @@ Cross-verse wasl is never split or rephonemized as pausal. Known chains such as 
 
 ## Version pinning
 
-The Space image bakes the same-commit QUA SDK + quranic-phonemizer `3.0`; a chapter's shard
-`_meta` records the schema version, native schema version, renderer codec
-version, and phonemizer version it was built with. MFA remains acoustic
-emphatic-fatha-only. The additional display phonemes are same-cardinality
-notation choices and never enter the acoustic model or redistribute intervals.
+The aligner Space installs the same-commit qua SDK and its quranic-phonemizer pin; a
+chapter's shard `_meta` records the schema version, native schema version, renderer
+codec version, phonemizer version and stop edition it was built with, and the stored
+times record the timing model and phonemizer they were decoded with (a change of either
+re-times the chapter). The additional display phonemes are same-cardinality notation
+choices and never enter the timing model or redistribute intervals.
 
 ## Inputs and outputs
 

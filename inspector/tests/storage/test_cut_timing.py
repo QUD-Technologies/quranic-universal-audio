@@ -62,3 +62,16 @@ def test_untimed_joins_and_disordered_cursors_change_nothing():
 def test_without_timing_the_doc_is_returned_as_is():
     assert timed_missed_waqf_doc(DOC, None) is DOC
     assert timed_missed_waqf_doc(None, _timing()) is None
+
+
+def test_a_cut_with_its_own_measured_pause_keeps_it():
+    neural = {
+        "cursor_ms": 1050, "silence_start_ms": 1000, "silence_end_ms": 1100,
+        "timing_source": "neural", "evidence": {"neural": {"after_ref": "2:1:2"}},
+    }  # fmt: skip
+    doc = {"by_uid": {"u1": {"cursors": [1050], "refs": ["2:1:1-2:1:2", "2:1:3-2:1:9"],
+                             "cuts": [neural]}}}  # fmt: skip
+    out = timed_missed_waqf_doc(doc, _timing(_join("2:1:2", 900, 1200, 1500, "psil")))
+    assert out is not None
+    assert out["by_uid"]["u1"]["cuts"][0] == neural
+    assert out["by_uid"]["u1"]["cursors"] == [1050]
