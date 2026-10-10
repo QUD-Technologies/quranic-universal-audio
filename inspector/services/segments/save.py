@@ -7,10 +7,11 @@ Writes go through ``services.data_dir`` which routes to ``BucketBackend`` or
 writes through the hf-mount FUSE; the daemon's debounced flush handles
 durability to remote storage.
 
-Phase 3 made ``@require_edit_lock`` (signed-in + claim + state checks) the
-sole authoritative writer gate. The earlier ``INSPECTOR_LOCAL_WRITES`` env
-guard is gone — both local and deployed modes route every mutation through
-the same OAuth + claim check on the route layer.
+A save rewrites the whole ``detailed.json``, so saves and undos of one reciter
+are serialized under ``data_loader.detailed_lock``: each loads the document the
+previous one wrote, applies its edits and evicts the cache before the next
+begins. ``@require_edit_lock`` on the route layer is the writer gate (signed-in
++ claim + state checks).
 """
 
 from collections import defaultdict
@@ -34,6 +35,7 @@ from services.reference.delivery_edition import sdk_riwayah_for
 from services.segments.stamping import stamp_segment
 from services.storage import cache, data_dir, storage_paths
 from services.storage.data_loader import (
+    detailed_lock,
     get_word_counts,
     load_detailed,
     load_probe_v2,
@@ -99,8 +101,8 @@ def _validate_command_envelopes(operations: list) -> str | None:
 
     Each operation must carry a ``command`` object whose ``type`` is a known
     string and matches the enclosing ``op.type``.  Ops without a ``type`` (the
-    pre-Phase-3 round-trip shape used by patch-only saves) are skipped to
-    preserve MUST-1 (additive only).
+    round-trip shape used by patch-only saves) are skipped to preserve MUST-1
+    (additive only).
     """
     for op in operations or []:
         if not isinstance(op, dict):
@@ -756,30 +758,22 @@ def _refresh_split_group_index_on_save(reciter: str, batch: dict) -> None:
     cache.pop_seg_split_group_index(reciter)
 
 
-def save_seg_data(reciter: str, chapter: int, updates: dict, *, actor: Actor) -> SaveResult:
-    """Save edited segments.  Returns ``{"ok": True}`` or ``{"error": ...}``
-    with an HTTP status code as a second element in a tuple.
+def _apply_and_persist(
+    reciter: str, chapter: int, updates: dict, *, actor: Actor
+) -> tuple[SaveResult, list[dict], list[dict]]:
+    """Apply ``updates`` to the current document and persist it.
 
-    ``actor`` (kw-only) carries the per-edit attribution stamped on every
-    new edit_history.jsonl batch. The route layer builds it from the
-    authenticated user (see ``inspector/routes/segments_edit.py``).
+    Returns ``(result, flag_replies, flag_owner_activity)``. The caller holds
+    :func:`detailed_lock`, so ``load_detailed`` hands back the document as the
+    last write left it.
     """
-    # Validate command envelopes on every op before any work is done.  Each
-    # op declaring a discriminated ``type`` must carry a matching ``command``
-    # object whose ``type`` is in the allowed set.  Rejection is additive
-    # (MUST-1): historical patch-style ops without a ``type`` discriminator
-    # pass through untouched.
-    cmd_err = _validate_command_envelopes(updates.get("operations") or [])
-    if cmd_err:
-        return {"error": cmd_err}, 400
-
     entries = load_detailed(reciter)
     if not entries:
-        return {"error": "Reciter not found"}, 404
+        return ({"error": "Reciter not found"}, 404), [], []
 
     matching = [e for e in entries if chapter_from_ref(e["ref"]) == chapter]
     if not matching:
-        return {"error": "Chapter not found"}, 404
+        return ({"error": "Chapter not found"}, 404), [], []
 
     # Build lookups of existing segments by time and by uid for field preservation
     existing_by_time, existing_by_uid = _build_seg_lookups(matching)
@@ -801,13 +795,13 @@ def save_seg_data(reciter: str, chapter: int, updates: dict, *, actor: Actor) ->
         if updates.get("full_replace"):
             err = _apply_full_replace(matching, updates, existing_by_time, existing_by_uid, riwayah)
             if err is not None:
-                return err
+                return err, [], []
         else:
             _apply_patch(matching, updates, riwayah)
 
         word_err = _apply_word_timing_op(matching, updates, reciter=reciter, chapter=chapter)
         if word_err is not None:
-            return word_err
+            return word_err, [], []
 
         # Flag ops carry their payload in the operation envelope, not in
         # ``segments`` — applied here with a server-authoritative actor + clock.
@@ -815,14 +809,12 @@ def save_seg_data(reciter: str, chapter: int, updates: dict, *, actor: Actor) ->
             matching, updates.get("operations") or [], actor=actor
         )
         if flag_err is not None:
-            return flag_err
+            return flag_err, [], []
 
         # ``ignored_categories`` is mutated only when the payload explicitly
         # carries it (Ignore action, or explicit ``[]`` clear -- MUST-7).
-        # Edits dispatched from validation accordion cards no longer write to
-        # ``ignored_categories``: that contract is reserved for explicit Ignore.
-        # Card dismissal for soft-rule categories is purely a frontend
-        # session-state concern.
+        # Card dismissal for soft-rule categories is a frontend session-state
+        # concern and never reaches this payload.
         result = _persist_and_record(
             reciter,
             chapter,
@@ -836,29 +828,59 @@ def save_seg_data(reciter: str, chapter: int, updates: dict, *, actor: Actor) ->
     finally:
         if not persisted:
             cache.invalidate_seg_caches(reciter)
+    return result, flag_replies, flag_owner_activity
 
-    # Notify after the save persisted — best-effort (own durable txn), never
-    # affects the save. Two audiences: the original flagger on a reply to their
-    # flag, and the review-alert recipients on any new flag / reply.
+
+def _notify_flag_activity(
+    reciter: str, actor: Actor, replies: list[dict], owner_activity: list[dict]
+) -> None:
+    """Notify the original flagger of each reply and the review-alert recipients
+    of each new flag / reply. Best-effort (own durable txn), never affects the save."""
+    from services.notifications import emit as _notify
+
+    for r in replies:
+        _notify.notify_flag_reply(
+            flagger_id=r["flagger_id"],
+            replier=actor,
+            slug=reciter,
+            segment_uid=r["segment_uid"],
+            comment=r["comment"],
+            at_utc=r["at_utc"],
+        )
+    for a in owner_activity:
+        _notify.notify_owners_flag_activity(
+            actor=actor,
+            slug=reciter,
+            segment_uid=a["segment_uid"],
+            kind=a["kind"],
+            body=f"{a['ref']} — {a['comment']}",
+            at_utc=a["at_utc"],
+        )
+
+
+def save_seg_data(reciter: str, chapter: int, updates: dict, *, actor: Actor) -> SaveResult:
+    """Save edited segments.  Returns ``{"ok": True}`` or ``{"error": ...}``
+    with an HTTP status code as a second element in a tuple.
+
+    Saves of one reciter run one at a time under :func:`detailed_lock`, each
+    applying its chapter's edits to the document the previous save wrote, so
+    overlapping saves of different chapters never drop each other's changes.
+
+    ``actor`` (kw-only) carries the per-edit attribution stamped on every
+    new edit_history.jsonl batch. The route layer builds it from the
+    authenticated user (see ``inspector/routes/segments/edit.py``).
+    """
+    # Validate command envelopes on every op before any work is done.  Each
+    # op declaring a discriminated ``type`` must carry a matching ``command``
+    # object whose ``type`` is in the allowed set.  Rejection is additive
+    # (MUST-1): patch-style ops without a ``type`` discriminator pass through
+    # untouched.
+    cmd_err = _validate_command_envelopes(updates.get("operations") or [])
+    if cmd_err:
+        return {"error": cmd_err}, 400
+
+    with detailed_lock(reciter):
+        result, replies, owner_activity = _apply_and_persist(reciter, chapter, updates, actor=actor)
     if not isinstance(result, tuple):
-        from services.notifications import emit as _notify
-
-        for r in flag_replies:
-            _notify.notify_flag_reply(
-                flagger_id=r["flagger_id"],
-                replier=actor,
-                slug=reciter,
-                segment_uid=r["segment_uid"],
-                comment=r["comment"],
-                at_utc=r["at_utc"],
-            )
-        for a in flag_owner_activity:
-            _notify.notify_owners_flag_activity(
-                actor=actor,
-                slug=reciter,
-                segment_uid=a["segment_uid"],
-                kind=a["kind"],
-                body=f"{a['ref']} — {a['comment']}",
-                at_utc=a["at_utc"],
-            )
+        _notify_flag_activity(reciter, actor, replies, owner_activity)
     return result

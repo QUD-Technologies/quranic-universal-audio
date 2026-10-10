@@ -33,15 +33,23 @@ from qua_shared.riwayat import DEFAULT_SDK_RIWAYAH
 from services.storage import cache, data_dir, static_refs
 from services.storage.cut_timing import timed_missed_waqf_doc
 
-_detailed_locks: dict[str, threading.Lock] = {}
+_detailed_locks: dict[str, threading.RLock] = {}
 _detailed_locks_guard = threading.Lock()
 
 
-def _detailed_lock(reciter: str) -> threading.Lock:
+def detailed_lock(reciter: str) -> threading.RLock:
+    """The per-reciter lock over ``detailed.json`` and its cached entries.
+
+    A cold :func:`load_detailed` holds it from the read to the cache fill, and
+    every writer (save, undo) holds it from its load to its cache eviction, so a
+    writer always edits the current document and no reader caches bytes read
+    before a write that has since landed. Re-entrant: a writer calls
+    :func:`load_detailed` while holding it.
+    """
     with _detailed_locks_guard:
         lock = _detailed_locks.get(reciter)
         if lock is None:
-            lock = threading.Lock()
+            lock = threading.RLock()
             _detailed_locks[reciter] = lock
         return lock
 
@@ -163,7 +171,7 @@ def load_detailed(reciter: str) -> list[dict]:
     cached = cache.get_seg_cache(reciter)
     if cached is not None:
         return cached
-    with _detailed_lock(reciter):
+    with detailed_lock(reciter):
         cached = cache.get_seg_cache(reciter)
         if cached is not None:
             return cached
