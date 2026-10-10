@@ -76,7 +76,7 @@ The image bakes the **dev** bucket as default (`INSPECTOR_BUCKET_REPO=QUD-Techno
 | `INSPECTOR_AUTOMATIONS_INTERVAL_S` | `60` | Tick cadence for the automation reconciler. |
 | `INSPECTOR_JOB_IMAGE` | `python:3.11-slim` | Docker image every HF Job kind runs in (`services/admin/jobs/base.py`). Stock image; `job_command` installs ffmpeg + the kind's pip deps + the staged `qua_domain` wheel (`/aux/code/wheels/`, glob-guarded) at launch (~40 s). The former prebuilt `hetchyy/quran-ts-job` Space is gone. |
 | `INSPECTOR_ALIGN_PIPELINE` | off; `1` on the dev Space | Native align pipeline — enables the Requests-tab Align run and resumes any pending/running `align_runs` worker at boot. See [align-pipeline.md](align-pipeline.md). |
-| `INSPECTOR_ALIGNER_URL` | `https://hetchyy-quranic-universal-aligner-dev.hf.space` | Aligner Space the align stage + sidecars call (`/api/v1`). |
+| `INSPECTOR_ALIGNER_URL` | `https://qud-technologies-quranic-universal-aligner-dev.hf.space` | Aligner Space the align stage + sidecars call (`/api/v1`). |
 | `INSPECTOR_ALIGN_KEEP_STAGING` | off | `1` keeps `staging/<slug>/<run>/` after assemble (debugging). |
 | `INSPECTOR_ACQUIRE_JOB_FLAVOR` / `INSPECTOR_ACQUIRE_JOB_TIMEOUT` | `cpu-upgrade` / `6h` | The acquire HF Job's hardware + wall clock. |
 | `INSPECTOR_ALIGN_CONCURRENCY` | 16 (`params.ALIGN_WORKERS`, capped at the pending file count) | Overrides the align stage's rolling HTTP transport pool for debugging; aligner-side admission is independent. |

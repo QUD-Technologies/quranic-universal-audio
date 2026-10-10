@@ -11,7 +11,7 @@ import json
 import os
 from dataclasses import asdict, dataclass
 
-DEFAULT_ALIGNER_URL = "https://hetchyy-quranic-universal-aligner-dev.hf.space"
+DEFAULT_ALIGNER_URL = "https://qud-technologies-quranic-universal-aligner-dev.hf.space"
 
 MODEL_LARGE = "Large"
 DEVICE_GPU = "GPU"
