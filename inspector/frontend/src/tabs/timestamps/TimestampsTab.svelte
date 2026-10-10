@@ -108,7 +108,7 @@
         type TsFocusWaslGroup,
         type TsLoadedVerse,
     } from './stores/verse';
-    import { occasionIndexAt, resolveShuffleTick, shouldFireShuffle } from './utils/shuffle-tick';
+    import { occasionIndexAt, resolveShuffleTick, shouldFireShuffle, speechSpan } from './utils/shuffle-tick';
     import { setupZoomLifecycle } from './utils/zoom';
 
     // ---- Local display constants ----
@@ -132,6 +132,8 @@
         ref: string;
         startMs: number;
         endMs: number;
+        speechStartMs?: number;
+        speechEndMs?: number;
         lv: TsLoadedVerse;
         /** The raw occasion carries native connected-reading adjacency. */
         occ: ChapterOccasion;
@@ -410,6 +412,7 @@
                     ref: occ.ref,
                     startMs: data.time_start_ms,
                     endMs: data.time_end_ms,
+                    ...speechSpan(data),
                     lv: { data, tsSegOffset: data.time_start_ms / 1000, tsSegEnd: data.time_end_ms / 1000 },
                     occ,
                 });
