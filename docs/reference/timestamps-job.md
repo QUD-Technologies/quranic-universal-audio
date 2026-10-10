@@ -92,6 +92,12 @@ run rebuilds it before closing its record, the `ts-refreshed` notice rebuilds it
 publishes, and the route builds it on first request when it is missing. Non-Hafs deliveries get an
 empty summary.
 
+The batch re-time also publishes `reciters/<slug>/recitation_profile.json` for Hafs deliveries:
+per madd type the mean duration and, where Hafs allows a length choice, the length read, then
+ghunnah and silence (`RecitationProfileDoc`). `GET /api/ts/profile/<slug>` serves it without
+counts or shares (`TsRecitationProfile`, `inspector/services/reference/recitation_profile.py`),
+or `null` when the file is missing; the `ts-refreshed` notice drops its cached copy.
+
 ## Single-flight and stale runs
 
 Launching is gated on the reciter's newest `reciters/<slug>/jobs/ts/<run_id>.json`

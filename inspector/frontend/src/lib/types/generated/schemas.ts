@@ -2472,6 +2472,14 @@ export interface TsJobRecord {
   error?: string | null;
 }
 /**
+ * One madd type with occurrences; ``length`` only for the types with a length choice.
+ */
+export interface TsMaddRow {
+  kind: "tabii" | "munfasil" | "muttasil" | "lazim" | "arid" | "leen";
+  mean_ms: number;
+  length?: ("qasr" | "tawassut" | "ishbaa") | null;
+}
+/**
  * Decompressed body of ``GET /api/ts/manifest``.
  *
  * Built by ``_build_manifest_dict``. ``dataset_base_url`` is ``""`` in the
@@ -2580,6 +2588,16 @@ export interface TsReadingsDoc {
   slug: string;
   built_at?: string;
   rows?: TsReadingRow[];
+}
+/**
+ * A Hafs recitation's madd, ghunnah and pause durations — the public projection.
+ *
+ * Madd rows in display order; a type, ghunnah or pauses with no occurrences is absent.
+ */
+export interface TsRecitationProfile {
+  madd?: TsMaddRow[];
+  ghunnah_ms?: number | null;
+  pause_ms?: number | null;
 }
 /**
  * Every reported verse for a reciter (``GET .../reports``).

@@ -2,24 +2,29 @@
     /**
      * Readings side panel — docked beside the open recitation picker at the
      * picker's height, shown whenever the selected recitation is Hafs (the host
-     * renders nothing for other riwayat). It lists what the recitation reads
+     * renders nothing for other riwayat). It opens with the recitation's mean
+     * madd, ghunnah and pause durations, each madd type with a length choice
+     * showing the length read among those Hafs allows (absent when the delivery
+     * has no profile yet). Then it lists what the recitation reads
      * wherever Hafs allows more than one way: per group, one row per word with
      * the word in the Quran font beside its options, the options read carrying
      * the verses read that way and the others dimmed. Each verse chip jumps the
      * Timestamps view to that verse for this reciter. Overflow scrolls inside
      * the panel; labels follow the UI locale only.
      *
-     * The profile comes from `GET /api/ts/readings/<slug>` (see
-     * `reading-profile-source`), cached per delivery.
+     * Both come from `reading-profile-source` (`GET /api/ts/readings/<slug>` and
+     * `GET /api/ts/profile/<slug>`), cached per delivery.
      */
-    import { i18n } from '../../../lib/i18n/locale.svelte';
+    import { fmtNum, i18n } from '../../../lib/i18n/locale.svelte';
     import * as m from '../../../lib/paraglide/messages';
     import { pendingTsNavigation } from '../../../lib/stores/navigation';
     import type { TsReadingVerse } from '../../../lib/types/generated/schemas';
     import { surahName } from '../../../lib/utils/surah-info';
     import { GROUP_TITLE, optionLabel } from '../domain/reading-choices';
-    import { loadReadingProfile } from '../services/reading-profile-source';
+    import { LENGTH_LABEL, lengthOption, MEASURE_LABEL, SECTION_TITLE } from '../domain/recitation-terms';
+    import { loadReadingProfile, loadRecitationProfile } from '../services/reading-profile-source';
     import type { ProfileGroup } from '../utils/reading-profile';
+    import { formatSeconds, type ProfileSection } from '../utils/recitation-profile';
 
     interface Props {
         slug: string;
@@ -32,7 +37,7 @@
     type LoadState =
         | { kind: 'loading' }
         | { kind: 'error' }
-        | { kind: 'ready'; groups: ProfileGroup[] };
+        | { kind: 'ready'; groups: ProfileGroup[]; profile: ProfileSection[] };
 
     const PANEL_ID = 'ts-readings';
     let loadState = $state<LoadState>({ kind: 'loading' });
@@ -41,8 +46,10 @@
     function load(target: string): void {
         loadedSlug = target;
         loadState = { kind: 'loading' };
-        loadReadingProfile(target)
-            .then((groups) => { if (loadedSlug === target) loadState = { kind: 'ready', groups }; })
+        Promise.all([loadReadingProfile(target), loadRecitationProfile(target)])
+            .then(([groups, profile]) => {
+                if (loadedSlug === target) loadState = { kind: 'ready', groups, profile };
+            })
             .catch(() => { if (loadedSlug === target) loadState = { kind: 'error' }; });
     }
 
@@ -57,6 +64,8 @@
 
     const verseTitle = (verse: TsReadingVerse): string =>
         m.ts_readings_go_to({ surah: surahName(verse.surah, i18n.locale), ref: verse.label });
+
+    const seconds = (ms: number): string => m.ts_profile_seconds({ n: formatSeconds(ms, i18n.locale) });
 </script>
 
 {#key i18n.locale}
@@ -70,9 +79,34 @@
                 {m.ts_readings_error()}
                 <button type="button" class="rp-retry" onclick={() => load(slug)}>{m.ts_readings_retry()}</button>
             </p>
-        {:else if !loadState.groups.length}
-            <p class="rp-status">{m.ts_readings_empty()}</p>
         {:else}
+            {#each loadState.profile as section (section.section)}
+                <section class="rp-group" aria-labelledby="{PANEL_ID}-{section.section}">
+                    <h3 id="{PANEL_ID}-{section.section}" class="rp-group-title">{SECTION_TITLE[section.section]()}</h3>
+                    <ul class="rp-stats">
+                        {#each section.rows as row (row.measure)}
+                            {@const chosen = row.lengths.find((l) => l.chosen)}
+                            <li class="rp-stat">
+                                <span class="rp-stat-name">{MEASURE_LABEL[row.measure]()}</span>
+                                {#if chosen}
+                                    <span class="rp-length" title={lengthOption(chosen.length)}>
+                                        <span class="rp-length-name">{LENGTH_LABEL[chosen.length]()}</span>
+                                        <span class="rp-counts" aria-hidden="true">
+                                            {#each row.lengths as l (l.length)}
+                                                <span class="rp-count" class:chosen={l.chosen}>{fmtNum(l.count)}</span>
+                                            {/each}
+                                        </span>
+                                    </span>
+                                {/if}
+                                <span class="rp-dur" title={m.ts_profile_mean({ duration: seconds(row.ms) })}>{seconds(row.ms)}</span>
+                            </li>
+                        {/each}
+                    </ul>
+                </section>
+            {/each}
+            {#if !loadState.groups.length}
+                <p class="rp-status">{m.ts_readings_empty()}</p>
+            {/if}
             {#each loadState.groups as group (group.group)}
                 <section class="rp-group" aria-labelledby="{PANEL_ID}-{group.group}">
                     <h3 id="{PANEL_ID}-{group.group}" class="rp-group-title">{GROUP_TITLE[group.group]()}</h3>
@@ -165,6 +199,63 @@
         font-weight: 600;
         color: var(--text-muted);
     }
+    .rp-stats {
+        list-style: none;
+        margin: 0;
+        padding: 2px var(--s-2);
+        background: var(--panel-2);
+        border-radius: var(--r-2);
+    }
+    .rp-stat {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto 3.75rem;
+        align-items: center;
+        column-gap: var(--s-3);
+        min-height: 30px;
+        font-size: var(--fs-body);
+        color: var(--text-secondary);
+    }
+    .rp-stat + .rp-stat { border-top: 1px solid var(--border-quiet); }
+    .rp-stat-name { grid-column: 1; line-height: 1.3; }
+    .rp-length {
+        grid-column: 2;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        justify-self: end;
+    }
+    .rp-length-name { font-weight: 600; color: var(--text-primary); }
+    .rp-counts { display: inline-flex; gap: 2px; }
+    .rp-count {
+        min-width: 16px;
+        height: 16px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--font-mono);
+        font-size: var(--fs-meta);
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+        color: var(--text-muted);
+        border: 1px solid var(--border-strong);
+        border-radius: var(--r-1);
+    }
+    .rp-count.chosen {
+        color: var(--accent-fg);
+        font-weight: 600;
+        background: var(--accent);
+        border-color: var(--accent);
+    }
+    .rp-dur {
+        grid-column: 3;
+        justify-self: end;
+        font-family: var(--font-mono);
+        font-size: var(--fs-meta);
+        font-variant-numeric: tabular-nums;
+        color: var(--text-primary);
+        white-space: nowrap;
+    }
+
     .rp-words {
         list-style: none;
         margin: 0;

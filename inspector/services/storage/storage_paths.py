@@ -174,6 +174,15 @@ def readings_path(slug: str) -> str:
     return reciter_file(slug, "readings.json")
 
 
+def recitation_profile_path(slug: str) -> str:
+    """Recitation profile — ``recitation_profile.json``: a Hafs delivery's madd, ghunnah and
+    silence durations, published by the batch re-time beside its shards.
+
+    Schema: ``qua_shared/schemas/bucket/recitation_profile.py``.
+    """
+    return reciter_file(slug, "recitation_profile.json")
+
+
 def auto_split_path(slug: str) -> str:
     """Auto-split cursor sidecar — per-seg precomputed cursors + refs.
 
