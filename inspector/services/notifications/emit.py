@@ -122,6 +122,68 @@ def notify_owners_shard_integrity(findings: list) -> int:
         return 0
 
 
+def notify_owners_release_cut(
+    *,
+    job_id: str,
+    version: str | None,
+    recitation_count: int = 0,
+    held: dict[str, list[str]] | None = None,
+    failed: bool = False,
+) -> int:
+    """One card per review-alert recipient for a finished GitHub release cut.
+
+    ``held`` is the job's ``validation_summary.held_upstream_changes`` —
+    ``{slug: ["ch62 recording (465s → 321s)", …]}`` for recitations kept out
+    because their linked upstream audio is a different recording. The body
+    lists them so an owner knows which chapters to realign. Deduped on the job
+    id; best-effort, like every other emitter. Returns the cards created.
+    """
+    try:
+        from services.db import sync as _sync
+        from services.state import catalog
+
+        recipients = _review_alert_recipients()
+        if not recipients:
+            return 0
+        held = held or {}
+        lines = [
+            f"{catalog.display_name(slug) or slug} ({slug}): {', '.join(chapters)}"
+            for slug, chapters in sorted(held.items())
+        ]
+        if failed:
+            title = copy.release_cut_failed()
+            event = "release.failed"
+        elif held:
+            title = copy.release_cut_held(version or "", len(held))
+            event = "release.cut"
+        else:
+            title = copy.release_cut(version or "", recitation_count)
+            event = "release.cut"
+        body = (
+            "Held back — upstream audio is a different recording than the one aligned; "
+            "realign these chapters:\n" + "\n".join(lines)
+            if lines
+            else None
+        )
+        created = 0
+        with _sync.durable_transaction():
+            for uid in recipients:
+                if repo_notifications.create(
+                    hf_user_id=uid,
+                    event=event,
+                    slug=None,
+                    title=title,
+                    body=body,
+                    payload={"version": version, "job_id": job_id, "held": held},
+                    source_key=f"release:{job_id}",
+                ):
+                    created += 1
+        return created
+    except Exception:  # noqa: BLE001 — best-effort; never break the release webhook
+        logger.exception("notifications.notify_owners_release_cut failed")
+        return 0
+
+
 def resolve_shard_integrity(scanned: list[str], findings: list) -> int:
     """Archive shard-missing cards the latest sweep no longer finds.
 

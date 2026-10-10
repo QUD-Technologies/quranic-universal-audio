@@ -67,6 +67,18 @@ def shard_missing(name: str) -> str:
     return f"Timestamps data missing · {name}"
 
 
+def release_cut(version: str, count: int) -> str:
+    return f"GitHub release {version} published · {count} recitations"
+
+
+def release_cut_held(version: str, held: int) -> str:
+    return f"GitHub release {version} published · {held} recitation(s) held back"
+
+
+def release_cut_failed() -> str:
+    return "GitHub release cut failed"
+
+
 # --- User-facing: report resolution ---
 
 

@@ -48,6 +48,6 @@ or delivery state from this audit: any fix (re-intake, manifest backfill) is a p
 needs the user's go.
 
 The same classifier (`qua_shared.audio.upstream`) guards the pipeline: Align start refuses a
-`recording` change with 409, and the GitHub release cut aborts on one.
+`recording` change with 409, and the GitHub release cut holds that recitation back and notifies owners.
 
 Related: `inspector-audio` skill (`references/bugs.md`, the CDN-swap row) for the playback side.
