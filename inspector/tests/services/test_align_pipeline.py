@@ -33,6 +33,8 @@ from services.state import state as state_service
 SLUG = "rec_align"
 #: ``(slug, chapter, kwargs)`` of each stubbed ``aligner_timing.time_chapter`` call.
 _TIMED: list[tuple] = []
+#: Slugs of each stubbed ``timestamps_jobs.launch`` call.
+_LAUNCHED: list[str] = []
 OWNER = Actor(hf_user_id="u-owner", login_at_time="owner", role=Role.OWNER)
 
 
@@ -199,6 +201,15 @@ def align_env(tmp_path, monkeypatch):
         aligner_timing,
         "time_chapter",
         lambda slug, chapter, **kw: _TIMED.append((slug, chapter, kw)),
+    )
+    from services.admin import timestamps_jobs
+
+    _LAUNCHED.clear()
+    monkeypatch.setattr(timestamps_jobs, "running_job_for", lambda slug: None)
+    monkeypatch.setattr(
+        timestamps_jobs,
+        "launch",
+        lambda slug, **kw: _LAUNCHED.append(slug) or {"job_id": "ts-test", "url": None},
     )
     _seed_catalog(
         vocab=Vocab(
@@ -383,6 +394,7 @@ def test_assemble_publishes_reciter_and_auto_detect_fires(align_env):
     ]
     assert segs[1]["segment_uid"]  # the waqf row got its uid
     assert _TIMED == [(SLUG, 112, {"riwayah": "hafs"})]
+    assert _LAUNCHED == [SLUG], "the first timestamps run starts once the chapters are timed"
     assert "qalqala_letter" in segs[0] or "is_boundary_adj" in segs[0]  # stamped
 
     history = [
@@ -486,6 +498,39 @@ def test_sidecars_stage_skips_a_null_low_confidence(align_env, monkeypatch):
     )
 
 
+def _missed_waqf_after_sidecars(align_env, monkeypatch, neural):
+    from services.admin.align_pipeline import runs, stage_sidecars, staging
+    from services.admin.align_pipeline.params import AlignParams
+
+    run = runs.start(SLUG, OWNER)
+    staging.write_json(staging.chapter_path(SLUG, run.run_id, 112), CH112)
+    monkeypatch.setattr(
+        stage_sidecars,
+        "_call",
+        lambda _run_id, _body: {
+            "low_confidence_v2": None,
+            "missed_waqf_v2": neural,
+            "auto_split_v1": {"by_uid": {}},
+        },
+    )
+    stage_sidecars.run(SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"})
+    return staging.read_json(staging.sidecar_path(SLUG, run.run_id, "missed_waqf_v2.json"))
+
+
+def test_sidecars_stage_stages_the_neural_missed_waqf(align_env, monkeypatch):
+    """The Space's neural review replaces the matcher-lattice Low Confidence Waqf."""
+    neural = {"_meta": {"kind": "missed_waqf", "method": "neural_checks"}, "by_uid": {"u": {}}}
+
+    assert _missed_waqf_after_sidecars(align_env, monkeypatch, neural) == neural
+
+
+def test_sidecars_stage_keeps_the_matcher_missed_waqf_without_a_neural_one(align_env, monkeypatch):
+    staged = _missed_waqf_after_sidecars(align_env, monkeypatch, None)
+
+    assert staged["_meta"]["kind"] == "missed_waqf"
+    assert staged["_meta"].get("method") != "neural_checks"
+
+
 def test_sidecars_stage_sends_interactive_timings_in_published_segment_order(
     align_env, monkeypatch
 ):
@@ -519,6 +564,42 @@ def test_sidecars_stage_sends_interactive_timings_in_published_segment_order(
     stage_sidecars.run(SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"})
 
     assert captured["auto_split_timings"]["112"] == [None, None, chapter["segments"][3]["words"]]
+
+
+def _assemble_112(align_env):
+    from services.admin.align_pipeline import runs, stage_assemble, staging
+    from services.admin.align_pipeline.params import AlignParams
+
+    backend, _started = align_env
+    run = runs.start(SLUG, OWNER)
+    staging.write_json(staging.chapter_path(SLUG, run.run_id, 112), CH112)
+    staging.write_json(staging.sidecar_path(SLUG, run.run_id, "low_confidence_v2.json"), {"v": 2})
+    staging.write_json(staging.sidecar_path(SLUG, run.run_id, "auto_split_v1.json"), {"v": 1})
+    backend.write_bytes_atomic(f"reciters/{SLUG}/peaks/112.json.gz", _slim_blob(23000))
+    return stage_assemble.run(
+        SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"},
+        started_at="2026-09-12T00:00:00Z",
+    )  # fmt: skip
+
+
+def test_assemble_completes_when_the_timestamps_launch_fails(align_env, monkeypatch):
+    from services.admin import timestamps_jobs
+
+    def refuse(slug, **_kw):
+        raise RuntimeError("aligner unreachable")
+
+    monkeypatch.setattr(timestamps_jobs, "launch", refuse)
+
+    assert _assemble_112(align_env)["chapters"] == 1
+
+
+def test_assemble_leaves_an_in_flight_timestamps_run_alone(align_env, monkeypatch):
+    from services.admin import timestamps_jobs
+
+    monkeypatch.setattr(timestamps_jobs, "running_job_for", lambda slug: "ts-running")
+    _assemble_112(align_env)
+
+    assert _LAUNCHED == []
 
 
 def test_assemble_accepts_a_missing_low_confidence_off_hafs(align_env):

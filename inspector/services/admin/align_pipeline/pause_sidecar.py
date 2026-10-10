@@ -1,5 +1,8 @@
-"""``missed_waqf_v2.json`` (Low Confidence Waqf) and ``verse_ends_v1.json`` from the
-aligner's lattice pauses and the chapter's loudness levels.
+"""``verse_ends_v1.json`` and ``missed_waqf_v2.json`` (Low Confidence Waqf) from the
+aligner's matcher-lattice pauses and the chapter's loudness levels.
+
+The align stage replaces this ``missed_waqf_v2`` with the Space's neural review when the
+Space gives one (Hafs deliveries, :mod:`.stage_sidecars`).
 
 The aligner reports the stops its phoneme lattice heard inside a segment (``pauses``)
 and never cuts on them. Every join a segment holds is judged here by the boundary-head

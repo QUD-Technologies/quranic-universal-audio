@@ -9,7 +9,10 @@ The staged verse-end verdicts are then applied to the published delivery
 (``services.segments.verse_end_verdicts``), and every chapter's segment times are
 stored (``services.timing``: the aligner's neural head on the final segments); a
 ``published.json`` marker lets a retry skip straight to them, and a retry times only
-the chapters still untimed.
+the chapters still untimed. Once every chapter is timed, a timestamps run is launched
+(:func:`services.admin.timestamps_jobs.launch`) so the delivery's shards, reading variants
+and readings summary exist while it is reviewed; it runs on its own thread, and its
+completion publishes nothing until the reciter is marked ready.
 
 Guarded: the slug must still be awaiting alignment (or merely catalogued) and
 have no ``detailed.json`` — a delivery that got content some other way is never
@@ -76,6 +79,7 @@ def run(
     verse_ends = staging.read_json(staging.sidecar_path(slug, run_id, VERSE_ENDS_FILE)) or {}
     applied = verse_end_verdicts.apply(slug, verse_ends.get("by_uid") or {}, PIPELINE_ACTOR)
     _store_times(slug, run_id, params.riwayah)
+    _launch_timestamps(slug, run_id)
     if not _params.keep_staging():
         staging.delete_run(slug, run_id)
     log.info("align %s: verse ends applied for %s: %s", run_id, slug, applied)
@@ -98,6 +102,22 @@ def _store_times(slug: str, run_id: str, riwayah: str) -> None:
             failed.append(chapter)
     if failed:
         raise AssembleError(f"{slug}: segment timing failed for chapters {failed}")
+
+
+def _launch_timestamps(slug: str, run_id: str) -> None:
+    """Start the delivery's first timestamps run unless one is in flight. A failed launch
+    is logged, not raised: the shards are rebuilt when the reciter is marked ready."""
+    from qua_shared.schemas import TsJobSettings
+    from services.admin import timestamps_jobs
+
+    if not aligner_timing.enabled():
+        return
+    try:
+        if timestamps_jobs.running_job_for(slug) is None:
+            launched = timestamps_jobs.launch(slug, settings=TsJobSettings())
+            log.info("align %s: timestamps run %s launched", run_id, launched["job_id"])
+    except Exception:  # noqa: BLE001 — the align run is complete without it
+        log.exception("align %s: timestamps run for %s not launched", run_id, slug)
 
 
 def _publish(slug, run_id, params, chapters, sources, started_at) -> int:

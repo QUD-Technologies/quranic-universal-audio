@@ -75,15 +75,17 @@ align     per-file loop, aligner Space POST /api/v1/batches (alignment-only) +
           From here a cut chapter is indistinguishable from a single one.
 sidecars  one reciter-wide POST /api/v1/extraction/sidecars (SSE) — the aligner times
           every segment with the neural head, runs the review policy over its checks
-          (qua_timing_batch.retime.review) for low_confidence_v2, and builds auto_split
-          from the align stage's word timings (else the same neural rows)
-          → staging/<slug>/<run>/sidecars/{low_confidence_v2,auto_split_v1}.json
-          Hafs only for the probe: a non-Hafs delivery gets `low_confidence_v2: null`
-          (D12, editions.md) and nothing is staged for it; auto_split_v1 is always staged
-          + sidecars/{missed_waqf_v2,verse_ends_v1}.json built in-process (pause_sidecar)
-          from the rows' lattice `pauses`, word timings and the chapters' levels — see
-          Low Confidence Waqf below; a segment in low_confidence_v2 is dropped from
-          missed_waqf_v2 (one card per segment)
+          (qua_timing_batch.retime.review) for low_confidence_v2 and missed_waqf_v2 — the
+          policy a batch re-time publishes — and builds auto_split from the align stage's
+          word timings (else the same neural rows)
+          → staging/<slug>/<run>/sidecars/{low_confidence_v2,missed_waqf_v2,auto_split_v1}.json
+          Hafs only for the review: a non-Hafs delivery gets `low_confidence_v2: null` and
+          `missed_waqf_v2: null` (D12, editions.md); auto_split_v1 is always staged
+          + sidecars/verse_ends_v1.json built in-process (pause_sidecar) from the rows'
+          matcher-lattice `pauses`, word timings and the chapters' levels — see Low
+          Confidence Waqf below — which also stages the missed_waqf_v2 of a non-Hafs
+          delivery; a segment in low_confidence_v2 is dropped from missed_waqf_v2 (one card
+          per segment)
 assemble  in-process: adapt → promote_build.build_artifacts (peaks from the acquired blobs,
           no ffmpeg) → reciters/<slug>/{detailed,segments,pipeline_meta,chapter_sources,
           coverage_report,edit_history*.jsonl,low_confidence_v2,auto_split_v1,
@@ -96,7 +98,9 @@ assemble  in-process: adapt → promote_build.build_artifacts (peaks from the ac
           verse_ends_v1 verdicts are applied to the published delivery
           (services/segments/verse_end_verdicts: WAQF splits, WASL answers, one
           cross_verse/auto_fix op per segment; a retry re-applies idempotently);
-          staging deleted
+          every chapter's segment times stored, then the first timestamps run launched
+          (shards, reading variants, readings summary; it publishes nothing until the
+          reciter is marked ready); staging deleted
 auto_detect  sees detailed.json → reciter.alignment_completed → awaiting_review
 ```
 
@@ -258,6 +262,10 @@ row and never split on) persist as `DetailedSegment.pauses` without `token_pos`;
 save flow keeps them only while the row's time and ref are unchanged.
 
 ## Low Confidence Waqf (`missed_waqf_v2.json`) and verse ends (`verse_ends_v1.json`)
+
+On a Hafs delivery the staged `missed_waqf_v2` is the aligner's neural review (above); the
+matcher-lattice build below gives `verse_ends_v1` and a non-Hafs delivery's
+`missed_waqf_v2`.
 
 The acquire and split jobs bake `reciters/<slug>/levels/<ch>.json.gz` next to the
 peaks (on a re-run, acquire bakes them for already-persisted chapters straight off the

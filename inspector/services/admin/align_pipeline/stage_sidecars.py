@@ -3,12 +3,13 @@
 Builds every chapter's ``ChapterCandidate`` from the staged aligner results (the
 same adaptation assemble uses, so the sidecars index exactly the rows that get
 published) and streams ``POST /api/v1/extraction/sidecars``. Auto Split reuses
-the align stage's candidate-only interactive timings; Low Confidence is the review
-policy over the neural timing head's checks, run on the Space. The Space runs one
-sidecar job at a time; a 409 waits and retries. ``missed_waqf_v2`` (Low Confidence
-Waqf) and ``verse_ends_v1`` are built here from the staged rows' lattice pauses, word
-timings and the chapters' baked loudness levels, without the Space
-(``pause_sidecar``). A segment gets one card: one in Low Confidence is dropped from
+the align stage's candidate-only interactive timings; Low Confidence and Low Confidence
+Waqf (``missed_waqf_v2``) are the review policy over the neural timing head's checks, run
+on the Space — the policy a batch re-time publishes. The Space runs one sidecar job at a
+time; a 409 waits and retries. ``verse_ends_v1`` is built here from the staged rows'
+matcher-lattice pauses, word timings and the chapters' baked loudness levels, without the
+Space (``pause_sidecar``), which also gives the ``missed_waqf_v2`` of a delivery the Space
+does not review (non-Hafs). A segment gets one card: one in Low Confidence is dropped from
 Low Confidence Waqf, its fit being too poor to trust a stop inside it.
 """
 
@@ -100,13 +101,14 @@ def _stage_space_sidecars(
         **({"auto_split_timings": auto_split_timings} if auto_split_timings is not None else {}),
     }
     result = _call(run_id, body)
-    # A non-Hafs delivery gets no low-confidence probe (D12 — the Space answers
-    # ``null``): its question is Hafs-only, and the assemble stage publishes
-    # whatever sidecars are staged.
-    if result.get("low_confidence_v2") is not None:
-        staging.write_json(
-            staging.sidecar_path(slug, run_id, LOW_CONFIDENCE_FILE), result["low_confidence_v2"]
-        )
+    # A non-Hafs delivery gets no neural review (D12 — the Space answers ``null``):
+    # it keeps the matcher-lattice Low Confidence Waqf staged before the call.
+    for name, key in (
+        (LOW_CONFIDENCE_FILE, "low_confidence_v2"),
+        (MISSED_WAQF_FILE, "missed_waqf_v2"),
+    ):
+        if result.get(key) is not None:
+            staging.write_json(staging.sidecar_path(slug, run_id, name), result[key])
     staging.write_json(staging.sidecar_path(slug, run_id, AUTO_SPLIT_FILE), result["auto_split_v1"])
     log.info("align %s: sidecars staged", run_id)
 
@@ -122,7 +124,9 @@ def _one_card(slug: str, run_id: str) -> None:
     by_uid = {uid: item for uid, item in missed["by_uid"].items() if uid not in flagged}
     meta = {**missed.get("_meta", {}), "segments": len(by_uid), "low_confidence": len(flagged)}
     staging.write_json(path, {**missed, "_meta": meta, "by_uid": by_uid})
-    log.info("align %s: %d Low Confidence Waqf item(s) left to Low Confidence", run_id, len(flagged))
+    log.info(
+        "align %s: %d Low Confidence Waqf item(s) left to Low Confidence", run_id, len(flagged)
+    )
 
 
 def _stage_missed_waqf(
