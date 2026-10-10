@@ -115,3 +115,22 @@ def test_profile_is_cached_until_ts_refreshed(flask_client, profile_env, monkeyp
     )
 
     assert flask_client.get("/api/ts/profile/reciter_c").get_json()["pause_ms"] == 453
+
+
+def test_profile_rewritten_on_the_mount_is_read_again(flask_client, profile_env, tmp_path):
+    import os
+
+    path = "reciters/reciter_a/recitation_profile.json"
+    disk = tmp_path / "recitation_profile.json"
+    disk.write_text("{}")
+    profile_env.local_path = lambda p: disk if p == path else None
+
+    assert flask_client.get("/api/ts/profile/reciter_a").get_json()["pause_ms"] == 453
+    assert flask_client.get("/api/ts/profile/reciter_a").get_json()["pause_ms"] == 453
+    assert profile_env.reads == [path]
+
+    profile_env.files[path] = {**STORED, "silence": {"n": 1, "mean_ms": 600, "median_ms": 600}}
+    os.utime(disk, ns=(disk.stat().st_mtime_ns + 10**9,) * 2)
+
+    assert flask_client.get("/api/ts/profile/reciter_a").get_json()["pause_ms"] == 600
+    assert profile_env.reads == [path, path]
