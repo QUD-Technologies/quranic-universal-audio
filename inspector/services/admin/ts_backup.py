@@ -87,6 +87,16 @@ def _copy_tree(backend, src: str, dst: str) -> bool:
     return True
 
 
+def unflushed(path: str, names: list[str]) -> list[str]:
+    """Which of ``names`` under ``path`` the mount holds newer than the bucket (none off the
+    bucket backend, where every write is the bucket's)."""
+    backend = get_backend()
+    if not isinstance(backend, BucketBackend):
+        return []
+    remote = _remote(path)
+    return [n for n in names if _unflushed(backend.local_path(f"{path}/{n}"), remote.get(n))]
+
+
 def _remote(path: str) -> dict:
     """``{name: BucketFile}`` of the files under ``path`` as the bucket API lists them."""
     from huggingface_hub import list_bucket_tree
