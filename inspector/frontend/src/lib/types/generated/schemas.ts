@@ -2089,12 +2089,15 @@ export interface SegValLowConfidenceV2Item {
 /**
  * A word that made a segment Low Confidence. ``fit`` / ``sound_fit`` are
  * log-posterior deficits of the word and of its worst sound (more negative =
- * worse); absent on sidecars written before the scores existed.
+ * worse); absent on sidecars written before the scores existed. ``severity``
+ * rescales the worse of the two floor ratios to [0, 1] across every scored
+ * word of the reciter's sidecar (1 = most severe); absent without scores.
  */
 export interface SegValLowConfidenceWord {
   ref: string;
   fit?: number | null;
   sound_fit?: number | null;
+  severity?: number | null;
 }
 /**
  * ``hidden_pause`` — offline re-segmentation heard a pause inside this

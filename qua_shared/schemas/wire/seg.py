@@ -524,13 +524,16 @@ class SegValLowConfidenceItem(BaseModel):
 class SegValLowConfidenceWord(BaseModel):
     """A word that made a segment Low Confidence. ``fit`` / ``sound_fit`` are
     log-posterior deficits of the word and of its worst sound (more negative =
-    worse); absent on sidecars written before the scores existed."""
+    worse); absent on sidecars written before the scores existed. ``severity``
+    rescales the worse of the two floor ratios to [0, 1] across every scored
+    word of the reciter's sidecar (1 = most severe); absent without scores."""
 
     model_config = ConfigDict(extra="forbid")
 
     ref: Ref
     fit: float | None = None
     sound_fit: float | None = None
+    severity: float | None = None
 
 
 class SegValLowConfidenceV2Item(BaseModel):
