@@ -9,11 +9,15 @@
  *
  * `waslRecheck` mirrors the payload's `wasl_recheck` uids: boundaries whose
  * WASL / WAQF answer is re-asked render as unset until answered.
+ *
+ * `lowConfidenceWords` holds the Low Confidence v2 word marks (see
+ * `utils/validation/low-confidence-words.ts`) keyed by segment uid.
  */
 
 import { derived, writable } from 'svelte/store';
 
 import type { SegValidateResponse } from '../../../lib/types/generated/schemas';
+import { lowConfidenceWordMarks } from '../utils/validation/low-confidence-words';
 import { getOpLog } from './dirty';
 
 /** Validation data for the currently-loaded reciter, or null if none loaded. */
@@ -29,6 +33,10 @@ export const missingWordsSegKeys = derived(segValidation, ($v) => {
     }
     return keys;
 });
+
+/** Flagged words of every Low Confidence v2 segment, with their highlight
+ *  intensity relative to the reciter's whole flagged set. */
+export const lowConfidenceWords = derived(segValidation, ($v) => lowConfidenceWordMarks($v?.low_confidence_v2));
 
 /** Server-supplied split-group closures keyed by root uid. Read by accordion
  *  cards to expand a split chain without subscribing to historyData. Empty

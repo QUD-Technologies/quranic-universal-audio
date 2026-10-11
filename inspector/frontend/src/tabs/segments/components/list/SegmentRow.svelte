@@ -15,6 +15,11 @@
      * Layout: normal mode = horizontal (play-col | left-col | text-box).
      * History mode = vertical (waveform above text) — scoped via `class:mode-history`.
      *
+     * Text body: one `.seg-review-word` span per word when word times match
+     * the ref; the playing word takes `.active`. On a Low Confidence v2 row
+     * (main list or accordion) the flagged words also take `.lc`, with
+     * `--lc-alpha` from `lowConfidenceWords` and their fits as the title.
+     *
      * Waveform observer: onMount registers the canvas with the segments
      * IntersectionObserver via _ensureWaveformObserver().observe(canvas).
      * On destroy the canvas is implicitly unobserved (the observer's weak
@@ -58,10 +63,11 @@ import type { Segment } from '../../../../lib/types/view-models';
     import { savedFilterView } from '../../stores/navigation';
     import { isSampleMode } from '../../stores/samples';
     import { ensureWordTimes, timesForCard, wordTimes } from '../../stores/word-times';
-    import { missingWordsSegKeys } from '../../stores/validation';
+    import { lowConfidenceWords, missingWordsSegKeys } from '../../stores/validation';
     import { deriveRowChips, type RowChip } from '../../utils/samples/chips';
     import { displayWordsForTimings, timingsMatchRef } from '../../utils/samples/word-timing';
     import { contiguousWordDraft } from '../../utils/samples/word-timing-draft';
+    import { type LowConfidenceWordMark, lowConfidenceAlpha } from '../../utils/validation/low-confidence-words';
     import { stagedPieceIsCurrent } from '../../utils/validation/wasl-binding';
     import {
         chapterIndexKey,
@@ -92,6 +98,7 @@ import type { Segment } from '../../../../lib/types/view-models';
         formatRef,
         formatTimeMs,
         isCrossVerse,
+        wordLocationsForRef,
     } from '../../utils/data/references';
     import { deleteSegment } from '../../utils/edit/delete';
     import { enterEditWithBuffer } from '../../utils/edit/enter';
@@ -347,6 +354,32 @@ import type { Segment } from '../../../../lib/types/view-models';
             $quranRefs?.verse_word_counts,
             $quranRefs?.verse_marker_prefix ?? '۝',
         );
+    // Low Confidence v2 words ride the same word spans. A row without matching
+    // word times still gets spans, from its ref's own words (zero-length, so
+    // they never take the playback highlight).
+    $: lcMarks = (instanceRole === 'main' || instanceRole === 'accordion') && seg.segment_uid
+        ? $lowConfidenceWords.get(seg.segment_uid) ?? null
+        : null;
+    $: timedWords = highlightDisplayWords.length > 0;
+    $: spanTimings = timedWords || !lcMarks
+        ? highlightTimings
+        : wordLocationsForRef(bodyRef, $quranRefs?.verse_word_counts)
+            .map((location) => ({ location, start_ms: 0, end_ms: 0 }));
+    $: spanWords = timedWords || !lcMarks
+        ? highlightDisplayWords
+        : displayWordsForTimings(
+            spanTimings,
+            bodyText,
+            $quranRefs?.dk_words,
+            $quranRefs?.verse_word_counts,
+            $quranRefs?.verse_marker_prefix ?? '۝',
+        );
+    function lcScore(value: number | null): string {
+        return value === null ? '—' : value.toFixed(1);
+    }
+    function lcWordTitle(mark: LowConfidenceWordMark): string {
+        return tr($localeStore, m.segments_row_lc_word_title({ fit: lcScore(mark.fit), sound: lcScore(mark.soundFit) }));
+    }
     let wordEditing = false;
     let wordDraft: { start_ms: number; end_ms: number }[] = [];
     let wordLockedIndex: number | null = null;
@@ -1338,15 +1371,20 @@ import type { Segment } from '../../../../lib/types/view-models';
             {/if}
         </div>
         <div class="seg-text-body" class:seg-history-changed={changedRef} class:word-edit-hidden={wordEditing}>
-            {#if highlightDisplayWords.length > 0}
-                {#each highlightTimings as word, wordIndex (`${word.location}:${word.start_ms}`)}
+            {#if spanWords.length > 0}
+                {#each spanTimings as word, wordIndex (`${word.location}:${word.start_ms}`)}
+                    {@const lcMark = lcMarks?.get(word.location)}
                     <span
                         class="seg-review-word"
-                        class:active={$isMainAudioPlaying
+                        class:lc={!!lcMark}
+                        style:--lc-alpha={lcMark ? lowConfidenceAlpha(lcMark.intensity) : null}
+                        title={lcMark ? lcWordTitle(lcMark) : null}
+                        class:active={timedWords
+                            && $isMainAudioPlaying
                             && $activeWordCursor?.chapter === rowChapter
                             && $activeWordCursor?.index === seg.index
                             && $activeWordCursor?.wordIndex === wordIndex}
-                    >{highlightDisplayWords[wordIndex]}</span>{#if wordIndex < highlightTimings.length - 1}{' '}{/if}
+                    >{spanWords[wordIndex]}</span>{#if wordIndex < spanTimings.length - 1}{' '}{/if}
                 {/each}
             {:else}
                 {bodyText}
@@ -1387,6 +1425,11 @@ import type { Segment } from '../../../../lib/types/view-models';
     .seg-review-word {
         display: inline;
         border-radius: 0.25em;
+    }
+    /* Low Confidence v2 word: alpha carries its severity within the reciter. */
+    .seg-review-word.lc {
+        background: color-mix(in oklch, var(--state-error-fg) calc(var(--lc-alpha) * 45%), transparent);
+        box-shadow: inset 0 -2px 0 color-mix(in oklch, var(--state-error-fg) calc(var(--lc-alpha) * 100%), transparent);
     }
     .seg-review-word.active {
         color: var(--accent-fg);

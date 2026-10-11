@@ -153,7 +153,7 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
         f_recheck = pool.submit(open_wasl_recheck_uids, reciter)
         entries = f_detailed.result()
         resolved_idx = f_resolved.result()
-        probe_failed_uids, probe_meta = f_probe.result()
+        probe_failed_uids, probe_meta, probe_words = f_probe.result()
         hidden_pause_map, hidden_pause_meta = f_hidden.result()
         missed_waqf_map, missed_waqf_meta = f_missed.result()
         false_split_map, false_split_meta = f_false.result()
@@ -208,6 +208,7 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
         is_by_ayah,
         word_counts,
         probe_failed_uids=probe_failed_uids,
+        probe_words=probe_words,
         deleted_basmala_chapters=deleted_basmala_chapters,
         hidden_pause_map=hidden_pause_map,
         missed_waqf_map=missed_waqf_map,

@@ -2075,7 +2075,8 @@ export interface SegValLowConfidenceItem {
 }
 /**
  * ``low_confidence_v2`` — a segment the neural timing checks found fitting its
- * text poorly (``low_confidence_v2.json``). No confidence score; the signal is binary.
+ * text poorly (``low_confidence_v2.json``). No confidence score; ``words`` names
+ * the words that tripped the check (empty when the sidecar carries none).
  */
 export interface SegValLowConfidenceV2Item {
   ref: string;
@@ -2083,6 +2084,17 @@ export interface SegValLowConfidenceV2Item {
   seg_index: number;
   segment_uid?: string | null;
   classified_issues?: string[];
+  words?: SegValLowConfidenceWord[];
+}
+/**
+ * A word that made a segment Low Confidence. ``fit`` / ``sound_fit`` are
+ * log-posterior deficits of the word and of its worst sound (more negative =
+ * worse); absent on sidecars written before the scores existed.
+ */
+export interface SegValLowConfidenceWord {
+  ref: string;
+  fit?: number | null;
+  sound_fit?: number | null;
 }
 /**
  * ``hidden_pause`` — offline re-segmentation heard a pause inside this

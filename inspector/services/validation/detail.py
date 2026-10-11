@@ -241,6 +241,7 @@ def _build_detail_lists(
     is_by_ayah: bool,
     word_counts: dict,
     probe_failed_uids: set | None = None,
+    probe_words: dict[str, list[dict]] | None = None,
     deleted_basmala_chapters: set[int] | None = None,
     hidden_pause_map: dict[str, dict] | None = None,
     missed_waqf_map: dict[str, dict] | None = None,
@@ -263,9 +264,11 @@ def _build_detail_lists(
     is suppressed (ignored = every cut WASL, or split from the card) is still
     emitted, with ``resolved: True``, so its labels stay reviewable.
 
-    ``probe_failed_uids`` is the set of segment UIDs flagged by the
-    extraction-time MFA tight-beam probe; pass ``None`` (or omit) when
+    ``probe_failed_uids`` is the set of segment UIDs flagged by the neural
+    timing checks (``low_confidence_v2.json``); pass ``None`` (or omit) when
     the sidecar isn't present and the v2 list should stay empty.
+    ``probe_words`` maps a flagged uid to the words that made it Low
+    Confidence (``load_probe_v2``); each v2 item carries its list as ``words``.
 
     ``deleted_basmala_chapters`` is the set of chapters from which the
     alignment pipeline (strip_specials) already deleted a Basmala. When the
@@ -527,6 +530,7 @@ def _build_detail_lists(
                         "seg_index": i,
                         "segment_uid": seg_uid,
                         "classified_issues": classified,
+                        "words": (probe_words or {}).get(str(seg_uid), []),
                     }
                 )
 
