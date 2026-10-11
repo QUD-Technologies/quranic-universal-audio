@@ -14,14 +14,15 @@ drifted. This module owns all three so there is one source of truth.
     (``_fit_boundary``) so adjacent verse windows keep >= ``min_gap`` and never
     overlap. This is the audio clip in the HF dataset AND the verse bound in the
     GH release, computed once — so the two channels agree by construction.
-  - ``segments`` — post-MFA byte-exact segments (gapless within a segment, a gap
-    only across boundaries). Boundaries come from the projection's per-segment
-    occurrence spans so a repeated boundary word can't collapse to the wrong
-    occurrence. The two outer segments are stretched to the clip edges so they
-    absorb the pad while every internal boundary stays byte-exact with a word.
+  - ``segments`` — post-MFA byte-exact segments (gapless within a segment except
+    at shard-marked sakt boundaries). Boundaries come from the projection's
+    per-segment occurrence spans so a repeated boundary word can't collapse to
+    the wrong occurrence. The two outer segments are stretched to the clip edges
+    so they absorb the pad while every internal boundary stays byte-exact with a word.
     The HF dataset publishes these; the GH release uses them only to validate
     gaplessness (it does not publish a segment tier).
   - ``words`` / ``tokens`` — timing plus exact DigitalKhatt scalar paint ranges.
+  - ``sakt_after`` — one boolean per word occurrence, for boundary validation.
 
 The HF dataset rebases these to clip-relative and slices audio; the GH release
 keeps them source-relative. Neither re-derives the geometry.
@@ -196,7 +197,7 @@ def reshape_canonical(canonical: dict, digital_khatt_words: dict) -> dict[str, d
     (``{"words": [{"index", "start_ms", "end_ms", "letters"}, ...], "verse_start_ms",
     "verse_end_ms", "segments"}``). For each verse this returns
     ``{"words": [[widx, s, e], ...], "word_texts": [...],
-    "tokens_by_word": [...],
+    "tokens_by_word": [...], "sakt_after": [bool, ...],
     "verse_start_ms": int, "verse_end_ms": int, "seg_spans": [...] | None}``.
     """
     ts: dict[str, dict] = {}
@@ -209,6 +210,7 @@ def reshape_canonical(canonical: dict, digital_khatt_words: dict) -> dict[str, d
                 "words": [],
                 "word_texts": [],
                 "tokens_by_word": [],
+                "sakt_after": [],
                 "verse_start_ms": 0,
                 "verse_end_ms": 0,
                 "seg_spans": [],
@@ -240,6 +242,7 @@ def reshape_canonical(canonical: dict, digital_khatt_words: dict) -> dict[str, d
             "words": slim_words,
             "word_texts": word_texts,
             "tokens_by_word": tokens_by_word,
+            "sakt_after": [word.get("sakt_after", False) for word in words],
             "verse_start_ms": int(vs),
             "verse_end_ms": int(ve),
             "seg_spans": val.get("segments") or [],
@@ -262,7 +265,7 @@ def build_verse_layouts(
     ``detailed_by_ref`` are only consulted for legacy inputs that carry no
     occurrence spans (``seg_spans``); the real projection path always carries
     them. Returns ``{ref: {clip_start, clip_end, verse_start, verse_end,
-    segments, words, letters}}`` — see the module docstring.
+    segments, words, sakt_after, text, tokens}}`` — see the module docstring.
     """
     detailed_by_ref = detailed_by_ref or {}
     layouts: dict[str, dict] = {}
@@ -391,6 +394,7 @@ def build_verse_layouts(
             "verse_end": verse_end,
             "segments": segments,
             "words": verse_words,
+            "sakt_after": tdata.get("sakt_after") or [False] * len(verse_words),
             "text": verse_text,
             "tokens": verse_tokens,
         }

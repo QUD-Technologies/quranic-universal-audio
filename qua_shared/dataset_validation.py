@@ -14,6 +14,7 @@ verse entry is the canonical projection used by the FE today:
       "verse_end_ms":   int,
       "duration_ms":    int,            # verse_end - verse_start
       "words":          [(widx, s, e), ...],
+      "sakt_after":     [bool, ...],    # optional; one per word occurrence
       "segments":       [(word_from, word_to, s, e), ...],
     }
 
@@ -28,7 +29,7 @@ from collections.abc import Iterable
 # A single failure record. ``violation`` is one of:
 #   "word_bleed_first" / "word_bleed_last"  — first/last word extends past verse clip
 #   "duration_arithmetic"                   — duration_ms != verse_end - verse_start
-#   "intra_segment_gap"                     — adjacent words within a segment have a gap
+#   "intra_segment_gap"                     — intra-segment non-sakt gap or overlap
 #   "coverage_gap"                          — widx 1..N not all present in this verse
 #   "canonical_uniqueness"                  — a verse ref with != 1 canonical occurrence row
 #   "foreign_chapter"                       — a verse timed inside another chapter's audio
@@ -94,12 +95,11 @@ def check_duration_arithmetic(ref: str, verse: dict) -> list[Violation]:
 
 
 def check_intra_segment_gapless(ref: str, verse: dict) -> list[Violation]:
-    """Adjacent words within a segment are gapless (``w_(i+1).start == w_i.end``).
+    """Adjacent words within a segment are gapless except at sakt boundaries.
 
-    Gaps are allowed only across segment boundaries. The pipeline applies
-    padding + silence removal post-MFA, so MFA's intra-segment boundaries
-    are gapless by design — a non-zero gap inside a segment means the
-    invariant broke somewhere.
+    A positive gap is allowed when word_a's following shard boundary is sakt
+    (``sakt_after`` is aligned with word occurrences), or across segments.
+    Other intra-segment gaps and all overlaps remain violations.
 
     Words are matched to a segment by its **time window**, not by word index.
     A reciter can loop back and re-recite words (a lookback), so the same word
@@ -110,6 +110,7 @@ def check_intra_segment_gapless(ref: str, verse: dict) -> list[Violation]:
     """
     segments = verse.get("segments") or []
     words = verse.get("words") or []
+    sakt_occurrences = {i for i, sakt in enumerate(verse.get("sakt_after") or []) if sakt}
     if not segments or len(words) < 2:
         return []
 
@@ -123,11 +124,15 @@ def check_intra_segment_gapless(ref: str, verse: dict) -> list[Violation]:
         # Word occurrences that fall inside this segment's time span, in time
         # order — half-open on start so back-to-back segments don't double-count.
         in_seg = sorted(
-            (int(w[1]), int(w[2]), int(w[0])) for w in words if seg_start <= int(w[1]) < seg_end
+            (int(w[1]), int(w[2]), int(w[0]), occurrence)
+            for occurrence, w in enumerate(words)
+            if seg_start <= int(w[1]) < seg_end
         )
-        for (_a_start, a_end, a_idx), (b_start, _b_end, b_idx) in zip(
+        for (_a_start, a_end, a_idx, a_occ), (b_start, _b_end, b_idx, _b_occ) in zip(
             in_seg, in_seg[1:], strict=False
         ):
+            if b_start > a_end and a_occ in sakt_occurrences:
+                continue
             if b_start != a_end:
                 out.append(
                     _violation(
@@ -224,7 +229,7 @@ def check_canonical_order(canonical: Iterable[tuple[str, int]]) -> list[Violatio
     out: list[Violation] = []
     for surah in sorted(by_surah):
         rows = sorted(by_surah[surah])
-        for (_, before), (start_ms, ref) in zip(rows, rows[1:]):
+        for (_, before), (start_ms, ref) in zip(rows, rows[1:], strict=False):
             if _ayah(ref) < _ayah(before):
                 out.append(_violation(ref, "canonical_order", after_ref=before, start_ms=start_ms))
     return out

@@ -397,9 +397,9 @@ def _verse_for_validate(layout: dict) -> dict:
     """Project one shared verse layout to the boundary-validator's input shape.
 
     Validates the SAME invariants the HF dataset does, against the SAME byte-
-    exact segments (gapless within a segment, gaps only across boundaries) — not
-    the VAD segment windows the release used to validate against. Bounds are the
-    padded clip window; all times source-relative ms.
+    exact segments (gapless within a segment except at shard-marked sakt
+    boundaries) — not the VAD segment windows the release used to validate
+    against. Bounds are the padded clip window; all times source-relative ms.
     """
     cs = int(layout["clip_start"])
     ce = int(layout["clip_end"])
@@ -408,6 +408,7 @@ def _verse_for_validate(layout: dict) -> dict:
         "verse_end_ms": ce,
         "duration_ms": ce - cs,
         "words": [(int(w[0]), int(w[1]), int(w[2])) for w in layout["words"]],
+        "sakt_after": layout.get("sakt_after") or [],
         "segments": [(int(s[0]), int(s[1]), int(s[2]), int(s[3])) for s in layout["segments"]],
     }
 
@@ -1186,7 +1187,7 @@ def _validate_occurrences(
     slug: str, occurrences: list[dict], edition_counts: dict, raw: list[dict]
 ) -> dict:
     """Boundary-validate the SAME invariants the dataset does, against the
-    byte-exact segments (gapless within a segment, gaps only across
+    byte-exact segments (gapless within a segment except at shard-marked sakt
     boundaries) — source-relative ms. Non-canonical takes are keyed
     ``ref#n`` so they skip the coverage check (a partial repeat is
     incomplete by definition) but still face the span invariants.

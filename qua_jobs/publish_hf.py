@@ -304,6 +304,7 @@ def build_rows(
                     "text_uthmani": layout["text"],
                     "segments": verse_segments,
                     "word_timestamps": verse_words,
+                    "sakt_after": layout["sakt_after"],
                     "source_url": chapter_urls.get(str(chapter), ""),
                     "chapter": chapter,
                     "clip_start": clip_start,
@@ -472,6 +473,7 @@ def _verses_for_validation(rows: list[dict]) -> dict[str, dict]:
             "verse_end_ms": r["clip_end"],
             "duration_ms": r["duration_ms"],
             "words": [(w[0], w[1] + cs, w[2] + cs) for w in r["word_timestamps"]],
+            "sakt_after": r.get("sakt_after") or [],
             "segments": [(s[0], s[1], s[2] + cs, s[3] + cs) for s in r["segments"]],
         }
     return out

@@ -518,7 +518,9 @@ to the `gh_releases.validation_summary` / `per_recitation_releases.validation_su
 Block on the `HARD_FAIL_KINDS` in [dataset_validation.py](../../qua_shared/dataset_validation.py):
 `word_bleed_first`, `word_bleed_last`, `duration_arithmetic`, `intra_segment_gap`,
 `canonical_uniqueness`, `foreign_chapter`, `canonical_order` — `fatal_violations` aborts the cut
-on any of these. The last two are timeline checks over the shipped refs' raw shard occurrences
+on any of these. Words within a segment must be gapless except for a positive pause after a word
+whose following shard boundary is `sakt`; the exception follows each word occurrence, not its verse ref.
+The last two are timeline checks over the shipped refs' raw shard occurrences
 (`verse_layout.load_shard_occurrences` tags each with the `chapter` whose audio timed it). A hit is
 a data fix in the bucket — drop the spilled segments and trim the audio, or regenerate a stale
 shard — never a projection workaround. `coverage_gap` is

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import gzip
+import json
 import sys
 import types
 
@@ -8,9 +10,12 @@ import orjson
 import pytest
 from pydantic import ValidationError
 
+from qua_jobs import cut_release, publish_hf
+from qua_shared.dataset_validation import fatal_violations, validate_dataset
 from qua_shared.timestamps_codec import decode_document
 from qua_shared.timestamps_native import (
     project_native_shard,
+    project_shard,
     project_shard_occurrences,
     project_word_shard,
     select_complete_verses,
@@ -22,7 +27,7 @@ from qua_shared.timestamps_shards import (
     write_validated_shard,
 )
 from qua_shared.timestamps_v13_audit import V13AuditError
-from qua_shared.verse_layout import load_canonical_verses
+from qua_shared.verse_layout import build_verse_layouts, load_canonical_verses, reshape_canonical
 
 
 def _reading(reading_id: str, specs: list[tuple[str, tuple[int, int], list[int]]]) -> dict:
@@ -211,6 +216,103 @@ def _word_reading(reading_id: str, parts: list[tuple[str, int, int, list[tuple[i
         "words": rows,
         "boundaries": [[1, None]] * len(rows),
     }
+
+
+@pytest.mark.parametrize("version", [13, 14, 15])
+@pytest.mark.parametrize("state", [0, 1, 2, 3])
+@pytest.mark.parametrize("adapter", ["hf", "gh"])
+def test_sakt_gap_reaches_both_release_validators(version, state, adapter, tmp_path):
+    """A real shard pause survives projection, layout, and adapter validation.
+
+    Non-sakt states keep the same gap fatal; the fixture uses an arbitrary ref
+    so the permission must come from the shard, never a list of sakt verses.
+    """
+    if version == 14:
+        reading = _word_reading(
+            "r1", [("1:1", 100, 1000, [(1, 100, 200), (2, 200, 300), (3, 710, 1000)])]
+        )
+        reading["boundaries"][1] = [state, None]
+        canonical = project_shard(_word_shard([reading]))
+    else:
+        reading = _reading("r1", [("1:1", (100, 1000), [1, 2, 3])])
+        reading["render"]["b"][1][0] = state
+        reading["timing"]["w"] = [[100, 200], [200, 300], [710, 1000]]
+        reading["timing"]["a"] = [[100, 200], [200, 300], [710, 1000]]
+        shard = _shard([reading])
+        shard["_meta"]["schema_version"] = version
+        (tmp_path / "1.json.br").write_bytes(brotli_shard(shard))
+        canonical = load_canonical_verses(tmp_path)
+
+    assert [w["sakt_after"] for w in canonical["1:1"]["words"]] == [False, state == 2, False]
+    timestamps = reshape_canonical(canonical, {f"1:1:{i}": {"text": "x"} for i in (1, 2, 3)})
+    if adapter == "hf":
+        rows = publish_hf.build_rows(
+            timestamps,
+            {"1:1": {"segments": [{"matched_ref": "1:1:1-1:1:3"}]}},
+            {"1": {"verses": [{"verse": 1, "num_words": 3}]}},
+            pad_start=50,
+        )
+        row = rows[0]
+        assert row["keep_runs"] == [(50, 1300)]  # sakt audio is kept, not excised
+        assert row["word_timestamps"] == [[1, 50, 150], [2, 150, 250], [3, 660, 950]]
+        # MP3 frame snapping shifts both sides equally and preserves the pause.
+        publish_hf._rebase_row(row, 26)
+        record = next(publish_hf._iter_hf_records(rows, [b"mp3"]))
+        assert "sakt_after" not in record  # validation-only, no public schema change
+        assert record["word_timestamps"][2][1] - record["word_timestamps"][1][2] == 410
+        summary = validate_dataset(publish_hf._verses_for_validation(rows))
+    else:
+        layout = build_verse_layouts(timestamps)["1:1"]
+        summary = validate_dataset({"1:1": cut_release._verse_for_validate(layout)})
+        assert layout["words"] == [[1, 100, 200], [2, 200, 300], [3, 710, 1000]]
+        occurrences = [{"ref": "1:1", "canonical": True, "layout": layout}]
+        if state == 2:
+            assert cut_release._validate_occurrences("slug", occurrences, {(1, 1): 3}, [])["ok"]
+            files = cut_release._build_tier_files(
+                "slug",
+                occurrences,
+                delivery_meta={"audio_category": "by_surah"},
+                script_id="test",
+                script_sha256="0" * 64,
+                with_letters=version != 14,
+            )
+            word_doc = json.loads(gzip.decompress(files["word_timestamps.json.gz"]))
+            assert word_doc["rows"][0][5] == layout["words"]
+        else:
+            with pytest.raises(cut_release._FatalViolations):
+                cut_release._validate_occurrences("slug", occurrences, {(1, 1): 3}, [])
+        if version != 14:
+            assert [(token[1], token[2]) for token in layout["tokens"]] == [
+                (100, 200),
+                (200, 300),
+                (710, 1000),
+            ]
+            assert [token[4] for token in layout["tokens"]] == [[[0, 1]], [[2, 3]], [[4, 5]]]
+
+    assert summary["ok"] == (state == 2)
+    assert [v["gap_ms"] for v in fatal_violations(summary["violations"])] == (
+        [] if state == 2 else [410]
+    )
+
+
+@pytest.mark.parametrize("version", [13, 14, 15])
+def test_sakt_projection_keeps_repeated_word_occurrences_distinct(version):
+    if version == 14:
+        reading = _word_reading(
+            "r1", [("1:1", 0, 1000, [(1, 0, 100), (2, 100, 200), (2, 610, 700), (3, 700, 1000)])]
+        )
+        reading["boundaries"][1] = [2, None]
+        shard = _word_shard([reading])
+    else:
+        reading = _reading("r1", [("1:1", (0, 1000), [1, 2, 2, 3])])
+        reading["render"]["b"][1][0] = 2
+        shard = _shard([reading])
+        shard["_meta"]["schema_version"] = version
+    canonical = project_shard(shard)
+    occurrences = project_shard_occurrences(shard)
+    assert [w["index"] for w in canonical["1:1"]["words"]] == [1, 2, 2, 3]
+    assert [w["sakt_after"] for w in canonical["1:1"]["words"]] == [False, True, False, False]
+    assert occurrences[0]["words"] == canonical["1:1"]["words"]
 
 
 def test_occasion_split_reads_word_starts_not_a_cross_verse_parts_span():

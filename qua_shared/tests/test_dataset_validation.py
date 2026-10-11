@@ -5,12 +5,15 @@ pass is still caught.
 
 from __future__ import annotations
 
+import pytest
+
 from qua_shared.dataset_validation import (
     check_audio_chapter,
     check_canonical_order,
     check_canonical_uniqueness,
     check_intra_segment_gapless,
     fatal_violations,
+    validate_dataset,
 )
 
 
@@ -39,6 +42,47 @@ def test_real_intra_segment_gap_is_still_caught():
     assert len(out) == 1
     assert out[0]["violation"] == "intra_segment_gap"
     assert out[0]["gap_ms"] == 50
+
+
+@pytest.mark.parametrize("sakt_after", [None, [False, False], [True, False], [False, True]])
+def test_only_the_preceding_words_sakt_allows_an_intra_segment_pause(sakt_after):
+    verse = {
+        "verse_start_ms": 0,
+        "verse_end_ms": 610,
+        "words": [[1, 0, 100], [2, 510, 610]],
+        "segments": [(1, 2, 0, 610)],
+    }
+    if sakt_after is not None:
+        verse["sakt_after"] = sakt_after
+    summary = validate_dataset({"1:1": verse})
+    if sakt_after == [True, False]:
+        assert summary["ok"]
+        assert summary["violations"] == []
+    else:
+        assert not summary["ok"]
+        assert [v["gap_ms"] for v in fatal_violations(summary["violations"])] == [410]
+
+
+def test_sakt_does_not_allow_overlapping_words():
+    verse = {
+        "words": [[1, 0, 150], [2, 100, 200]],
+        "sakt_after": [True, False],
+        "segments": [(1, 2, 0, 200)],
+    }
+    violations = check_intra_segment_gapless("1:1", verse)
+    assert [v["gap_ms"] for v in fatal_violations(violations)] == [-50]
+
+
+def test_sakt_is_occurrence_scoped_even_after_sorting_repeated_words():
+    # Deliberately not in time order: only the first occurrence of word 2
+    # carries sakt. The repeat's unmarked 50ms gap must still fail.
+    verse = {
+        "words": [[2, 500, 600], [3, 650, 700], [2, 0, 100], [3, 150, 200]],
+        "sakt_after": [False, False, True, False],
+        "segments": [(2, 3, 0, 200), (2, 3, 500, 700)],
+    }
+    violations = check_intra_segment_gapless("1:1", verse)
+    assert [(v["word_a"], v["a_end"], v["gap_ms"]) for v in violations] == [(2, 600, 50)]
 
 
 def test_canonical_uniqueness_flags_zero_and_double_canonical_refs():

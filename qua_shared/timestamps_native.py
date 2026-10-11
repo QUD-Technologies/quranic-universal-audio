@@ -13,12 +13,14 @@ Two projections over the same segments:
 Both profiles land in the same shape — words with source-relative times. The
 difference is depth: a native shard projects letters as well, a word-profile
 shard has none to project and emits ``letters: []`` on every word.
+Each word occurrence also carries ``sakt_after`` from its following boundary.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
 
+from qua_shared.schemas.bucket.ts_shard import TS_WORD_BOUNDARY_STATES
 from qua_shared.timestamps_codec import decode_document
 from qua_shared.timestamps_shards import NATIVE_SHARD_SCHEMA_VERSIONS, shard_profile
 
@@ -30,6 +32,7 @@ def _index(ref: str) -> int:
 def _reading_segments(reading: dict) -> list[dict]:
     result = reading["analysis"]["result"]
     words = {int(row["id"]): row for row in result["words"]}
+    boundaries = {int(row["id"]): row for row in result["boundaries"]}
     word_times = {int(row["word_id"]): row for row in reading["timing"]["words"]}
     tokens_by_word: dict[int, list[dict]] = defaultdict(list)
     for token in reading["timing"]["animation_tokens"]:
@@ -71,6 +74,7 @@ def _reading_segments(reading: dict) -> list[dict]:
                     "source_text": word["text"],
                     "start_ms": int(timing["start_ms"]),
                     "end_ms": int(timing["end_ms"]),
+                    "sakt_after": boundaries[word["after_boundary_id"]]["state"] == "sakt",
                     "letters": letters,
                 }
             )
@@ -291,6 +295,8 @@ def _word_reading_segments(reading: dict) -> list[dict]:
                     "source_text": text,
                     "start_ms": int(word_start),
                     "end_ms": int(word_end),
+                    "sakt_after": TS_WORD_BOUNDARY_STATES[reading["boundaries"][word_id][0]]
+                    == "sakt",
                     # A proxy-timed shard owns no sub-word geometry. Empty is
                     # the honest answer; a consumer that needs letters must
                     # check the profile rather than find a plausible guess.
