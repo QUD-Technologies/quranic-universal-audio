@@ -55,11 +55,43 @@ def test_load_probe_v2_normalises_words_and_caches(sidecar):
     assert failed == {"u1", "u2", "u3", "u4"}
     assert meta == {"model": "neural"}
     assert words == {
-        "u1": [{"ref": "2:5:3", "fit": -6.1, "sound_fit": -9.0}, {"ref": "2:5:4"}],
+        "u1": [{"ref": "2:5:3", "fit": -6.1, "sound_fit": -9.0, "severity": 1.0}, {"ref": "2:5:4"}],
         "u2": [{"ref": "2:6:1"}],
     }
     assert load_probe_v2(SLUG) == (failed, meta, words)
     assert reads == [SLUG]
+
+
+def test_severity_scale_spans_the_whole_sidecar(sidecar):
+    """Severity is the worse floor ratio (fit / -4, sound_fit / -10) rescaled
+    over every scored word in the sidecar, including uids the validate pass
+    later drops (ignored / resolved), so the scale never shifts."""
+    state, _ = sidecar
+    state["doc"] = {
+        "failures": ["mild", "mid", "worst"],
+        "by_uid": {
+            "mild": {"words": [{"ref": "1:1:1", "fit": -4.0, "sound_fit": -5.0}]},
+            "mid": {"words": [{"ref": "1:2:1", "fit": -1.0, "sound_fit": -15.0}, {"ref": "1:2:2"}]},
+            "worst": {"words": [{"ref": "1:3:1", "fit": -8.0}]},
+        },
+    }
+
+    _, _, words = load_probe_v2(SLUG)
+
+    assert words["mild"][0]["severity"] == pytest.approx(0.0)
+    assert words["mid"][0]["severity"] == pytest.approx(0.5)
+    assert "severity" not in words["mid"][1]
+    assert words["worst"][0]["severity"] == pytest.approx(1.0)
+
+    entries = [{"ref": "1", "segments": [_seg("1:2:1-1:2:4", "mid")]}]
+    out = _build_detail_lists(
+        entries,
+        is_by_ayah=False,
+        word_counts={(1, a): 7 for a in range(1, 8)},
+        probe_failed_uids={"mid"},
+        probe_words=words,
+    )
+    assert out["low_confidence_v2"][0]["words"][0]["severity"] == pytest.approx(0.5)
 
 
 def test_load_probe_v2_absent_sidecar_is_cached_empty(sidecar):

@@ -35,7 +35,7 @@ export const missingWordsSegKeys = derived(segValidation, ($v) => {
 });
 
 /** Flagged words of every Low Confidence v2 segment, with their highlight
- *  intensity relative to the reciter's whole flagged set. */
+ *  intensity (server severity, fixed over the reciter's whole sidecar). */
 export const lowConfidenceWords = derived(segValidation, ($v) => lowConfidenceWordMarks($v?.low_confidence_v2));
 
 /** Server-supplied split-group closures keyed by root uid. Read by accordion

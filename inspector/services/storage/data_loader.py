@@ -218,6 +218,12 @@ def seg_meta(reciter: str) -> dict:
     return cache.get_seg_meta(reciter)
 
 
+# Low Confidence v2 floors (log-posterior deficits): a word is poor under
+# ``WORD_FIT_FLOOR``, a sound under ``SOUND_FIT_FLOOR``.
+WORD_FIT_FLOOR = -4.0
+SOUND_FIT_FLOOR = -10.0
+
+
 def _low_confidence_word(raw: object) -> dict | None:
     """One ``words`` entry as ``{ref, fit?, sound_fit?}``; ``None`` without a ref."""
     if not isinstance(raw, dict) or not raw.get("ref"):
@@ -230,9 +236,25 @@ def _low_confidence_word(raw: object) -> dict | None:
     return word
 
 
+def _raw_severity(word: dict) -> float | None:
+    """How far past its floor a word falls: the worse of ``fit / WORD_FIT_FLOOR``
+    and ``sound_fit / SOUND_FIT_FLOOR``; ``None`` without scores."""
+    parts = []
+    if "fit" in word:
+        parts.append(word["fit"] / WORD_FIT_FLOOR)
+    if "sound_fit" in word:
+        parts.append(word["sound_fit"] / SOUND_FIT_FLOOR)
+    return max(parts) if parts else None
+
+
 def _low_confidence_words(by_uid: object) -> dict[str, list[dict]]:
     """``uid -> flagged words`` from the sidecar's ``by_uid`` block. Items
-    without ``words`` (older sidecars, ``no path``) are left out."""
+    without ``words`` (older sidecars, ``no path``) are left out.
+
+    Each scored word gets ``severity`` in [0, 1]: its raw severity rescaled
+    between the least and most severe scored word of the whole sidecar, so the
+    scale is fixed per delivery whatever is later ignored or resolved.
+    """
     if not isinstance(by_uid, dict):
         return {}
     out: dict[str, list[dict]] = {}
@@ -241,6 +263,13 @@ def _low_confidence_words(by_uid: object) -> dict[str, list[dict]]:
         words = [w for w in map(_low_confidence_word, raw_words or []) if w]
         if words:
             out[str(uid)] = words
+    rated = [(w, _raw_severity(w)) for words in out.values() for w in words]
+    scored = [value for _, value in rated if value is not None]
+    if scored:
+        low, span = min(scored), max(scored) - min(scored)
+        for word, value in rated:
+            if value is not None:
+                word["severity"] = (value - low) / span if span > 0 else 1.0
     return out
 
 
@@ -249,7 +278,8 @@ def load_probe_v2(reciter: str) -> cache.ProbeV2:
 
     Returns ``(failed_uid_set, meta_dict, words_by_uid)``. ``words_by_uid``
     maps a flagged uid to the words that made it Low Confidence, each
-    ``{ref, fit?, sound_fit?}`` (scores absent on older sidecars). When the
+    ``{ref, fit?, sound_fit?, severity?}`` (scores absent on older sidecars;
+    ``severity`` is reciter-relative, see ``_low_confidence_words``). When the
     sidecar is absent returns ``(set(), None, {})`` and caches the empty
     result so repeated lookups don't re-stat the filesystem. The sidecar is
     the source of truth for the *Low Confidence v2* validation category and

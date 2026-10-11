@@ -9,51 +9,30 @@ import {
     lowConfidenceWordMarks,
     MIN_HIGHLIGHT_ALPHA,
     UNSCORED_INTENSITY,
-    wordSeverity,
 } from '../../utils/validation/low-confidence-words';
 
 function item(uid: string, words: SegValLowConfidenceV2Item['words']): SegValLowConfidenceV2Item {
     return { ref: '2:5:1-2:5:6', chapter: 2, seg_index: 0, segment_uid: uid, words };
 }
 
-describe('wordSeverity', () => {
-    it('takes the worse of the word and sound deficits, each over its floor', () => {
-        expect(wordSeverity({ ref: '2:5:3', fit: -6, sound_fit: -9 })).toBeCloseTo(1.5);
-        expect(wordSeverity({ ref: '2:5:4', fit: -0.2, sound_fit: -11 })).toBeCloseTo(1.1);
-    });
-
-    it('ignores a missing score and is null without any', () => {
-        expect(wordSeverity({ ref: '2:5:3', fit: -8 })).toBeCloseTo(2);
-        expect(wordSeverity({ ref: '2:5:3', sound_fit: -20, fit: null })).toBeCloseTo(2);
-        expect(wordSeverity({ ref: '2:5:3' })).toBeNull();
-    });
-});
-
 describe('lowConfidenceWordMarks', () => {
-    it('scales intensity between the reciter-wide least and most severe words', () => {
+    it('takes intensity from the server severity, not from the items it is given', () => {
         const marks = lowConfidenceWordMarks([
-            item('a', [{ ref: '2:5:3', fit: -4 }, { ref: '2:5:4', fit: -6 }]),
-            item('b', [{ ref: '3:1:1', fit: -8, sound_fit: -12 }]),
+            item('a', [{ ref: '2:5:3', fit: -4, severity: 0.2 }, { ref: '2:5:4', fit: -6, severity: 0.7 }]),
         ]);
-        expect(marks.get('a')?.get('2:5:3')?.intensity).toBeCloseTo(0);
-        expect(marks.get('a')?.get('2:5:4')?.intensity).toBeCloseTo(0.5);
-        expect(marks.get('b')?.get('3:1:1')).toEqual({ intensity: 1, fit: -8, soundFit: -12 });
+        expect(marks.get('a')?.get('2:5:3')).toEqual({ intensity: 0.2, fit: -4, soundFit: null });
+        expect(marks.get('a')?.get('2:5:4')?.intensity).toBe(0.7);
     });
 
     it('gives unscored words the middle intensity and skips items without words', () => {
         const marks = lowConfidenceWordMarks([
             item('a', [{ ref: '2:5:3' }]),
             item('b', []),
-            { ...item('c', [{ ref: '1:1:1', fit: -5 }]), segment_uid: null },
+            { ...item('c', [{ ref: '1:1:1', fit: -5, severity: 1 }]), segment_uid: null },
         ]);
         expect(marks.get('a')?.get('2:5:3')).toEqual({ intensity: UNSCORED_INTENSITY, fit: null, soundFit: null });
         expect(marks.has('b')).toBe(false);
         expect(marks.size).toBe(1);
-    });
-
-    it('marks a lone scored word at full intensity', () => {
-        const marks = lowConfidenceWordMarks([item('a', [{ ref: '2:5:3', fit: -5 }])]);
-        expect(marks.get('a')?.get('2:5:3')?.intensity).toBe(1);
     });
 });
 
@@ -70,7 +49,7 @@ describe('lowConfidenceWords store', () => {
 
     it('follows the validate payload', () => {
         expect(get(lowConfidenceWords).size).toBe(0);
-        segValidation.set({ low_confidence_v2: [item('a', [{ ref: '2:5:3', fit: -6 }])] } as SegValidateResponse);
+        segValidation.set({ low_confidence_v2: [item('a', [{ ref: '2:5:3', fit: -6, severity: 1 }])] } as SegValidateResponse);
         expect([...get(lowConfidenceWords).get('a')!.keys()]).toEqual(['2:5:3']);
     });
 });
