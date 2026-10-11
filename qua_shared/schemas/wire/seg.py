@@ -521,9 +521,22 @@ class SegValLowConfidenceItem(BaseModel):
     classified_issues: list[str] = Field(default_factory=list)
 
 
+class SegValLowConfidenceWord(BaseModel):
+    """A word that made a segment Low Confidence. ``fit`` / ``sound_fit`` are
+    log-posterior deficits of the word and of its worst sound (more negative =
+    worse); absent on sidecars written before the scores existed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ref: Ref
+    fit: float | None = None
+    sound_fit: float | None = None
+
+
 class SegValLowConfidenceV2Item(BaseModel):
     """``low_confidence_v2`` — a segment the neural timing checks found fitting its
-    text poorly (``low_confidence_v2.json``). No confidence score; the signal is binary."""
+    text poorly (``low_confidence_v2.json``). No confidence score; ``words`` names
+    the words that tripped the check (empty when the sidecar carries none)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -532,6 +545,7 @@ class SegValLowConfidenceV2Item(BaseModel):
     seg_index: int
     segment_uid: str | None = None
     classified_issues: list[str] = Field(default_factory=list)
+    words: list[SegValLowConfidenceWord] = Field(default_factory=list)
 
 
 class SegValHiddenPauseCut(BaseModel):

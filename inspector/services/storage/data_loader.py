@@ -218,27 +218,56 @@ def seg_meta(reciter: str) -> dict:
     return cache.get_seg_meta(reciter)
 
 
-def load_probe_v2(reciter: str) -> tuple[set[str], dict | None]:
+def _low_confidence_word(raw: object) -> dict | None:
+    """One ``words`` entry as ``{ref, fit?, sound_fit?}``; ``None`` without a ref."""
+    if not isinstance(raw, dict) or not raw.get("ref"):
+        return None
+    word: dict = {"ref": str(raw["ref"])}
+    for key in ("fit", "sound_fit"):
+        value = raw.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            word[key] = float(value)
+    return word
+
+
+def _low_confidence_words(by_uid: object) -> dict[str, list[dict]]:
+    """``uid -> flagged words`` from the sidecar's ``by_uid`` block. Items
+    without ``words`` (older sidecars, ``no path``) are left out."""
+    if not isinstance(by_uid, dict):
+        return {}
+    out: dict[str, list[dict]] = {}
+    for uid, item in by_uid.items():
+        raw_words = item.get("words") if isinstance(item, dict) else None
+        words = [w for w in map(_low_confidence_word, raw_words or []) if w]
+        if words:
+            out[str(uid)] = words
+    return out
+
+
+def load_probe_v2(reciter: str) -> cache.ProbeV2:
     """Load ``low_confidence_v2.json`` sidecar for *reciter*.
 
-    Returns ``(failed_uid_set, meta_dict)``. When the sidecar is absent
-    returns ``(set(), None)`` and caches the empty result so repeated
-    lookups don't re-stat the filesystem. The sidecar is the source of
-    truth for the *Low Confidence v2* validation category and is never
-    written from the Inspector — the neural timing checks emit it (the align
-    pipeline's sidecar stage, or ``qua_timing_batch.retime review`` offline).
+    Returns ``(failed_uid_set, meta_dict, words_by_uid)``. ``words_by_uid``
+    maps a flagged uid to the words that made it Low Confidence, each
+    ``{ref, fit?, sound_fit?}`` (scores absent on older sidecars). When the
+    sidecar is absent returns ``(set(), None, {})`` and caches the empty
+    result so repeated lookups don't re-stat the filesystem. The sidecar is
+    the source of truth for the *Low Confidence v2* validation category and
+    is never written from the Inspector — the neural timing checks emit it
+    (the align pipeline's sidecar stage, or ``qua_timing_batch.retime review``
+    offline).
     """
     cached = cache.get_seg_probe_v2(reciter)
     if cached is not None:
         return cached
     doc = data_dir.read_low_confidence_doc(reciter)
     if doc is None:
-        result: tuple[set[str], dict | None] = (set(), None)
+        result: cache.ProbeV2 = (set(), None, {})
         cache.set_seg_probe_v2(reciter, result)
         return result
     failures = doc.get("failures") or []
     meta = doc.get("_meta") or None
-    result = (set(failures), meta)
+    result = (set(failures), meta, _low_confidence_words(doc.get("by_uid")))
     cache.set_seg_probe_v2(reciter, result)
     return result
 

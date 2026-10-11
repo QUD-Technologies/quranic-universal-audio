@@ -107,13 +107,58 @@ export function _normalizeRef(ref: Ref | null | undefined, vwc?: VerseWordCounts
     return ref;
 }
 
+const MAX_AYAH_BOUNDARY = 300;
+
+/**
+ * `surah:ayah:word` locations of a canonical word-range ref, start through end
+ * inclusive, advancing through the verse-word-counts map at each verse end.
+ * Empty for malformed refs.
+ */
+export function wordLocationsForRef(
+    ref: Ref | null | undefined,
+    vwc: VerseWordCounts | undefined,
+): string[] {
+    if (!ref) return [];
+    const parts = ref.split('-');
+    if (parts.length !== 2 || !parts[0] || !parts[1]) return [];
+    const sP = parts[0].split(':');
+    const eP = parts[1].split(':');
+    if (sP.length !== 3 || eP.length !== 3) return [];
+    const sSu = +sP[0]!, sAy = +sP[1]!, sW = +sP[2]!;
+    const eSu = +eP[0]!, eAy = +eP[1]!, eW = +eP[2]!;
+    if (![sSu, sAy, sW, eSu, eAy, eW].every(Number.isFinite)) return [];
+
+    // Segments never cross surahs in practice — Python `dk_text_for_ref`
+    // shares this assumption. If `sSu !== eSu` the ref is malformed and the
+    // ayah-overflow guard below short-circuits the walk.
+    const su = sSu;
+    const locations: string[] = [];
+    let ay = sAy, w = sW;
+    // Lexicographic (su, ay, w) ≤ (eSu, eAy, eW) — mirrors Python tuple compare.
+    const lte = (): boolean =>
+        su < eSu
+        || (su === eSu && (ay < eAy || (ay === eAy && w <= eW)));
+    while (lte()) {
+        locations.push(`${su}:${ay}:${w}`);
+        w++;
+        const max = vwc?.[`${su}:${ay}`] ?? 0;
+        if (w > max) {
+            w = 1;
+            ay++;
+            // Runaway ayah means malformed input; mirrors Python's
+            // `_MAX_AYAH_BOUNDARY` in `services/reference/quran_refs.py`.
+            if (ay > MAX_AYAH_BOUNDARY) break;
+        }
+    }
+    return locations;
+}
+
 /**
  * Build Digital Khatt display text for a canonical word-range ref.
  *
- * TS port of `services/data_loader.py::dk_text_for_ref`. Walks `surah:ayah:word`
- * keys from start endpoint through end endpoint (inclusive), advancing the
- * word counter through the verse-word-counts map at each boundary. Returns ''
- * for malformed / missing inputs so callers can decide a fallback string.
+ * TS port of `services/data_loader.py::dk_text_for_ref`: the `dkWords` text of
+ * every `wordLocationsForRef` location, space-joined. Returns '' for
+ * malformed / missing inputs so callers can decide a fallback string.
  *
  * Parity with the Python implementation is enforced at the call site —
  * the response root carries the same `dkWords` map the server would use.
@@ -123,40 +168,11 @@ export function dkTextForRef(
     dkWords: Record<string, string> | undefined,
     vwc: VerseWordCounts | undefined,
 ): string {
-    if (!ref || !dkWords) return '';
-    const parts = ref.split('-');
-    if (parts.length !== 2 || !parts[0] || !parts[1]) return '';
-    const sP = parts[0].split(':');
-    const eP = parts[1].split(':');
-    if (sP.length !== 3 || eP.length !== 3) return '';
-    const sSu = +sP[0]!, sAy = +sP[1]!, sW = +sP[2]!;
-    const eSu = +eP[0]!, eAy = +eP[1]!, eW = +eP[2]!;
-    if (![sSu, sAy, sW, eSu, eAy, eW].every(Number.isFinite)) return '';
-
-    // Segments never cross surahs in practice — Python `dk_text_for_ref`
-    // shares this assumption. If `sSu !== eSu` the ref is malformed and the
-    // ayah-overflow guard below short-circuits the walk.
-    const su = sSu;
-    const words: string[] = [];
-    let ay = sAy, w = sW;
-    // Lexicographic (su, ay, w) ≤ (eSu, eAy, eW) — mirrors Python tuple compare.
-    const lte = (): boolean =>
-        su < eSu
-        || (su === eSu && (ay < eAy || (ay === eAy && w <= eW)));
-    while (lte()) {
-        const t = dkWords[`${su}:${ay}:${w}`];
-        if (t) words.push(t);
-        w++;
-        const max = vwc?.[`${su}:${ay}`] ?? 0;
-        if (w > max) {
-            w = 1;
-            ay++;
-            // Mirrors MAX_AYAH_BOUNDARY_CHECK (formerly in config.py).
-            // Runaway ayah means malformed input.
-            if (ay > 300) break;
-        }
-    }
-    return words.join(' ');
+    if (!dkWords) return '';
+    return wordLocationsForRef(ref, vwc)
+        .map((location) => dkWords[location])
+        .filter(Boolean)
+        .join(' ');
 }
 
 /** Insert verse end markers at verse boundaries within segment text. */

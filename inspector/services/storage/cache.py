@@ -82,8 +82,10 @@ _seg: _KeyedCache[list[dict]] = _KeyedCache()
 _seg_meta: _KeyedCache[dict] = _KeyedCache()
 _seg_verses: _KeyedCache[tuple] = _KeyedCache()
 _seg_resolved_by_edit: _KeyedCache[dict[str, set[str]]] = _KeyedCache()
-# Low-Confidence v2 sidecar — uid set + meta dict (or None when sidecar absent).
-_seg_probe_v2: _KeyedCache[tuple[set[str], dict | None]] = _KeyedCache()
+# Low-Confidence v2 sidecar — uid set, meta dict (or None when sidecar absent),
+# and the flagged words per uid.
+ProbeV2 = tuple[set[str], dict | None, dict[str, list[dict]]]
+_seg_probe_v2: _KeyedCache[ProbeV2] = _KeyedCache()
 # Auto-Split sidecar — precomputed cursors/refs by uid, plus meta. Empty dict
 # tuple member when sidecar absent so callers don't re-stat on every lookup.
 _seg_auto_split: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
@@ -178,11 +180,11 @@ def set_seg_resolved_by_edit(reciter: str, index: dict[str, set[str]]) -> None:
     _seg_resolved_by_edit.set(reciter, index)
 
 
-def get_seg_probe_v2(reciter: str) -> tuple[set[str], dict | None] | None:
+def get_seg_probe_v2(reciter: str) -> ProbeV2 | None:
     return _seg_probe_v2.get(reciter)
 
 
-def set_seg_probe_v2(reciter: str, value: tuple[set[str], dict | None]) -> None:
+def set_seg_probe_v2(reciter: str, value: ProbeV2) -> None:
     _seg_probe_v2.set(reciter, value)
 
 

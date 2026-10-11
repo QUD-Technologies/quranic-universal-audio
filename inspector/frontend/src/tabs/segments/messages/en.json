@@ -36,6 +36,7 @@
   "segments_row_no_prev_merge_title": "No previous segment to merge with",
   "segments_row_merge_diff_audio_title": "Cannot merge segments from different audio files",
   "segments_row_no_next_merge_title": "No next segment to merge with",
+  "segments_row_lc_word_title": "Word fit {fit} · sound fit {sound}",
   "segments_row_no_text_fallback": "(no text)",
   "segments_row_no_match_fallback": "(no match)",
   "segments_row_conf_fail_label": "FAIL",

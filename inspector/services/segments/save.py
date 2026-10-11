@@ -681,7 +681,7 @@ def _persist_and_record(
     # frontend history-delta path reads it directly off the saved record
     # instead of running a second classifier pass on snapshot dicts.
     # Ops also receive a ``patch`` envelope when absent.
-    probe_failed_uids, _ = load_probe_v2(reciter)
+    probe_failed_uids, _, _ = load_probe_v2(reciter)
     operations = _attach_classified_issues(
         _ensure_patch_on_ops(raw_ops),
         probe_failed_uids=probe_failed_uids,

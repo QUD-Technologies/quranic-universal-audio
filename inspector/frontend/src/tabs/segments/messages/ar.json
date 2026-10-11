@@ -36,6 +36,7 @@
   "segments_row_no_prev_merge_title": "لا مقطع سابق للدمج معه",
   "segments_row_merge_diff_audio_title": "تعذّر دمج مقاطع من ملفات صوتية مختلفة",
   "segments_row_no_next_merge_title": "لا مقطع تالٍ للدمج معه",
+  "segments_row_lc_word_title": "ملاءمة الكلمة {fit} · ملاءمة الصوت {sound}",
   "segments_row_no_text_fallback": "(لا نص)",
   "segments_row_no_match_fallback": "(لا تطابق)",
   "segments_row_conf_fail_label": "فشل",
