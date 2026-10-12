@@ -164,11 +164,6 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
     if not entries:
         return None
 
-    # An edit that keeps a segment's uid (ref edit, trim) leaves its offline
-    # boundary entry describing a segment that no longer exists.
-    hidden_pause_map = fitting_entries(hidden_pause_map, entries)
-    missed_waqf_map = fitting_entries(missed_waqf_map, entries)
-
     # Every coordinate table, script lookup and confidence cutoff below is read
     # in the delivery's own edition. Raises rather than defaulting to Hafs: a
     # Warsh delivery validated against Hafs verse counts reports missing words
@@ -202,6 +197,11 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
     # walking historyData. Keyed by ROOT uid only — items look up by their
     # own uid client-side.
     split_group_index = build_split_group_index(reciter)
+
+    # An edit that keeps a segment's uid (ref edit, trim) leaves its offline
+    # boundary entry describing a segment that no longer exists.
+    hidden_pause_map = fitting_entries(hidden_pause_map, entries, split_group_index)
+    missed_waqf_map = fitting_entries(missed_waqf_map, entries, split_group_index)
 
     detail = _build_detail_lists(
         entries,
