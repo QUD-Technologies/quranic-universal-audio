@@ -161,6 +161,32 @@ def running_job_for(slug: str) -> str | None:
     return rec.get("job_id")
 
 
+INTERRUPTED_ERROR = "interrupted: the Inspector restarted during the run; launch it again"
+
+
+def close_interrupted_runs() -> list[str]:
+    """Boot, aligner engine: stamp every reciter's ``running`` run failed.
+
+    An aligner-engine run lives on a thread of the Inspector process, so a run
+    still ``running`` when the process boots died with the previous one. Left
+    alone it would read as in flight until the staleness ceiling. Returns the
+    slugs stamped."""
+    closed: list[str] = []
+    for row in state_service.all_rows():
+        slug = getattr(row, "slug", "")
+        ids = list(getattr(row, "timestamps_job_ids", []) or [])
+        rec = read_job_record(slug, ids[-1]) if ids else None
+        if not rec or rec.get("status") != "running":
+            continue
+        rec.update(status="failed", error=INTERRUPTED_ERROR, ended_at=_now_iso())
+        rec.setdefault("logs", []).append(f"{_now_iso()} failed: {INTERRUPTED_ERROR}")
+        _write_job_record(TsJobRecord.model_validate(rec))
+        closed.append(slug)
+    if closed:
+        log.warning("timestamps runs interrupted by a restart, stamped failed: %s", closed)
+    return closed
+
+
 def latest_terminal_failed_slugs() -> set[str]:
     """Slugs whose MOST-RECENT timestamps run ended in a non-success terminal
     status. The auto-gen guard reads this so it never re-launches a slug that

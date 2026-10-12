@@ -20,7 +20,9 @@ built writes neither shards nor profile.
 
 ``start_run`` writes the ``running`` run record (``jobs/ts/<run_id>.json``, the shape the
 batch Space wrote) and works on a daemon thread, stamping the record ``succeeded`` or
-``failed`` at the end, so completion, releases and the automations read it unchanged. A
+``failed`` at the end, so completion, releases and the automations read it unchanged; a run
+the process died under is stamped ``failed`` at the next boot
+(:func:`services.admin.timestamps_jobs.close_interrupted_runs`). A
 chapter with a failed segment keeps its previous shards and fails the run; a record marked
 ``canceled`` stops the run before its next chapter and stays canceled. Whatever the outcome,
 the delivery's readings summary (:mod:`services.reference.readings`) is rebuilt from the shards
