@@ -7,7 +7,7 @@ edit_history.jsonl, builds a {uid: {category, ...}} index, injects
 the listed categories without writing to ``ignored_categories``.
 
 Scope: ``audio_bleeding``, ``repetitions``, ``basmala_amin``,
-``low_confidence_v2``, ``missed_waqf``. ``cross_verse`` and
+``low_confidence_v2``. ``cross_verse``, ``missed_waqf`` and
 chapter/verse-level categories are excluded -- they stay until the validator
 clears them. ``qalqala`` is view-only (mirrors ``muqattaat``) and is also
 excluded so the flag stays after edits. ``low_confidence`` (v1) is excluded
@@ -113,7 +113,7 @@ def test_basmala_amin_resolved_by_edit_suppresses():
 
 def test_resolves_by_edit_set_contains_only_soft_categories():
     """The set must match the user's pick: audio_bleeding / repetitions /
-    basmala_amin / low_confidence_v2 / missed_waqf.
+    basmala_amin / low_confidence_v2.
 
     ``qalqala`` is intentionally excluded — it's view-only (like ``muqattaat``)
     so editing a qalqala-flagged seg leaves the flag in place for the next
@@ -123,7 +123,8 @@ def test_resolves_by_edit_set_contains_only_soft_categories():
     because it's keyed against a frozen probe sidecar that confidence doesn't
     affect. ``basmala_amin`` is included because any edit from the card signals
     "I dealt with it" — revalidation must not re-raise the flag for that uid.
-    ``missed_waqf`` is included so a split from its card resolves the root.
+    ``missed_waqf`` is excluded: its cuts are answered by word, and a segment a
+    split from an earlier card made must not read a later card's cuts as WASL.
     """
     assert RESOLVES_BY_EDIT_CATEGORIES == frozenset(
         {
@@ -131,7 +132,6 @@ def test_resolves_by_edit_set_contains_only_soft_categories():
             "repetitions",
             "low_confidence_v2",
             "basmala_amin",
-            "missed_waqf",
         }
     )
 
@@ -204,12 +204,19 @@ def test_build_index_skips_excluded_categories(monkeypatch, tmp_path):
                         "op_context_category": "low_confidence",
                         "targets_after": [{"segment_uid": "uid-B"}],
                     },
+                    {
+                        "op_id": "o3",
+                        "op_type": "split_segment",
+                        "op_context_category": "missed_waqf",
+                        "targets_after": [{"segment_uid": "uid-C"}, {"segment_uid": "uid-D"}],
+                    },
                 ],
             },
         ],
     )
     idx = build_resolved_by_edit_index("r1")
-    # cross_verse is hard; low_confidence self-resolves via confidence=1.0.
+    # cross_verse is hard; low_confidence self-resolves via confidence=1.0;
+    # missed_waqf pieces answer their cuts by word, never by the edit.
     assert idx == {}
 
 

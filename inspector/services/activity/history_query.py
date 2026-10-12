@@ -33,16 +33,15 @@ logger = logging.getLogger(__name__)
 # resolved-by-edit handling the v2 card would re-appear on every revalidate
 # after the user edited it.
 #
-# ``missed_waqf`` is included: a split from its card keeps the root uid (piece
-# 0), which is still in the sidecar; the edit resolves it, and the validator
-# lists it as a ``resolved`` item rather than an open one.
+# ``missed_waqf`` is excluded: its cards are answered word by word over the
+# segment's pieces, so an edit settles nothing. A segment a split made keeps
+# its uid; resolving it by edit would read a later card's cuts on it as WASL.
 RESOLVES_BY_EDIT_CATEGORIES: frozenset[str] = frozenset(
     {
         "audio_bleeding",
         "repetitions",
         "low_confidence_v2",
         "basmala_amin",
-        "missed_waqf",
     }
 )
 
