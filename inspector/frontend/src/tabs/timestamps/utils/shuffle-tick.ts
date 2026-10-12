@@ -78,19 +78,26 @@ export function shouldFireShuffle(args: ShuffleFireArgs): boolean {
     return ms >= focusEndMs - guardMs;
 }
 
-/** The index of the occasion to focus for playhead `ms`: the one whose span
- *  contains it, else the nearest preceding, else the first. Returns -1 when there
- *  are no occasions. */
+/** The index of the occasion to focus for playhead `ms`: the one whose speech
+ *  span contains it, else — among those whose segment span does — the last whose
+ *  speech has begun (or the first), else the nearest preceding, else the first.
+ *  The segment fallback matters: a jump seeks to the
+ *  segment start, which precedes the first word — resolving that to the previous
+ *  occasion would focus one whose end is already behind the playhead and fire the
+ *  shuffle again at once (a runaway jump loop). Returns -1 when there are no
+ *  occasions. */
 export function occasionIndexAt(occasions: ShuffleTickOccasion[], ms: number): number {
     if (occasions.length === 0) return -1;
+    let segHit = -1;
     let hit = 0;
     for (let i = 0; i < occasions.length; i++) {
         const o = occasions[i]!;
-        const start = o.speechStartMs ?? o.startMs;
-        if (ms >= start && ms < (o.speechEndMs ?? o.endMs)) return i;
-        if (start <= ms) hit = i; // nearest preceding
+        const speechStart = o.speechStartMs ?? o.startMs;
+        if (ms >= speechStart && ms < (o.speechEndMs ?? o.endMs)) return i;
+        if (ms >= o.startMs && ms < o.endMs && (segHit < 0 || speechStart <= ms)) segHit = i;
+        if (o.startMs <= ms) hit = i; // nearest preceding
     }
-    return hit;
+    return segHit >= 0 ? segHit : hit;
 }
 
 /** Combined tick decision: hold everything while a chapter is mid-swap, else
