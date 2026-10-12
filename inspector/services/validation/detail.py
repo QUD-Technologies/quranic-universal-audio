@@ -261,8 +261,8 @@ def _build_detail_lists(
     ``unmarked_wasl_map`` are the ``by_uid`` maps of the offline boundary-review
     sidecars; each flagged item carries the sidecar payload under ``boundary``
     so the card can render the evidence. A live ``missed_waqf`` seg whose flag
-    is suppressed (ignored = every cut WASL, or split from the card) is still
-    emitted, with ``resolved: True``, so its labels stay reviewable.
+    is suppressed (ignored = every cut WASL) is still emitted, with
+    ``resolved: True``, so its labels stay reviewable.
 
     ``probe_failed_uids`` is the set of segment UIDs flagged by the neural
     timing checks (``low_confidence_v2.json``); pass ``None`` (or omit) when
