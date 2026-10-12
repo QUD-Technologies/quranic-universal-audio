@@ -45,3 +45,18 @@ def test_fitting_entries_keeps_live_and_drops_stale_and_orphaned():
     by_uid = {"u1": LIVE_ENTRY, "u2": FATIHA_ENTRY, "gone": LIVE_ENTRY}
     entries = [{"ref": "34", "segments": [SEG, other]}]
     assert fitting_entries(by_uid, entries) == {"u1": LIVE_ENTRY}
+
+
+def test_root_split_from_its_card_fits_over_its_pieces():
+    left = {**SEG, "time_end": 14600, "matched_ref": "34:1:1-34:1:5"}
+    right = {**SEG, "segment_uid": "u1b", "time_start": 14800, "matched_ref": "34:1:6-34:1:10"}
+    entries = [{"ref": "34", "segments": [left, right]}]
+    assert fitting_entries({"u1": LIVE_ENTRY}, entries) == {}
+    assert fitting_entries({"u1": LIVE_ENTRY}, entries, {"u1": ["u1b"]}) == {"u1": LIVE_ENTRY}
+
+
+def test_split_root_whose_pieces_changed_ref_does_not_fit():
+    left = {**SEG, "time_end": 14600, "matched_ref": "34:1:1-34:1:5"}
+    right = {**SEG, "segment_uid": "u1b", "time_start": 14800, "matched_ref": "34:1:6-34:1:8"}
+    entries = [{"ref": "34", "segments": [left, right]}]
+    assert fitting_entries({"u1": LIVE_ENTRY}, entries, {"u1": ["u1b"]}) == {}
