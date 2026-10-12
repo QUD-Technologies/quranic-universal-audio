@@ -466,6 +466,19 @@ def _boot_substrate() -> None:
         except Exception as e:  # noqa: BLE001
             logger.warning("release-job poll wiring failed: %s", e)
 
+    # Timestamps runs on the aligner engine are threads of this process: a run
+    # still ``running`` at boot died with the previous one. Deployed only — a local
+    # process shares the dev bucket with the dev Space.
+    if os.environ.get("INSPECTOR_BEHIND_PROXY") == "1":
+        try:
+            from services.admin import timestamps_jobs as _ts_jobs
+            from services.timing.aligner_timing import ts_engine as _ts_engine
+
+            if _ts_engine() == "aligner":
+                _ts_jobs.close_interrupted_runs()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("timestamps: closing interrupted runs failed: %s", e)
+
     # Native align pipeline: resume any pending/running align run's worker thread
     # (a ``running`` row after a restart means the previous process died
     # mid-stage; every stage resumes from its staged files). Opt-in via

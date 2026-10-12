@@ -114,6 +114,26 @@ def test_terminal_success_runs_reads_latest_linked_record(monkeypatch):
     assert timestamps_jobs.terminal_success_runs() == [("r", "latest")]
 
 
+def test_close_interrupted_runs_stamps_only_running_records_failed(monkeypatch):
+    class Row:
+        def __init__(self, slug, job):
+            self.slug, self.timestamps_job_ids = slug, [job]
+
+    records = {
+        "run-a": {"job_id": "run-a", "slug": "a", "status": "running", "started_at": "2026-10-12T17:17:28Z", "settings": {}},
+        "run-b": {"job_id": "run-b", "slug": "b", "status": "succeeded", "started_at": "2026-10-12T10:00:00Z", "settings": {}},
+    }
+    written = []
+    monkeypatch.setattr(timestamps_jobs.state_service, "all_rows", lambda: [Row("a", "run-a"), Row("b", "run-b")])
+    monkeypatch.setattr(timestamps_jobs, "read_job_record", lambda slug, jid: dict(records[jid]))
+    monkeypatch.setattr(timestamps_jobs, "_write_job_record", written.append)
+
+    assert timestamps_jobs.close_interrupted_runs() == ["a"]
+    (rec,) = written
+    assert (rec.job_id, rec.status, rec.error) == ("run-a", "failed", timestamps_jobs.INTERRUPTED_ERROR)
+    assert rec.ended_at is not None
+
+
 # ---------------------------------------------------------------------------
 # complete_timestamps_job — auto-release orchestrator
 # ---------------------------------------------------------------------------
