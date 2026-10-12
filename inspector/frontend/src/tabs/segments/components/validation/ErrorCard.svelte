@@ -25,6 +25,8 @@
     // ---- Props ----
     export let category: string;
     export let item: SegValAnyItem;
+    /** Settled by an edit since the accordion opened: shown as done. */
+    export let settled = false;
     /** Context-shown state to restore when re-entering the virtualization window. */
     export let initialContextShown = false;
 
@@ -92,6 +94,7 @@
             bind:this={genCard}
             {category}
             {item}
+            {settled}
             on:contextchange={bubbleContextChange}
         />
     {/if}

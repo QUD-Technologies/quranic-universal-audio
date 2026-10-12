@@ -679,6 +679,14 @@
         return out;
     })();
     $: openTotal = displayedItems.length;
+    // Pinned cards no longer in the live list were settled by an edit (the
+    // server dropped them); they render as done. Boundary accordions keep
+    // answered items live and filter them by state, so they never settle here.
+    $: settledKeys = ((): Set<string> => {
+        if (!openCat || openCat.boundaryCounts) return new Set();
+        const live = new Set(openCat.visibleItems.map((it) => issueKey(it, openCat.type)));
+        return new Set(displayedItems.map((it) => issueKey(it, openCat.type)).filter((k) => !live.has(k)));
+    })();
 
     // ---- Card-transition audio warmup ----
     //
@@ -1203,6 +1211,7 @@
                                 bind:this={windowCardRefs[localIdx]}
                                 category={cat.type}
                                 item={issue}
+                                settled={settledKeys.has(issueKey(issue, cat.type))}
                                 initialContextShown={getContextState(cat.type).get(startIdx + localIdx) ?? false}
                                 on:contextchange={contextRelay(cat.type, startIdx + localIdx)}
                             />

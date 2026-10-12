@@ -59,6 +59,8 @@
     // ---- Props ----
     export let category: string;
     export let item: SegValAnyItem;
+    /** Settled by an edit since the accordion opened: no Ignore, shown as done. */
+    export let settled = false;
 
     // ---- State ----
     let showContext = false;
@@ -107,13 +109,15 @@
 
     // Base gate from the registry; ``low_confidence`` adds a runtime guard so
     // a segment whose confidence has been promoted to 1.0 (e.g. after a save
-    // edit) doesn't keep offering the Ignore button. A missed-waqf item that
-    // is already split is labelled by its cuts, not ignored.
+    // edit) doesn't keep offering the Ignore button, nor does a card an edit
+    // settled. A missed-waqf item that is already split is labelled by its
+    // cuts, not ignored.
     $: canIgnore =
         resolvedSeg != null &&
         (IssueRegistry[category]?.canIgnore ?? false) &&
         (category !== 'low_confidence' || (resolvedSeg.confidence ?? 1) < 1.0) &&
-        !isSplitMissedWaqf;
+        !isSplitMissedWaqf &&
+        !settled;
 
     $: segChapterForBtn =
         resolvedSeg != null ? (resolvedSeg.chapter ?? parseInt(get(selectedChapter))) : 0;
@@ -473,7 +477,7 @@
     $: contextToggleLabel = tr($localeStore, showContext ? m.segments_validation_hide_context_button() : m.segments_validation_show_context_button());
 </script>
 
-<div style:opacity={isAlreadyIgnored ? 0.5 : null}>
+<div style:opacity={isAlreadyIgnored || settled ? 0.5 : null}>
     {#if issueMsg}
         <div class="val-card-issue-label">{issueMsg}</div>
     {/if}
