@@ -1,7 +1,7 @@
 /**
  * Open a committed cut's measured silence as a gap between its two pieces.
  *
- * A Low Confidence Waqf cut carries the pause the cut-timing pass found
+ * A Low Confidence Waqf cut carries the pause the neural timing head decoded
  * (`silence_start_ms` / `silence_end_ms` on the item's cut). After the split,
  * the left piece is trimmed to end where the pause starts and the right piece
  * to start where it ends. The split and both trims chain through the pieces'
