@@ -18,16 +18,13 @@ time whose segment is unchanged and times the rest.
   shards, sending the madd lāzim lengths of the whole delivery as the basis of the shards'
   reading-variant picks. A chapter with a failed segment keeps its previous shards and fails
   the run; so does a failed call, before any shard is built. The run
-  writes the same run-log record (`reciters/<slug>/jobs/ts/<run_id>.json`) the batch
-  Space wrote, so completion, releases and the automations
-  (`services/admin/timestamps_jobs.py`) are unchanged.
+  writes a run-log record (`reciters/<slug>/jobs/ts/<run_id>.json`) that completion,
+  releases and the automations (`services/admin/timestamps_jobs.py`) read.
 
 Bulk re-timing for a new model is an offline Katana batch (qua `engines/timing-batch`,
 `qua_timing_batch.retime`) that writes the same two files.
 
-`INSPECTOR_TS_ENGINE=space` sends runs to the MFA batch timing Space instead
-(`services/admin/ts_space_client.py`, `/internal/v1/timestamps`), which writes
-shards and `ts_validation.json` directly. QUA is a pure consumer of the shards. The
+QUA is a pure consumer of the shards. The
 complete stored contract is [shards.md](shards.md).
 
 ## Responsibilities
@@ -105,10 +102,10 @@ or `null` when the file is missing; the `ts-refreshed` notice drops its cached c
 
 Launching is gated on the reciter's newest `reciters/<slug>/jobs/ts/<run_id>.json`
 record: a `running` one refuses the next launch with 409 "a timestamps job is
-already running". The **Space** owns that record — it stamps `succeeded` /
-`failed` when the run ends — so a Space restart or rebuild mid-run leaves
-`running` behind with nothing left to finish it, and the slug can never be
-relaunched.
+already running". The run's thread stamps `succeeded` / `failed` when it ends;
+a run the process died under is stamped `failed` at the next deployed boot
+(`close_interrupted_runs`). A record still left `running` with nothing to
+finish it would block the slug from ever being relaunched.
 
 `timestamps_jobs.running_job_for` therefore applies a staleness ceiling: a
 `running` record whose `started_at` is older than `INSPECTOR_TS_STALE_RUN_HOURS`
@@ -163,16 +160,10 @@ The cutover process and report migration are documented in [data-migrations.md](
 
 ## Multi-riwayah
 
-The run request names the delivery's edition: `ts_space_client.start_run` puts
-`riwayah` (SDK slug) in the signed body **only when it is not Hafs**. The JCS
-canonicaliser sorts keys and the field is omitted for Hafs, so every existing
-Hafs preimage stays byte-identical and the Space-side change need only ship
-before the first non-Hafs run, not in lockstep.
-
-The Space aligns against Hafs as a proxy, phonemizes Hafs phones, then projects
-onto the delivery's words. What comes back is a **word-profile** shard: words and
-pause boundaries, no cells, sounds or animation tokens. `low_confidence_v2.json`
-and `ts_validation.json` are not produced for it — both are tight-beam probes
-against Hafs proxy phones, so the signal degenerates to "this is not Hafs".
+Every timing call names the delivery's edition (`riwayah`, the SDK slug from
+`sdk_riwayah_for`). The aligner times against Hafs as a proxy, then projects onto
+the delivery's words. What comes back is a **word-profile** shard: words and
+pause boundaries, no cells, sounds or animation tokens. `recitation_profile.json`
+is built only for Hafs runs.
 
 Full detail: [`editions.md`](editions.md).

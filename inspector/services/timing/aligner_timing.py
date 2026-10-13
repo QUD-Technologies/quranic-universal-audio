@@ -20,7 +20,6 @@ from __future__ import annotations
 import base64
 import json
 import logging
-import os
 import threading
 from collections import defaultdict
 
@@ -44,15 +43,9 @@ class TimingCallError(RuntimeError):
     """The aligner refused or failed one chapter's timing."""
 
 
-def ts_engine() -> str:
-    """Where timing runs: ``aligner`` (neural head, stored segment times; default) or
-    ``space`` (the MFA batch timing Space, timestamps runs only)."""
-    return (os.environ.get("INSPECTOR_TS_ENGINE") or "aligner").strip().lower()
-
-
 def enabled() -> bool:
     """Whether segment times are stored at align and kept current after edits."""
-    return ts_engine() == "aligner" and bool(aligner_params.extraction_secret())
+    return bool(aligner_params.extraction_secret())
 
 
 def chapter_lock(slug: str, chapter: int) -> threading.Lock:
