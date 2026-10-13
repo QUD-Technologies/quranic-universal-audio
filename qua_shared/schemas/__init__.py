@@ -77,7 +77,6 @@ from .config.automation import (
     HfPublishConfig,
     StaleMetadataConfig,
     StaleTsRegenConfig,
-    TsGenerationDefaults,
 )
 from .config.capabilities import (
     CAPABILITIES,
@@ -356,7 +355,6 @@ __all__ = [
     "HfPublishConfig",
     "StaleMetadataConfig",
     "StaleTsRegenConfig",
-    "TsGenerationDefaults",
     "AdminCapabilityRow",
     "AdminCapabilityTierState",
     "AdminCutReleaseRequest",

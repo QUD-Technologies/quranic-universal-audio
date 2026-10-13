@@ -42,7 +42,6 @@
     import ReleasesRow, { type ReleasesBucket } from './ReleasesRow.svelte';
     import type { RowExpandMode } from './ReleasesRowExpansion.svelte';
     import ReleasesSummaryCard from './ReleasesSummaryCard.svelte';
-    import TsGenerationSettingsSection from './TsGenerationSettingsSection.svelte';
 
     let resp = $state<ReleasesStatusResponse | null>(null);
     let loading = $state(true);
@@ -508,7 +507,7 @@
 
         {#if allRows.length === 0}
             <div class="list-area" bind:this={listAreaEl}>
-                {#if $canManageAutomation}<TsGenerationSettingsSection /><AutomationSection />{/if}
+                {#if $canManageAutomation}<AutomationSection />{/if}
                 <div class="zero-state">
                     <h3>No reciters in the release pipeline yet</h3>
                     <p>
@@ -522,7 +521,7 @@
             </div>
         {:else}
         <div class="list-area" bind:this={listAreaEl}>
-            {#if $canManageAutomation}<TsGenerationSettingsSection /><AutomationSection />{/if}
+            {#if $canManageAutomation}<AutomationSection />{/if}
             <!-- Filter bar -->
         <div class="filter-bar">
             <span class="search">

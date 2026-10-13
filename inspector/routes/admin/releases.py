@@ -44,7 +44,6 @@ from qua_shared.schemas import (
     AdminReleasesStatusResponse,
     AutomationConfig,
     AutomationResponse,
-    TsGenerationDefaults,
 )
 from routes._admin_helpers import actor_for, require_capability_or_403
 from services import permissions
@@ -692,47 +691,6 @@ def save_automation(user):
         cfg, updated_by=getattr(user, "hf_user_id", "") or "owner", actor=actor_for(user)
     )
     return jsonify(_automation_payload())
-
-
-# ---------------------------------------------------------------------------
-# GET / POST /api/admin/releases/ts-generation-defaults
-# ---------------------------------------------------------------------------
-#
-# The single owner-wide source for the timestamps-generation knobs
-# (beam/model/workers/batch_size/download_workers/padding/method) shared by the
-# manual launch form, the auto-gen / stale-regen automations, and the HF job.
-# It lives inside the ``AutomationConfig`` blob (no separate table), so a save
-# round-trips the whole config through ``automation_config.save_config``.
-
-
-@admin_releases_bp.route("/releases/ts-generation-defaults", methods=["GET"])
-@require_capability("release.manage_automation")
-def get_ts_generation_defaults(user):
-    """Owner-only: the shared timestamps-generation default knobs."""
-    cfg = automation_config.load_config()
-    return jsonify(cfg.ts_generation_defaults.model_dump(mode="json"))
-
-
-@admin_releases_bp.route("/releases/ts-generation-defaults", methods=["POST"])
-@require_same_origin
-@require_capability("release.manage_automation")
-def save_ts_generation_defaults(user):
-    """Owner-only: replace the shared timestamps-generation defaults.
-
-    Validated as ``TsGenerationDefaults``, merged into the persisted
-    ``AutomationConfig`` blob (the rest of the automation config is untouched),
-    saved + audited via the same path the Automation card uses.
-    """
-    try:
-        defaults = TsGenerationDefaults.model_validate(request.get_json(silent=True) or {})
-    except ValidationError as exc:
-        return jsonify({"error": "invalid ts-generation defaults", "details": exc.errors()}), 400
-    cfg = automation_config.load_config()
-    merged = cfg.model_copy(update={"ts_generation_defaults": defaults})
-    automation_config.save_config(
-        merged, updated_by=getattr(user, "hf_user_id", "") or "owner", actor=actor_for(user)
-    )
-    return jsonify(merged.ts_generation_defaults.model_dump(mode="json"))
 
 
 def _with_suggestion(row: dict | None, *, track: str) -> dict | None:

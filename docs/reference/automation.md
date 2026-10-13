@@ -95,26 +95,10 @@ Migration `0020_automation.sql`, repo `services/db/repo_automation.py`:
   `skipped`) because that row is also its cadence anchor — once a day, not once a
   tick.
 
-## Shared TS-generation defaults
+## Timestamps launches
 
-`AutomationConfig.ts_generation_defaults` (`TsGenerationDefaults`) is the single
-owner-wide source for the timestamps-generation knobs — beam, aligner
-model, workers, batch_size, download_workers, padding, method. It lives inside
-the same config blob (no separate table) and is the base every generation
-surface reads:
-
-- the manual launch form (`routes/admin/reviews.py::_parse_ts_settings`) takes
-  every TS tunable from it; the request body carries only the per-launch
-  `chapters` scope;
-- `eval_auto_gen_ts` / `eval_stale_ts_regen` build their `TsJobSettings` from it
-  via `evaluators._ts_settings` (only `chapters` is the automation's own scope);
-- both thread `padding` / `method` into the HF job env (`PADDING` / `METHOD`),
-  which the job reads with `DEFAULT_PADDING` / `DEFAULT_METHOD` fallbacks.
-
-Edited from the Releases-tab **Timestamps generation** card
-(`TsGenerationSettingsSection.svelte`) via
-`GET|POST /api/admin/releases/ts-generation-defaults`, same
-`release.manage_automation` gate.
+`eval_auto_gen_ts` / `eval_stale_ts_regen` launch with a `TsJobSettings` that
+carries only the automation's `chapters` scope; the aligner owns the model.
 
 ## Route + capability
 

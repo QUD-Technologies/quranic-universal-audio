@@ -59,7 +59,6 @@ from .config.automation import (
     HfPublishConfig,
     StaleMetadataConfig,
     StaleTsRegenConfig,
-    TsGenerationDefaults,
 )
 from .config.riwayat import RiwayahSupport, RiwayatConfig
 from .wire._envelopes import ErrorEnvelope, OkAck
@@ -264,7 +263,6 @@ __all__ = [
     "HfPublishConfig",
     "StaleMetadataConfig",
     "StaleTsRegenConfig",
-    "TsGenerationDefaults",
     "RiwayahSupport",
     "RiwayatConfig",
     "AdminActiveClaim",

@@ -61,9 +61,9 @@ python .claude/skills/inspector-admin/scripts/admin_publish.py <slug> --job-id <
 # Reopen a released reciter for editing (admin.unlocked_for_revision)
 python .claude/skills/inspector-admin/scripts/admin_state.py <slug> --event admin.unlocked_for_revision --reason "fix qalqala letters" --prod --yes-prod
 
-# Cancel a stuck TS job + relaunch with safer settings
+# Cancel a stuck TS job + relaunch it
 python .claude/skills/inspector-admin/scripts/admin_ts_job.py cancel <slug> <job_id> --prod --yes-prod
-python .claude/skills/inspector-admin/scripts/admin_ts_job.py launch <slug> --beams 30,2 --workers 4 --dl-workers 4 --prod --yes-prod --monitor
+python .claude/skills/inspector-admin/scripts/admin_ts_job.py launch <slug> --prod --yes-prod --monitor
 
 # Look up the full state of one reciter
 python .claude/skills/inspector-admin/scripts/admin_reciter.py <slug> --prod

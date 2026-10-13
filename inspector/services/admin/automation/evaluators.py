@@ -61,32 +61,6 @@ def _webhook_base() -> str | None:
     return AUTOMATION_PUBLIC_BASE_URL or None
 
 
-def _ts_settings(
-    cfg: AutomationConfig,
-    *,
-    chapters: list[int] | None = None,
-) -> TsJobSettings:
-    """Build a ``TsJobSettings`` for an automated launch from the shared
-    ``ts_generation_defaults`` — the single owner-wide source the Releases-tab
-    "Timestamps generation" accordion edits.
-
-    All TS tunables (beam/model/workers/batch_size/download_workers/
-    padding/method) come from the shared defaults; only ``chapters`` is the
-    automation's own per-launch scope choice.
-    """
-    d = cfg.ts_generation_defaults
-    return TsJobSettings(
-        beams=[d.beam],
-        aligner_model=d.aligner_model,
-        chapters=chapters or None,
-        workers=d.workers,
-        batch_size=d.batch_size,
-        download_workers=d.download_workers,
-        padding=d.padding,
-        method=d.method,
-    )
-
-
 def _record(
     automation_id: str,
     *,
@@ -134,25 +108,19 @@ def _ts_run_in_flight() -> bool:
 def _launch_first_ts(
     automation_id: str,
     candidates: list[tuple[str, str, list[int] | None]],
-    cfg: AutomationConfig,
     now: datetime,
     verb: str,
 ) -> None:
     """Launch the longest-waiting ``(since, slug, chapters)`` candidate — one per tick.
 
     The aligner times one run at a time, so the rest wait for a later tick. A
-    failed launch is logged and
-    retried next tick.
+    failed launch is logged and retried next tick.
     """
     if not candidates:
         return
     _since, slug, chapters = min(candidates)
     try:
-        timestamps_jobs.launch(
-            slug,
-            settings=_ts_settings(cfg, chapters=chapters),
-            webhook_base=_webhook_base(),
-        )
+        timestamps_jobs.launch(slug, settings=TsJobSettings(chapters=chapters or None))
     except Exception as exc:  # noqa: BLE001 — retried next tick
         logger.warning("%s: launch for %s failed: %s", automation_id, slug, exc)
         return
@@ -213,7 +181,7 @@ def eval_auto_gen_ts(cfg: AutomationConfig, now: datetime) -> None:
         if _already_launched_since(watermarks, slug, _serde.from_iso(marked)):
             continue
         candidates.append((str(marked or ""), slug, None))
-    _launch_first_ts(AUTO_GEN_TS, candidates, cfg, now, "generated")
+    _launch_first_ts(AUTO_GEN_TS, candidates, now, "generated")
 
 
 def _auto_gen_gated(c, slug: str, claim) -> bool:
@@ -396,7 +364,7 @@ def eval_stale_ts_regen(cfg: AutomationConfig, now: datetime) -> None:
             continue
         chapters = info.get("affected_chapters") if c.scope == "affected" else None
         candidates.append((str(info.get("stale_since") or ""), slug, chapters or None))
-    _launch_first_ts(STALE_TS_REGEN, candidates, cfg, now, "regenerated")
+    _launch_first_ts(STALE_TS_REGEN, candidates, now, "regenerated")
 
 
 # ---------------------------------------------------------------------------

@@ -1,8 +1,7 @@
 """TS-job lifecycle CLI — consolidates the launch + cancel + status + publish
 operations into one entrypoint. Replaces inspector/scripts/launch_ts_job.py.
 
-  admin_ts_job.py launch SLUG [--beams 30,2] [--workers N] [--dl-workers N]
-                              [--flavor cpu-upgrade] [--timeout 2h] [--monitor]
+  admin_ts_job.py launch SLUG [--chapters 2,3] [--monitor]
   admin_ts_job.py cancel SLUG JOB_ID
   admin_ts_job.py status SLUG JOB_ID [--tail N]
   admin_ts_job.py record SLUG JOB_ID       # bucket-persisted record
@@ -28,10 +27,6 @@ TERMINAL = {"succeeded", "completed", "failed", "error", "errored",
             "timed-out", "timeout", "stopped", "canceled", "cancelled", "deleted"}
 
 
-def _beams(raw: str) -> list[int]:
-    return [int(t) for t in raw.replace(" ", "").split(",") if t]
-
-
 def _chapters(raw: str | None) -> list[int] | None:
     """Parse --chapters into surah numbers; None = whole reciter."""
     if not raw:
@@ -53,19 +48,11 @@ def _do_launch(a, ctx) -> int:
     existing = timestamps_jobs.running_job_for(a.slug)
     if existing:
         print(f"a job is already in-flight: {existing}", file=sys.stderr); return 5
-    settings = TsJobSettings(
-        beams=_beams(a.beams), workers=a.workers,
-        download_workers=a.dl_workers, flavor=a.flavor, timeout=a.timeout,
-        aligner_model=getattr(a, "model", None),
-        chapters=_chapters(getattr(a, "chapters", None)),
-    )
+    settings = TsJobSettings(chapters=_chapters(getattr(a, "chapters", None)))
     _print(f"settings: {settings.model_dump(exclude_none=False)}")
     if a.dry_run:
         _print("DRY RUN — not launching"); return 0
-    result = timestamps_jobs.launch(
-        a.slug, settings=settings,
-        webhook_base="https://qud-technologies-quranic-universal-audio.hf.space",
-    )
+    result = timestamps_jobs.launch(a.slug, settings=settings)
     _print(f"launched job_id={result.get('job_id')}")
     _print(f"  URL: {result.get('url')}")
     bs.after_write_banner(a)
@@ -165,13 +152,9 @@ def main() -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     pl = sub.add_parser("launch", help="launch a TS job for SLUG")
-    pl.add_argument("slug"); pl.add_argument("--beams", default="50,2")
-    pl.add_argument("--workers", type=int, default=None)
-    pl.add_argument("--dl-workers", type=int, default=None)
-    pl.add_argument("--flavor", default=None); pl.add_argument("--timeout", default=None)
-    pl.add_argument("--model", default=None, help="aligner model catalog id (default: store default)")
+    pl.add_argument("slug")
     pl.add_argument("--chapters", default=None,
-                    help="comma-separated surah numbers to re-align (default: whole reciter); "
+                    help="comma-separated surah numbers to re-time (default: whole reciter); "
                          "untouched chapters keep their existing shards")
     pl.add_argument("--monitor", action="store_true")
     pl.add_argument("--poll-secs", type=int, default=15)

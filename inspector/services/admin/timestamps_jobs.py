@@ -250,17 +250,14 @@ def in_flight_runs() -> list[dict]:
     return out
 
 
-def launch(
-    slug: str, *, settings: TsJobSettings, full: bool = False, webhook_base: str | None = None
-) -> dict:
+def launch(slug: str, *, settings: TsJobSettings, full: bool = False) -> dict:
     """Fire the aligner timestamps run for ``slug`` and link its run id to the reciter.
 
     ``settings.chapters`` is the regen scope (``None`` = the whole reciter).
     Inside that scope only the segments that changed are re-timed; ``full``
     re-times everything. The ``running`` run-log record is written
     before the run id returns, so the panel can show the run immediately.
-    ``webhook_base`` is unused (completion is the polled run-log, not a callback)
-    and kept only for call-site compatibility. Returns ``{"job_id", "url"}``.
+    Returns ``{"job_id", "url"}``.
 
     Does NOT transition the reciter — it stays UNDER_REVIEW (marked_ready) while
     the run proceeds. On success ``complete_timestamps_job`` publishes it via the

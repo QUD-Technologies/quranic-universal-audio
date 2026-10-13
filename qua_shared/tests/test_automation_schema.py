@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from qua_shared.schemas import AutoGenTsConfig, AutomationConfig, GhCutConfig
 
 
-def test_defaults_are_all_disabled_with_shared_beam_defaults():
+def test_defaults_are_all_disabled():
     cfg = AutomationConfig()
     assert cfg.auto_gen_ts.enabled is False
     assert cfg.gh_cut.enabled is False
@@ -16,9 +16,6 @@ def test_defaults_are_all_disabled_with_shared_beam_defaults():
     assert cfg.stale_ts_regen.enabled is False
     assert cfg.stale_metadata.enabled is False
     assert cfg.auto_release_inactive.enabled is False
-    # The TS tunables live in the shared defaults, not per-automation.
-    assert cfg.ts_generation_defaults.beam == 50
-    assert "probe_beams" not in type(cfg.ts_generation_defaults).model_fields
     assert cfg.gh_cut.interval_days == 7
     assert cfg.gh_cut.time_of_day == "09:00"
     assert cfg.gh_cut.timezone == "Australia/Sydney"
@@ -43,19 +40,19 @@ def test_unknown_top_level_key_round_trips_for_forward_compat():
     assert dumped["future_automation"] == {"x": 1}
 
 
-def test_old_blob_with_retired_per_automation_ts_keys_loads_clean():
-    # Migration-safety: existing saved blobs carry the retired per-automation
-    # beam/probe_beams/aligner_model keys. extra="allow" on the sub-models must
-    # tolerate them (validate clean, ignored — the shared defaults own them now).
+def test_blob_with_mfa_ts_keys_loads_clean():
+    # Saved blobs carry the MFA engine's beam/probe_beams/aligner_model keys and
+    # its ts_generation_defaults; extra="allow" tolerates them.
     cfg = AutomationConfig.model_validate(
         {
+            "ts_generation_defaults": {"beam": 50, "workers": 4},
             "auto_gen_ts": {"enabled": True, "beam": 80, "probe_beams": 3, "aligner_model": "m1"},
             "stale_ts_regen": {"enabled": True, "beam": 40, "probe_beams": 2},
         }
     )
     assert cfg.auto_gen_ts.enabled is True
     assert cfg.stale_ts_regen.enabled is True
-    # The retired keys do not surface as model fields.
+    assert "ts_generation_defaults" not in AutomationConfig.model_fields
     assert "beam" not in AutoGenTsConfig.model_fields
     assert "aligner_model" not in AutoGenTsConfig.model_fields
 
@@ -84,9 +81,5 @@ def test_bad_time_of_day_is_rejected(bad):
 
 
 def test_out_of_range_numeric_constraints_are_rejected():
-    from qua_shared.schemas import TsGenerationDefaults
-
-    with pytest.raises(ValidationError):
-        TsGenerationDefaults(beam=0)
     with pytest.raises(ValidationError):
         GhCutConfig(interval_days=0)

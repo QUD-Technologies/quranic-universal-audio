@@ -28,7 +28,6 @@ import type {
     AutomationResponse,
     AutomationStateRow,
     SuggestedAction,
-    TsGenerationDefaults,
 } from '../types/generated/schemas';
 
 export type ReleaseRow = AdminReleaseRow;
@@ -48,7 +47,6 @@ export type StaleSuggestion = SuggestedAction;
 export type AutomationConfigBody = AutomationConfig;
 export type AutomationPayload = AutomationResponse;
 export type AutomationState = AutomationStateRow;
-export type TsGenerationDefaultsBody = TsGenerationDefaults;
 
 async function _unwrap<T>(resp: Response): Promise<T> {
     if (resp.ok) return (await resp.json()) as T;
@@ -152,27 +150,4 @@ export async function saveAutomation(config: AutomationConfigBody): Promise<Auto
         body: JSON.stringify(config),
     });
     return _unwrap<AutomationPayload>(resp);
-}
-
-/** Owner-only: the shared timestamps-generation default knobs — the single
- *  source the manual launch form + the automations + the HF job read from.
- *  Gated by ``release.manage_automation``. */
-export async function fetchTsGenerationDefaults(
-    signal?: AbortSignal,
-): Promise<TsGenerationDefaultsBody> {
-    const resp = await fetch('/api/admin/releases/ts-generation-defaults', { signal });
-    return _unwrap<TsGenerationDefaultsBody>(resp);
-}
-
-/** Owner-only: replace the shared timestamps-generation defaults. Returns the
- *  fresh defaults blob so the caller re-renders from the server. */
-export async function saveTsGenerationDefaults(
-    defaults: TsGenerationDefaultsBody,
-): Promise<TsGenerationDefaultsBody> {
-    const resp = await fetch('/api/admin/releases/ts-generation-defaults', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(defaults),
-    });
-    return _unwrap<TsGenerationDefaultsBody>(resp);
 }

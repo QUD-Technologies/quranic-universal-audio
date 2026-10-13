@@ -718,9 +718,8 @@ export interface AudioSurahsResponse {
  * written comment (``gate_by_comments``) or flagged any segment
  * (``gate_by_flags``). A checklist-bypass submission is always skipped.
  *
- * The TS tunables (beam/model/…) come from the shared
- * ``ts_generation_defaults``; ``extra="allow"`` tolerates older saved blobs that
- * still carry the retired per-automation ``beam`` / ``aligner_model`` keys.
+ * ``extra="allow"`` tolerates saved blobs that carry the MFA engine's
+ * ``beam`` / ``aligner_model`` keys.
  */
 export interface AutoGenTsConfig {
   enabled?: boolean;
@@ -732,10 +731,10 @@ export interface AutoGenTsConfig {
  * The owner's full automation configuration (one persisted blob).
  *
  * ``extra="allow"`` keeps an unknown automation key written by a newer FE from
- * being dropped when an older server re-serializes the blob (forward-compat).
+ * being dropped when an older server re-serializes the blob (forward-compat),
+ * and lets a saved blob's MFA-engine ``ts_generation_defaults`` key load.
  */
 export interface AutomationConfig {
-  ts_generation_defaults?: TsGenerationDefaults;
   auto_gen_ts?: AutoGenTsConfig;
   gh_cut?: GhCutConfig;
   hf_publish?: HfPublishConfig;
@@ -743,31 +742,6 @@ export interface AutomationConfig {
   stale_metadata?: StaleMetadataConfig;
   auto_release_inactive?: AutoReleaseInactiveConfig;
   [k: string]: unknown;
-}
-/**
- * Owner-wide default knobs for every timestamps-generation surface.
- *
- * The single shared source the Releases-tab "Timestamps generation" accordion
- * edits. It is the sole source of the TS tunables for every TS launch — the
- * manual form (``routes/admin/reviews.py::_parse_ts_settings``), the auto-gen /
- * stale-regen automations (``services/admin/automation/evaluators.py``) and,
- * through them, the HF job (``qua_jobs/generate_timestamps.py``). Every TS
- * tunable comes from here; the only per-launch input is the manual form's
- * ``chapters`` scope. A field unset here cedes to the job's ``DEFAULT_*``.
- *
- * ``beam`` is the single alignment beam. Probe beams are gone: a run aligns
- * once, under this beam, and nothing is re-aligned to cross-check it.
- * ``padding`` / ``method`` are the pipeline tunables (``None`` → the job's
- * ``DEFAULT_PADDING`` / ``DEFAULT_METHOD``).
- */
-export interface TsGenerationDefaults {
-  beam?: number;
-  aligner_model?: string | null;
-  workers?: number | null;
-  batch_size?: number | null;
-  download_workers?: number | null;
-  padding?: string | null;
-  method?: string | null;
 }
 /**
  * Cut a global GH release on a fixed cadence (owner timezone).
@@ -805,9 +779,8 @@ export interface HfPublishConfig {
  * consecutive edits coalesce into one regen. ``scope`` picks full-reciter vs
  * just the affected chapters.
  *
- * The TS tunables (beam/…) come from the shared
- * ``ts_generation_defaults``; ``extra="allow"`` tolerates older saved blobs that
- * still carry the retired per-automation ``beam`` / ``probe_beams`` keys.
+ * ``extra="allow"`` tolerates saved blobs that carry the MFA engine's
+ * ``beam`` / ``probe_beams`` keys.
  */
 export interface StaleTsRegenConfig {
   enabled?: boolean;
@@ -1474,22 +1447,14 @@ export interface JobRecord {
   [k: string]: unknown;
 }
 /**
- * Job parameters chosen by the admin in the launch form.
+ * A run's scope.
  *
- * ``beams`` is the resolved list passed to ``align_batch_multi_beam`` —
- * ``[alignment_beam]`` — one beam per run. Canonical beam = ``max(beams)``.
+ * ``extra="ignore"``: records written by the MFA engine also carry its
+ * alignment knobs (``beams``, ``aligner_model``, ``workers`` …); they parse
+ * and are dropped.
  */
 export interface TsJobSettings {
-  beams?: number[];
-  aligner_model?: string | null;
   chapters?: number[] | null;
-  workers?: number | null;
-  flavor?: string | null;
-  timeout?: string | null;
-  batch_size?: number | null;
-  download_workers?: number | null;
-  padding?: string | null;
-  method?: string | null;
 }
 /**
  * Payload for ``GET /api/admin/jobs`` — the unified list + a running tally.
