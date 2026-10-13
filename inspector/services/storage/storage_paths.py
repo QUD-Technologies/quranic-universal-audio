@@ -156,8 +156,9 @@ def low_confidence_path(slug: str) -> str:
 def ts_validation_path(slug: str) -> str:
     """Verse-level timestamps-validation sidecar — ``ts_validation.json``.
 
-    Written by the batch timing Space's multi-beam whole-verse alignment pass;
-    flags verses whose alignment disagrees under tighter probe beams. Served owner-gated to
+    MFA runs flag verses whose alignment disagrees under tighter probe beams
+    (``verses``); aligner runs list the segments they could not time
+    (``failed_segments``). Served owner-gated to
     the Timestamps-tab "ts-validation" accordion (preview of unreleased
     reciters). Schema: ``qua_shared/schemas/ts_validation.py``.
     """

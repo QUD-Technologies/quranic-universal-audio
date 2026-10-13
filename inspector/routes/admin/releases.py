@@ -463,7 +463,7 @@ def releases_status(user):
             "days_since_cut": days_since_cut,
         }
 
-    # ``timestamps`` is watched too: a running first-publish OR regen MFA job
+    # ``timestamps`` is watched too: a running first-publish OR regen run
     # surfaces in the "In progress" bucket (a regen on a released row has no
     # other in-flight signal — there's no state change). hf_publish + cut_release
     # are the dataset/GH tracks.
