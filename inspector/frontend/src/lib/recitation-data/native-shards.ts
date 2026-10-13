@@ -1,4 +1,4 @@
-/** Native v13 shard indexing and timing-view assembly. */
+/** Native shard indexing and timing-view assembly. */
 
 import type {
     Letter,
