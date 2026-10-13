@@ -11,7 +11,7 @@ profiles, discriminated by `_meta.profile`:
 
 | Profile | Schema | Contains | Produced for |
 |---|---|---|---|
-| `native` | 15 (13 read until the fleet re-time) | full phonemizer cells, sounds, animation tokens, reading variants | Hafs |
+| `native` | 15 | full phonemizer cells, sounds, animation tokens, reading variants | Hafs |
 | `word` | 14 | proxy-timed words + pause boundaries, nothing below | the other three riwayat |
 
 **Absent `profile` reads as `native`.** No native object carries the
@@ -56,15 +56,9 @@ deterministic Brotli quality 6:
 }
 ```
 
-v13 supersedes v12 by replacing the per-letter timing array (`timing.l`) with
-producer-owned **animation tokens** (`render.a` + `timing.a`). Everything else
-about the codec — parts, words, boundaries, columns, sounds, the deterministic
-Brotli envelope — is unchanged from v12, so the two differ only in how sub-word
-paint is expressed.
-
-There is no legacy reader. Historical v9/v11/v12 objects are accepted only by
-the one-time restampers, which emit the current shape and validate it before
-upload.
+Sub-word paint is producer-owned **animation tokens** (`render.a` +
+`timing.a`). Readers accept only schema 15; a shard of any other native
+version is rejected, never repaired.
 
 ## Why the compact codec is native
 
@@ -185,9 +179,9 @@ start, and the chapter-final boundary spans its last word end to its final part
 edge. Overlaps clamp to an empty interval. Boundary timing never changes the
 native semantic state.
 
-## Reading variants (v15)
+## Reading variants
 
-A v15 reading may carry `variants`: the selectors (reading faces) shown for it,
+A reading may carry `variants`: the selectors (reading faces) shown for it,
 present only when the reading has a shown, active, picked occurrence. Each
 names the face this recitation was read with and what the other faces would
 change:

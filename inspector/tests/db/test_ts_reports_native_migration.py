@@ -49,7 +49,7 @@ def _document() -> dict:
         }
 
     return {
-        "_meta": {"schema_version": 13},
+        "_meta": {"schema_version": 15},
         "readings": [
             {
                 "id": "r1",

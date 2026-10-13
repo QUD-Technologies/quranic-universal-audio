@@ -66,7 +66,7 @@ def _reading(reading_id: str, specs: list[tuple[str, tuple[int, int], list[int]]
 def _shard(readings: list[dict]) -> dict:
     return {
         "_meta": {
-            "schema_version": 13,
+            "schema_version": 15,
             "chapter": 1,
             "audio_category": "by_surah",
             "phonemizer_version": "2.15",
@@ -186,10 +186,11 @@ def test_decoder_uses_word_timings_across_verse_parts_in_one_reading():
     assert boundary["end_ms"] == 250
 
 
-def test_native_projection_rejects_every_old_schema():
+@pytest.mark.parametrize("version", [11, 13, 14])
+def test_native_projection_rejects_every_old_schema(version):
     shard = _shard([])
-    shard["_meta"]["schema_version"] = 11
-    with pytest.raises(ValueError, match="version 13"):
+    shard["_meta"]["schema_version"] = version
+    with pytest.raises(ValueError, match="version 15"):
         project_native_shard(shard)
 
 
@@ -218,7 +219,7 @@ def _word_reading(reading_id: str, parts: list[tuple[str, int, int, list[tuple[i
     }
 
 
-@pytest.mark.parametrize("version", [13, 14, 15])
+@pytest.mark.parametrize("version", [14, 15])
 @pytest.mark.parametrize("state", [0, 1, 2, 3])
 @pytest.mark.parametrize("adapter", ["hf", "gh"])
 def test_sakt_gap_reaches_both_release_validators(version, state, adapter, tmp_path):
@@ -295,7 +296,7 @@ def test_sakt_gap_reaches_both_release_validators(version, state, adapter, tmp_p
     )
 
 
-@pytest.mark.parametrize("version", [13, 14, 15])
+@pytest.mark.parametrize("version", [14, 15])
 def test_sakt_projection_keeps_repeated_word_occurrences_distinct(version):
     if version == 14:
         reading = _word_reading(

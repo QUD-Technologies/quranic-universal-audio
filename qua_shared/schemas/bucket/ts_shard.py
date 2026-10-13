@@ -3,11 +3,10 @@
 Two profiles share the path and the Brotli envelope, discriminated by
 ``_meta.profile``:
 
-- **``native``** (schema 15; 13 is still read until the fleet is re-timed) —
-  the full phonemizer projection: cells, sounds, rule occurrences, animation
-  tokens. Requires quranic-phonemizer, so it exists only for Hafs. v15 adds a
-  reading's variant faces (``variants``) with the chapter's
-  ``_meta.variant_catalogue`` and ``variant_policy``.
+- **``native``** (schema 15) — the full phonemizer projection: cells, sounds,
+  rule occurrences, animation tokens and a reading's variant faces
+  (``variants``, with the chapter's ``_meta.variant_catalogue`` and
+  ``variant_policy``). Requires quranic-phonemizer, so it exists only for Hafs.
 - **``word``** (schema 14) — word intervals and provenance only, for a riwayah
   timed through the Hafs MFA proxy. No phones, no letters, no cell geometry;
   those shapes belong to the Hafs reference script and cannot be honestly
@@ -55,16 +54,16 @@ class _Closed(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class _OmitsAbsentV15(BaseModel):
-    """Dumps without the v15 fields a document does not carry, so a v13/v14
+class _OmitsAbsent(BaseModel):
+    """Dumps without the optional fields a document does not carry, so a
     document round-trips to its own bytes."""
 
-    v15_fields: ClassVar[tuple[str, ...]] = ()
+    optional_fields: ClassVar[tuple[str, ...]] = ()
 
     @model_serializer(mode="wrap")
     def _omit_absent(self, handler):
         data = handler(self)
-        for name in self.v15_fields:
+        for name in self.optional_fields:
             if getattr(self, name) is None:
                 data.pop(name, None)
         return data
@@ -155,8 +154,8 @@ class TsVariantDefinition(_Closed):
         return self
 
 
-class TsShardReading(_OmitsAbsentV15, _Closed):
-    v15_fields: ClassVar[tuple[str, ...]] = ("variants",)
+class TsShardReading(_OmitsAbsent, _Closed):
+    optional_fields: ClassVar[tuple[str, ...]] = ("variants",)
 
     id: str = Field(min_length=1)
     parts: list[TsShardPart]
@@ -200,11 +199,10 @@ class TsNativeProfile(_Closed):
     extra_phonemes: list[str]
 
 
-class TsShardMeta(_OmitsAbsentV15, BaseModel):
+class TsShardMeta(_OmitsAbsent, BaseModel):
     model_config = ConfigDict(extra="allow")
-    v15_fields: ClassVar[tuple[str, ...]] = ("variant_catalogue", "variant_policy")
+    optional_fields: ClassVar[tuple[str, ...]] = ("variant_catalogue", "variant_policy")
 
-    #: 15 is what the builders write; 13 is read until every reciter is re-timed.
     #:
     #: There is deliberately NO ``profile`` field here. The native meta is the
     #: one the Flask shard route serves as byte-passthrough, so a defaulted
@@ -213,7 +211,7 @@ class TsShardMeta(_OmitsAbsentV15, BaseModel):
     #: discriminator is read from the raw dict by
     #: ``qua_shared.timestamps_shards.shard_profile``. ``extra="allow"`` means
     #: a document that does carry ``profile: "native"`` still validates.
-    schema_version: Literal[13, 15]
+    schema_version: Literal[15]
     chapter: int = Field(ge=1, le=114)
     audio_category: str = Field(min_length=1)
     phonemizer_version: str = Field(min_length=1)
@@ -233,10 +231,7 @@ class TsShardDoc(_Closed):
     @model_validator(mode="after")
     def _variants(self):
         catalogue = self.meta.variant_catalogue or {}
-        shown = [v for reading in self.readings for v in reading.variants or ()]
-        if (shown or catalogue) and self.meta.schema_version < 15:
-            raise ValueError("reading variants need schema v15")
-        for variant in shown:
+        for variant in (v for reading in self.readings for v in reading.variants or ()):
             spec = catalogue.get(variant.id)
             if spec is None:
                 raise ValueError(f"variant {variant.id} is not in the chapter catalogue")
@@ -257,7 +252,7 @@ TsWordRow = tuple[str, str, int, int]
 
 #: ``(state_code, verse_end)`` — one per word. ``state_code`` indexes
 #: :data:`TS_WORD_BOUNDARY_STATES`; ``verse_end`` is the ayah number that ends
-#: at this boundary, else ``None``. Same two facts v13 carries in
+#: at this boundary, else ``None``. Same two facts a native shard carries in
 #: ``render.b[i][0]`` and ``render.b[i][4]``.
 TsWordBoundary = tuple[int, int | None]
 
