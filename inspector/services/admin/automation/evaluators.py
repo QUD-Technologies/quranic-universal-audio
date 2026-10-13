@@ -4,8 +4,8 @@ Every evaluator: (1) returns early if disabled; (2) derives candidates from live
 release state; (3) skips in-flight + failed-bucket rows (no auto-retry); (4)
 launches via the existing job entrypoints; (5) records the run. The two
 timestamps evaluators launch nothing while any timestamps run is in flight and
-otherwise only the longest-waiting candidate, because the timing Space runs one
-at a time. They write to the
+otherwise only the longest-waiting candidate, so the aligner times one run at
+a time. They write to the
 DB ONLY when they act (or a schedule advances), so an idle tick uploads nothing.
 
 Engine contract: each takes the parsed ``AutomationConfig`` + a tz-aware UTC
@@ -61,32 +61,6 @@ def _webhook_base() -> str | None:
     return AUTOMATION_PUBLIC_BASE_URL or None
 
 
-def _ts_settings(
-    cfg: AutomationConfig,
-    *,
-    chapters: list[int] | None = None,
-) -> TsJobSettings:
-    """Build a ``TsJobSettings`` for an automated launch from the shared
-    ``ts_generation_defaults`` — the single owner-wide source the Releases-tab
-    "Timestamps generation" accordion edits.
-
-    All TS tunables (beam/model/workers/batch_size/download_workers/
-    padding/method) come from the shared defaults; only ``chapters`` is the
-    automation's own per-launch scope choice.
-    """
-    d = cfg.ts_generation_defaults
-    return TsJobSettings(
-        beams=[d.beam],
-        aligner_model=d.aligner_model,
-        chapters=chapters or None,
-        workers=d.workers,
-        batch_size=d.batch_size,
-        download_workers=d.download_workers,
-        padding=d.padding,
-        method=d.method,
-    )
-
-
 def _record(
     automation_id: str,
     *,
@@ -126,33 +100,27 @@ def _already_launched_since(
     return started is not None and started >= since
 
 
-def _ts_space_busy() -> bool:
-    """True while any timestamps run is in flight: the timing Space runs one at a time."""
+def _ts_run_in_flight() -> bool:
+    """True while any timestamps run is in flight: automations launch one at a time."""
     return bool(_in_flight_slugs(("timestamps",)))
 
 
 def _launch_first_ts(
     automation_id: str,
     candidates: list[tuple[str, str, list[int] | None]],
-    cfg: AutomationConfig,
     now: datetime,
     verb: str,
 ) -> None:
     """Launch the longest-waiting ``(since, slug, chapters)`` candidate — one per tick.
 
-    The timing Space serves one run at a time, so the rest wait for a later tick
-    rather than being posted into a busy Space. A failed launch is logged and
-    retried next tick.
+    The aligner times one run at a time, so the rest wait for a later tick. A
+    failed launch is logged and retried next tick.
     """
     if not candidates:
         return
     _since, slug, chapters = min(candidates)
     try:
-        timestamps_jobs.launch(
-            slug,
-            settings=_ts_settings(cfg, chapters=chapters),
-            webhook_base=_webhook_base(),
-        )
+        timestamps_jobs.launch(slug, settings=TsJobSettings(chapters=chapters or None))
     except Exception as exc:  # noqa: BLE001 — retried next tick
         logger.warning("%s: launch for %s failed: %s", automation_id, slug, exc)
         return
@@ -192,7 +160,7 @@ def eval_auto_gen_ts(cfg: AutomationConfig, now: datetime) -> None:
         )
         .fetchall()
     )
-    if not rows or _ts_space_busy():
+    if not rows or _ts_run_in_flight():
         return
     failed = timestamps_jobs.latest_terminal_failed_slugs()
     watermarks = timestamps_jobs.latest_job_started_by_slug()
@@ -213,7 +181,7 @@ def eval_auto_gen_ts(cfg: AutomationConfig, now: datetime) -> None:
         if _already_launched_since(watermarks, slug, _serde.from_iso(marked)):
             continue
         candidates.append((str(marked or ""), slug, None))
-    _launch_first_ts(AUTO_GEN_TS, candidates, cfg, now, "generated")
+    _launch_first_ts(AUTO_GEN_TS, candidates, now, "generated")
 
 
 def _auto_gen_gated(c, slug: str, claim) -> bool:
@@ -370,7 +338,7 @@ def eval_stale_ts_regen(cfg: AutomationConfig, now: datetime) -> None:
     c = cfg.stale_ts_regen
     if not c.enabled:
         return
-    if _ts_space_busy():
+    if _ts_run_in_flight():
         return
     guard = timedelta(minutes=c.guard_minutes)
     failed = timestamps_jobs.latest_terminal_failed_slugs()
@@ -396,7 +364,7 @@ def eval_stale_ts_regen(cfg: AutomationConfig, now: datetime) -> None:
             continue
         chapters = info.get("affected_chapters") if c.scope == "affected" else None
         candidates.append((str(info.get("stale_since") or ""), slug, chapters or None))
-    _launch_first_ts(STALE_TS_REGEN, candidates, cfg, now, "regenerated")
+    _launch_first_ts(STALE_TS_REGEN, candidates, now, "regenerated")
 
 
 # ---------------------------------------------------------------------------

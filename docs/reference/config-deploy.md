@@ -85,10 +85,7 @@ The image bakes the **dev** bucket as default (`INSPECTOR_BUCKET_REPO=QUD-Techno
 | `INSPECTOR_GOOGLE_API_KEY` | unset | Optional Google API key tried first for Drive folder listing (`services/admin/intake_plan/drive.py`); by default the key embedded in the public folder page is scraped. |
 | `ACQUIRE_WORKERS` (job env) | one per vCPU, max 8 | Chapters the acquire job fetches + encodes at once. |
 | `INSPECTOR_PUBLIC_BASE_URL` | empty | Public https root the daemon threads into job completion webhooks (no `request.url_root` in a thread). Required for automated GH cuts — the cut job is webhook-only. Set as a Space variable per environment. |
-| `INSPECTOR_TS_STALE_RUN_HOURS` | `6` | How long a `running` timestamps run-log record may sit before the single-flight guard treats it as dead (a Space restart mid-run never stamps it terminal). |
-| `INSPECTOR_TS_ENGINE` | `aligner` | Where timing runs: `aligner` (neural timing on the aligner Space at `INSPECTOR_ALIGNER_URL`: segment times stored at align and after saves, shards built from them) or `space` (the MFA batch timing Space below, timestamps runs only; nothing is stored at align or after saves). |
-| `INSPECTOR_TS_SPACE_URL` | `https://qud-technologies-qua-batch-timing-prod.hf.space` | Persistent production timing Space used for timestamp generation. Override only for an isolated environment. |
-| `INSPECTOR_TS_SPACE_REPO` | `QUD-Technologies/qua-batch-timing-prod` | Hub repo backing the timing URL. The Inspector uses its owner-scoped `HF_TOKEN` to wake this Space after the free-hardware inactivity pause. |
+| `INSPECTOR_TS_STALE_RUN_HOURS` | `6` | How long a `running` timestamps run-log record may sit before the single-flight guard treats it as dead (a run that dies mid-flight never stamps it terminal). |
 
 ### Auth / identity / secrets
 
@@ -114,7 +111,6 @@ The image bakes the **dev** bucket as default (`INSPECTOR_BUCKET_REPO=QUD-Techno
 
 | Var | Default | Purpose |
 |---|---|---|
-| `INSPECTOR_MFA_SPACE_URL` | `https://hetchyy-quran-phoneme-mfa-dev.hf.space` | MFA Space the cross-verse "Auto Split" calls. |
 | `MISSED_BASMALA_FLAG_MIN_DELETED` | `10` | Min pipeline-stripped basmalas before flagging non-stripped chapters as "missed Basmala". |
 | `INSPECTOR_QUA_DOMAIN_WHEEL_DIR` | `/opt/wheels` | Where the runtime image keeps the `qua_domain` wheel from stage 1b. `stage_job_code` uploads it to `aligner-bucket/code/wheels/` so HF Jobs (non-Hafs publish / cut) install the same edition projection the Space runs; absent = Hafs-only jobs, warned at launch. |
 | `INSPECTOR_MULTI_RIWAYAH` | `1` | Kill-switch for the non-Hafs editions (`config.MULTI_RIWAYAH_ENABLED`). `0` makes `services/reference/editions.py` behave as if `qua_domain` were absent — a 60-second rollback via a Space **variable** + restart, where a rebuild is ten minutes. It does NOT render non-Hafs as Hafs; those deliveries fail loudly. |

@@ -155,15 +155,15 @@ def test_an_aligner_failure_fails_the_run(delivery, monkeypatch):
     assert not delivery.exists("reciters/r/timestamps/112.json.br")
 
 
-def test_launch_starts_an_aligner_run_by_default(monkeypatch):
+def test_launch_starts_an_aligner_run_and_links_it(monkeypatch):
     from services.admin import timestamps_jobs
     from services.state import state as state_service
     from services.storage import cache as _cache
     from services.storage import data_loader
 
-    monkeypatch.delenv("INSPECTOR_TS_ENGINE", raising=False)
     monkeypatch.setattr(state_service, "get_row", lambda slug: object())
-    monkeypatch.setattr(state_service, "record_timestamps_job", lambda s, j: None)
+    linked = []
+    monkeypatch.setattr(state_service, "record_timestamps_job", lambda s, j: linked.append((s, j)))
     monkeypatch.setattr(_cache, "invalidate_in_flight_jobs_cache", lambda: None)
     monkeypatch.setattr(data_loader, "seg_meta", lambda slug: {})
     started = {}
@@ -174,6 +174,7 @@ def test_launch_starts_an_aligner_run_by_default(monkeypatch):
 
     assert out == {"job_id": "ts-1", "url": None}
     assert started["slug"] == "r" and started["full"] is True and started["riwayah"] == "hafs"
+    assert linked == [("r", "ts-1")]
 
 
 def test_a_run_rebuilds_the_readings_summary_before_closing(delivery, monkeypatch):

@@ -48,11 +48,11 @@ Split descendants carry the corresponding records; changing a retained cut to
 wasl merges its pieces. Existing staged pickers, context, edit actions and
 Ignore remain in place. Saved records also feed boundary counts and completion.
 
-**Measured silence.** When `cut_timing_v1.json` (the timing engine's psil-seeded
-cut pass) timed a cut, `services/storage/cut_timing.py` moves its cursor to the
-middle of the measured pause and adds `silence_start_ms` / `silence_end_ms` /
-`timing_source` (`psil`, or `energy` where the psil collapsed). A WAQF answer
-then splits and trims both pieces to that silence (`utils/edit/gap-split.ts`):
+**Measured silence.** A cut the neural timing head timed carries
+`silence_start_ms` / `silence_end_ms` / `timing_source` (`neural`) in the
+sidecar, its cursor in the middle of that pause; the Inspector serves the
+sidecar as stored. A WAQF answer on such a cut splits and trims both pieces to
+that silence (`utils/edit/gap-split.ts`):
 the left piece ends where the pause starts, the right starts where it ends. The
 split and the two trims chain through the pieces' uids, so history shows one
 edit and undo reverts it whole. The WAQF verdict sits at the left piece's end

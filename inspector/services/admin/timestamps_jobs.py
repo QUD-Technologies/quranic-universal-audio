@@ -1,10 +1,8 @@
 """Fire + inspect timestamps runs.
 
 Flask-free. The Reviews tab triggers ``launch()`` for an under-review reciter.
-By default the run goes to the aligner (``ts_aligner_runner``: v13 shards built
-from the stored segment times, timing only what is still stale);
-``INSPECTOR_TS_ENGINE=space`` sends it to the MFA batch timing Space
-(``ts_space_client``). Either writes v13 per-chapter shards +
+The run goes to the aligner (``ts_aligner_runner``: v13 shards built from the
+stored segment times, timing only what is still stale) and writes v13 per-chapter shards +
 ``ts_validation.json`` into the inspector bucket and a durable run-log record at
 ``reciters/<slug>/jobs/ts/<run_id>.json`` (settings + status + logs) —
 ``running`` at accept, then ``succeeded``/``failed`` when the run ends. Status is
@@ -40,7 +38,6 @@ from datetime import UTC
 from qua_shared.schemas import StaleReason, TsJobRecord, TsJobSettings
 from services.state import state as state_service
 from services.storage.hf_bucket import StorageNotFound, get_backend
-from services.timing.aligner_timing import ts_engine
 
 log = logging.getLogger("inspector")
 
@@ -65,8 +62,7 @@ _TERMINAL = (
 _TERMINAL_SUCCESS = ("succeeded", "completed")
 
 #: How long a ``running`` record may sit before it is treated as dead.
-#: The Space owns the record and stamps it terminal when a run ends, so a run
-#: whose Space restarted (or was rebuilt) mid-flight leaves ``running`` behind
+#: A run that never stamps its record terminal leaves ``running`` behind
 #: forever — and the single-flight guard then refuses every relaunch with "a
 #: timestamps job is already running". A full 114-chapter run lands in ~1-2 h,
 #: so anything past this ceiling is a corpse, not a run. Env-overridable.
@@ -83,7 +79,7 @@ def _stale_run_hours() -> float:
 
 def _is_stale_running(rec: dict | None) -> bool:
     """True when ``rec`` claims ``running`` but started long enough ago that the
-    Space cannot still be on it. Unparseable ``started_at`` is never stale."""
+    run cannot still be going. Unparseable ``started_at`` is never stale."""
     if not rec or rec.get("status") != "running":
         return False
     started = _parse_iso(rec.get("started_at"))
@@ -112,10 +108,9 @@ def _now_iso() -> str:
 
 
 # ---------------------------------------------------------------------------
-# In-flight / history signals — read from the bucket run-log the Space writes.
-# The producer moved to the batch timing Space (ADR 0002 slice B); there is no
-# HF Job to inspect, so "what is running / what failed / when did it start"
-# comes from each reciter's newest ``jobs/ts/<run_id>.json`` record.
+# In-flight / history signals — read from the bucket run-log each run writes.
+# There is no HF Job to inspect, so "what is running / what failed / when did
+# it start" comes from each reciter's newest ``jobs/ts/<run_id>.json`` record.
 # ---------------------------------------------------------------------------
 
 
@@ -140,11 +135,11 @@ def _newest_ts_record(slug: str) -> dict | None:
 
 def running_job_for(slug: str) -> str | None:
     """Run id of an in-flight timestamps run for ``slug`` (single-flight guard),
-    else None. The Space serves one full-reciter run at a time and rejects a
-    second POST, so this only needs the newest record's status.
+    else None. A reciter has at most one run in flight, so this only needs the
+    newest record's status.
 
     A ``running`` record older than the staleness ceiling is reported as NOT
-    running: the Space never stamped it terminal (restart / rebuild mid-run),
+    running: the run never stamped it terminal,
     and without this the slug can never be relaunched from the UI."""
     rec = _newest_ts_record(slug)
     if not rec or rec.get("status") != "running":
@@ -215,10 +210,9 @@ def latest_job_started_by_slug() -> dict[str, datetime.datetime]:
 
 
 def terminal_success_runs() -> list[tuple[str, str]]:
-    """Return newest linked Space runs that completed successfully.
+    """Return newest linked runs that completed successfully.
 
-    Timestamp runs live in a persistent Space and never appear in
-    ``huggingface_hub.list_jobs()``. The shared release poller consumes this
+    Timestamp runs never appear in ``huggingface_hub.list_jobs()``. The shared release poller consumes this
     durable bucket signal so completion does not depend on an open job drawer.
     """
 
@@ -238,7 +232,7 @@ def terminal_success_runs() -> list[tuple[str, str]]:
 def in_flight_runs() -> list[dict]:
     """Every reciter with a currently-``running`` ts run, as in-flight records
     (``{kind, slug, job_id, started_at, url}``) for ``jobs_base``'s shared
-    in-flight registry. At most one — the Space serializes full-reciter runs."""
+    in-flight registry."""
     out: list[dict] = []
     for row in state_service.all_rows():
         slug = getattr(row, "slug", "")
@@ -256,27 +250,21 @@ def in_flight_runs() -> list[dict]:
     return out
 
 
-def launch(
-    slug: str, *, settings: TsJobSettings, full: bool = False, webhook_base: str | None = None
-) -> dict:
-    """Fire the timestamps run for ``slug`` (``INSPECTOR_TS_ENGINE``, :func:`ts_engine`) and link its run
-    id to the reciter.
+def launch(slug: str, *, settings: TsJobSettings, full: bool = False) -> dict:
+    """Fire the aligner timestamps run for ``slug`` and link its run id to the reciter.
 
-    ``settings`` carries the admin's form choices; the engine owns the model,
-    so only ``chapters`` (affected-only regen scope; ``beams`` too for the MFA
-    Space) reach it. Inside that scope only the segments (aligner) or verses
-    (Space) that changed are re-timed; ``full`` re-times everything (the whole
-    reciter when ``chapters`` is empty). The ``running`` run-log record is written
+    ``settings.chapters`` is the regen scope (``None`` = the whole reciter).
+    Inside that scope only the segments that changed are re-timed; ``full``
+    re-times everything. The ``running`` run-log record is written
     before the run id returns, so the panel can show the run immediately.
-    ``webhook_base`` is unused (completion is the polled run-log, not a callback)
-    and kept only for call-site compatibility. Returns ``{"job_id", "url"}``.
+    Returns ``{"job_id", "url"}``.
 
     Does NOT transition the reciter — it stays UNDER_REVIEW (marked_ready) while
     the run proceeds. On success ``complete_timestamps_job`` publishes it via the
     ``job_status`` poll fallback. Caller must enforce single-flight via
     ``running_job_for`` first.
     """
-    from services.admin import ts_aligner_runner, ts_space_client
+    from services.admin import ts_aligner_runner
     from services.reference.delivery_edition import sdk_riwayah_for
 
     if state_service.get_row(slug) is None:
@@ -285,25 +273,16 @@ def launch(
     # Timing runs against Hafs and projects, so it has to be told which edition
     # the delivery is in — a Hafs-proxy run stamped as Hafs would ship the wrong
     # coordinates into the shard.
-    if ts_engine() == "aligner":
-        run_id = ts_aligner_runner.start_run(
-            slug, settings=settings, riwayah=sdk_riwayah_for(slug), full=full
-        )
-    else:
-        run_id = ts_space_client.start_run(
-            slug,
-            chapters=settings.chapters,
-            beams=settings.beams,
-            riwayah=sdk_riwayah_for(slug),
-            full=full,
-        )
+    run_id = ts_aligner_runner.start_run(
+        slug, settings=settings, riwayah=sdk_riwayah_for(slug), full=full
+    )
     state_service.record_timestamps_job(slug, run_id)
     # Bust the in-flight cache so the next /releases/status fetch shows the
     # running job immediately (the Releases tab watches the ``timestamps`` kind).
     from services.storage import cache as _cache
 
     _cache.invalidate_in_flight_jobs_cache()
-    log.info("launched timestamps run %s for %s (%s)", run_id, slug, ts_engine())
+    log.info("launched timestamps run %s for %s", run_id, slug)
     return {"job_id": run_id, "url": None}
 
 
@@ -364,7 +343,7 @@ def list_job_records(slug: str) -> list[dict]:
 
 def job_status(slug: str, job_id: str, *, log_tail: int = 400) -> dict:
     """Status + bounded log tail for a run, from the bucket run-log record the
-    Space writes (``running`` at accept, terminal + logs at the end).
+    run writes (``running`` at accept, terminal + logs at the end).
 
     On a terminal-success record this fires the idempotent
     ``complete_timestamps_job`` (publish / regen); a terminal-failure lights the
@@ -650,11 +629,9 @@ def _regenerate_timestamps_on_released(slug: str, job_id: str) -> dict:
 def cancel_job(slug: str, job_id: str) -> dict:
     """Mark a timestamps run canceled in its durable record.
 
-    The run executes on the batch timing Space, which exposes no cancel route,
-    so this does not hard-kill it — the Space's serialized run finishes and its
-    output-presence resume makes a stale run harmless (a later run skips shards
-    already written). Overwriting the ``running`` record with ``status=canceled``
-    keeps the side-panel history and single-flight guard honest. No lifecycle
+    The aligner run reads its record before each chapter and stops once it
+    reads ``canceled``; overwriting the ``running`` record also keeps the
+    side-panel history and single-flight guard honest. No lifecycle
     transition: the reciter stays in its current state, so a fresh launch picks
     it up. Idempotent — only rewrites a non-terminal record.
     """
@@ -673,7 +650,7 @@ def cancel_job(slug: str, job_id: str) -> dict:
 
     # Light the Reviews-tab dot — same notify path as failure.
     _note_job_finished(slug)
-    log.info("cancel_job(%s, %s): marked canceled (Space run not hard-killed)", slug, job_id)
+    log.info("cancel_job(%s, %s): marked canceled", slug, job_id)
     return {"slug": slug, "job_id": job_id, "canceled": True}
 
 

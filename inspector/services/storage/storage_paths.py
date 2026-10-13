@@ -156,8 +156,9 @@ def low_confidence_path(slug: str) -> str:
 def ts_validation_path(slug: str) -> str:
     """Verse-level timestamps-validation sidecar — ``ts_validation.json``.
 
-    Written by the batch timing Space's multi-beam whole-verse alignment pass;
-    flags verses whose alignment disagrees under tighter probe beams. Served owner-gated to
+    MFA runs flag verses whose alignment disagrees under tighter probe beams
+    (``verses``); aligner runs list the segments they could not time
+    (``failed_segments``). Served owner-gated to
     the Timestamps-tab "ts-validation" accordion (preview of unreleased
     reciters). Schema: ``qua_shared/schemas/ts_validation.py``.
     """
@@ -208,13 +209,6 @@ def missed_waqf_path(slug: str, version: int = 1) -> str:
     detector's. Keyed by ``segment_uid``; read (v2 first) by
     ``services/data_loader.load_missed_waqf``."""
     return reciter_file(slug, f"missed_waqf_v{version}.json")
-
-
-def cut_timing_path(slug: str) -> str:
-    """Measured silence at each proposed and abutting stop (``cut_timing_v1.json``),
-    from the timing engine's psil-seeded pass. Keyed by ``segment_uid``; read by
-    ``services/storage/cut_timing``."""
-    return reciter_file(slug, "cut_timing_v1.json")
 
 
 def false_split_path(slug: str) -> str:
@@ -313,7 +307,6 @@ PER_RECITER_FILES: tuple[str, ...] = (
     "hidden_pause_v1.json",
     "missed_waqf_v1.json",
     "missed_waqf_v2.json",
-    "cut_timing_v1.json",
     "false_split_v1.json",
     "unmarked_wasl_v1.json",
     "wasl_recheck_v1.json",

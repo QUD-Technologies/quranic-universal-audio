@@ -4,12 +4,10 @@
      *
      * One launch trigger for BOTH first generation (Ready-to-generate rows,
      * ``row.ts === null``) and regeneration (any row with existing timestamps).
-     * All TS tunables (beam/model/workers/…) come from the shared owner-wide
-     * "Timestamps generation" accordion — this row carries no setting inputs.
      * The only per-launch choice is the Full-vs-Affected scope: when the row's
      * timestamps are behind specific chapters (``ts.affected_chapters``) the
-     * chooser folds in inline. Affected re-aligns only the changed verses of
-     * those chapters; Full re-aligns every verse of the reciter.
+     * chooser folds in inline. Affected re-times only the changed segments of
+     * those chapters; Full re-times every segment of the reciter.
      *
      * Launches via the shared ``generateTimestamps`` route (same endpoint for
      * gen + regen) sending only the scope; the parent switches the row's

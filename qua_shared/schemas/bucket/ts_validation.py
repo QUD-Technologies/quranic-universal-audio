@@ -1,8 +1,9 @@
 """Verse-level timestamps-validation sidecar — ``reciters/<slug>/ts_validation.json``.
 
 The verse-level analogue of the segment-level ``low_confidence_v2.json`` probe.
-Produced by the batch timing Space's multi-beam whole-verse alignment pass
-(written as a plain dict alongside the shards). These models exist for the
+Written as a plain dict alongside the shards: MFA runs filled ``verses`` with
+beam flags; aligner runs leave it empty and list the segments they could not
+time under ``failed_segments`` (an extra key). These models exist for the
 *readers*: the
 Inspector read-path that serves the sidecar owner-gated, and the
 ``pydantic-to-typescript`` FE codegen (re-exported via ``fe_types.py``) that

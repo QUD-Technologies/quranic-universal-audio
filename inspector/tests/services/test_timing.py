@@ -148,7 +148,7 @@ def test_a_save_burst_is_timed_once_more_after_it_settles(monkeypatch):
 
 
 def test_schedule_is_a_no_op_when_timing_is_off(monkeypatch):
-    monkeypatch.setenv("INSPECTOR_TS_ENGINE", "space")
+    monkeypatch.delenv("INSPECTOR_EXTRACTION_SECRET", raising=False)
     monkeypatch.setattr(aligner_timing, "retime", lambda *a, **k: pytest.fail("timed while off"))
     retime_queue.schedule("r", [112])
     assert ("r", 112) not in retime_queue._running

@@ -1,7 +1,6 @@
-"""Tests for the batch-Space timestamps launcher.
+"""Tests for the timestamps run launcher.
 
-``launch`` signs + POSTs the run to the batch timing Space; ``job_status`` reads
-the bucket run-log record the Space writes (no HF Job to inspect) and fires the
+``job_status`` reads the bucket run-log record the run writes and fires the
 idempotent completion / failure fallbacks on a terminal record.
 """
 
@@ -10,15 +9,6 @@ from __future__ import annotations
 from datetime import UTC
 
 from services.admin import timestamps_jobs
-
-
-def test_timestamp_space_defaults_to_production(monkeypatch):
-    from services.admin import ts_space_client
-
-    monkeypatch.delenv("INSPECTOR_TS_SPACE_URL", raising=False)
-    monkeypatch.delenv("INSPECTOR_TS_SPACE_REPO", raising=False)
-    assert ts_space_client.space_url() == "https://qud-technologies-qua-batch-timing-prod.hf.space"
-    assert ts_space_client.space_repo() == "QUD-Technologies/qua-batch-timing-prod"
 
 
 def test_job_status_reads_record_and_fires_success(monkeypatch):
@@ -60,43 +50,6 @@ def test_job_status_unknown_when_no_record(monkeypatch):
     out = timestamps_jobs.job_status("r", "missing")
     assert out["status"] == "unknown"
     assert out["logs"] == []
-
-
-def test_launch_posts_space_and_links_run(monkeypatch):
-    from qua_shared.schemas import TsJobSettings
-    from services.admin import ts_space_client
-    from services.state import state as state_service
-    from services.storage import cache as _cache
-    from services.storage import data_loader
-
-    monkeypatch.setenv("INSPECTOR_TS_ENGINE", "space")
-    monkeypatch.setattr(state_service, "get_row", lambda slug: object())
-    posted = {}
-
-    def _fake_start(slug, *, chapters=None, beams=None, riwayah="hafs", full=False):
-        posted.update(slug=slug, chapters=chapters, beams=beams, riwayah=riwayah, full=full)
-        return "run-xyz"
-
-    monkeypatch.setattr(ts_space_client, "start_run", _fake_start)
-    linked = []
-    monkeypatch.setattr(state_service, "record_timestamps_job", lambda s, j: linked.append((s, j)))
-    monkeypatch.setattr(_cache, "invalidate_in_flight_jobs_cache", lambda: None)
-    # The launch resolves the delivery's edition, which cross-checks the catalog
-    # row against detailed.json's `_meta` — reading it off the bucket for a slug
-    # this test never wrote. Answer "no meta", which is what a fixture has.
-    monkeypatch.setattr(data_loader, "seg_meta", lambda slug: {})
-
-    out = timestamps_jobs.launch("r", settings=TsJobSettings(beams=[50, 5], chapters=[108]))
-
-    assert out == {"job_id": "run-xyz", "url": None}
-    assert posted == {
-        "slug": "r",
-        "chapters": [108],
-        "beams": [50, 5],
-        "riwayah": "hafs",
-        "full": False,
-    }
-    assert linked == [("r", "run-xyz")]
 
 
 def test_terminal_success_runs_reads_latest_linked_record(monkeypatch):
@@ -450,7 +403,7 @@ def test_running_job_for_reports_a_fresh_run(monkeypatch):
 
 
 def test_running_job_for_ignores_a_stale_run(monkeypatch):
-    """A ``running`` record the Space never stamped terminal must not wedge the
+    """A ``running`` record never stamped terminal must not wedge the
     single-flight guard forever — past the ceiling it reads as dead."""
     import datetime
 

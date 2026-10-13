@@ -147,28 +147,13 @@ export interface TimestampsJobLaunch {
     url: string | null;
 }
 
-/** Manual launch body (maps to the backend ``_parse_ts_settings`` body).
- * All TS tunables come from the shared owner-wide "Timestamps generation"
- * defaults; the request carries only the per-launch chapter scope. */
+/** Manual launch body (maps to the backend ``_parse_ts_settings`` body):
+ * the per-launch chapter scope. */
 export interface TimestampsJobLaunchBody {
-    // Affected-only regen scope: only verses whose segments changed re-align.
+    // Affected-only regen scope: only segments that changed re-time.
     chapters?: number[] | null;
-    // Re-align every verse (of every chapter when ``chapters`` is null).
+    // Re-time every segment (of every chapter when ``chapters`` is null).
     full?: boolean;
-}
-
-export interface AlignerModel {
-    id: string | null;
-    label: string;
-    default: boolean;
-}
-
-/** Selectable acoustic models (the store catalog) for the shared defaults card. */
-export async function fetchAlignerModels(signal?: AbortSignal): Promise<AlignerModel[]> {
-    const resp = await fetch('/api/admin/aligner-models', { signal });
-    if (!resp.ok) return _unwrapError(resp);
-    const body = (await resp.json()) as { models: AlignerModel[] };
-    return body.models ?? [];
 }
 
 /** Live status + bounded log tail proxied from HF. */
@@ -193,7 +178,7 @@ async function _unwrapError(resp: Response): Promise<never> {
 }
 
 /**
- * Launch the in-container MFA timestamps job for an under-review reciter.
+ * Launch the aligner timestamps run for an under-review reciter.
  * Returns the launched job id; throws the server ``error`` string verbatim
  * (including the 409 "a timestamps job is already running") so the caller can
  * surface it inline.
