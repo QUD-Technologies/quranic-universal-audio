@@ -217,16 +217,6 @@ WORDS_PER_SEG_HIST_MAX = 15  # upper bound for words-per-segment histogram
 SEGS_PER_VERSE_HIST_MAX = 8  # upper bound for segs-per-verse histogram
 CONF_HIST_BIN_SIZE = 5  # bin width (percentage points) for confidence histogram
 
-# Auto-split (services/auto_split.py): MFA Space + timeout. Cross-verse
-# accordion's "Auto Split" routes here to compute the verse-boundary split
-# time. Always the dev Space — interactive call volume is low. Override
-# via INSPECTOR_MFA_SPACE_URL. On any failure or timeout the FE silently
-# falls back to a midpoint cursor.
-MFA_SPACE_URL = os.environ.get(
-    "INSPECTOR_MFA_SPACE_URL", "https://hetchyy-quran-phoneme-mfa-dev.hf.space"
-)
-AUTO_SPLIT_MFA_TIMEOUT = 15
-
 # Admin dashboard — identity recency + visitor analytics
 # How stale last_entry_at must be before /api/me writes again (debounce so a
 # browsing session is at most one write per user per window, not per page load).

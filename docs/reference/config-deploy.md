@@ -114,7 +114,6 @@ The image bakes the **dev** bucket as default (`INSPECTOR_BUCKET_REPO=QUD-Techno
 
 | Var | Default | Purpose |
 |---|---|---|
-| `INSPECTOR_MFA_SPACE_URL` | `https://hetchyy-quran-phoneme-mfa-dev.hf.space` | MFA Space the cross-verse "Auto Split" calls. |
 | `MISSED_BASMALA_FLAG_MIN_DELETED` | `10` | Min pipeline-stripped basmalas before flagging non-stripped chapters as "missed Basmala". |
 | `INSPECTOR_QUA_DOMAIN_WHEEL_DIR` | `/opt/wheels` | Where the runtime image keeps the `qua_domain` wheel from stage 1b. `stage_job_code` uploads it to `aligner-bucket/code/wheels/` so HF Jobs (non-Hafs publish / cut) install the same edition projection the Space runs; absent = Hafs-only jobs, warned at launch. |
 | `INSPECTOR_MULTI_RIWAYAH` | `1` | Kill-switch for the non-Hafs editions (`config.MULTI_RIWAYAH_ENABLED`). `0` makes `services/reference/editions.py` behave as if `qua_domain` were absent — a 60-second rollback via a Space **variable** + restart, where a rebuild is ten minutes. It does NOT render non-Hafs as Hafs; those deliveries fail loudly. |
