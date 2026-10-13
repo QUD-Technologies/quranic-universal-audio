@@ -62,7 +62,7 @@ def _timestamps(root, slug, chapter):
         )
     shard = {
         "_meta": {
-            "schema_version": 13,
+            "schema_version": 15,
             "chapter": chapter,
             "audio_category": "by_surah",
             "phonemizer_version": "2.15",
