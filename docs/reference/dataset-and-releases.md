@@ -425,7 +425,7 @@ hub splits once via `hub_published_splits_by_config` (the just-pushed split is a
 (one `config_name` per riwayah + `mushafs`/`all` last) and fills the badges from the same
 `HfDatasetCatalogStats` (`_stats_from_published_splits`) used for the `mushafs` projection. So
 frontmatter, badges, and catalog stats can't drift from the published set. The GitHub repo README
-badges are a separate, broader metric maintained by `update-badges.yml` CI and are unaffected.
+badges are a separate, broader metric that `update-badges.yml` refreshes on each published GitHub release.
 
 ### Audio: preserve, don't normalize
 

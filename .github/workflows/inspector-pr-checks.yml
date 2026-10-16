@@ -1,0 +1,33 @@
+name: Inspector PR checks
+
+# Pushes to main and dev run the same checks through inspector-deploy.yml.
+on:
+  pull_request:
+    paths:
+      - 'inspector/**'
+      - 'qua_shared/**'
+      - 'qua_jobs/**'
+      - 'scripts/**'
+      - '.github/config/**'
+      - 'docs/templates/**'
+      - '.github/workflows/**'
+      - '.dockerignore'
+      - 'ruff.toml'
+      - 'pyrightconfig.json'
+      - '.python-version'
+      - '.nvmrc'
+
+# pull-requests: write lets the reusable frontend-checks job post eslint --fix
+# suggestions; a reusable job's permissions are capped by the caller.
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: inspector-pr-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    uses: ./.github/workflows/inspector-checks.yml
+    secrets: inherit

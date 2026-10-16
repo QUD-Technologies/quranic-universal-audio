@@ -126,7 +126,7 @@ Three-stage build, context is the **repo root** (so `qua_shared/` ships alongsid
 
 `CMD`: `gunicorn -k gthread -w 1 --threads 16 --max-requests 5000 --max-requests-jitter 500 --timeout 60 --graceful-timeout 30 --bind 0.0.0.0:7860 --access-logfile - --error-logfile - --chdir /app/inspector app:app`. `-w 1` is load-bearing (asserted at import). `--threads 16` sizes the I/O-bound pool. `--max-requests` recycles the worker to bound slow leaks. The access log (one line per request → stdout) is de-noised by `app._AccessLogFilter`, attached to the `gunicorn.access` + `werkzeug` loggers: it drops static-asset (`/assets/*`), `/healthz`, and 304 lines while always keeping 4xx/5xx and real API/page hits.
 
-`docker-compose.yml` (repo `inspector/`) is the local reviewer entry (`docker compose up` → `:5000`, bind-mounts `data/`).
+`docker-compose.yml` (repo `inspector/`) is the local reviewer entry (`docker compose up --build` → `:5000`, builds from source).
 
 ## Deploy — `inspector-deploy.yml`
 
@@ -134,11 +134,11 @@ Push to `dev` or `main` (paths under `inspector/**`, `qua_shared/**`, `scripts/d
 
 **Fast-path dev dispatch.** A manual `workflow_dispatch` that resolves to the **dev** Space (`env=dev`, or `env=auto` off any non-`main` branch) **skips the `checks` job entirely** for a quick deploy — the dev Space is a verification target, not prod. Every push and any prod-targeting dispatch still runs the full check suite. The `deploy` gate accepts a skipped `checks` (`success` *or* `skipped`), so it never confuses "intentionally skipped" with "failed".
 
-**Staging = the whole git-tracked tree.** `upload_inspector._stage()` copies **every git-tracked file** verbatim (then overlays the root `Dockerfile` from `inspector/Dockerfile` + a frontmatter `README.md`), and `upload_folder(delete_patterns="*")` mirrors it to the Space. `.dockerignore` is the **single source of truth** that prunes the build context — there is no hand-curated allowlist to drift from the Dockerfile's `COPY` set (that drift took prod down once: a `COPY LICENSE` with no matching staging entry → `BUILD_ERROR "/LICENSE: not found"`). Consequence: the Space build context equals the `context: .` that `docker-publish.yml` builds on every push, so its green image build is a faithful "the Space will compile" signal. `dist/` is built inside the image (stage 1), so the deploy does **not** pre-build the frontend.
+**Staging = the whole git-tracked tree.** `upload_inspector._stage()` copies **every git-tracked file** verbatim (then overlays the root `Dockerfile` from `inspector/Dockerfile` + a frontmatter `README.md`), and `upload_folder(delete_patterns="*")` mirrors it to the Space. `.dockerignore` is the **single source of truth** that prunes the build context — there is no hand-curated allowlist to drift from the Dockerfile's `COPY` set (that drift took prod down once: a `COPY LICENSE` with no matching staging entry → `BUILD_ERROR "/LICENSE: not found"`). Consequence: the Space build context equals a local `docker build` of `context: .` with `inspector/Dockerfile`, so `smoke_boot.py` is a faithful "the Space will compile" signal. `dist/` is built inside the image (stage 1), so the deploy does **not** pre-build the frontend.
 
 **Caveat — async build, no CI feedback.** `upload_inspector.py` only uploads + `restart_space(factory_reboot=True)` and returns; the HF docker rebuild is asynchronous. A green `inspector-deploy` run does **not** mean the Space built. After a deploy, poll the runtime stage (`…/api/spaces/<id>/runtime` → `RUNNING_BUILDING → RUNNING_APP_STARTING → RUNNING`; build logs at `…/logs/build`).
 
-**Opt-in boot check (prod-only, default off).** `scripts/deploy/smoke_boot.py` builds the image and boots it offline (filesystem backend + public `seed_fixtures`, no secrets, no bucket), polling `/healthz` for `200 + state_loaded + db.open` (offline it's `200`/`status: degraded` since no bucket is mounted — so it does **not** assert `status == ok`). Two entry points: `scripts/deploy/upload_inspector.py --verify-boot` (gates a local/manual deploy on a passing boot), and a `boot-smoke` CI job that runs **only** on a manual `workflow_dispatch` with `verify_boot=true` targeting prod. The `deploy` job's `if` is `always() && (needs.checks.result=='success' || =='skipped') && needs.boot-smoke.result != 'failure' && != 'cancelled'` so a skipped `boot-smoke` (every normal push) or a skipped `checks` (fast-path dev dispatch) still deploys, while a failing one blocks the deploy. Automatic deploys stay lean (no image build on the deploy path; `docker-publish.yml` builds the identical context in parallel as a non-blocking red signal).
+**Opt-in boot check (prod-only, default off).** `scripts/deploy/smoke_boot.py` builds the image and boots it offline (filesystem backend + public `seed_fixtures`, no secrets, no bucket), polling `/healthz` for `200 + state_loaded + db.open` (offline it's `200`/`status: degraded` since no bucket is mounted — so it does **not** assert `status == ok`). Two entry points: `scripts/deploy/upload_inspector.py --verify-boot` (gates a local/manual deploy on a passing boot), and a `boot-smoke` CI job that runs **only** on a manual `workflow_dispatch` with `verify_boot=true` targeting prod. The `deploy` job's `if` is `always() && (needs.checks.result=='success' || =='skipped') && needs.boot-smoke.result != 'failure' && != 'cancelled'` so a skipped `boot-smoke` (every normal push) or a skipped `checks` (fast-path dev dispatch) still deploys, while a failing one blocks the deploy. Automatic deploys stay lean (no image build on the deploy path).
 
 The canonical dev/prod Spaces have **no** auto-provisioning script — their secrets/variables (`INSPECTOR_SESSION_SECRET`, `INSPECTOR_GITHUB_DISPATCH_TOKEN`, QF creds, `INSPECTOR_BUCKET_REPO` override, bucket attachment) are configured by hand in the Space settings panels. OAuth vars are auto-injected by HF via `hf_oauth: true` in the Space README frontmatter.
 
@@ -147,8 +147,8 @@ The canonical dev/prod Spaces have **no** auto-provisioning script — their sec
 ## Type-check gate (pyright)
 
 The entire Python backend (`inspector/`, `qua_jobs/`, `qua_shared/`) is
-type-checked in basic mode as a **blocking** CI gate (`type-check` job in
-`inspector-checks.yml`). It runs via `npx -y pyright --level error inspector
+type-checked in basic mode as a **blocking** CI gate (a step of the
+`schema-codegen-check` job in `inspector-checks.yml`). It runs via `npx -y pyright --level error inspector
 qua_jobs qua_shared` so no Python type-checker dependency is added to the image
 — node 24 is already present. The `extraPaths` in `pyrightconfig.json` make the
 flat-layout imports resolve cleanly across the three packages.

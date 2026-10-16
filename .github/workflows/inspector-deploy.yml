@@ -32,7 +32,7 @@ on:
 # job declares `pull-requests: write` (for reviewdog PR suggestions). A reusable
 # job cannot request more than the caller grants, so the caller must grant it too
 # or the run fails at startup — even though reviewdog's step is skipped on push.
-# Mirrors docker-publish.yml (the other caller).
+# Mirrors inspector-pr-checks.yml (the other caller).
 permissions:
   contents: read
   pull-requests: write

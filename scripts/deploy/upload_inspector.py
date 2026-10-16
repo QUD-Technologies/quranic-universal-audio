@@ -13,8 +13,7 @@ Build steps:
    volumes), plus three Space-specific overlays (root ``Dockerfile``, frontmatter
    ``README.md``, and a version-verified local copy of the private renderer
    package). The image's contents are defined solely by
-   ``inspector/Dockerfile`` + ``.dockerignore`` (both tracked, both consumed
-   identically here and by ``docker-publish.yml``'s repo-root build), so there
+   ``inspector/Dockerfile`` + ``.dockerignore`` (both tracked), so there
    is no hand-maintained file allowlist to drift from the Dockerfile's ``COPY``
    set — ``.dockerignore`` prunes at build time. The frontend ``dist/`` is
    built inside the image (Dockerfile stage 1); nothing is pre-built here.

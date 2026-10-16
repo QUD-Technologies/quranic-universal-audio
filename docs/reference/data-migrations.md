@@ -137,7 +137,7 @@ The `seg`/`timestamps`/`public`/`audio` routes serialize **through** the `wire/`
 
 ### Bucket-validation harness
 
-`inspector/services/storage/bucket_audit.py` is the Flask-free engine that walks one `reciters/<slug>/` folder and parses every artefact through the canonical schemas, surfacing any `ValidationError` an unknown/legacy field raises under the pure-`forbid` models (post-migration this should be silent for all reciters). It backs three callers: the per-reciter CLI `scripts/bucket/audit_bucket_reciter.py`, the whole-bucket gate `scripts/diagnostics/validate_bucket.py` (per-reciter artefacts + DB-catalog rebuild + audio-manifest sidecars; exits non-zero on any hard error, `--strict` also fails on unknown fields), and `sample_validation` wired into `/healthz?deep=1`. The nightly `.github/workflows/bucket-validate.yml` runs the whole-bucket validator so external-file drift is caught in CI rather than mid-request.
+`inspector/services/storage/bucket_audit.py` is the Flask-free engine that walks one `reciters/<slug>/` folder and parses every artefact through the canonical schemas, surfacing any `ValidationError` an unknown/legacy field raises under the pure-`forbid` models (post-migration this should be silent for all reciters). It backs three callers: the per-reciter CLI `scripts/bucket/audit_bucket_reciter.py`, the whole-bucket gate `scripts/diagnostics/validate_bucket.py` (per-reciter artefacts + DB-catalog rebuild + audio-manifest sidecars; exits non-zero on any hard error, `--strict` also fails on unknown fields), and `sample_validation` wired into `/healthz?deep=1`.
 
 ### Dead-set-emptying prod migration (done, 2026-06)
 
