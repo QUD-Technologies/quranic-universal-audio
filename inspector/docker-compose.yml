@@ -6,20 +6,15 @@
 # write access to that bucket via `.env` (`INSPECTOR_HF_TOKEN=...`)
 # alongside this file.
 #
-# To build from source instead of pulling, drop a `docker-compose.override.yml`
-# next to this file:
-#   services:
-#     inspector:
-#       image: !reset null
-#       build:
-#         context: ..
-#         dockerfile: inspector/Dockerfile
+# Builds the image from source. Without a PRIVATE_REPO_TOKEN build secret the
+# image is Hafs-only.
 
 services:
   inspector:
-    image: ghcr.io/qud-technologies/inspector:latest
+    build:
+      context: ..
+      dockerfile: inspector/Dockerfile
     container_name: inspector
-    pull_policy: always
     ports:
       - "5000:7860"
     env_file:
