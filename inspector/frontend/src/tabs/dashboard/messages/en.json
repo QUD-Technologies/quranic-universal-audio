@@ -377,7 +377,6 @@
     }
   ],
   "dashboard_submit_reciter_field_label": "Reciter",
-  "dashboard_submit_reciter_list_hint": "Showing {shown} of {total} — type to search the full catalog.",
   "dashboard_submit_reciter_mode_aria": "Reciter mode",
   "dashboard_submit_reciter_no_match": "No match. Try a partial name, or switch to \"New reciter\".",
   "dashboard_submit_reciter_results_aria": "Reciter results",

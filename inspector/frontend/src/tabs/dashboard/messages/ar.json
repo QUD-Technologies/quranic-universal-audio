@@ -401,7 +401,6 @@
     }
   ],
   "dashboard_submit_reciter_field_label": "القارئ",
-  "dashboard_submit_reciter_list_hint": "عرض {shown} من {total} — اكتب للبحث في القائمة الكاملة.",
   "dashboard_submit_reciter_mode_aria": "وضع القارئ",
   "dashboard_submit_reciter_no_match": "لا تطابق. جرب اسما جزئيا، أو انتقل إلى «قارئ جديد».",
   "dashboard_submit_reciter_results_aria": "نتائج القراء",
