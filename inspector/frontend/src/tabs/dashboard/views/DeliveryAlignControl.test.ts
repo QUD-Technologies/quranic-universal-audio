@@ -1,5 +1,5 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 
 import { currentUser } from '../../../lib/stores/current-user';
 import DeliveryAlignControl from './DeliveryAlignControl.svelte';
@@ -40,7 +40,7 @@ function json(body: unknown, status = 200): Response {
     });
 }
 
-let fetchSpy: ReturnType<typeof vi.spyOn>;
+let fetchSpy: MockInstance<typeof fetch>;
 
 beforeEach(() => {
     fetchSpy = vi.spyOn(window, 'fetch');
@@ -62,7 +62,7 @@ describe('DeliveryAlignControl', () => {
 
     it('starts a CPU run for the slug and shows its live summary', async () => {
         currentUser.set(user(['intake.align']) as never);
-        fetchSpy.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+        fetchSpy.mockImplementation(async (input, init) => {
             const url = String(input);
             if (init?.method === 'POST') return json(run('running', 'acquire'), 202);
             if (url.endsWith('/align/status')) return json({ run: null });
