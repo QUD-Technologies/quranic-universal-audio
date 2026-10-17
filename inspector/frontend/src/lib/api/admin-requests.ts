@@ -90,6 +90,19 @@ export async function startAlign(
     return json as unknown as AlignRunStatus;
 }
 
+/** Latest align run for a slug (active first), or ``null`` when it never ran. */
+export async function fetchAlignStatus(
+    slug: string,
+    signal?: AbortSignal,
+): Promise<AlignRunStatus | null> {
+    const res = await fetch(`/api/admin/reciter/${encodeURIComponent(slug)}/align/status`, {
+        signal,
+    });
+    if (!res.ok) throw new Error(`fetchAlignStatus: HTTP ${res.status}`);
+    const json = (await res.json()) as AlignRunStatus | { run: null };
+    return 'run_id' in json ? json : null;
+}
+
 /** Resume a failed run from the stage it failed at. */
 export async function retryAlign(slug: string): Promise<AlignRunStatus> {
     const json = await _post(`/api/admin/reciter/${encodeURIComponent(slug)}/align/retry`);

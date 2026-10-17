@@ -29,7 +29,7 @@ Where it lives:
 | Routes | `inspector/routes/admin/align.py` — `POST /api/admin/reciter/<slug>/align`, `GET …/align/status`, `POST …/align/retry`, `POST …/align/cancel`; `inspector/routes/admin/intake_plan.py` — `GET`/`POST`/`PUT /api/admin/intake/<rid>/plan`, `POST /api/admin/intake/<rid>/align` |
 | Capability | `intake.align` (owner + maintainer by default); `intake.align_unlimited` bypasses the shared budget (owner only by default); `intake.ingest` plans + mints an intake (owner only by default; the intake `/align` also needs `intake.align`) |
 | Wire | `qua_shared/schemas/wire/align_runs.py` — `AlignRunStatus`, `AlignStartRequest`; `AdminRequestRow.align` overlay; `qua_shared/schemas/wire/intake_plan.py` — `IntakePlan` / `IntakePlanView` / `IntakePlanUpdate` / `IntakeAlignRequest` / `IntakeAlignResponse` |
-| FE | `tabs/dashboard/components/admin/AlignProgress.svelte`, the Align block in `RequestsCompartment.svelte`, `tabs/dashboard/components/admin/intake/` (`IntakePlanPanel` + `IntakePlanSummary` / `IntakePlanEntries` / `IntakeIdentityForm` / `IntakeAlignCta`), `lib/api/admin-requests.ts` |
+| FE | `tabs/dashboard/components/admin/AlignProgress.svelte`, the Align block in `RequestsCompartment.svelte`, `tabs/dashboard/views/DeliveryAlignControl.svelte` (Align GPU / CPU + one-line live summary on a `requested` delivery row in the reciter modal — same run, full progress stays in Requests), `tabs/dashboard/components/admin/intake/` (`IntakePlanPanel` + `IntakePlanSummary` / `IntakePlanEntries` / `IntakeIdentityForm` / `IntakeAlignCta`), `lib/api/admin-requests.ts` |
 | Aligner side | `qua-aligner-app` — `/api/v1/batches` items by `audio_ref`, `/api/v1/extraction/sidecars`; both gated by `X-Extraction-Secret` |
 
 ## Stages
