@@ -30,6 +30,7 @@
     import { onDestroy, onMount } from 'svelte';
 
     import AudioElement from '../../../../lib/components/AudioElement.svelte';
+    import { localizeDigits } from '../../../../lib/i18n/format';
     import { localeStore, tr } from '../../../../lib/i18n/locale-store';
     import * as m from '../../../../lib/paraglide/messages';
     import {
@@ -291,7 +292,7 @@
             <div class="seg-history-stat-cards">
                 {#each summary as card}
                     <div class="seg-history-stat-card">
-                        <div class="seg-history-stat-value">{card.value}</div>
+                        <div class="seg-history-stat-value">{tr($localeStore, localizeDigits(card.value))}</div>
                         <div class="seg-history-stat-label">{card.label}</div>
                     </div>
                 {/each}
