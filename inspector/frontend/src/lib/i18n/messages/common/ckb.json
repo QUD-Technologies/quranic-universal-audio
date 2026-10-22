@@ -223,9 +223,6 @@
   "common_theme_toggle_system_label": "ڕووکار: شوێنکەوتنی ئامێرەکەت — بۆ ڕووناک کلیک بکە",
   "common_theme_toggle_light_label": "ڕووکار: ڕووناک — بۆ تاریک کلیک بکە",
   "common_theme_toggle_dark_label": "ڕووکار: تاریک — بۆ شوێنکەوتنی ئامێرەکەت کلیک بکە",
-  "common_locale_toggle_auto_label": "زمان: شوێنکەوتنی وێبگەڕەکەت — بۆ English کلیک بکە",
-  "common_locale_toggle_en_label": "زمان: English — بۆ عربي کلیک بکە",
-  "common_locale_toggle_ar_label": "زمان: عربي — بۆ کوردی کلیک بکە",
   "common_player_preset_color_label": "ڕەنگی پێشوەختە دیاریکراو",
   "common_player_hue_label": "جۆری ڕەنگ",
   "common_player_saturation_label": "تێری ڕەنگ",
@@ -362,5 +359,6 @@
   "common_filmstrip_not_recited": "نەخوێندراوەتەوە",
   "common_filmstrip_missing_words": "وشە ونبووەکان",
   "common_filmstrip_missing_words_list": "وشە ونبووەکان: {indices}",
-  "common_locale_toggle_ckb_label": "زمان: کوردی — بۆ شوێنکەوتنی وێبگەڕەکەت کلیک بکە"
+  "common_locale_select_label": "زمان",
+  "common_locale_auto_option": "خۆکار · {language}"
 }

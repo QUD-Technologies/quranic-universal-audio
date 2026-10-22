@@ -32,7 +32,7 @@ const HEADER_ID = 'huggingface-space-header';
 /** Breathing room between the pill and the controls stacked under it. */
 const GAP_PX = 8;
 
-/** Keep the pill off the viewport's top/right edge. */
+/** Keep the pill off the viewport's top/inline-end edge. */
 const MIN_EDGE_PX = 8;
 
 /** Element id of the stylesheet that repaints the pill in our palette. */
@@ -64,7 +64,7 @@ function injectHeaderTheme(): void {
       color: var(--text-primary) !important;
       /* the package only pads the leading edge, and the trailing control that
          balanced it is hidden below */
-      padding-right: 1rem !important;
+      padding-inline: 1rem !important;
     }
     /* Every rule inside is painted in the package's own grey-200, including
        borders we never target individually (the like-count separator). */
@@ -98,6 +98,24 @@ function injectHeaderTheme(): void {
     }
     #${HEADER_ID} > div:first-child {
       border-right-width: 0 !important;
+      border-left-width: 0 !important;
+      padding-right: 0 !important;
+      padding-inline-end: 12px !important;
+    }
+    /* Keep Latin Space identifiers readable while the pill itself follows RTL. */
+    #${HEADER_ID} > div:first-child > a:nth-of-type(-n+2) {
+      direction: ltr;
+      unicode-bidi: isolate;
+    }
+    #${HEADER_ID} > div:first-child > a:nth-of-type(3) {
+      padding-left: 0 !important;
+      padding-inline-start: 4px !important;
+    }
+    #${HEADER_ID} > div:first-child > a:nth-of-type(3) > p {
+      border-left-width: 0 !important;
+      border-inline-start: 1px solid var(--border-default) !important;
+      margin-left: 0 !important;
+      margin-inline-start: 4px !important;
     }
   `;
   document.head.appendChild(style);
@@ -175,25 +193,26 @@ function waitForHeader(): Promise<HTMLElement | null> {
 }
 
 /**
- * Right edge of what a container actually draws, ignoring its own padding.
+ * Inline-end edge of what a container actually draws, ignoring its own padding.
  *
  * The Dashboard adds `padding-inline-end: var(--gutter)` to `.auth-controls`
  * so the cluster lines up with the right rail. That padding is inside the
  * box, so measuring the box would misalign the pill by a gutter on the
- * Dashboard only. Taking the max rather than the last child keeps it
+ * Dashboard only. Measuring the outermost child rather than the last child keeps it
  * direction-agnostic.
  */
-function visibleRightEdge(container: HTMLElement): number {
-  const edges = [...container.children].map((child) => child.getBoundingClientRect().right);
-  return edges.length ? Math.max(...edges) : container.getBoundingClientRect().right;
+function visibleEndEdge(container: HTMLElement, rtl: boolean): number {
+  const boxes = [...container.children].map((child) => child.getBoundingClientRect());
+  if (!boxes.length) boxes.push(container.getBoundingClientRect());
+  return rtl ? Math.min(...boxes.map((box) => box.left)) : Math.max(...boxes.map((box) => box.right));
 }
 
 /**
- * Stack the pill above the app's own top-right cluster.
+ * Stack the pill above the app's own auth cluster, on the matching inline end.
  *
  * The pill is `position: fixed` in the corner; the controls sit underneath it
- * rather than beside it. The pill's right edge is lined up with the cluster's
- * drawn right edge, and the header row gets a top margin that clears the pill.
+ * rather than beside it. The pill's inline-end edge is lined up with the cluster's
+ * drawn inline-end edge, and the header row gets a top margin that clears the pill.
  *
  * Vertical maths happens in "page at rest" coordinates: the pill is fixed (so
  * its viewport box already is that), while the header row scrolls, so its box
@@ -209,9 +228,14 @@ function placeHeader(): void {
   row.style.marginTop = '';
 
   const barTop = bar.getBoundingClientRect().top + window.scrollY;
-  const right = Math.max(MIN_EDGE_PX, Math.round(document.documentElement.clientWidth - visibleRightEdge(bar)));
+  const rtl = getComputedStyle(row).direction === 'rtl';
+  const edge = visibleEndEdge(bar, rtl);
+  const inset = Math.max(MIN_EDGE_PX, Math.round(rtl ? edge : document.documentElement.clientWidth - edge));
+  pill.dir = rtl ? 'rtl' : 'ltr';
   pill.style.top = `${MIN_EDGE_PX}px`;
-  pill.style.right = `${right}px`;
+  // Clear the opposite physical edge left by the package or a previous locale.
+  pill.style.right = rtl ? 'auto' : `${inset}px`;
+  pill.style.left = rtl ? `${inset}px` : 'auto';
 
   const pillBottom = pill.getBoundingClientRect().bottom;
   const push = Math.ceil(pillBottom + GAP_PX - barTop);
@@ -260,7 +284,11 @@ export async function installSpaceHeader(): Promise<void> {
     window.addEventListener('load', placeHeader, { once: true });
   }
 
-  // Re-measure on viewport changes — the pill tracks the cluster's right edge.
+  // Language switches mirror the entire chrome in place, including this pill.
+  // Observe the document direction rather than maintaining a second locale list.
+  new MutationObserver(placeHeader).observe(document.documentElement, { attributeFilter: ['dir'] });
+
+  // Re-measure on viewport changes — the pill tracks the cluster's inline-end edge.
   window.addEventListener('resize', placeHeader, { passive: true });
 
   // The pill keeps changing size after insertion, and none of it fires a
