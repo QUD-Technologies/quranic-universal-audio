@@ -549,5 +549,6 @@
   "segments_basmala_voice_different": "Different voice",
   "segments_basmala_voice_change": "Change",
   "segments_basmala_voice_saving": "Saving…",
-  "segments_basmala_voice_load_error": "Couldn't load the Basmala voice check."
+  "segments_basmala_voice_load_error": "Couldn't load the Basmala voice check.",
+  "segments_sections_aria_label": "Segments sections"
 }

@@ -1,5 +1,5 @@
 <!--
-  LocaleSwitcher — a single button cycling Auto → English → عربي → Auto, the
+  LocaleSwitcher — a single button cycling Auto → English → عربي → کوردی → Auto, the
   sibling of ThemeToggle in the header.
 
   It shows ONE language at a time (its endonym), never a segmented pair. 'Auto'
@@ -15,7 +15,7 @@
     import AutoBadge from './AutoBadge.svelte';
 
     // Each language in its own name — data, not translated by the active UI locale.
-    const ENDONYMS: Record<Locale, string> = { en: 'English', ar: 'عربي' };
+    const ENDONYMS: Record<Locale, string> = { en: 'English', ar: 'عربي', ckb: 'کوردی' };
 
     const mode = $derived(i18n.mode);
     const isAuto = $derived(mode === 'auto');
@@ -28,7 +28,9 @@
         (i18n.locale,
         isAuto
             ? m.common_locale_toggle_auto_label()
-            : mode === 'ar'
+            : mode === 'ckb'
+              ? m.common_locale_toggle_ckb_label()
+              : mode === 'ar'
               ? m.common_locale_toggle_ar_label()
               : m.common_locale_toggle_en_label()),
     );
@@ -82,7 +84,8 @@
         font-weight: 500;
     }
     /* The Arabic endonym reads better a touch larger against the Latin metrics. */
-    .name:lang(ar) {
+    .name:lang(ar),
+    .name:lang(ckb) {
         font-size: 0.9375rem;
     }
 </style>

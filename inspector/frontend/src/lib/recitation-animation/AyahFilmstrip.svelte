@@ -295,7 +295,7 @@
         if (c.missing !== 'words') return undefined;
         const mw = missingWordsByAyah?.get(c.ayah);
         if (!mw || !mw.length) return m.common_filmstrip_missing_words();
-        const list = i18n.locale === 'ar' ? mw.map(toArabicNumeral).join('، ') : mw.join(', ');
+        const list = ['ar', 'ckb'].includes(i18n.locale) ? mw.map(toArabicNumeral).join('، ') : mw.join(', ');
         return m.common_filmstrip_missing_words_list({ indices: list });
     }
 
@@ -303,7 +303,7 @@
     function cellLabel(c: Cell): string {
         void i18n.locale; // re-evaluate the label on locale switch
         if (c.special) return specialLabel(c.special);
-        return i18n.locale === 'ar' ? toArabicNumeral(c.ayah) : String(c.ayah);
+        return ['ar', 'ckb'].includes(i18n.locale) ? toArabicNumeral(c.ayah) : String(c.ayah);
     }
 
     /** Slider value of a cell: its ayah, or 0 for an opener (it precedes ayah 1). */

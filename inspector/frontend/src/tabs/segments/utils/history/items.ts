@@ -1,3 +1,4 @@
+import { getLocale } from '$lib/paraglide/runtime';
 import * as m from '../../../../lib/paraglide/messages';
 import type { EditOp, GenerationBoundary, HistoryBatch } from '../../../../lib/types/view-models';
 import type {
@@ -118,7 +119,7 @@ export function formatHistDate(isoStr: string | null | undefined): string {
     if (!isoStr) return m.segments_history_date_pending();
     try {
         const d = new Date(isoStr);
-        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        return d.toLocaleDateString(getLocale(), { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' });
     } catch { return isoStr; }
 }
 

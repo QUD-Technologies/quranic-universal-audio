@@ -19,5 +19,5 @@ import { getLocale } from '$lib/paraglide/runtime';
 import { toArabicNumeral } from '$lib/utils/arabic-text';
 
 export function localizeDigits(value: string | number, locale: string = getLocale()): string {
-    return locale === 'ar' ? toArabicNumeral(value) : String(value);
+    return ['ar', 'ckb'].includes(locale) ? toArabicNumeral(value) : String(value);
 }
