@@ -566,5 +566,6 @@
   "segments_samples_back_to_list_title": "العودة إلى قائمة العينات",
   "segments_chip_low_conf": "ثقة منخفضة",
   "segments_chip_repetition": "تكرار",
-  "segments_chip_missing_words": "كلمات ناقصة"
+  "segments_chip_missing_words": "كلمات ناقصة",
+  "segments_sections_aria_label": "أقسام المقاطع"
 }

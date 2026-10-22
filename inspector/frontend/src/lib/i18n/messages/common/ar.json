@@ -241,7 +241,7 @@
   "common_theme_toggle_dark_label": "السمة: داكنة — انقر لتتبع جهازك",
   "common_locale_toggle_auto_label": "اللغة: تتبع متصفحك — انقر للإنجليزية",
   "common_locale_toggle_en_label": "اللغة: الإنجليزية — انقر للعربية",
-  "common_locale_toggle_ar_label": "اللغة: العربية — انقر لتتبع متصفحك",
+  "common_locale_toggle_ar_label": "اللغة: عربي — انقر للتبديل إلى کوردی",
   "common_player_preset_color_label": "لون جاهز",
   "common_player_hue_label": "درجة اللون",
   "common_player_saturation_label": "التشبّع",
@@ -409,5 +409,6 @@
   "common_delivery_bitrate_mixed": "مختلط",
   "common_filmstrip_not_recited": "لم تُتلَ",
   "common_filmstrip_missing_words": "كلمات ناقصة",
-  "common_filmstrip_missing_words_list": "كلمات ناقصة: {indices}"
+  "common_filmstrip_missing_words_list": "كلمات ناقصة: {indices}",
+  "common_locale_toggle_ckb_label": "اللغة: کوردی — انقر لاتباع لغة المتصفح"
 }

@@ -590,7 +590,7 @@
     $: activeSurahName = ((): string | null => {
         const info = _surahMap[String($playerContext.surahNum)];
         if (!info) return null;
-        return lang === 'ar' && info.name_ar ? info.name_ar.replace(/^سُورَةُ\s*/, '') : info.name_en;
+        return ['ar', 'ckb'].includes(lang) && info.name_ar ? info.name_ar.replace(/^سُورَةُ\s*/, '') : info.name_en;
     })();
 
     $: canPrev = $playerContext.surahNum !== null && surahNums.indexOf($playerContext.surahNum) > 0;

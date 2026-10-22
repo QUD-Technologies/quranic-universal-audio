@@ -516,7 +516,7 @@
     style:--font-quran={fontStack}
 >
     {#if $canManageSamples && !$historyVisible && !$savePreviewVisible}
-        <nav class="seg-subtabs" aria-label="Segments sections">
+        <nav class="seg-subtabs" aria-label={tr($localeStore, m.segments_sections_aria_label())}>
             {#each subTabs as id (id)}
                 <button
                     type="button"
