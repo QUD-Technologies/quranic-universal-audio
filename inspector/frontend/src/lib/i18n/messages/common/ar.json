@@ -239,9 +239,6 @@
   "common_theme_toggle_system_label": "السمة: تتبع جهازك — انقر للفاتحة",
   "common_theme_toggle_light_label": "السمة: فاتحة — انقر للداكنة",
   "common_theme_toggle_dark_label": "السمة: داكنة — انقر لتتبع جهازك",
-  "common_locale_toggle_auto_label": "اللغة: تتبع متصفحك — انقر للإنجليزية",
-  "common_locale_toggle_en_label": "اللغة: الإنجليزية — انقر للعربية",
-  "common_locale_toggle_ar_label": "اللغة: عربي — انقر للتبديل إلى کوردی",
   "common_player_preset_color_label": "لون جاهز",
   "common_player_hue_label": "درجة اللون",
   "common_player_saturation_label": "التشبّع",
@@ -417,5 +414,6 @@
   "common_special_takbir": "التكبير",
   "common_special_tahmeed": "التحميد",
   "common_special_tasleem": "التسليم",
-  "common_locale_toggle_ckb_label": "اللغة: کوردی — انقر لاتباع لغة المتصفح"
+  "common_locale_select_label": "اللغة",
+  "common_locale_auto_option": "تلقائي · {language}"
 }

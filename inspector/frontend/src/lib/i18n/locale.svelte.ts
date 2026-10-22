@@ -115,12 +115,6 @@ export const i18n = {
             /* storage blocked — the choice still applies for this session */
         }
     },
-    /** Cycle Auto → each locale → Auto (the header toggle). */
-    cycle(): void {
-        const order: LocaleMode[] = ['auto', ...locales];
-        const next = order[(order.indexOf(_mode) + 1) % order.length];
-        this.setMode(next ?? 'auto');
-    },
     /** Pin an explicit locale in-place (no reload). */
     set(loc: Locale): void {
         this.setMode(loc);
