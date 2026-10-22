@@ -78,7 +78,7 @@
     };
 
     function formatLine(card: PublicActivityCard): string {
-        const displayName = lang === 'ar' && card.name_ar ? card.name_ar : card.name;
+        const displayName = ['ar', 'ckb'].includes(lang) && card.name_ar ? card.name_ar : card.name;
         if (card.riwayah && card.style) {
             return `${displayName} (${vocabLabel('riwayah', card.riwayah)}) (${vocabLabel('style', card.style)}) ${ACTION[card.kind]()}`;
         }

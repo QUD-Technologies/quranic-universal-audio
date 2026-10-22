@@ -45,7 +45,7 @@
         onhover?: (n: number) => void;
     } = $props();
 
-    const popDir = $derived(i18n.locale === 'ar' ? 'rtl' : 'ltr');
+    const popDir = $derived(['ar', 'ckb'].includes(i18n.locale) ? 'rtl' : 'ltr');
 </script>
 
 <div class="surah-picker" class:compact>

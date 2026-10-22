@@ -160,7 +160,7 @@ export const markReadyCopy: MarkReadyCopy = buildCopy(
 const markReadyCopyByLocale: Record<string, MarkReadyCopy> = {};
 {
     const trios: Record<string, { form?: string; checklist?: string; comments?: string }> = {};
-    const re = /^\.\/(form|checklist|comments)\.([a-z]{2})\.md$/;
+    const re = /^\.\/(form|checklist|comments)\.([a-z]{2,3})\.md$/;
     for (const [path, raw] of Object.entries(localeMd)) {
         const match = re.exec(path);
         if (!match) continue;
