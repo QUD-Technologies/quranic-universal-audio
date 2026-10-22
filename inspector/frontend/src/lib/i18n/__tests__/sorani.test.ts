@@ -95,8 +95,10 @@ describe('Sorani locale switching', () => {
         const date = new Date(iso);
         i18n.set('ckb');
         expect(formatHistDate(iso)).toBe(
-            date.toLocaleDateString('ckb', { month: 'short', day: 'numeric' }) + ' ' +
-            date.toLocaleTimeString('ckb', { hour: '2-digit', minute: '2-digit' }),
+            localizeDigits(
+                `${date.getDate()} تشرینی یەکەم ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`,
+                'ckb',
+            ),
         );
         expect(formatHistDate(null)).toBe('چاوەڕوان');
     });
