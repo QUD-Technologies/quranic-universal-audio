@@ -223,9 +223,6 @@
   "common_theme_toggle_system_label": "Theme: following your device — click for light",
   "common_theme_toggle_light_label": "Theme: light — click for dark",
   "common_theme_toggle_dark_label": "Theme: dark — click to follow your device",
-  "common_locale_toggle_auto_label": "Language: following your browser — click for English",
-  "common_locale_toggle_en_label": "Language: English — click for عربي",
-  "common_locale_toggle_ar_label": "Language: عربي — click for کوردی",
   "common_player_preset_color_label": "Preset colour",
   "common_player_hue_label": "Hue",
   "common_player_saturation_label": "Saturation",
@@ -362,5 +359,6 @@
   "common_filmstrip_not_recited": "Not recited",
   "common_filmstrip_missing_words": "Missing words",
   "common_filmstrip_missing_words_list": "Missing words: {indices}",
-  "common_locale_toggle_ckb_label": "Language: کوردی — click to follow your browser"
+  "common_locale_select_label": "Language",
+  "common_locale_auto_option": "Auto · {language}"
 }

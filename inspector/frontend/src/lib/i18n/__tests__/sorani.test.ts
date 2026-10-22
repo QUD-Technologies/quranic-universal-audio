@@ -75,15 +75,15 @@ describe('Sorani localisation coverage', () => {
 describe('Sorani locale switching', () => {
     afterEach(() => i18n.setMode('auto'));
 
-    it('cycles through Sorani, pins it, and applies RTL without reloading', () => {
+    it('selects Sorani, pins it, and restores Auto without reloading', () => {
         i18n.set('ar');
-        i18n.cycle();
+        i18n.setMode('ckb');
         expect(i18n.locale).toBe('ckb');
         expect(getLocale()).toBe('ckb');
         expect(document.documentElement.lang).toBe('ckb');
         expect(document.documentElement.dir).toBe('rtl');
         expect(localStorage.getItem('insp_locale')).toBe('ckb');
-        i18n.cycle();
+        i18n.setMode('auto');
         expect(i18n.mode).toBe('auto');
         expect(localStorage.getItem('insp_locale')).toBeNull();
         i18n.set('en');
