@@ -72,6 +72,11 @@ function injectHeaderTheme(): void {
     #${HEADER_ID} * {
       border-color: var(--border-default) !important;
     }
+    /* Mirror the package's physical avatar spacing along with its row. */
+    #${HEADER_ID} > div:first-child > img {
+      margin-right: 0 !important;
+      margin-inline-end: 0.375rem !important;
+    }
     /* author link */
     #${HEADER_ID} > div:first-child > a:first-of-type {
       color: var(--text-muted) !important;
@@ -110,6 +115,8 @@ function injectHeaderTheme(): void {
     #${HEADER_ID} > div:first-child > a:nth-of-type(3) {
       padding-left: 0 !important;
       padding-inline-start: 4px !important;
+      margin-left: 0 !important;
+      margin-inline-start: 12px !important;
     }
     #${HEADER_ID} > div:first-child > a:nth-of-type(3) > p {
       border-left-width: 0 !important;
