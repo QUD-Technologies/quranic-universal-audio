@@ -31,7 +31,12 @@ from services.storage.hf_bucket import FilesystemBackend
 from tests.conftest import FIXTURES_DIR
 
 GOLDEN_SPECIALS = (
-    Path(__file__).resolve().parents[3] / "qua_shared" / "schemas" / "bucket" / "fixtures" / "specials.golden.json"
+    Path(__file__).resolve().parents[3]
+    / "qua_shared"
+    / "schemas"
+    / "bucket"
+    / "fixtures"
+    / "specials.golden.json"
 )
 
 SLUG = "fixture_reciter"
@@ -188,7 +193,8 @@ def test_bad_specials_json_surfaces_as_error(backend, load_fixture):
     clean = _clean_detailed(load_fixture("112-ikhlas"))
     _build_reciter_dir(backend, clean, edit_history=b"")
     backend.write_bytes_atomic(
-        f"reciters/{SLUG}/specials.json", b'{"schema_version":1,"generated_at":"t","chapters":{"0":[]}}'
+        f"reciters/{SLUG}/specials.json",
+        b'{"schema_version":1,"generated_at":"t","chapters":{"0":[]}}',
     )
 
     by_path = {f.path: f for f in audit(backend, "test-bucket", SLUG).files}

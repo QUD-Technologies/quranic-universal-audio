@@ -64,5 +64,9 @@ def project_release(doc: SpecialsDoc, slug: str, chapters: Iterable[int]) -> Rel
     for ch in shipped:
         openers = _chapter_openers(doc.chapters.get(str(ch), []))
         if openers:
-            out[str(ch)] = ReleaseChapterSpecials(**{k: _release_special(e) for k, e in openers.items()})
-    return ReleaseSpecialsDoc(slug=slug, chapters=out, default_basmala=default_basmala(doc, shipped))
+            out[str(ch)] = ReleaseChapterSpecials(
+                **{k: _release_special(e) for k, e in openers.items()}
+            )
+    return ReleaseSpecialsDoc(
+        slug=slug, chapters=out, default_basmala=default_basmala(doc, shipped)
+    )
