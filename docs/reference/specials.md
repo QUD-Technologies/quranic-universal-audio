@@ -102,7 +102,7 @@ release's verse projection and `reference/timestamps._ayah_of` files them under 
 
 `qua_jobs/cut_release._build_specials_json` emits `specials.json` per recitation
 (`ReleaseSpecialsDoc`, `qua_shared/specials.py::project_release`): per shipped chapter the
-first `pre` Isti'adha and Basmala (`start_ms`, `end_ms`, `same_voice` when known,
+first `pre` Isti'adha and Basmala (`start_ms`, `end_ms`, `same_voice` on both when known,
 `words: [[n, s, e]]`), plus `default_basmala` — an own-voice, unclipped Basmala closest to
 the reciter's median duration, left out when the reciter has none in their own voice. No `source`, confidence or voice score is released; a
 Basmala in another voice still ships, flagged `same_voice: false`.

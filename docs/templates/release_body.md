@@ -76,7 +76,7 @@ Many recordings open a chapter with the Isti'adha and/or Basmala before ayah 1. 
   "chapters": {
     // chapter -> its openers; [n, start_ms, end_ms] per word, as in the word tier
     "2": {
-      "istiadha": { "start_ms": 200, "end_ms": 3900, "words": [[1, 200, 900], "…"] },
+      "istiadha": { "start_ms": 200, "end_ms": 3900, "same_voice": true, "words": [[1, 200, 900], "…"] },
       "basmala": { "start_ms": 4000, "end_ms": 8800, "same_voice": true, "words": [[1, 4000, 4600], "…"] }
     }
   },
@@ -84,7 +84,7 @@ Many recordings open a chapter with the Isti'adha and/or Basmala before ayah 1. 
 }
 ```
 
-- `same_voice: false` marks a Basmala spliced in from another voice (e.g. a stock clip); it is omitted when undecided.
+- `same_voice` on each opener (Isti'adha and Basmala) says whether it is the reciter's own voice; `false` marks a clip spliced in from another voice (e.g. a stock clip). It is left out only on an Al-Fatiha 1:1 still awaiting review.
 - In Hafs and Shu'ba, Al-Fatiha's Basmala is verse 1:1: it stays in the tier files and is also listed under chapter `1`, so `same_voice` tells you whose voice it is.
 - `default_basmala` is the reciter's cleanest Basmala in their own voice, to play before a chapter whose recording has none; it is left out when the reciter has no own-voice Basmala.
 
