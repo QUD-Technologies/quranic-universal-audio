@@ -12,6 +12,7 @@ def test_defaults_are_all_disabled():
     cfg = AutomationConfig()
     assert cfg.auto_gen_ts.enabled is False
     assert cfg.gh_cut.enabled is False
+    assert cfg.gh_cut.include_letter_timestamps is True
     assert cfg.hf_publish.enabled is False
     assert cfg.stale_ts_regen.enabled is False
     assert cfg.stale_metadata.enabled is False
@@ -36,6 +37,7 @@ def test_unknown_top_level_key_round_trips_for_forward_compat():
         {"gh_cut": {"enabled": True}, "future_automation": {"x": 1}}
     )
     assert cfg.gh_cut.enabled is True
+    assert cfg.gh_cut.include_letter_timestamps is True  # old saved blobs preserve behavior
     dumped = cfg.model_dump()
     assert dumped["future_automation"] == {"x": 1}
 
@@ -67,11 +69,13 @@ def test_blank_next_version_override_normalizes_to_none():
 def test_json_round_trip_preserves_settings():
     cfg = AutomationConfig(
         auto_gen_ts=AutoGenTsConfig(enabled=True, gate_by_flags=False, gate_by_comments=False),
+        gh_cut=GhCutConfig(include_letter_timestamps=False),
     )
     back = AutomationConfig.model_validate_json(cfg.model_dump_json())
     assert back.auto_gen_ts.enabled is True
     assert back.auto_gen_ts.gate_by_flags is False
     assert back.auto_gen_ts.gate_by_comments is False
+    assert back.gh_cut.include_letter_timestamps is False
 
 
 @pytest.mark.parametrize("bad", ["9:00", "25:00", "09:60", "0900", ""])

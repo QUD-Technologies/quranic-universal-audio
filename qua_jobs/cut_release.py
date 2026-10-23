@@ -1113,6 +1113,7 @@ class _BuildContext:
     prior_members: dict[str, dict]
     pads: PadParams
     dropped_upstream_chapters: dict[str, dict[int, str]] = field(default_factory=dict)
+    include_letter_timestamps: bool = True
 
 
 def _upstream_changes(eligible: list[dict]) -> dict[str, dict[int, str]]:
@@ -1252,8 +1253,9 @@ def _build_member(rec: dict, ctx: _BuildContext) -> dict | None:
     # catalog row is not consulted here so a mislabelled row cannot make the
     # release claim letter timings a proxy-timed delivery does not have.
     shard_meta = verses.pop("_meta", {})
-    with_letters = shard_meta.get("profile", "native") == "native"
-    if not with_letters and not shard_meta.get("riwayah"):
+    native_profile = shard_meta.get("profile", "native") == "native"
+    with_letters = native_profile and ctx.include_letter_timestamps
+    if not native_profile and not shard_meta.get("riwayah"):
         raise ValueError(f"{slug}: word-profile shards name no riwayah")
     riwayah = shard_meta.get("riwayah") or DEFAULT_SDK_RIWAYAH
     _assert_riwayat_agree(slug, riwayah, rec.get("riwayah"))
@@ -1462,6 +1464,7 @@ def main() -> int:
         prior_members=prior_members,
         pads=pads,
         dropped_upstream_chapters=dropped,
+        include_letter_timestamps=os.environ.get("INCLUDE_LETTER_TIMESTAMPS", "1") == "1",
     )
     try:
         members = _build_members(eligible, ctx)

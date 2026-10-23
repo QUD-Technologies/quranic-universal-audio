@@ -415,5 +415,7 @@
   ],
   "dashboard_timeline_tooltip_entered_count": "{label} — entered {count}×:\n{dates}",
   "dashboard_timeline_tooltip_ts_refreshed_count": "Timestamps refreshed — {count}×:\n{dates}",
-  "dashboard_timeline_tooltip_ts_refreshed_single": "Timestamps refreshed {datetime}"
+  "dashboard_timeline_tooltip_ts_refreshed_single": "Timestamps refreshed {datetime}",
+  "dashboard_release_include_letter_timestamps": "Include letter timestamp files",
+  "dashboard_release_letter_timestamps_hint": "Applies to scheduled and manual GitHub releases. When off, releases contain verse and word timestamp files only."
 }
