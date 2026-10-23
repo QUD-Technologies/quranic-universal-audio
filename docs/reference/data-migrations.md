@@ -17,6 +17,7 @@ Playbook for one-shot migrations / backfills against bucket data (`reciters/<slu
 | `convert_peaks_v2_to_v3.py` | peaks/ | plain `<ch>.json` v2 → slim `<ch>.json.gz` v3 | yes | Migration #5 wire shape. See the inspector-audio skill. |
 | `backfill_deleted_basmala.py` | pipeline_meta.json | derive `deleted_basmala_chapters` sidecar | yes (byte-equal) | Migration #5. **Retired** with the `basmala_amin` category — nothing reads the field. |
 | `derive_pipeline_meta.py` | pipeline_meta.json | derive sidecar for a local slug dir | yes (modulo `generated_at`) | New-pipeline + legacy fallback paths. **Retired** with `backfill_deleted_basmala.py`. |
+| `backfills/restore_fatiha_basmala.py` | detailed.json + specials.json | undo the deletion of Hafs/Shu'ba Al-Fatiha 1:1 (the retired `basmala_amin` flow); re-label its specials entry `fatiha_verse` | yes (skips a chapter 1 that has its 1:1) | Dry run by default; `--execute` writes through the Inspector's undo (history records it); restart the Space after. See [specials.md](specials.md). |
 | `backfill_pipeline_peaks.py` | edit_history_peaks.jsonl | resync per-op pipeline peaks with history | yes | Migration #5 catch-up tool. |
 | `backfill_peaks_slim.py` / `rollback_peaks_slim.py` | peaks/ | legacy `.json` → slim `.json.gz` (+ reverse) | yes | See the inspector-audio skill. |
 | `unignore_category.py` | edit_history.jsonl | bulk-revert `ignore_issue` ops for a category | yes (skips reverted) | Data fix, not a migration — drives `services.segments.undo.undo_ops`. |

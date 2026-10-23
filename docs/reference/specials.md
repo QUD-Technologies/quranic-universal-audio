@@ -35,13 +35,17 @@ SpecialEntry {type, position: pre|post, start_ms, end_ms, words: [[s,e],...], co
 Read/write via `services/storage/data_dir.py` (`read_specials_doc` / `write_specials_doc`);
 `storage_paths.specials_path`. The bucket audit validates it (`bucket_audit._audit_specials`).
 
+## Al-Fatiha 1:1 is always a verse
+
+In Hafs and Shu'ba the Basmala is verse 1:1. It stays in `detailed.json`, in the release verse files and in the missing-verse check, whoever's voice it is. The voice is a flag: its `specials.json` entry (`source: fatiha_verse`) carries the aligner verdict and any maintainer confirm, and the release `specials.json` exposes it as `same_voice` so consumers decide how to handle it. Deleting 1:1 for being in another voice was the retired `basmala_amin` flow; `scripts/backfills/restore_fatiha_basmala.py` undoes those deletions.
+
 ## Writers
 
 | Writer | What it records |
 |---|---|
 | Align run / offline promote — `services/segments/specials_doc.py::specials_from_run`, called by `promote_build.build_artifacts` | Each `delete_segment` strip event whose `matched_ref` is a special name: `pre` if it ends by ayah 1 (+300 ms), clipped if it runs into ayah 1, `post` if it starts at the last ayah's end; mid-chapter rows dropped. Plus Al-Fatiha's 1:1 Basmala on `hafs`/`shuba` with the aligner's `basmala_voice` verdict (`run_dir/basmala_voice.json`, staged by `stage_assemble._write_voice`; `unavailable` records none). |
 | Timing — `services/timing/specials_timing.py` (via `aligner_timing.time_chapter`) | Fills `words` on each `pre` opener after a timing call (see below). |
-| Voice confirm — `services/segments/specials.py::confirm_voice` | `voice_confirmed`, audited `specials.voice_confirmed`. |
+| Voice confirm — `services/segments/specials.py::confirm_voice` | `voice_confirmed`, audited `specials.voice_confirmed`; a call that changes the answer stamps the reciter's current GH member stale (`catalog_edit`, `stamp_stale(..., tracks=("gh",))`) so the next cut ships it. HF does not ship specials. |
 | Backfill (one-shot) | The prod audit harness `.local/specials_audit/` (`build_specials.py` → `out/<slug>.json`). |
 
 ## Voice verdict
