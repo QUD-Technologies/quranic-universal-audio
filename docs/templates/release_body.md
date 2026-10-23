@@ -86,7 +86,7 @@ Many recordings open a chapter with the Isti'adha and/or Basmala before ayah 1. 
 
 - `same_voice: false` marks a Basmala spliced in from another voice (e.g. a stock clip); it is omitted when undecided.
 - In Hafs and Shu'ba, Al-Fatiha's Basmala is verse 1:1: it stays in the tier files and is also listed under chapter `1`, so `same_voice` tells you whose voice it is.
-- `default_basmala` is the reciter's cleanest own-voice Basmala, to play before a chapter whose recording has none.
+- `default_basmala` is the reciter's cleanest Basmala in their own voice, to play before a chapter whose recording has none; it is left out when the reciter has no own-voice Basmala.
 
 ## Programmatic use
 

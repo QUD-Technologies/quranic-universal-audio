@@ -11,4 +11,4 @@ echo "===== ${PBS_JOBID:-nojob} $(date -Is) ($(cat "$R/repo/STAGED_COMMIT")) ===
 trap 'echo "[job] exit $? $(date -Is)"' EXIT
 source "$R/env.sh"
 cd "$R"
-python voice_job.py bodies voice --workers "${OPENER_WORKERS:-8}" --shard "${OPENER_SHARD:-0/1}"
+python voice_job.py bodies voice2 --workers "${OPENER_WORKERS:-8}" --shard "${OPENER_SHARD:-0/1}"

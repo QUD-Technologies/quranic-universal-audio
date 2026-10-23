@@ -1,22 +1,31 @@
-"""Write each recorded opener's voice verdict to ``specials.json`` from the Katana runs.
+"""Write each recorded opener's voice verdict to ``specials.json`` from the Katana run.
 
-Every Isti'adha / Basmala gets the check Al-Fatiha's 1:1 Basmala gets: its voice
-features against its own chapter's first verses (the per-chapter z of
-``katana_openers/opener_job.py``). A recording that splices one stock clip onto
-every chapter would otherwise get split verdicts, since each chapter's references
-differ, so openers of one type that are the same audio — durations within
-``DUR_TOL_MS`` and MFCC means within ``MFCC_TOL`` (``katana_openers/voice_job.py``
-fingerprints) — share one verdict, decided on the median of their z. A maintainer's
-call (``voice_confirmed``) is never touched; each reciter that changed is reported
-through ``ts-refreshed`` so its GH release goes stale.
+Every Isti'adha / Basmala outside Al-Fatiha's 1:1 gets a plain ``same`` / ``different``
+(no ``needs_confirmation``: only the 1:1 goes to review). The verdict is decided per
+audio source, not per clip, from ``katana_openers/voice_job.py``'s output — each
+opener's z against its own chapter's verses (the 1:1 check) and a fingerprint
+(duration + MFCC means). Clips with near-identical fingerprints are one recording
+reused (a spliced clip); a source is, in order:
 
-Inputs: ``--verdicts`` (``{slug: {chapter: {start_ms: {verdict, z}}}}``, the opener
-job's ``voice`` per reply) and ``--fingerprints DIR`` (``<slug>.json`` per reciter).
+1. the same audio as the reciter's Al-Fatiha 1:1 → that Basmala's answer (the
+   maintainer's call, else a ``same`` / ``different`` verdict);
+2. the same audio as a clip of another reciter → ``different`` (a stock clip);
+3. reused across chapters → ``same`` when the median z of its clips is under the
+   reciter's cut, else ``different``;
+4. recorded with its chapter (no twin) → ``same`` unless its z is over the cut plus
+   ``LIVE_MARGIN`` — a live opener leans to the reciter's own voice.
+
+The cut is ``CUT``, moved by the reciter's Al-Fatiha 1:1 when its answer is known: a
+reciter whose own Basmala scores z ``f`` sits near ``f``, so the cut rises to
+``f + ANCHOR_GAP``; one whose 1:1 is foreign at ``f`` drops it to ``f - ANCHOR_GAP``.
+
+A maintainer's call (``voice_confirmed``) is never touched; each reciter that changed
+is reported through ``ts-refreshed`` so its GH release goes stale.
 
 Examples::
 
-    python scripts/backfills/write_opener_voice.py --verdicts voice_verdicts.json --fingerprints voice/
-    python scripts/backfills/write_opener_voice.py --verdicts voice_verdicts.json --fingerprints voice/ --execute
+    python scripts/backfills/write_opener_voice.py --fingerprints voice2/
+    python scripts/backfills/write_opener_voice.py --fingerprints voice2/ --execute
 """
 
 from __future__ import annotations
@@ -29,33 +38,33 @@ from pathlib import Path
 
 log = logging.getLogger("write_opener_voice")
 
-#: ``qua_sdk.integrations.basmala_voice`` thresholds (the SDK is not an Inspector dependency).
-SAME_BELOW = 1.7
-DIFFERENT_ABOVE = 2.3
-#: Two clips this close in length and MFCC means are one recording reused.
+#: The z under which a source is the reciter's own voice (between ``basmala_voice``'s 1.7 / 2.3).
+CUT = 2.0
+#: How far the cut sits from the Al-Fatiha 1:1's z when its answer is known.
+ANCHOR_GAP = 0.4
+#: The extra room a live opener gets before it is called foreign.
+LIVE_MARGIN = 0.3
+#: Two clips of one reciter this close in length and MFCC means are one recording.
 DUR_TOL_MS = 60
 MFCC_TOL = 6.0
+#: Tighter, across reciters, so two different recordings never pass as one stock clip.
+STOCK_DUR_TOL_MS = 40
+STOCK_MFCC_TOL = 3.0
+FATIHA = ("fatiha", "")
 
 
-def decide(z: float) -> str:
-    if z < SAME_BELOW:
-        return "same"
-    if z > DIFFERENT_ABOVE:
-        return "different"
-    return "needs_confirmation"
+def _dist(a: dict, b: dict) -> float:
+    return sum((x - y) ** 2 for x, y in zip(a["mfcc"], b["mfcc"], strict=True)) ** 0.5
 
 
-def same_clip(a: dict, b: dict) -> bool:
+def same_clip(a: dict, b: dict, dur_tol: int = DUR_TOL_MS, mfcc_tol: float = MFCC_TOL) -> bool:
     if a["type"] != b["type"] or not a.get("mfcc") or not b.get("mfcc"):
         return False
-    if abs(a["dur_ms"] - b["dur_ms"]) > DUR_TOL_MS:
-        return False
-    dist = sum((x - y) ** 2 for x, y in zip(a["mfcc"], b["mfcc"], strict=True)) ** 0.5
-    return dist <= MFCC_TOL
+    return abs(a["dur_ms"] - b["dur_ms"]) <= dur_tol and _dist(a, b) <= mfcc_tol
 
 
-def clip_groups(clips: dict[tuple[str, str], dict]) -> list[list[tuple[str, str]]]:
-    """``clips`` (keyed ``(chapter, start_ms)``) partitioned into same-audio groups."""
+def clip_groups(clips: dict) -> list[list]:
+    """``clips`` partitioned into same-audio groups (linked transitively)."""
     keys = list(clips)
     parent = {k: k for k in keys}
 
@@ -75,35 +84,122 @@ def clip_groups(clips: dict[tuple[str, str], dict]) -> list[list[tuple[str, str]
     return list(groups.values())
 
 
-def consensus(verdicts: dict, prints: dict) -> dict[int, dict[str, dict]]:
-    """One reciter's final ``{chapter: {start_ms: {verdict, z}}}``: per-chapter z, with each
-    same-audio group sharing the median z of its members."""
-    zs = {
-        (ch, start): v["z"]
-        for ch, by_start in verdicts.items()
-        for start, v in by_start.items()
-        if v.get("z") is not None
-    }
+def person(slug: str) -> str:
+    """The reciter a slug names: its first two tokens, three after a generic second one."""
+    tokens = slug.split("_")
+    n = 3 if len(tokens) > 2 and tokens[1] in {"al", "abdul", "bin", "abu", "el"} else 2
+    return "_".join(tokens[:n])
+
+
+def stock_clips(prints: dict[str, dict]) -> dict[str, set]:
+    """Per reciter, the opener keys whose audio also appears under another reciter."""
+    flat = [
+        (slug, (ch, start), clip)
+        for slug, doc in prints.items()
+        for ch, by_start in doc.get("openers", {}).items()
+        for start, clip in by_start.items()
+        if clip.get("mfcc")
+    ]
+    flat.sort(key=lambda row: (row[2]["type"], row[2]["dur_ms"]))
+    out: dict[str, set] = {}
+    for i, (slug, key, clip) in enumerate(flat):
+        for other_slug, other_key, other in flat[i + 1 :]:
+            if other["type"] != clip["type"] or other["dur_ms"] - clip["dur_ms"] > STOCK_DUR_TOL_MS:
+                break
+            if person(other_slug) != person(slug) and same_clip(
+                clip, other, STOCK_DUR_TOL_MS, STOCK_MFCC_TOL
+            ):
+                out.setdefault(slug, set()).add(key)
+                out.setdefault(other_slug, set()).add(other_key)
+    return out
+
+
+def reciter_cut(fatiha_same: bool | None, fatiha_z: float | None) -> float:
+    if fatiha_same is None or fatiha_z is None:
+        return CUT
+    return max(CUT, fatiha_z + ANCHOR_GAP) if fatiha_same else min(CUT, fatiha_z - ANCHOR_GAP)
+
+
+def _source_verdict(group, clips, fatiha_same, stock, cut) -> str:
+    zs = [clips[k]["z"] for k in group if k != FATIHA and clips[k].get("z") is not None]
+    if FATIHA in group and fatiha_same is not None:
+        return "same" if fatiha_same else "different"
+    if stock & set(group):
+        return "different"
+    if not zs:
+        return ""
+    if len([k for k in group if k != FATIHA]) > 1:
+        return "same" if statistics.median(zs) < cut else "different"
+    return "same" if zs[0] <= cut + LIVE_MARGIN else "different"
+
+
+def decide_reciter(
+    doc: dict, fatiha: tuple[bool | None, float | None], stock: set
+) -> dict[int, dict[str, dict]]:
+    """One reciter's ``{chapter: {start_ms: {verdict, z}}}`` (see the module docstring)."""
     clips = {
         (ch, start): clip
-        for ch, by_start in prints.get("openers", {}).items()
+        for ch, by_start in doc.get("openers", {}).items()
         for start, clip in by_start.items()
-        if (ch, start) in zs
     }
+    if doc.get("fatiha"):
+        clips[FATIHA] = doc["fatiha"]
+    cut = reciter_cut(*fatiha)
     out: dict[int, dict[str, dict]] = {}
+    undecided = []
     for group in clip_groups(clips):
-        z = statistics.median(zs[k] for k in group)
-        for ch, start in group:
-            out.setdefault(int(ch), {})[start] = {"verdict": decide(z), "z": round(z, 4)}
-    for (ch, start), z in zs.items():
-        out.setdefault(int(ch), {}).setdefault(start, {"verdict": decide(z), "z": z})
+        verdict = _source_verdict(group, clips, fatiha[0], stock, cut)
+        for key in group:
+            if key == FATIHA:
+                continue
+            row = {"verdict": verdict, "z": clips[key].get("z")}
+            out.setdefault(int(key[0]), {})[key[1]] = row
+            if not verdict:
+                undecided.append(row)
+    if undecided:  # no verse to score against: the reciter's usual answer
+        votes = [r["verdict"] for ch in out.values() for r in ch.values() if r["verdict"]]
+        lean = statistics.mode(votes) if votes else "same"
+        for row in undecided:
+            row["verdict"] = lean
     return out
+
+
+def write_voice(timing, slug: str, by_chapter: dict[int, dict]) -> int:
+    """Each opener's voice verdict onto its specials entry; a maintainer's call stays."""
+    from qua_shared.schemas.bucket.specials import SpecialsDoc
+
+    if not any(by_chapter.values()):
+        return 0
+    service, changed = timing.specials_service, 0
+    with service.WRITE_LOCK:
+        doc = service.read_doc(slug)
+        if doc is None:
+            return 0
+        for chapter, by_start in by_chapter.items():
+            for entry in doc.chapters.get(str(chapter), []):
+                got = by_start.get(str(entry.start_ms))
+                if entry.type not in timing.OPENERS or got is None:
+                    continue
+                if (entry.voice_verdict, entry.voice_z) != (got["verdict"], got["z"]):
+                    entry.voice_verdict, entry.voice_z = got["verdict"], got["z"]
+                    changed += 1
+        if changed:
+            doc = SpecialsDoc.model_validate(doc.model_dump())
+            timing.data_dir.write_specials_doc(slug, doc.model_dump(mode="json"))
+    return changed
+
+
+def fatiha_answer(doc) -> tuple[bool | None, float | None]:
+    """Al-Fatiha's 1:1 Basmala: own voice? (the maintainer's call, else the verdict) and its z."""
+    for entry in doc.chapters.get("1", []) if doc else []:
+        if entry.source == "fatiha_verse":
+            return entry.same_voice, entry.voice_z
+    return None, None
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
-    ap.add_argument("--verdicts", type=Path, required=True)
-    ap.add_argument("--fingerprints", type=Path, required=True)
+    ap.add_argument("--fingerprints", type=Path, required=True, help="voice_job.py output dir")
     ap.add_argument("--bucket", choices=("dev", "prod"), default="prod")
     ap.add_argument("--slug", nargs="+", help="only these reciters")
     ap.add_argument("--execute", action="store_true", help="Write. Without it only count.")
@@ -111,28 +207,32 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
-    verdicts = json.loads(args.verdicts.read_text("utf-8"))
-    slugs = args.slug or sorted(verdicts)
+    prints = {
+        p.stem: json.loads(p.read_text("utf-8")) for p in sorted(args.fingerprints.glob("*.json"))
+    }
+    stock = stock_clips(prints)
 
     import splice_opener_readings as S
 
-    if args.execute:
-        S._setup_paths_and_env(args.bucket)
-        from qua_shared.inspector_notify import notify_ts_refreshed
-        from services.timing import specials_timing
+    S._setup_paths_and_env(args.bucket)
+    from qua_shared.inspector_notify import notify_ts_refreshed
+    from services.timing import specials_timing
+
     failed = 0
-    for slug in slugs:
-        path = args.fingerprints / f"{slug}.json"
-        prints = json.loads(path.read_text("utf-8")) if path.is_file() else {}
-        final = consensus(verdicts.get(slug, {}), prints)
+    for slug in args.slug or sorted(prints):
+        final = decide_reciter(
+            prints[slug],
+            fatiha_answer(specials_timing.specials_service.read_doc(slug)),
+            stock.get(slug, set()),
+        )
         counts: dict[str, int] = {}
         for by_start in final.values():
             for v in by_start.values():
                 counts[v["verdict"]] = counts.get(v["verdict"], 0) + 1
         if not args.execute:
-            log.info("%s: %s", slug, counts)
+            log.info("%s: %s, stock=%d", slug, counts, len(stock.get(slug, ())))
             continue
-        changed = S.write_voice(specials_timing, slug, {ch: v for ch, v in final.items()})
+        changed = write_voice(specials_timing, slug, final)
         if changed and not notify_ts_refreshed(
             S._INSPECTORS[args.bucket], slug, reason="opener_voice"
         ):

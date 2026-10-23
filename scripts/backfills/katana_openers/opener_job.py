@@ -1,14 +1,12 @@
-"""Time each chapter's recorded openers and score their voice, on Katana.
+"""Time each chapter's recorded openers, on Katana.
 
     python opener_job.py <bodies dir> <replies dir> [--workers N] [--threads T]
 
 ``<bodies dir>/<slug>.json`` is a list of chapter bodies exported by
 ``scripts/backfills/splice_opener_readings.py --export`` — the aligner's
-``/api/v1/extraction/timing`` request (verse segments emptied, openers in front) plus
-``voice_refs``, the chapter's own verse clips ``[[start_ms, end_ms], ...]``. Each chapter
-runs what the aligner's ``chapter_timing._run`` runs (same head, ``specials``), reading
-only the recording's opening bytes, and scores every opener against ``voice_refs`` with
-``qua_sdk.integrations.basmala_voice``'s features. One reply per chapter lands at
+``/api/v1/extraction/timing`` request (verse segments emptied, openers in front). Each
+chapter runs what the aligner's ``chapter_timing._run`` runs (same head, ``specials``),
+reading only the recording's opening bytes. One reply per chapter lands at
 ``<replies dir>/<slug>/<chapter>.json``; an existing reply is kept, so a rerun resumes.
 
 On Katana (``env.sh``: the ``qua313`` env, a qua snapshot at ``$R/repo`` from
@@ -26,7 +24,6 @@ import json
 import os
 import time
 import traceback
-import warnings
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import cache
 from pathlib import Path
@@ -89,42 +86,8 @@ def _samples(slug: str, ref: str, need_ms: int, work: Path) -> np.ndarray:
         n *= 4
 
 
-def _voice(samples: np.ndarray, openers: list[dict], refs_ms: list[list[int]]) -> dict:
-    """``{start_ms: {verdict, z, reason}}`` for each opener against the chapter's verse clips."""
-    from qua_sdk.integrations import basmala_voice as V
-
-    def clip(start: int, end: int) -> np.ndarray:
-        return np.asarray(samples[start * SR // 1000 : end * SR // 1000], dtype=np.float32)
-
-    def none(reason: str) -> dict:
-        return {"verdict": None, "z": None, "reason": reason}
-
-    min_len = V.MIN_CLIP_S * SR
-    base = [y for s, e in refs_ms if len(y := clip(s, e)) > min_len]
-    out = {}
-    with warnings.catch_warnings(), np.errstate(all="ignore"):
-        warnings.simplefilter("ignore")
-        feats = [V.clip_features(y) for y in base] if len(base) >= V.MIN_REFERENCES else None
-        for seg in openers:
-            key = str(seg["time_start"])
-            y = clip(seg["time_start"], seg["time_end"])
-            if feats is None:
-                out[key] = none("too_few_references")
-            elif len(y) < min_len:
-                out[key] = none("clip_too_short")
-            else:
-                z = V.score(V.group_z(V.clip_features(y), feats))
-                ok = np.isfinite(z)
-                out[key] = {
-                    "verdict": V.decide(z) if ok else None,
-                    "z": round(z, V.ROUND) if ok else None,
-                    "reason": None if ok else "features_undefined",
-                }
-    return out
-
-
 def time_chapter(slug: str, body: dict, work: str) -> dict:
-    """One chapter body → the aligner's reply fields the splice reads, plus ``voice``."""
+    """One chapter body → the aligner's reply fields the splice reads."""
     from qua_sdk.integrations import faces as F
     from qua_sdk.integrations import segment_times as ST
     from qua_sdk.integrations import shard_coverage
@@ -134,15 +97,13 @@ def time_chapter(slug: str, body: dict, work: str) -> dict:
     aligner, p = _aligner()
     entries = body["entries"]
     doc = ST.decode(base64.b64decode(body["times"])) if body["times"] else ST.empty(body["chapter"])
-    voice: dict = {}
     for entry in entries:
         segs = entry["segments"]
         if not segs:
             continue
-        need = max([s["time_end"] for s in segs] + [e for _, e in body["voice_refs"]]) + PAD_MS
+        need = max(s["time_end"] for s in segs) + PAD_MS
         samples = _samples(slug, str(entry["ref"]), need, Path(work))
         ST.time_recording(entry, samples, doc, aligner, p, specials=True)
-        voice.update(_voice(samples, segs, body["voice_refs"]))
     ST.prune(doc, entries, specials=True)
     if body.get("delivery_lazim_ms") is not None:
         doc["_meta"]["lazim_p5_ms"] = F.p5(body["delivery_lazim_ms"])
@@ -162,7 +123,6 @@ def time_chapter(slug: str, body: dict, work: str) -> dict:
         "failed_segments": failed,
         "untimed": shard_coverage.untimed(coverage),
         "specials_skipped": [one["segment_uid"] for one in skipped],
-        "voice": voice,
         "seconds": round(time.perf_counter() - t0, 1),
     }
 
@@ -177,7 +137,7 @@ def _task(slug: str, body: dict, out: str, work: str) -> str:
     part = target.with_suffix(".part")
     part.write_text(json.dumps(reply), encoding="utf-8")
     os.replace(part, target)
-    return f"ok {slug} ch{body['chapter']} {reply['seconds']}s voice={reply['voice']}"
+    return f"ok {slug} ch{body['chapter']} {reply['seconds']}s"
 
 
 def _init(threads: int) -> None:

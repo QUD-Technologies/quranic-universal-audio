@@ -1,13 +1,17 @@
-"""Score every opener's voice against one reference pool per reciter, on Katana.
+"""Score every recorded opener's voice and fingerprint it, on Katana.
 
     python voice_job.py <bodies dir> <out dir> [--workers N] [--shard i/n]
 
-The pool is verse clips from chapters spread across the reciter's recordings
-(``POOL_PER_CHAPTER`` of each exported chapter's ``voice_refs``, ``POOL_CHAPTERS``
-chapters), so every opener — and Al-Fatiha's 1:1 Basmala, for checking against the
-maintainers' calls — is scored against the same reference. Writes
-``<out>/<slug>.json``: ``{"pool": n, "fatiha": clip, "openers": {chapter: {start_ms: clip}}}``,
-each clip ``{type, dur_ms, z, groups, mfcc}`` (``mfcc`` = MFCC means, to find identical clips).
+For each exported chapter body (``splice_opener_readings.py --export``), every opener
+is scored with ``qua_sdk.integrations.basmala_voice``'s features against the chapter's
+own verse clips (``voice_refs``) — Al-Fatiha's 1:1 check, applied per chapter — with no
+length floor (a short clip is padded). Each clip also gets a fingerprint (duration +
+MFCC means) so ``write_opener_voice.py`` can find reused audio. Al-Fatiha's 1:1 Basmala
+(read from the reciter's ``specials.json``) is fingerprinted too.
+
+Writes ``<out>/<slug>.json``:
+``{"fatiha": clip | null, "openers": {chapter: {start_ms: clip}}}``, each clip
+``{type, dur_ms, z, mfcc}``.
 """
 
 from __future__ import annotations
@@ -23,9 +27,9 @@ from pathlib import Path
 import numpy as np
 from opener_job import SR, _fs, _samples
 
-POOL_CHAPTERS = 24
-POOL_PER_CHAPTER = 3
 PAD_MS = 2_000
+#: Shortest clip the features take (pyin frames); a shorter one is zero-padded.
+MIN_SAMPLES = 4_096
 
 
 def _fatiha_span(slug: str) -> list[int] | None:
@@ -42,75 +46,46 @@ def _fatiha_span(slug: str) -> list[int] | None:
 
 
 def _cut(y: np.ndarray, start_ms: int, end_ms: int) -> np.ndarray:
-    return np.asarray(y[start_ms * SR // 1000 : end_ms * SR // 1000], dtype=np.float32)
+    clip = np.asarray(y[start_ms * SR // 1000 : end_ms * SR // 1000], dtype=np.float32)
+    return np.pad(clip, (0, max(0, MIN_SAMPLES - len(clip))))
 
 
-def _pool_chapters(bodies: list[dict]) -> set[int]:
-    chapters = sorted(b["chapter"] for b in bodies if b["voice_refs"])
-    if len(chapters) <= POOL_CHAPTERS:
-        return set(chapters)
-    step = len(chapters) / POOL_CHAPTERS
-    return {chapters[int(i * step)] for i in range(POOL_CHAPTERS)}
+def _clip(V, y: np.ndarray, kind: str, refs: list) -> dict:
+    f = V.clip_features(y)
+    z = V.score(V.group_z(f, refs)) if len(refs) >= V.MIN_REFERENCES else float("nan")
+    return {
+        "type": kind,
+        "dur_ms": round(len(y) * 1000 / SR),
+        "z": round(z, 4) if np.isfinite(z) else None,
+        "mfcc": [round(float(v), 3) for v in f["mfcc_mean"]],
+    }
 
 
 def score_reciter(slug: str, bodies: list[dict], work: str) -> dict:
     from qua_sdk.integrations import basmala_voice as V
 
-    pool_chs = _pool_chapters(bodies)
     fatiha = _fatiha_span(slug)
-    pool, clips = [], []  # clips: (chapter or None, start key, type, samples)
+    out: dict = {"fatiha": None, "openers": {}}
+    by_chapter = {b["chapter"]: b for b in bodies}
     with warnings.catch_warnings(), np.errstate(all="ignore"):
         warnings.simplefilter("ignore")
-        by_chapter = {b["chapter"]: b for b in bodies}
-        chapters = sorted(set(by_chapter) | ({1} if fatiha else set()))
-        for ch in chapters:
+        for ch in sorted(set(by_chapter) | ({1} if fatiha else set())):
             body = by_chapter.get(ch)
             segs = [s for e in body["entries"] for s in e["segments"]] if body else []
-            refs = body["voice_refs"][:POOL_PER_CHAPTER] if body and ch in pool_chs else []
+            refs = body["voice_refs"] if body else []
             spans = [[s["time_start"], s["time_end"]] for s in segs] + refs
             if ch == 1 and fatiha:
                 spans.append(fatiha)
-            if not spans:
-                continue
             ref = str(body["entries"][0]["ref"]) if body else "1"
             y = _samples(slug, ref, max(e for _, e in spans) + PAD_MS, Path(work))
-
-            pool += [
-                V.clip_features(c) for s, e in refs if len(c := _cut(y, s, e)) > V.MIN_CLIP_S * SR
-            ]
+            ref_feats = [V.clip_features(_cut(y, s, e)) for s, e in refs]
             for s in segs:
-                clips.append(
-                    (
-                        ch,
-                        str(s["time_start"]),
-                        s["matched_ref"],
-                        _cut(y, s["time_start"], s["time_end"]),
-                    )
+                clip = _cut(y, s["time_start"], s["time_end"])
+                out["openers"].setdefault(str(ch), {})[str(s["time_start"])] = _clip(
+                    V, clip, s["matched_ref"], ref_feats
                 )
             if ch == 1 and fatiha:
-                clips.append((None, str(fatiha[0]), "Basmala", _cut(y, *fatiha)))
-        out = {"pool": len(pool), "fatiha": None, "openers": {}}
-        for ch, key, kind, y in clips:
-            rec = {
-                "type": kind,
-                "dur_ms": round(len(y) * 1000 / SR),
-                "z": None,
-                "groups": None,
-                "mfcc": None,
-            }
-            if len(pool) >= V.MIN_REFERENCES and len(y) >= V.MIN_CLIP_S * SR:
-                f = V.clip_features(y)
-                groups = V.group_z(f, pool)
-                z = V.score(groups)
-                rec.update(
-                    z=round(z, 4) if np.isfinite(z) else None,
-                    groups={k: round(v, 4) for k, v in groups.items() if np.isfinite(v)},
-                    mfcc=[round(float(v), 3) for v in f["mfcc_mean"]],
-                )
-            if ch is None:
-                out["fatiha"] = rec
-            else:
-                out["openers"].setdefault(str(ch), {})[key] = rec
+                out["fatiha"] = _clip(V, _cut(y, *fatiha), "Basmala", ref_feats)
     return out
 
 
@@ -124,9 +99,7 @@ def _task(slug: str, bodies: list[dict], out: str, work: str) -> str:
     part.write_text(json.dumps(result), encoding="utf-8")
     os.replace(part, target)
     n = sum(len(v) for v in result["openers"].values())
-    return (
-        f"ok {slug} pool={result['pool']} openers={n} fatiha_z={(result['fatiha'] or {}).get('z')}"
-    )
+    return f"ok {slug} openers={n} fatiha={'yes' if result['fatiha'] else 'no'}"
 
 
 def main() -> int:

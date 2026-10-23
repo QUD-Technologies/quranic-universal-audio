@@ -63,7 +63,7 @@ no-op-or-error by design. Idempotent `backfill_*`/`purge_*`/`convert_*` stay in
 - `unignore_category` — bulk-revert `ignore_issue` ops (re-runnable data-fix)
 - `regen_timestamps_offline` — runs the Inspector's own timestamps run from this machine (many reciters in parallel) against the bucket, then reports each success to the Space's `ts-refreshed` webhook so the release bookkeeping happens there; reads a private DB copy, never uploads it
 - `splice_opener_readings` — time each chapter's recorded openers alone and splice their readings into the existing shards (no full regen); `--export` / `--replies` run the timing on Katana via `katana_openers/` instead of the aligner; reports each reciter to `ts-refreshed`
-- `write_opener_voice` — every opener's voice verdict to `specials.json` from the Katana runs (per-chapter z, one verdict per reused stock clip); dry run unless `--execute`
+- `write_opener_voice` — every opener's same / different voice verdict to `specials.json` from `katana_openers/voice_job.py` (decided per audio source: Fatiha 1:1 twin, stock clip, reused clip, live opener); dry run unless `--execute`
 - `restore_fatiha_basmala` — dry-run-first undo of a deleted Hafs/Shu'ba Al-Fatiha 1:1 (voice is a `specials.json` flag, never a reason to drop the verse); re-labels its specials entry `fatiha_verse` (`--execute` writes; restart the Space after)
 - `replay_lost_edits` — dry-run-first write-back of segment edits logged in `edit_history.jsonl` but missing from `detailed.json` (`--execute` writes; restart the Space after)
 - `canonicalize_mp3quran_urls` — dry-run-first rewrite of legacy `serverN.mp3quran.net` manifest urls to their resolved `cdn.mp3quran.net` target (`--apply` writes; restart the Space after)

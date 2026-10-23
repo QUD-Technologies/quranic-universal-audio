@@ -59,14 +59,19 @@ z): `same` below 1.7, `different` above 2.3, `needs_confirmation` between. A hol
 `POST /api/seg/specials/<reciter>/voice` `{chapter, start_ms, same_voice}`
 (`SegSpecialsVoiceRequest` → `OkAck`).
 
-Every other opener (each chapter's `pre` Isti'adha / Basmala) carries the same check,
-scored against its own chapter's first verses (up to 6 verse clips of at least 1 s,
-Al-Fatiha's 1:1 left out). A recording that splices one stock clip onto every chapter
-would get split verdicts that way, so clips that are the same audio (length within
-60 ms, MFCC means within 6.0) share the verdict of their median z. The released
-reciters were backfilled on Katana (`write_opener_voice.py`); new align runs record
-only Al-Fatiha's verdict so far. Only the 1:1 verdict is surfaced for review; the
-rest ship as `same_voice`.
+Every other opener (each chapter's `pre` Isti'adha / Basmala) gets a plain `same` /
+`different` — never `needs_confirmation`; only the 1:1 goes to review. Each opener is
+scored against its own chapter's first verses (up to 6 verse clips of at least 1 s;
+the opener itself has no length floor) and fingerprinted (length + MFCC means), and the
+verdict is decided per audio source (`scripts/backfills/write_opener_voice.py`):
+
+1. Same audio as the reciter's Al-Fatiha 1:1 → that Basmala's answer (maintainer's call first).
+2. Same audio as another reciter's clip → `different` (a stock clip).
+3. One clip reused across chapters → `same` if its median z is under 2.0.
+4. An opener recorded with its chapter → `same` unless its z is over 2.3.
+
+The released reciters were backfilled on Katana; new align runs record only Al-Fatiha's
+verdict so far.
 
 ## Timing + shards
 
@@ -99,7 +104,7 @@ release's verse projection and `reference/timestamps._ayah_of` files them under 
 (`ReleaseSpecialsDoc`, `qua_shared/specials.py::project_release`): per shipped chapter the
 first `pre` Isti'adha and Basmala (`start_ms`, `end_ms`, `same_voice` when known,
 `words: [[n, s, e]]`), plus `default_basmala` — an own-voice, unclipped Basmala closest to
-the reciter's median duration. No `source`, confidence or voice score is released; a
+the reciter's median duration, left out when the reciter has none in their own voice. No `source`, confidence or voice score is released; a
 Basmala in another voice still ships, flagged `same_voice: false`.
 
 ## Not here

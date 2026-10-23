@@ -17,10 +17,9 @@ chapters whose shard already has opener readings, so a rerun resumes.
 The timing can run off the aligner, on Katana: ``--export DIR`` writes each reciter's
 chapter request bodies (plus ``voice_refs``, the chapter's own verse clips) to
 ``DIR/<slug>.json`` for ``katana_openers/opener_job.py``, and ``--replies DIR`` then reads its
-``DIR/<slug>/<chapter>.json`` replies in place of aligner calls. Those replies also
-carry a voice verdict per opener (the Al-Fatiha Basmala check, against the chapter's
-own verses), written to ``specials.json`` for every chapter, spliced already or not;
-``write_opener_voice.py`` writes them instead with one verdict per reused stock clip.
+``DIR/<slug>/<chapter>.json`` replies in place of aligner calls. The bodies also
+carry ``voice_refs`` (the chapter's own verse clips) for ``katana_openers/voice_job.py``,
+whose output ``write_opener_voice.py`` turns into voice verdicts.
 
 Dry run by default. Needs ``HF_TOKEN``, ``INSPECTOR_EXTRACTION_SECRET`` (aligner calls
 only) and ``INSPECTOR_WEBHOOK_SECRET``.
@@ -131,8 +130,6 @@ class _Splicer:
         self.riwayah = sdk_riwayah_for(slug)
         #: Opener word times per spliced chapter, written to specials.json once at the end.
         self.words: dict[int, dict] = {}
-        #: Opener voice verdicts per chapter (Katana replies only), written likewise.
-        self.voice: dict[int, dict] = {}
 
     def by_surah(self) -> bool:
         return self.at.audio_category(self.detailed) == "by_surah_audio"
@@ -154,18 +151,13 @@ class _Splicer:
         shard = self._shard(chapter)
         if shard is None:
             return "no_shard"
-        present = has_openers(shard)
-        if present and self.replies is None:
+        if has_openers(shard):
             return "present"
         if not self.execute:
-            return "present" if present else "would_splice"
+            return "would_splice"
         reply = self._reply(chapter, openers)
         if reply is None:
             return "no_reply"
-        if "voice" in reply:
-            self.voice[chapter] = reply["voice"]
-        if present:
-            return "present"
         if reply["failed_segments"] or reply.get("untimed"):
             log.error(
                 "%s ch%d: openers not timed: %s", self.slug, chapter, reply["failed_segments"]
@@ -225,31 +217,6 @@ class _Splicer:
         }
 
 
-def write_voice(timing, slug: str, by_chapter: dict[int, dict]) -> int:
-    """Each opener's voice verdict onto its specials entry; a maintainer's call stays."""
-    from qua_shared.schemas.bucket.specials import SpecialsDoc
-
-    if not any(by_chapter.values()):
-        return 0
-    service, changed = timing.specials_service, 0
-    with service.WRITE_LOCK:
-        doc = service.read_doc(slug)
-        if doc is None:
-            return 0
-        for chapter, by_start in by_chapter.items():
-            for entry in doc.chapters.get(str(chapter), []):
-                got = by_start.get(str(entry.start_ms))
-                if entry.type not in timing.OPENERS or got is None:
-                    continue
-                if (entry.voice_verdict, entry.voice_z) != (got["verdict"], got["z"]):
-                    entry.voice_verdict, entry.voice_z = got["verdict"], got["z"]
-                    changed += 1
-        if changed:
-            doc = SpecialsDoc.model_validate(doc.model_dump())
-            timing.data_dir.write_specials_doc(slug, doc.model_dump(mode="json"))
-    return changed
-
-
 def _run_slug(
     slug: str, execute: bool, workers: int, notify, replies: Path | None = None
 ) -> dict[str, int]:
@@ -270,9 +237,7 @@ def _run_slug(
         for outcome in pool.map(one, splicer.chapters()):
             counts[outcome] = counts.get(outcome, 0) + 1
     splicer.timing.write_words(slug, splicer.words)
-    if voiced := write_voice(splicer.timing, slug, splicer.voice):
-        counts["voice_changed"] = voiced
-    if (counts.get("spliced") or voiced) and not notify(slug):
+    if counts.get("spliced") and not notify(slug):
         log.error("%s: spliced but the ts-refreshed report was not accepted", slug)
         counts["unreported"] = 1
     log.info("%s: %s", slug, counts)
