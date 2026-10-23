@@ -443,5 +443,7 @@
   ],
   "dashboard_timeline_tooltip_entered_count": "{label} — دخل {count}×:\n{dates}",
   "dashboard_timeline_tooltip_ts_refreshed_count": "حدثت الطوابع الزمنية — {count}×:\n{dates}",
-  "dashboard_timeline_tooltip_ts_refreshed_single": "حدثت الطوابع الزمنية {datetime}"
+  "dashboard_timeline_tooltip_ts_refreshed_single": "حدثت الطوابع الزمنية {datetime}",
+  "dashboard_release_include_letter_timestamps": "تضمين ملفات التوقيت على مستوى الحروف",
+  "dashboard_release_letter_timestamps_hint": "ينطبق على إصدارات GitHub المجدولة واليدوية. عند إيقافه، تتضمن الإصدارات ملفات التوقيت على مستوى الآيات والكلمات فقط."
 }

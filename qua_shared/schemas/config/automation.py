@@ -72,6 +72,8 @@ class GhCutConfig(BaseModel):
     time_of_day: str = Field(default=_DEFAULT_TIME_OF_DAY, pattern=_TIME_OF_DAY_RE)
     timezone: str = Field(default=_DEFAULT_TIMEZONE, min_length=1)
     next_version_override: str | None = None
+    #: Release contents for both manual and scheduled cuts; independent of enabled.
+    include_letter_timestamps: bool = True
 
 
 class HfPublishConfig(BaseModel):

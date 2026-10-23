@@ -144,16 +144,23 @@ def test_gh_cut_skips_empty_cut_and_advances_cadence(monkeypatch):
     assert st["last_run_at"] is not None  # cadence advanced so we don't re-check every tick
 
 
-def test_gh_cut_launches_when_changes_exist(monkeypatch):
+@pytest.mark.parametrize("include_letters", [True, False])
+def test_gh_cut_launches_when_changes_exist(monkeypatch, include_letters):
     launched: list[dict] = []
     monkeypatch.setattr(evaluators, "is_due", lambda **k: True)
     monkeypatch.setattr(evaluators, "current_auto_version", lambda: ("v1.2.0", 3))
     monkeypatch.setattr(evaluators.jobs_base, "running_job_for", lambda **k: None)
     monkeypatch.setattr(evaluators.cut_release_jobs, "launch", lambda **k: launched.append(k))
 
-    evaluators.eval_gh_cut(AutomationConfig(gh_cut=GhCutConfig(enabled=True)), _now())
+    evaluators.eval_gh_cut(
+        AutomationConfig(
+            gh_cut=GhCutConfig(enabled=True, include_letter_timestamps=include_letters)
+        ),
+        _now(),
+    )
 
     assert len(launched) == 1
+    assert launched[0]["include_letter_timestamps"] is include_letters
     gh_cut_state = repo_automation.get_state("gh_cut")
     assert gh_cut_state is not None
     assert gh_cut_state["last_status"] == "launched"

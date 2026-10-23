@@ -54,6 +54,7 @@ def launch(
     launched_by: str | None = None,
     settings=None,
     webhook_base: str | None = None,
+    include_letter_timestamps: bool | None = None,
 ) -> dict:
     """Launch a cut-release job. Returns ``{job_id, url}``.
 
@@ -62,8 +63,16 @@ def launch(
     job as ``PUBLISH_PAD_START`` / ``PUBLISH_PAD_END`` / ``PUBLISH_MIN_GAP`` —
     the SAME env the HF publish reads, so the release verse bounds match the
     dataset's clip windows.
+
+    ``include_letter_timestamps`` defaults to the saved GH-cut contents setting
+    for manual launches; automation passes its config snapshot explicitly.
     """
     from huggingface_hub import Volume, get_token, run_job
+
+    if include_letter_timestamps is None:
+        from services.admin.automation.config import load_config
+
+        include_letter_timestamps = load_config().gh_cut.include_letter_timestamps
 
     busy = base.running_job_for(kind=KIND)
     if busy is not None:
@@ -74,6 +83,7 @@ def launch(
     env = {
         "INSPECTOR_BUCKET_MOUNT": "/data",
         "PYTHONPATH": "/aux/code",
+        "INCLUDE_LETTER_TIMESTAMPS": "1" if include_letter_timestamps else "0",
     }
     if version:
         env["RELEASE_VERSION"] = version

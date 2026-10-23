@@ -240,6 +240,7 @@ def eval_gh_cut(cfg: AutomationConfig, now: datetime) -> None:
     try:
         cut_release_jobs.launch(
             version=override or None,  # None → the job auto-computes the version
+            include_letter_timestamps=c.include_letter_timestamps,
             launched_by=SYSTEM_AUTOMATION_ID,
             webhook_base=_webhook_base(),
         )

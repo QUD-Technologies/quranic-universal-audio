@@ -755,6 +755,7 @@ export interface GhCutConfig {
   time_of_day?: string;
   timezone?: string;
   next_version_override?: string | null;
+  include_letter_timestamps?: boolean;
 }
 /**
  * Batch-publish the HF dataset on a fixed cadence (owner timezone).

@@ -84,8 +84,9 @@ def _timestamps(root, slug, chapter):
 
 
 @pytest.mark.parametrize("corrupt_dropped_shard", [False, True])
+@pytest.mark.parametrize("include_letters", [True, False])
 def test_built_member_omits_dropped_chapter_everywhere(
-    tmp_path, monkeypatch, corrupt_dropped_shard
+    tmp_path, monkeypatch, corrupt_dropped_shard, include_letters
 ):
     monkeypatch.setenv("INSPECTOR_BUCKET_MOUNT", str(tmp_path))
     _timestamps(tmp_path, "swapped", 1)
@@ -109,11 +110,19 @@ def test_built_member_omits_dropped_chapter_everywhere(
         prior_members={},
         pads={"pad_start": 0, "pad_end": 0, "min_gap": 0},
         dropped_upstream_chapters={"swapped": {62: "ch62 recording (465s → 321s)"}},
+        include_letter_timestamps=include_letters,
     )
     member = cut_release._build_member(
         {"slug": "swapped", "ts_version": "ts1", "chapter_count": 2}, ctx
     )
     assert member is not None
+    expected_tiers = ["verse", "word", "letter"] if include_letters else ["verse", "word"]
+    assert member["tiers"] == expected_tiers
+    assert ("letter_timestamps.json.gz" in member["_files"]) is include_letters
+    assert member["content_hash"] == cut_release._sha256_hex(
+        member["_files"][f"{expected_tiers[-1]}_timestamps.json.gz"]
+        + member["_files"]["catalog.json"]
+    )
     assert member["coverage_ayahs"] == member["coverage_surahs"] == 1
     assert member["missing_surahs"] == "62"
     assert member["missing_verses"] == ""
@@ -124,6 +133,7 @@ def test_built_member_omits_dropped_chapter_everywhere(
     assert catalog["coverage"] == {"surahs": 1, "ayahs": 1, "missing_surahs": "62"}
     zip_bytes = cut_release._pack_recitation_zip("swapped", member["_files"])
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
+        assert ("letter_timestamps.json.gz" in archive.namelist()) is include_letters
         assert json.loads(archive.read("catalog.json")) == catalog
         for tier in member["tiers"]:
             doc = json.loads(gzip.decompress(archive.read(f"{tier}_timestamps.json.gz")))
@@ -139,6 +149,7 @@ def test_built_member_omits_dropped_chapter_everywhere(
         )
     )
     assert manifest["recitation_count"] == 1
+    assert manifest["recitations"]["swapped"]["tiers"] == expected_tiers
     assert manifest["recitations"]["swapped"]["coverage_ayahs"] == 1
     changelog = cut_release._build_changelog(
         "v1.0.0", None, [member], [], "owner", "repo", "11-10-2026", "dataset"
@@ -201,9 +212,14 @@ def test_member_with_every_chapter_dropped_is_omitted(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("with_drift", [False, True])
+@pytest.mark.parametrize("include_letters", [None, "0"])
 def test_successful_cut_retains_partial_recitations_and_reports_exclusions(
-    tmp_path, monkeypatch, with_drift
+    tmp_path, monkeypatch, with_drift, include_letters
 ):
+    if include_letters is None:
+        monkeypatch.delenv("INCLUDE_LETTER_TIMESTAMPS", raising=False)
+    else:
+        monkeypatch.setenv("INCLUDE_LETTER_TIMESTAMPS", include_letters)
     for slug, chapters in (("partial", (1, 62)), ("held", (62,))):
         for chapter in chapters:
             _timestamps(tmp_path, slug, chapter)
@@ -252,3 +268,8 @@ def test_successful_cut_retains_partial_recitations_and_reports_exclusions(
     assert manifest["recitation_count"] == (1 if with_drift else 2)
     assert ("held.zip" in uploads) == (not with_drift)
     assert "partial.zip" in uploads
+    expected_tiers = ["verse", "word"] + (["letter"] if include_letters is None else [])
+    for slug, member in manifest["recitations"].items():
+        assert member["tiers"] == expected_tiers
+        with zipfile.ZipFile(io.BytesIO(uploads[f"{slug}.zip"])) as archive:
+            assert ("letter_timestamps.json.gz" in archive.namelist()) is (include_letters is None)

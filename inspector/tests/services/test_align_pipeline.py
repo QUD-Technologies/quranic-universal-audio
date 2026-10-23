@@ -263,29 +263,49 @@ def align_env(tmp_path, monkeypatch):
     _hf_bucket.reset_backend()
 
 
-def test_start_refuses_a_replaced_upstream_recording(align_env, monkeypatch):
+def test_start_adopts_a_replaced_upstream_recording_then_aligns_it(align_env, monkeypatch):
     from qua_shared.audio import upstream
     from services.admin.align_pipeline import runs
     from services.audio import audio_meta
+    from services.storage import storage_paths
 
-    audio_meta._stage_for_test(
-        SLUG,
-        {
-            "schema_version": 1,
-            "slug": SLUG,
-            "_meta": {"checksum": "x", "chapter_count": 1, "category": "by_surah"},
-            "chapters": {
-                "112": {"url": "https://cdn/112.mp3", "size_bytes": 1000, "duration_sec": 60}
-            },
+    backend, started = align_env
+    doc = {
+        "schema_version": 1,
+        "slug": SLUG,
+        "_meta": {"checksum": "x", "chapter_count": 1, "category": "by_surah"},
+        "chapters": {
+            "112": {
+                "url": "https://cdn/112.mp3",
+                "size_bytes": 1000,
+                "duration_sec": 60,
+                "bitrate_kbps": 320,
+                "bitrate_mode": "cbr",
+            }
         },
+    }
+    backend.write_json_atomic(storage_paths.audio_manifest_path(SLUG), doc)
+    audio_meta._stage_for_test(SLUG, doc)
+    stale = [f"reciters/{SLUG}/{p}" for p in ("audio/112.mp3", "peaks/112.json.gz", "levels/112.json.gz")]
+    for path in stale:
+        backend.write_bytes_atomic(path, b"old recording")
+    monkeypatch.setattr(
+        upstream, "probe", lambda url: {"size": 800, "duration_s": 40.4, "kbps": 128, "sr": 44100}
     )
-    monkeypatch.setattr(upstream, "probe", lambda url: {"size": 800, "duration_s": 40.0})
 
-    with pytest.raises(runs.AlignRunError) as exc:
-        runs.start(SLUG, OWNER)
+    status = runs.start(SLUG, OWNER)
 
-    assert exc.value.status == 409
-    assert "ch112 recording (60s → 40s)" in str(exc.value)
+    entry = backend.read_json(storage_paths.audio_manifest_path(SLUG))["chapters"]["112"]
+    assert {k: v for k, v in entry.items() if v is not None} == {
+        "url": "https://cdn/112.mp3",
+        "size_bytes": 800,
+        "duration_sec": 40,
+        "bitrate_kbps": 128,
+        "bitrate_mode": "cbr",
+    }
+    assert [backend.exists(p) for p in stale] == [False, False, False]
+    assert status.detail["upstream_refreshed"] == ["ch112 recording (60s → 40s)"]
+    assert started == [status.run_id]
 
 
 def test_start_retry_cancel_lifecycle(align_env):

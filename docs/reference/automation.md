@@ -16,13 +16,20 @@ Plus a non-acting watchdog, below.
 | `stale_metadata` | Refresh the HF catalog once a metadata edit settles | An HF row stale for `catalog_edit` past the guard | guard-minutes |
 | `auto_release_inactive` | Force-release a reviewer's claim after prolonged inactivity (back to the awaiting-review pool; reviewer notified) | An open, not-yet-marked-ready under-review claim whose reviewer has been idle ≥ N days | inactive-days |
 | `hf_publish` | Batch-publish every fresh + stale HF candidate | Scheduled: every N days at HH:MM (owner tz) | interval-days, time-of-day, timezone |
-| `gh_cut` | Cut a global GH release when there are changes | Scheduled: every N days at HH:MM (owner tz) | interval-days, time-of-day, timezone, next-version override |
+| `gh_cut` | Cut a global GH release when there are changes | Scheduled: every N days at HH:MM (owner tz) | interval-days, time-of-day, timezone, next-version override, include-letter-timestamps |
 
 All default **disabled**. The engine reuses the manual job entrypoints verbatim
 (`timestamps_jobs.launch`, `cut_release.launch`, `hf_publish_batch.launch`,
 `refresh_catalog.launch`) — automation is a *decider*, not new job code. Automated
 launches therefore record into the same uniform `JobRecord` store as manual ones,
 so every automated run is visible in the admin **Jobs** tab ([admin-dashboard.md](admin-dashboard.md) § Jobs compartment).
+
+`gh_cut.include_letter_timestamps` defaults to **true**, including for existing
+saved configs. The Releases-tab checkbox applies to scheduled and manual cuts,
+even when the schedule is disabled. The launcher snapshots the choice into
+`INCLUDE_LETTER_TIMESTAMPS=1|0` for the HF job. When off, recitation ZIPs omit
+`letter_timestamps.json.gz`, manifests advertise only verse/word tiers, and content
+hashes use the word tier. Bucket timestamps and previously cut releases are unchanged.
 `refresh_catalog.launch`) — and the manual `claim.force_released` transition for
 `auto_release_inactive`. Automation is a *decider*, not new job code.
 
