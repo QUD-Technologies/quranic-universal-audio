@@ -262,4 +262,5 @@ def test_a_failed_opener_does_not_count_as_a_failed_segment(delivery, monkeypatc
 
     monkeypatch.setattr(requests, "post", post)
     reply = aligner_timing.time_chapter("r", 112, riwayah="hafs")
+    assert reply is not None
     assert reply["failed_segments"] == [{"segment_uid": "a"}]

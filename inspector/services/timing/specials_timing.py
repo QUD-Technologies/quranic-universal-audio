@@ -62,7 +62,9 @@ def store_words(slug: str, chapter: int, openers: list[dict], times: bytes) -> i
             continue
         start = seg["time_start"]
         words_at[start] = [
-            (start + s, start + e) for _, s, e, *_ in held["words"] if s is not None and e is not None
+            (start + s, start + e)
+            for _, s, e, *_ in held["words"]
+            if s is not None and e is not None
         ]
     if not words_at:
         return 0

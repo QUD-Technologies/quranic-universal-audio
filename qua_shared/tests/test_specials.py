@@ -13,7 +13,9 @@ from qua_shared.schemas.bucket.specials import SpecialEntry, SpecialsDoc
 from qua_shared.specials import default_basmala, project_release
 from qua_shared.timestamps_native import is_verse_ref
 
-GOLDEN = Path(__file__).resolve().parents[1] / "schemas" / "bucket" / "fixtures" / "specials.golden.json"
+GOLDEN = (
+    Path(__file__).resolve().parents[1] / "schemas" / "bucket" / "fixtures" / "specials.golden.json"
+)
 
 
 def _doc() -> SpecialsDoc:
@@ -49,7 +51,7 @@ def test_chapters_must_be_time_ordered():
     a = {"type": "Basmala", "start_ms": 5000, "end_ms": 9000, "source": "align"}
     b = {"type": "Isti'adha", "start_ms": 0, "end_ms": 4000, "source": "align"}
     with pytest.raises(ValidationError):
-        SpecialsDoc(generated_at="x", chapters={"2": [a, b]})
+        SpecialsDoc.model_validate({"generated_at": "x", "chapters": {"2": [a, b]}})
 
 
 def test_same_voice_prefers_the_maintainer():
@@ -67,6 +69,7 @@ def test_release_projects_openers_only_for_shipped_chapters():
     assert one.basmala.same_voice is False
     two = rel.chapters["2"]
     assert two.istiadha is None  # Sadaqa (post) is never released
+    assert two.basmala is not None
     assert two.basmala.words[0] == [1, 360, 890]
 
 
@@ -80,7 +83,9 @@ def test_cut_emits_specials_json_for_shipped_chapters(tmp_path, monkeypatch):
     monkeypatch.setenv("INSPECTOR_BUCKET_MOUNT", str(tmp_path))
     (tmp_path / "reciters" / "r").mkdir(parents=True)
     (tmp_path / "reciters" / "r" / "specials.json").write_bytes(GOLDEN.read_bytes())
-    body = json.loads(cut_release._build_specials_json("r", {2, 50}))
+    raw = cut_release._build_specials_json("r", {2, 50})
+    assert raw is not None
+    body = json.loads(raw)
     assert body["slug"] == "r" and set(body["chapters"]) == {"2", "50"}
     assert "voice_z" not in json.dumps(body) and "source" not in json.dumps(body)
     assert body["default_basmala"] == {"chapter": 2, "start_ms": 240, "end_ms": 6400}
@@ -94,7 +99,14 @@ def test_cut_without_specials_file_emits_nothing(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize(
     ("ref", "verse"),
-    [("2:1", True), ("114:6", True), ("0:0", False), ("2:0", False), ("Basmala", False), ("0:1", False)],
+    [
+        ("2:1", True),
+        ("114:6", True),
+        ("0:0", False),
+        ("2:0", False),
+        ("Basmala", False),
+        ("0:1", False),
+    ],
 )
 def test_only_real_verse_refs_project(ref, verse):
     assert is_verse_ref(ref) is verse

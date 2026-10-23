@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from typing import get_args
+from typing import cast, get_args
 
 from qua_shared.schemas.bucket.specials import SpecialEntry, SpecialsDoc, SpecialType, VoiceVerdict
 from qua_shared.schemas.bucket.staged_run import PipelineAuditEvent
@@ -57,8 +57,13 @@ def _edge_entry(ev: PipelineAuditEvent, bounds: tuple[int, int]) -> SpecialEntry
     if end <= start:
         return None
     return SpecialEntry(
-        type=snap.matched_ref, position=position, start_ms=start, end_ms=end,
-        confidence=snap.confidence, source="align", clipped=clipped,
+        type=cast(SpecialType, snap.matched_ref),
+        position=position,
+        start_ms=start,
+        end_ms=end,
+        confidence=snap.confidence,
+        source="align",
+        clipped=clipped,
     )
 
 
@@ -67,14 +72,15 @@ def _fatiha_basmala(segments: list[dict], voice: dict | None) -> SpecialEntry | 
     if row is None:
         return None
     # ``unavailable`` (no isolated Basmala, too little reference audio) is no verdict.
-    decided = voice is not None and voice.get("verdict") in _VERDICTS
+    voice = voice or {}
+    decided = voice.get("verdict") in _VERDICTS
     return SpecialEntry(
         type="Basmala",
         start_ms=row["time_start"],
         end_ms=row["time_end"],
         confidence=row.get("confidence"),
         source="fatiha_verse",
-        voice_verdict=voice["verdict"] if decided else None,
+        voice_verdict=voice.get("verdict") if decided else None,
         voice_z=voice.get("z") if decided else None,
     )
 
@@ -107,5 +113,8 @@ def specials_from_run(
         return None
     return SpecialsDoc(
         generated_at=generated_at,
-        chapters={str(ch): sorted(items, key=lambda s: s.start_ms) for ch, items in sorted(chapters.items())},
+        chapters={
+            str(ch): sorted(items, key=lambda s: s.start_ms)
+            for ch, items in sorted(chapters.items())
+        },
     )

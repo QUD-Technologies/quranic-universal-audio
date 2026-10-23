@@ -30,7 +30,9 @@ def confirm_voice(
     """Store the call on the entry starting at ``start_ms``; ``False`` when there is no such entry."""
     with WRITE_LOCK:
         doc = read_doc(slug)
-        entries = doc.chapters.get(str(chapter), []) if doc else []
+        if doc is None:
+            return False
+        entries = doc.chapters.get(str(chapter), [])
         entry = next((e for e in entries if e.start_ms == start_ms), None)
         if entry is None:
             return False

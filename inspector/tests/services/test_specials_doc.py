@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
-from qua_shared.schemas.bucket.staged_run import PipelineAuditEvent
-from services.segments.specials_doc import specials_from_run
+from qua_shared.schemas.bucket.specials import SpecialsDoc
+from qua_shared.schemas.bucket.staged_run import PipelineAuditEvent, PipelineSegSnapshot
+from services.segments.specials_doc import specials_from_run as _from_run
 
 
 def _delete(chapter: int, ref: str, start: int, end: int, conf: float = 1.0) -> PipelineAuditEvent:
-    snap = {"index_at_save": 0, "time_start": start, "time_end": end, "matched_ref": ref, "confidence": conf}
+    snap = PipelineSegSnapshot(
+        index_at_save=0, time_start=start, time_end=end, matched_ref=ref, confidence=conf
+    )
     return PipelineAuditEvent(kind="delete_segment", chapter=chapter, targets_before=[snap])
+
+
+def specials_from_run(*args, **kwargs) -> SpecialsDoc:
+    doc = _from_run(*args, **kwargs)
+    assert doc is not None
+    return doc
 
 
 def _chapter(*rows: tuple[str, int, int]) -> dict:
@@ -29,7 +38,9 @@ def test_pre_ayah_openers_become_align_specials_in_time_order():
 
 def test_an_opener_running_into_ayah_1_is_clipped():
     by_chapter = {50: _chapter(("50:1:1-50:1:1", 4090, 8170))}
-    doc = specials_from_run([_delete(50, "Basmala", 0, 8495)], by_chapter, generated_at="t", riwayah="hafs")
+    doc = specials_from_run(
+        [_delete(50, "Basmala", 0, 8495)], by_chapter, generated_at="t", riwayah="hafs"
+    )
     only = doc.chapters["50"][0]
     assert (only.end_ms, only.clipped) == (4090, True)
 
@@ -45,25 +56,39 @@ def test_fatiha_verse_1_1_is_listed_in_numbering_editions_only():
     fatiha = {1: _chapter(("1:1:1-1:1:4", 3300, 6200), ("1:2:1-1:2:4", 6300, 9000))}
     hafs = specials_from_run([], fatiha, generated_at="t", riwayah="hafs")
     one = hafs.chapters["1"][0]
-    assert (one.type, one.source, one.start_ms, one.end_ms) == ("Basmala", "fatiha_verse", 3300, 6200)
-    warsh = specials_from_run([], {1: _chapter(("1:1:1-1:1:4", 3300, 6200))}, generated_at="t", riwayah="warsh")
+    assert (one.type, one.source, one.start_ms, one.end_ms) == (
+        "Basmala",
+        "fatiha_verse",
+        3300,
+        6200,
+    )
+    warsh = _from_run(
+        [], {1: _chapter(("1:1:1-1:1:4", 3300, 6200))}, generated_at="t", riwayah="warsh"
+    )
     assert warsh is None
 
 
 def test_unknown_special_names_are_ignored():
     by_chapter = {2: _chapter(("2:1:1-2:1:1", 9000, 12000))}
-    assert specials_from_run([_delete(2, "special", 0, 800)], by_chapter, generated_at="t", riwayah="hafs") is None
+    assert (
+        _from_run([_delete(2, "special", 0, 800)], by_chapter, generated_at="t", riwayah="hafs")
+        is None
+    )
 
 
 def test_the_aligner_voice_verdict_lands_on_the_fatiha_basmala():
     fatiha = {1: _chapter(("1:1:1-1:1:4", 3300, 6200), ("1:2:1-1:2:4", 6300, 9000))}
     voice = {"verdict": "needs_confirmation", "z": 1.93, "version": 1}
-    one = specials_from_run([], fatiha, generated_at="t", riwayah="hafs", voice=voice).chapters["1"][0]
+    one = specials_from_run([], fatiha, generated_at="t", riwayah="hafs", voice=voice).chapters[
+        "1"
+    ][0]
     assert (one.voice_verdict, one.voice_z) == ("needs_confirmation", 1.93)
 
 
 def test_an_unavailable_voice_verdict_records_nothing():
     fatiha = {1: _chapter(("1:1:1-1:1:4", 3300, 6200))}
     voice = {"verdict": "unavailable", "z": None, "reason": "too_few_references", "version": 1}
-    one = specials_from_run([], fatiha, generated_at="t", riwayah="hafs", voice=voice).chapters["1"][0]
+    one = specials_from_run([], fatiha, generated_at="t", riwayah="hafs", voice=voice).chapters[
+        "1"
+    ][0]
     assert (one.voice_verdict, one.voice_z) == (None, None)

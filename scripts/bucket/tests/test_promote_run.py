@@ -268,7 +268,9 @@ def _run(monkeypatch, *argv: str) -> int:
 
 
 def _published(h: Harness, name: str) -> dict:
-    return json.loads(h.written[f"reciters/{SLUG}/{name}"])
+    body = h.written[f"reciters/{SLUG}/{name}"]
+    assert isinstance(body, bytes | str)
+    return json.loads(body)
 
 
 # ---------------------------------------------------------------------------
