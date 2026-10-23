@@ -6,7 +6,8 @@ name and confidence, so they are the run's record of its specials. A special
 before ayah 1 is ``pre`` (clipped at ayah 1 if it ran into it), one after the
 last ayah is ``post``; a special inside the chapter (a repeated take) is not a
 chapter edge and is left out. In editions that number Al-Fatiha's Basmala as
-1:1, that verse is also listed here — it stays a verse.
+1:1, that verse is also listed here — it stays a verse — carrying the
+aligner's ``basmala_voice`` verdict on it when the run asked for one.
 """
 
 from __future__ import annotations
@@ -15,10 +16,11 @@ import re
 from collections.abc import Iterable
 from typing import get_args
 
-from qua_shared.schemas.bucket.specials import SpecialEntry, SpecialsDoc, SpecialType
+from qua_shared.schemas.bucket.specials import SpecialEntry, SpecialsDoc, SpecialType, VoiceVerdict
 from qua_shared.schemas.bucket.staged_run import PipelineAuditEvent
 
 _NAMES = set(get_args(SpecialType))
+_VERDICTS = set(get_args(VoiceVerdict))
 _VERSE = re.compile(r"^(\d+):(\d+):\d+")
 #: SDK riwayah slugs whose Al-Fatiha numbers the Basmala as verse 1:1.
 NUMBERED_BASMALA = frozenset({"hafs", "shuba"})
@@ -60,13 +62,20 @@ def _edge_entry(ev: PipelineAuditEvent, bounds: tuple[int, int]) -> SpecialEntry
     )
 
 
-def _fatiha_basmala(segments: list[dict]) -> SpecialEntry | None:
+def _fatiha_basmala(segments: list[dict], voice: dict | None) -> SpecialEntry | None:
     row = next((s for s in segments if (s.get("matched_ref") or "") == "1:1:1-1:1:4"), None)
     if row is None:
         return None
+    # ``unavailable`` (no isolated Basmala, too little reference audio) is no verdict.
+    decided = voice is not None and voice.get("verdict") in _VERDICTS
     return SpecialEntry(
-        type="Basmala", start_ms=row["time_start"], end_ms=row["time_end"],
-        confidence=row.get("confidence"), source="fatiha_verse",
+        type="Basmala",
+        start_ms=row["time_start"],
+        end_ms=row["time_end"],
+        confidence=row.get("confidence"),
+        source="fatiha_verse",
+        voice_verdict=voice["verdict"] if decided else None,
+        voice_z=voice.get("z") if decided else None,
     )
 
 
@@ -76,8 +85,12 @@ def specials_from_run(
     *,
     generated_at: str,
     riwayah: str,
+    voice: dict | None = None,
 ) -> SpecialsDoc | None:
-    """The run's ``SpecialsDoc``, or ``None`` when it recorded no special."""
+    """The run's ``SpecialsDoc``, or ``None`` when it recorded no special.
+
+    ``voice`` is the aligner's ``basmala_voice`` result for Al-Fatiha, if any.
+    """
     chapters: dict[int, list[SpecialEntry]] = {}
     for ev in events:
         if ev.kind != "delete_segment" or not ev.targets_before or ev.chapter not in by_chapter:
@@ -87,7 +100,7 @@ def specials_from_run(
         if entry:
             chapters.setdefault(ev.chapter, []).append(entry)
     if riwayah in NUMBERED_BASMALA and 1 in by_chapter:
-        fatiha = _fatiha_basmala(by_chapter[1]["segments"])
+        fatiha = _fatiha_basmala(by_chapter[1]["segments"], voice)
         if fatiha:
             chapters.setdefault(1, []).append(fatiha)
     if not chapters:

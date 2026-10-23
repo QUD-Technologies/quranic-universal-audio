@@ -173,6 +173,18 @@ def test_align_batch_requests_only_auto_split_candidate_timings():
     assert body["include_word_timestamps"] is False
     assert body["include_auto_split_timings"] is True
     assert body["include_review_checks"] is True
+    assert body["include_basmala_voice"] is True
+
+
+def test_the_fatiha_voice_verdict_is_carried_into_the_run_dir(tmp_path):
+    from services.admin.align_pipeline import stage_assemble
+    from services.segments import promote_build
+
+    voice = {"verdict": "same", "z": 0.8, "version": 1}
+    stage_assemble._write_voice(tmp_path, {1: {"basmala_voice": voice}, 2: {}})
+    assert promote_build.read_voice(tmp_path) == voice
+    stage_assemble._write_voice(tmp_path / "x", {2: {}})
+    assert promote_build.read_voice(tmp_path / "x") is None
 
 
 # ---------------------------------------------------------------------------

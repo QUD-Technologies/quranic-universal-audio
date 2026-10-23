@@ -53,3 +53,17 @@ def test_fatiha_verse_1_1_is_listed_in_numbering_editions_only():
 def test_unknown_special_names_are_ignored():
     by_chapter = {2: _chapter(("2:1:1-2:1:1", 9000, 12000))}
     assert specials_from_run([_delete(2, "special", 0, 800)], by_chapter, generated_at="t", riwayah="hafs") is None
+
+
+def test_the_aligner_voice_verdict_lands_on_the_fatiha_basmala():
+    fatiha = {1: _chapter(("1:1:1-1:1:4", 3300, 6200), ("1:2:1-1:2:4", 6300, 9000))}
+    voice = {"verdict": "needs_confirmation", "z": 1.93, "version": 1}
+    one = specials_from_run([], fatiha, generated_at="t", riwayah="hafs", voice=voice).chapters["1"][0]
+    assert (one.voice_verdict, one.voice_z) == ("needs_confirmation", 1.93)
+
+
+def test_an_unavailable_voice_verdict_records_nothing():
+    fatiha = {1: _chapter(("1:1:1-1:1:4", 3300, 6200))}
+    voice = {"verdict": "unavailable", "z": None, "reason": "too_few_references", "version": 1}
+    one = specials_from_run([], fatiha, generated_at="t", riwayah="hafs", voice=voice).chapters["1"][0]
+    assert (one.voice_verdict, one.voice_z) == (None, None)

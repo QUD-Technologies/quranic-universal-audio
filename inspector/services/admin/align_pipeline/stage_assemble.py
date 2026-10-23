@@ -108,6 +108,7 @@ def _publish(slug, run_id, params, chapters, sources, started_at) -> int:
     with tempfile.TemporaryDirectory(prefix=f"align_{slug}_") as tmp:
         run_dir = Path(tmp)
         _materialise(run_dir, docs, chapters, sources, params.riwayah)
+        _write_voice(run_dir, docs)
         _materialise_sidecars(run_dir, slug, run_id, params.riwayah)
         outcome = staging.read_json(staging.run_file(slug, run_id, staging.SPLIT_OUTCOME_FILE))
         _write_coverage(run_dir, chapters, outcome or {})
@@ -142,6 +143,16 @@ def _materialise(run_dir, docs, chapters, sources, riwayah) -> None:
             for ch in chapters
         },
     )
+
+
+def _write_voice(run_dir: Path, docs: dict[int, dict]) -> None:
+    """Hand Al-Fatiha's ``basmala_voice`` result to ``promote_build`` (it lands in specials.json)."""
+    from services.segments.promote_build import VOICE_FILE
+
+    voice = (docs.get(1) or {}).get("basmala_voice")
+    if voice:
+        run_dir.mkdir(parents=True, exist_ok=True)
+        _dump(run_dir / VOICE_FILE, voice)
 
 
 def _materialise_sidecars(run_dir: Path, slug: str, run_id: str, riwayah: str | None) -> None:
