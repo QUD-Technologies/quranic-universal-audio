@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 
+from qua_shared.audio import upstream
 from qua_shared.schemas import Actor, AudioManifestSidecar, Role
 from services.audio import audio_meta
 from services.storage import cache, storage_paths
@@ -27,6 +28,8 @@ CANONICAL_KBPS = 192
 CANONICAL_SAMPLE_RATE = 44100
 _MS = 1000
 PIPELINE_ACTOR = Actor(hf_user_id="SYSTEM_ACTOR", login_at_time="align_pipeline", role=Role.OWNER)
+#: What acquire persists per single chapter (``qua_jobs/acquire_audio.py``).
+_PERSISTED_CHAPTER_FILES = ("audio/{ch}.mp3", "peaks/{ch}.json.gz", "levels/{ch}.json.gz")
 
 
 def _read(slug: str) -> dict:
@@ -60,6 +63,29 @@ def record_acquired(slug: str, outcomes: dict[str, dict]) -> None:
     if changed:
         _write(slug, doc)
     sync_delivery(slug)
+
+
+def adopt_upstream(slug: str, changes: list[upstream.ChapterCheck]) -> None:
+    """Point the manifest at the recording upstream serves now.
+
+    For a delivery not aligned yet, a source replaced since intake is just the
+    source: the probed size / duration / bitrate replace the intake's, and any
+    bucket copy an earlier run persisted of the old file is deleted so acquire
+    fetches the new one (it skips a chapter whose mp3 + peaks exist).
+    """
+    doc = _read(slug)
+    chapters = doc.get("chapters") or {}
+    backend = get_backend()
+    for change in changes:
+        now = change.upstream
+        chapters[change.chapter].update(
+            size_bytes=now["size"],
+            duration_sec=round(now["duration_s"]),
+            bitrate_kbps=now.get("kbps") or chapters[change.chapter].get("bitrate_kbps"),
+        )
+        for name in _PERSISTED_CHAPTER_FILES:
+            backend.delete(storage_paths.reciter_file(slug, name.format(ch=change.chapter)))
+    _write(slug, doc)
 
 
 def apply_split(

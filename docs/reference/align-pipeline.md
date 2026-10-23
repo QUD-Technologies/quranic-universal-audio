@@ -321,8 +321,13 @@ On Khalid al-Qahtani's 187 reviewed lattice pauses the rule keeps all 13 WAQF an
   ships nothing extra.
 - Missing `INSPECTOR_EXTRACTION_SECRET` / HF token → `503`.
 - A chapter whose upstream file is now a different recording than the manifest describes
-  (`qua_shared.audio.upstream`: size changed and duration off by more than 2 s) → `409`,
-  naming the chapters. Re-encodes, tag edits, dead links and probe errors do not block.
+  (`qua_shared.audio.upstream`: size changed and duration off by more than 2 s) is
+  **adopted, not refused**: nothing is aligned yet, so `manifest.adopt_upstream` writes the
+  probed size / duration / bitrate into the manifest and deletes any `audio` / `peaks` /
+  `levels` copy of that chapter an earlier run persisted (acquire would skip it otherwise).
+  The run's `detail.upstream_refreshed` lists the chapters. Re-encodes, tag edits, dead
+  links and probe errors are left alone. Released deliveries are different: their
+  timestamps belong to the old file, so the release cut drops those chapters instead.
 
 ## Online intake (plan → mint → align)
 
