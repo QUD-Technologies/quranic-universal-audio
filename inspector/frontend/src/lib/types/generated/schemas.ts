@@ -2738,6 +2738,7 @@ export interface TsShardReading {
   render: TsCompactRender;
   timing: TsShardTiming;
   variants?: TsReadingVariant[] | null;
+  special?: ("Isti'adha" | "Basmala") | null;
 }
 export interface TsShardTiming {
   w: [unknown, unknown][];
@@ -2839,4 +2840,5 @@ export interface TsWordShardReading {
   parts: [unknown, unknown, unknown, unknown, unknown][];
   words: [unknown, unknown, unknown, unknown][];
   boundaries: [unknown, unknown][];
+  special?: ("Isti'adha" | "Basmala") | null;
 }
