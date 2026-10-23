@@ -2,6 +2,7 @@
 
 import type {
     Letter,
+    SpecialKind,
     PhonemeInterval,
     TsShardReading,
     TsShardResponse,
@@ -9,13 +10,14 @@ import type {
     TsWord,
 } from '../types/ts-client';
 import { type AnyShardReading, type ChapterOccasion, chapterOccasions } from './occasions';
+import { isVerseRef } from './specials';
 
 const occasionsByShard = new WeakMap<TsShardResponse, ChapterOccasion[]>();
 
 export function shardOccasions(shard: TsShardResponse): ChapterOccasion[] {
     let occasions = occasionsByShard.get(shard);
     if (!occasions) {
-        occasions = chapterOccasions(shard.readings);
+        occasions = chapterOccasions(shard.readings, shard._meta.chapter);
         occasionsByShard.set(shard, occasions);
     }
     return occasions;
@@ -25,6 +27,9 @@ interface AssembleOptions {
     reciter: string;
     members: ChapterOccasion[];
     verseRef: string;
+    /** The shard's chapter — never parsed from `verseRef` (an opener's is `0:x`). */
+    chapter: number;
+    special: SpecialKind | null;
     qpc: Record<string, { text?: string }>;
     dk: Record<string, { text?: string }>;
     audioCategory: 'by_surah' | 'by_ayah';
@@ -141,7 +146,7 @@ export function assembleNative(options: AssembleOptions): TsVerseData {
     );
     return {
         reciter: options.reciter,
-        chapter: Number(options.verseRef.split(':')[0]),
+        chapter: options.chapter,
         verse_ref: options.verseRef,
         audio_url: options.audioUrl,
         audio_category: options.audioCategory === 'by_surah' ? 'by_surah_audio' : 'by_ayah_audio',
@@ -150,9 +155,12 @@ export function assembleNative(options: AssembleOptions): TsVerseData {
         ...timed,
         native: readings,
         wordReadings: [],
+        special: options.special,
     };
 }
 
+/** The shard's distinct VERSE refs — recited openers are not verses. */
 export function chapterVerseRefs(shard: TsShardResponse): string[] {
-    return [...new Set(shardOccasions(shard).map((occasion) => occasion.ref))];
+    const verses = shardOccasions(shard).filter((one) => !one.special && isVerseRef(one.ref));
+    return [...new Set(verses.map((occasion) => occasion.ref))];
 }

@@ -6,6 +6,8 @@
  * the dashboard full-chapter player and, later, the timestamps tab.
  */
 
+import type { SpecialKind } from '../types/ts-client';
+
 /** One per-letter timing inside a word (seconds, chapter-absolute). */
 export interface AnimLetter {
     char: string;
@@ -58,6 +60,10 @@ export interface AnimUnit {
      *  built outside the chapter assembler (or hand-built test fixtures) omit it
      *  and the reveal falls back to the canonical remap. */
     occurrenceLetters?: AnimLetter[][];
+    /** Set on a recited opener's words (Isti'adha/Basmala). Their `ayahKey` is
+     *  the opener's own `0:1`/`0:2` part ref, so `surah` is 0 and `ayah` is not
+     *  a verse number — surfaces label and guard on this flag, not on `ayah`. */
+    special?: SpecialKind;
 }
 
 /** Per-ayah boundary for the picker + timeline markers. */

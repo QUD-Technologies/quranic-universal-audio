@@ -12,7 +12,7 @@ describe('native connected-reading groups', () => {
             { ref: '79:3', start: 2000, end: 3000 },
         ]),
         nativeReading('r2', [{ ref: '79:4', start: 3100, end: 4200 }]),
-    ]);
+    ], 79);
 
     it('expands from any connected member without crossing reading identity', () => {
         expect(waslGroupOf(chain, 1)).toEqual({

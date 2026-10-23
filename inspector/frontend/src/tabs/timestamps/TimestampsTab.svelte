@@ -85,6 +85,7 @@
     import { editionFontStack, ensureEditionFont } from '../../lib/refs/edition-font';
     import { DEFAULT_SDK_RIWAYAH, toInspectorSlug } from '../../lib/riwayat';
     import type { ChapterOccasion } from '../../lib/recitation-data/occasions';
+    import { isSpecialRef } from '../../lib/recitation-data/specials';
     import { isInWaslGroup, waslGroupOf } from '../../lib/recitation-data/wasl';
     import { findTsEntryBySlug, isTsCapable, resolveTsDeliveries } from './services/ts-published';
     import {
@@ -332,7 +333,8 @@
         _verseReportsKey = key;
         const ctx = get(reportContext);
         if (ctx && (ctx.slug !== slug || ctx.verseKey !== verseKey)) exitReportMode();
-        void loadVerseReports(slug, verseKey);
+        // A recited opener is no verse: it has no reports (an empty key clears them).
+        void loadVerseReports(slug, isSpecialRef(verseKey) ? '' : verseKey);
     }
 
     // Arm the whole-verse playback lock when a report session starts (exit clears
@@ -540,7 +542,12 @@
         selectedVerse.set(v.ref);
         // Publish to the shell-level focus store so NowReciting's filmstrip
         // bookmark button can mirror the focus without running its own rAF.
-        // Verse refs are "surah:ayah"; parse defensively.
+        // A recited opener is no bookmarkable verse: clear rather than keep the
+        // previous verse. Verse refs are "surah:ayah"; parse defensively.
+        if (v.occ.special) {
+            recitationFocus.set(null);
+            return;
+        }
         const [s, a] = v.ref.split(':');
         const surah = Number(s);
         const ayah = Number(a);
@@ -654,6 +661,7 @@
             focusEndMs: fv ? fv.tsSegEnd * 1000 : null,
             guardMs: SHUFFLE_END_GUARD_MS,
             firedForCurrentFocus: shuffleFiredForIdx === focusIdx,
+            focusSpecial: !!fv?.data.special,
         });
         // Mid-swap: freeze focus + display (no refresh) so the new playhead time
         // isn't drawn against the old chapter's occasion; syncChapter resumes us.
@@ -687,6 +695,7 @@
             focusEndMs: fv ? fv.tsSegEnd * 1000 : null,
             guardMs: SHUFFLE_END_GUARD_MS,
             firedForCurrentFocus: shuffleFiredForIdx === focusIdx,
+            focusSpecial: !!fv?.data.special,
         });
         if (fire) {
             shuffleFiredForIdx = focusIdx;

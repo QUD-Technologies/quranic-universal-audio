@@ -33,6 +33,7 @@
     import { currentVerseReports, loadReciterReports, openReportedVerseKeys } from '../stores/ts-reports';
     import { get } from 'svelte/store';
     import { focusWaslGroup, loadedVerse, selectedVerse } from '../stores/verse';
+    import { isSpecialRef } from '../../../lib/recitation-data/specials';
     import ReportIcon from './report/ReportIcon.svelte';
     import ReportMenu from './report/ReportMenu.svelte';
 
@@ -47,7 +48,8 @@
 
     const curSlug = $derived($playerContext.delivery?.slug ?? '');
     const curVerse = $derived($selectedVerse);
-    const disabled = $derived(!curSlug || !curVerse);
+    // A recited opener (Isti'adha/Basmala, ref `0:x`) is no verse to report on.
+    const disabled = $derived(!curSlug || !curVerse || isSpecialRef(curVerse));
     const isReported = $derived(!!curVerse && $openReportedVerseKeys.has(curVerse));
 
     // Reading i18n.locale makes these re-run on switch.

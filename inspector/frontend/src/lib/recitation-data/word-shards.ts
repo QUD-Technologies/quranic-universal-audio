@@ -14,6 +14,7 @@
  */
 
 import type {
+    SpecialKind,
     TsVerseData,
     TsWord,
     TsWordShardReading,
@@ -27,6 +28,9 @@ export interface WordAssembleOptions {
     reciter: string;
     members: ChapterOccasion[];
     verseRef: string;
+    /** The shard's chapter — never parsed from `verseRef` (an opener's is `0:x`). */
+    chapter: number;
+    special: SpecialKind | null;
     audioCategory: 'by_surah' | 'by_ayah';
     audioUrl: string;
 }
@@ -177,7 +181,7 @@ export function assembleWord(options: WordAssembleOptions): TsVerseData {
     const selected = selectedWords(options.members);
     return {
         reciter: options.reciter,
-        chapter: Number(options.verseRef.split(':')[0]),
+        chapter: options.chapter,
         verse_ref: options.verseRef,
         audio_url: options.audioUrl,
         audio_category: options.audioCategory === 'by_surah' ? 'by_surah_audio' : 'by_ayah_audio',
@@ -187,5 +191,6 @@ export function assembleWord(options: WordAssembleOptions): TsVerseData {
         words: buildWordRows(readings, selected, offset),
         native: [],
         wordReadings: buildReadingViews(readings, selected, offset),
+        special: options.special,
     };
 }

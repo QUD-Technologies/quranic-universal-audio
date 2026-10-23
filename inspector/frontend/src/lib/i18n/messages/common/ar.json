@@ -409,5 +409,7 @@
   "common_delivery_bitrate_mixed": "مختلط",
   "common_filmstrip_not_recited": "لم تُتلَ",
   "common_filmstrip_missing_words": "كلمات ناقصة",
-  "common_filmstrip_missing_words_list": "كلمات ناقصة: {indices}"
+  "common_filmstrip_missing_words_list": "كلمات ناقصة: {indices}",
+  "common_filmstrip_special_istiadha": "الاستعاذة",
+  "common_filmstrip_special_basmala": "البسملة"
 }

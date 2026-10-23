@@ -67,7 +67,10 @@
         getTimeMs: () => number;
         /** Whether playback is running (drives the rAF loop). */
         playing: boolean;
-        /** Pre-shaped DigitalKhatt geometry for the active Hafs chapter. */
+        /** Pre-shaped DigitalKhatt geometry for the active Hafs chapter. Keyed by
+         *  word text and covering only the chapter's verses, so an opener's word
+         *  (`unit.special`) never borrows a same-text verse word's token layout —
+         *  it renders as native text. Openers also get no `۝` ayah marker. */
         shapedGlyphs?: ShapedGlyphFixture;
         /** Reveal timing-only silent tokens without applying the active colour. */
         omitSilentHighlights?: boolean;
@@ -579,7 +582,7 @@
 >
     {#each structure as w, i (pageStart + '-' + i)}
         {@const u = pageUnits[i]}
-        {@const shaped = u ? shapedGlyphs.words[u.text] : undefined}
+        {@const shaped = u && !u.special ? shapedGlyphs.words[u.text] : undefined}
         {#if i > 0}{' '}{/if}<span
             class="ra-word"
             data-start={w.start}
@@ -640,7 +643,7 @@
                     class="ra-decorator ra-decorator--{d.role}"
                     aria-hidden="true">{ZWSP}{d.glyph}</span
                 >{/each}</span
-        >{#if config.showAyahMarker && u && ayahRanges.get(u.ayahKey)?.[1] === pageStart + i + 1}{' '}<span
+        >{#if config.showAyahMarker && u && !u.special && ayahRanges.get(u.ayahKey)?.[1] === pageStart + i + 1}{' '}<span
                 class="ra-ayah-marker"
                 data-after-word={i}>{ayahMarker}{toArabicNumeral(u.ayah)}</span
             >{/if}
