@@ -284,7 +284,7 @@
         if (c.missing !== 'words') return undefined;
         const mw = missingWordsByAyah?.get(c.ayah);
         if (!mw || !mw.length) return m.common_filmstrip_missing_words();
-        const list = i18n.locale === 'ar' ? mw.map(toArabicNumeral).join('، ') : mw.join(', ');
+        const list = ['ar', 'ckb'].includes(i18n.locale) ? mw.map(toArabicNumeral).join('، ') : mw.join(', ');
         return m.common_filmstrip_missing_words_list({ indices: list });
     }
 
@@ -830,7 +830,7 @@
                     {#if c.missing !== 'full'}
                         <div class="cell-fill" class:glide={jumping && i === fillIdx}></div>
                     {/if}
-                    <span class="cell-num">{i18n.locale === 'ar' ? toArabicNumeral(c.ayah) : c.ayah}</span>
+                    <span class="cell-num">{['ar', 'ckb'].includes(i18n.locale) ? toArabicNumeral(c.ayah) : c.ayah}</span>
                 </div>
             {/each}
             <div class="pad" style:width="{pad}px"></div>

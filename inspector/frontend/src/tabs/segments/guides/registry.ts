@@ -52,7 +52,7 @@ const localeGuideModules = import.meta.glob<{ default: string }>(
 const accordionGuidesByLocale: Readonly<Record<string, Record<string, string>>> = Object.freeze(
     (() => {
         const byLocale: Record<string, Record<string, string>> = {};
-        const re = /\.\/accordion\/(.+)\.([a-z]{2})\.guide\.ts$/;
+        const re = /\.\/accordion\/(.+)\.([a-z]{2,3})\.guide\.ts$/;
         for (const [path, mod] of Object.entries(localeGuideModules)) {
             const match = re.exec(path);
             if (!match) continue;

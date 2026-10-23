@@ -21,7 +21,7 @@
     // Scoped RTL for the modal content + TOC while the app-wide layout stays LTR
     // (the full RTL flip is a separate workflow): Arabic prose, bullets, and the
     // section-index row read right-to-left within this subtree only.
-    $: dir = ($localeStore === 'ar' ? 'rtl' : 'ltr') as 'rtl' | 'ltr';
+    $: dir = (['ar', 'ckb'].includes($localeStore) ? 'rtl' : 'ltr') as 'rtl' | 'ltr';
 
     // Locale-aware doc: re-selects the translated overview.md on a switch.
     $: overviewDoc = getOverviewDoc($localeStore);

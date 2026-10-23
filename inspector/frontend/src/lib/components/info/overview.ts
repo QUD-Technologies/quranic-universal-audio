@@ -25,7 +25,7 @@ const localeMd = import.meta.glob<string>('./overview.*.md', {
 
 const overviewDocByLocale: Record<string, InfoDoc> = {};
 {
-    const re = /^\.\/overview\.([a-z]{2})\.md$/;
+    const re = /^\.\/overview\.([a-z]{2,3})\.md$/;
     for (const [path, raw] of Object.entries(localeMd)) {
         const match = re.exec(path);
         if (!match || !match[1]) continue;
