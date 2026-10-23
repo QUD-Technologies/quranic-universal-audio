@@ -28,9 +28,8 @@ SpecialEntry {type, position: pre|post, start_ms, end_ms, words: [[s,e],...], co
   a verse in `detailed.json` and is *also* listed here), and the backfill sources
   `pipeline_strip` / `user_delete` / `in_detailed` / `aligner_backfill`.
 - **`words`**: per-word `[start_ms, end_ms]`, empty until a timing pass times the opener.
-- **Voice** (Al-Fatiha's Basmala): `voice_z` + `voice_verdict` (`same` / `different` /
-  `needs_confirmation`) from the aligner; `voice_confirmed` is a maintainer's call and
-  wins. `SpecialEntry.same_voice` reads `voice_confirmed`, then the verdict.
+- **Voice** (every opener): `voice_z` + `voice_verdict` (`same` / `different` /
+  `needs_confirmation`); `voice_confirmed` is a maintainer's call and wins. `SpecialEntry.same_voice` reads `voice_confirmed`, then the verdict.
 
 Read/write via `services/storage/data_dir.py` (`read_specials_doc` / `write_specials_doc`);
 `storage_paths.specials_path`. The bucket audit validates it (`bucket_audit._audit_specials`).
@@ -48,6 +47,7 @@ In Hafs and Shu'ba the Basmala is verse 1:1. It stays in `detailed.json`, in the
 | Timing — `services/timing/specials_timing.py` (via `aligner_timing.time_chapter`) | Fills `words` on each `pre` opener after a timing call (see below). |
 | Voice confirm — `services/segments/specials.py::confirm_voice` | `voice_confirmed`, audited `specials.voice_confirmed`; a call that changes the answer stamps the reciter's current GH member stale (`catalog_edit`, `stamp_stale(..., tracks=("gh",))`) so the next cut ships it. HF does not ship specials. |
 | Backfill (one-shot) | The prod audit harness `.local/specials_audit/` (`build_specials.py` → `out/<slug>.json`). |
+| Opener backfill (one-shot, Katana) | `scripts/backfills/splice_opener_readings.py` `--export` / `--replies` around `scripts/backfills/katana_openers/` fills `words` (and splices each opener's shard reading); `scripts/backfills/write_opener_voice.py` writes every opener's `voice_z` / `voice_verdict` (see below). |
 
 ## Voice verdict
 
@@ -58,6 +58,15 @@ z): `same` below 1.7, `different` above 2.3, `needs_confirmation` between. A hol
 `GET /api/seg/specials/<reciter>` (`SegSpecialsResponse`) and
 `POST /api/seg/specials/<reciter>/voice` `{chapter, start_ms, same_voice}`
 (`SegSpecialsVoiceRequest` → `OkAck`).
+
+Every other opener (each chapter's `pre` Isti'adha / Basmala) carries the same check,
+scored against its own chapter's first verses (up to 6 verse clips of at least 1 s,
+Al-Fatiha's 1:1 left out). A recording that splices one stock clip onto every chapter
+would get split verdicts that way, so clips that are the same audio (length within
+60 ms, MFCC means within 6.0) share the verdict of their median z. The released
+reciters were backfilled on Katana (`write_opener_voice.py`); new align runs record
+only Al-Fatiha's verdict so far. Only the 1:1 verdict is surfaced for review; the
+rest ship as `same_voice`.
 
 ## Timing + shards
 

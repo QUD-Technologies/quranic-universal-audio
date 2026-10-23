@@ -16,10 +16,11 @@ chapters whose shard already has opener readings, so a rerun resumes.
 
 The timing can run off the aligner, on Katana: ``--export DIR`` writes each reciter's
 chapter request bodies (plus ``voice_refs``, the chapter's own verse clips) to
-``DIR/<slug>.json`` for qua's opener job, and ``--replies DIR`` then reads its
+``DIR/<slug>.json`` for ``katana_openers/opener_job.py``, and ``--replies DIR`` then reads its
 ``DIR/<slug>/<chapter>.json`` replies in place of aligner calls. Those replies also
 carry a voice verdict per opener (the Al-Fatiha Basmala check, against the chapter's
-own verses), written to ``specials.json`` for every chapter, spliced already or not.
+own verses), written to ``specials.json`` for every chapter, spliced already or not;
+``write_opener_voice.py`` writes them instead with one verdict per reused stock clip.
 
 Dry run by default. Needs ``HF_TOKEN``, ``INSPECTOR_EXTRACTION_SECRET`` (aligner calls
 only) and ``INSPECTOR_WEBHOOK_SECRET``.
