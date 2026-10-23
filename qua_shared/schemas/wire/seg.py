@@ -33,9 +33,10 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel, StrictBool
 
 from ..bucket.segment import JoinVerdict
+from ..bucket.specials import SpecialEntry
 from .mark_ready import ChecklistKey
 
 # ===========================================================================
@@ -414,6 +415,25 @@ class SegUndoOpsRequest(BaseModel):
 
     batch_id: str
     op_ids: list[str]
+
+
+class SegSpecialsResponse(BaseModel):
+    """``GET /api/seg/specials/<reciter>`` — the reciter's specials by chapter; empty when it has none."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    chapters: dict[str, list[SpecialEntry]] = Field(default_factory=dict)
+
+
+class SegSpecialsVoiceRequest(BaseModel):
+    """``POST /api/seg/specials/<reciter>/voice`` — a maintainer's call on whether
+    the special starting at ``start_ms`` in ``chapter`` is the reciter's own voice."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    chapter: int = Field(ge=1, le=114)
+    start_ms: int = Field(ge=0)
+    same_voice: StrictBool
 
 
 class SegUndoResponse(BaseModel):

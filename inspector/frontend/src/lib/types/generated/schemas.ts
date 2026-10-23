@@ -1935,6 +1935,36 @@ export interface SegSegmentPeaks {
   peaks?: [unknown, unknown][];
 }
 /**
+ * ``GET /api/seg/specials/<reciter>`` — the reciter's specials by chapter; empty when it has none.
+ */
+export interface SegSpecialsResponse {
+  chapters?: {
+    [k: string]: SpecialEntry[];
+  };
+}
+export interface SpecialEntry {
+  type: "Isti'adha" | "Basmala" | "Amin" | "Sadaqa" | "Takbir" | "Tahmeed" | "Tasleem";
+  position?: "pre" | "post";
+  start_ms: number;
+  end_ms: number;
+  words?: [unknown, unknown][];
+  confidence?: number | null;
+  source: "align" | "fatiha_verse" | "pipeline_strip" | "user_delete" | "in_detailed" | "aligner_backfill";
+  clipped?: boolean;
+  voice_z?: number | null;
+  voice_verdict?: ("same" | "different" | "needs_confirmation") | null;
+  voice_confirmed?: boolean | null;
+}
+/**
+ * ``POST /api/seg/specials/<reciter>/voice`` — a maintainer's call on whether
+ * the special starting at ``start_ms`` in ``chapter`` is the reciter's own voice.
+ */
+export interface SegSpecialsVoiceRequest {
+  chapter: number;
+  start_ms: number;
+  same_voice: boolean;
+}
+/**
  * One segment's stored word intervals and the span they were timed on.
  */
 export interface SegStoredTimes {
