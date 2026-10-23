@@ -392,6 +392,7 @@ def build_artifacts(
     from config import DK_SCRIPT_PATH, SURAH_INFO_PATH
     from qua_shared.schemas.bucket.pipeline_meta import PipelineMeta
     from services.segments import stamping
+    from services.segments.specials_doc import specials_from_run
 
     for path in (SURAH_INFO_PATH, DK_SCRIPT_PATH):
         if not Path(path).is_file():
@@ -444,6 +445,11 @@ def build_artifacts(
             built[name] = sidecar.read_bytes()
     if batches:
         built["edit_history.jsonl"] = _jsonl_bytes(batches)
+    specials = specials_from_run(
+        events, by_chapter, generated_at=manifest.created_at, riwayah=manifest.inputs.riwayah
+    )
+    if specials:
+        built["specials.json"] = dumps(specials.model_dump(mode="json"))
 
     chapters, envelopes = build_chapter_peaks(run_dir, source_urls, peaks_blobs=peaks_blobs)
     records = build_peaks_records(slug, batches, source_urls, envelopes)

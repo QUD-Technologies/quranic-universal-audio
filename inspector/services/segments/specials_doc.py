@@ -1,0 +1,98 @@
+"""Build a reciter's ``specials.json`` from an align run.
+
+The pipeline strips every special row before ``detailed.json`` is written and
+records each as a ``delete_segment`` audit event; those events carry the span,
+name and confidence, so they are the run's record of its specials. A special
+before ayah 1 is ``pre`` (clipped at ayah 1 if it ran into it), one after the
+last ayah is ``post``; a special inside the chapter (a repeated take) is not a
+chapter edge and is left out. In editions that number Al-Fatiha's Basmala as
+1:1, that verse is also listed here — it stays a verse.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Iterable
+from typing import get_args
+
+from qua_shared.schemas.bucket.specials import SpecialEntry, SpecialsDoc, SpecialType
+from qua_shared.schemas.bucket.staged_run import PipelineAuditEvent
+
+_NAMES = set(get_args(SpecialType))
+_VERSE = re.compile(r"^(\d+):(\d+):\d+")
+#: SDK riwayah slugs whose Al-Fatiha numbers the Basmala as verse 1:1.
+NUMBERED_BASMALA = frozenset({"hafs", "shuba"})
+#: A special may end this far past ayah 1's start and still count as before it
+#: (the strip and the verse row share a boundary pad).
+EDGE_TOL_MS = 300
+
+
+def _verse_bounds(segments: list[dict], chapter: int) -> tuple[int, int] | None:
+    spans = [
+        (s["time_start"], s["time_end"])
+        for s in segments
+        if (m := _VERSE.match(s.get("matched_ref") or "")) and int(m.group(1)) == chapter
+    ]
+    if not spans:
+        return None
+    return min(a for a, _ in spans), max(b for _, b in spans)
+
+
+def _edge_entry(ev: PipelineAuditEvent, bounds: tuple[int, int]) -> SpecialEntry | None:
+    snap = ev.targets_before[0]
+    if snap.matched_ref not in _NAMES:
+        return None
+    first, last = bounds
+    start, end = snap.time_start, snap.time_end
+    if end <= first + EDGE_TOL_MS:
+        position, clipped = "pre", False
+    elif start < first:  # ran into ayah 1 (a swallowed muqattaʿ): keep the part before it
+        position, clipped, end = "pre", True, first
+    elif start >= last - EDGE_TOL_MS:
+        position, clipped = "post", False
+    else:
+        return None
+    if end <= start:
+        return None
+    return SpecialEntry(
+        type=snap.matched_ref, position=position, start_ms=start, end_ms=end,
+        confidence=snap.confidence, source="align", clipped=clipped,
+    )
+
+
+def _fatiha_basmala(segments: list[dict]) -> SpecialEntry | None:
+    row = next((s for s in segments if (s.get("matched_ref") or "") == "1:1:1-1:1:4"), None)
+    if row is None:
+        return None
+    return SpecialEntry(
+        type="Basmala", start_ms=row["time_start"], end_ms=row["time_end"],
+        confidence=row.get("confidence"), source="fatiha_verse",
+    )
+
+
+def specials_from_run(
+    events: Iterable[PipelineAuditEvent],
+    by_chapter: dict[int, dict],
+    *,
+    generated_at: str,
+    riwayah: str,
+) -> SpecialsDoc | None:
+    """The run's ``SpecialsDoc``, or ``None`` when it recorded no special."""
+    chapters: dict[int, list[SpecialEntry]] = {}
+    for ev in events:
+        if ev.kind != "delete_segment" or not ev.targets_before or ev.chapter not in by_chapter:
+            continue
+        bounds = _verse_bounds(by_chapter[ev.chapter]["segments"], ev.chapter)
+        entry = bounds and _edge_entry(ev, bounds)
+        if entry:
+            chapters.setdefault(ev.chapter, []).append(entry)
+    if riwayah in NUMBERED_BASMALA and 1 in by_chapter:
+        fatiha = _fatiha_basmala(by_chapter[1]["segments"])
+        if fatiha:
+            chapters.setdefault(1, []).append(fatiha)
+    if not chapters:
+        return None
+    return SpecialsDoc(
+        generated_at=generated_at,
+        chapters={str(ch): sorted(items, key=lambda s: s.start_ms) for ch, items in sorted(chapters.items())},
+    )

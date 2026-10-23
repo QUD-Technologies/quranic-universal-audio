@@ -426,6 +426,15 @@ def test_assemble_publishes_reciter_and_auto_detect_fires(align_env):
 
     meta = json.loads(backend.read_bytes(f"reciters/{SLUG}/pipeline_meta.json"))
     assert "deleted_basmala_chapters" not in meta  # legacy key, no longer written
+    specials = json.loads(backend.read_bytes(f"reciters/{SLUG}/specials.json"))
+    [basmala] = specials["chapters"]["112"]
+    assert (basmala["type"], basmala["position"], basmala["start_ms"], basmala["end_ms"]) == (
+        "Basmala",
+        "pre",
+        820,
+        6680,
+    )
+    assert basmala["source"] == "align"
     assert json.loads(backend.read_bytes(f"reciters/{SLUG}/low_confidence_v2.json")) == {"v": 2}
     assert backend.exists(f"reciters/{SLUG}/edit_history_peaks.jsonl")
     assert backend.exists(f"reciters/{SLUG}/chapter_sources.json")

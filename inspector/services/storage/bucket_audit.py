@@ -593,6 +593,32 @@ def _audit_by_uid_sidecar(backend, path: str) -> FileResult:
 # ---------------------------------------------------------------------------
 
 
+def _audit_specials(backend, path: str) -> FileResult:
+    """``specials.json`` — the reciter's openers/closers (optional; the cut
+    ships its Basmala + Isti'adha). Validated via the canonical Pydantic model."""
+    from qua_shared.schemas.bucket.specials import SpecialsDoc
+
+    try:
+        raw = backend.read_bytes(path)
+    except Exception as e:
+        return FileResult(path, "missing", str(e))
+
+    size = len(raw)
+    try:
+        doc = SpecialsDoc.model_validate_json(raw)
+    except Exception as e:
+        return FileResult(path, "error", f"schema fail: {e}", size=size)
+    n = sum(len(items) for items in doc.chapters.values())
+    return FileResult(
+        path,
+        "ok",
+        f"{n} special(s) in {len(doc.chapters)} chapter(s)",
+        size=size,
+        items_ok=n,
+        items_total=n,
+    )
+
+
 # Known artefacts in a reciter folder. (path-suffix, audit_fn, required).
 TOP_LEVEL_AUDITORS: list[tuple[str, Callable, bool]] = [
     ("detailed.json", _audit_detailed, True),
@@ -608,6 +634,7 @@ TOP_LEVEL_AUDITORS: list[tuple[str, Callable, bool]] = [
     ("unmarked_wasl_v1.json", _audit_by_uid_sidecar, False),
     ("wasl_recheck_v1.json", _audit_by_uid_sidecar, False),
     ("pipeline_meta.json", _audit_pipeline_meta, False),
+    ("specials.json", _audit_specials, False),
     ("audio/_done.json", _audit_done_sentinel, False),
 ]
 
