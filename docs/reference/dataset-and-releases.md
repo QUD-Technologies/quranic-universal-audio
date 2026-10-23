@@ -62,7 +62,7 @@ separate from publish status. Publish status lives in three tables, all written 
     update immediately from SQLite after the durable edit.
 
   A third reason — **`segments_edited`** — lives on the **`ts`** track and is **computed, never
-  stamped** (`services/segments/ts_staleness.py::ts_stale_info`, called from the status route). The
+  stamped** (`services/segments/ts_staleness.py::ts_stale_info`, called from the status route). An undo batch carries no ops of its own; it counts when the ops it reverted were timestamp-affecting. The
   generated timestamps go stale the moment a timestamp-affecting segment edit
   (`qua_shared/segment_edit_ops.py::TS_AFFECTING_OP_TYPES` = trim/split/merge/delete + edit_reference
   + auto_fix_missing_word — annotations like confirm_reference/ignore_issue/flag_segment/set_is_wasl

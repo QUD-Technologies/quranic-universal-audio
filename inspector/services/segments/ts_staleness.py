@@ -46,6 +46,17 @@ def _provably_not_stale_by_mtime(slug: str, produced_at: str) -> bool:
         return False
 
 
+def _affects_timestamps(batch: dict, by_id: dict[str, dict]) -> bool:
+    """Whether ``batch`` changed the timestamps; an undo carries no ops of its own, so
+    it does when the ops it reverted did."""
+    reverted = by_id.get(batch.get("reverts_batch_id") or "")
+    if reverted is None:
+        return batch_affects_timestamps(batch)
+    op_ids = set(batch.get("reverts_op_ids") or [])
+    ops = [op for op in reverted.get("operations") or [] if not op_ids or op.get("op_id") in op_ids]
+    return batch_affects_timestamps({"operations": ops})
+
+
 def ts_stale_info(slug: str, *, produced_at: str) -> dict | None:
     """Return staleness for ``slug``'s generated timestamps, or ``None``.
 
@@ -79,6 +90,7 @@ def ts_stale_info(slug: str, *, produced_at: str) -> dict | None:
     except Exception:  # noqa: BLE001 — best-effort; bucket/read failure → not stale
         logger.warning("ts_stale_info(%s): edit-history read failed; treating as not stale", slug)
         return None
+    by_id = {b["batch_id"]: b for b in batches if b.get("batch_id")}
     stale_since: str | None = None
     last_edit_at: str | None = None
     count = 0
@@ -87,7 +99,7 @@ def ts_stale_info(slug: str, *, produced_at: str) -> dict | None:
         saved_at = batch.get("saved_at_utc")
         if not saved_at or saved_at <= produced_at:
             continue
-        if not batch_affects_timestamps(batch):
+        if not _affects_timestamps(batch, by_id):
             continue
         count += 1
         if stale_since is None or saved_at < stale_since:
