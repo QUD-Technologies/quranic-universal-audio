@@ -168,6 +168,7 @@ dry-run:
 | `diagnostics/audio_url_audit.py` | classify every source url **ok / fixable (canonical) / dead**; per-reciter valid-after-fix; cross-channel duplicate/keep-remove signal |
 | `qua_shared/mp3_probe.py` | pure-python multi-version mp3 source prober: cbr/vbr via whole-file linear-seek metric (`qua_shared/mp3_frames`), decoded duration off the frame grid, ID3v2 skip, archive canonicalization. `allow_full=True` downloads the file; `allow_full=False` → head duration only, mode `needs_full` |
 | `backfills/backfill_audio_manifest_meta.py` | fill null meta from bucket-decode / peaks / source-probe; `--fix-drift` corrects phantom tails from peaks; `--rewrite-urls` repairs stale archive urls; `--remove-dead <audit.json>` drops dead chapters; emits delivery-row rollup `UPDATE`s via `--sql-out` |
+| `backfills/canonicalize_mp3quran_urls.py` | rewrite legacy `serverN.mp3quran.net` chapter urls to the `cdn.mp3quran.net/audio/<reciter>/rN/` target each one 301s to (resolved per url, checked same file name + live 200; a slug with any failure is left untouched); restamps `_meta.checksum`; dry-run writes sidecars + `report.json` to `.local/mp3quran_cdn_urls/<bucket>/`, `--apply` batch-writes |
 
 ### Runbook — onboard a new source/channel, or re-audit the catalog
 
