@@ -72,7 +72,7 @@
     import { loadChapterData } from './utils/data/chapter-actions';
     import { clearPerReciterState } from './utils/data/clear-per-reciter-state';
     import { clearSegConfig, loadSegConfig } from './utils/data/config-loader';
-    import { reloadCurrentReciter } from './utils/data/reciter-actions';
+    import { firstChapter, reloadCurrentReciter } from './utils/data/reciter-actions';
     import { handleSegmentsKey } from './utils/keyboard';
     import { playFromSegment } from './utils/playback/playback';
     import { executeSave } from './utils/save/actions';
@@ -350,6 +350,12 @@
             localStorage.setItem(LS_KEYS.SEG_RECITER, reciter);
         }
         await reloadCurrentReciter();
+        // A freshly opened recitation lands on its first chapter, not an empty list.
+        if (isSampleSlug(reciter) || get(selectedReciter) !== reciter || get(selectedChapter)) return;
+        const chapter = firstChapter(get(segAllData));
+        if (!chapter) return;
+        selectedChapter.set(chapter);
+        void loadChapterData(reciter, chapter);
     }
     /** Leaving a sample restores the normal Editor selection. */
     function leaveSample(tab: SegmentsSubTab): void {

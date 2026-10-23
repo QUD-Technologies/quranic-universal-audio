@@ -60,6 +60,13 @@ function _hydrateSegAll(all: SegAllResponse): SegAllState {
     return hydrated;
 }
 
+/** The first chapter a loaded recitation has segments in ("" when none): chapter 1
+ *  whenever it is there, so its Basmala is on screen. */
+export function firstChapter(state: SegAllState | null): string {
+    const chapters = (state?.segments ?? []).map((seg) => Number(seg.chapter)).filter((c) => c > 0);
+    return chapters.length ? String(Math.min(...chapters)) : '';
+}
+
 /**
  * Re-fetch just `/seg/all` for the currently selected reciter. Lighter
  * counterpart to `reloadCurrentReciter` — used post-save / post-undo when
