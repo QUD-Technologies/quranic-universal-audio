@@ -174,9 +174,7 @@ def test_stamp_stale_can_be_limited_to_the_gh_track(fresh_db):
             release_id=rel_id, slug=slug, catalog_snapshot={"slug": slug}, zip_sha256="abc",
             zip_bytes=1, coverage_ayahs=1, content_hash="d", ts_version="1", change_kind="added",
         )  # fmt: skip
-        n = repo_releases.stamp_stale(
-            slug, at=now, reason=StaleReason.CATALOG_EDIT, tracks=("gh",)
-        )
+        n = repo_releases.stamp_stale(slug, at=now, reason=StaleReason.CATALOG_EDIT, tracks=("gh",))
     assert n == 1
     hf_row = repo_releases.current_release("hf", slug)
     assert hf_row is not None and hf_row["stale_since"] is None
