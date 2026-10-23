@@ -425,7 +425,7 @@ def test_assemble_publishes_reciter_and_auto_detect_fires(align_env):
     assert "final_index" not in waqf["targets_after"][0]
 
     meta = json.loads(backend.read_bytes(f"reciters/{SLUG}/pipeline_meta.json"))
-    assert meta["deleted_basmala_chapters"] == [112]
+    assert "deleted_basmala_chapters" not in meta  # legacy key, no longer written
     assert json.loads(backend.read_bytes(f"reciters/{SLUG}/low_confidence_v2.json")) == {"v": 2}
     assert backend.exists(f"reciters/{SLUG}/edit_history_peaks.jsonl")
     assert backend.exists(f"reciters/{SLUG}/chapter_sources.json")

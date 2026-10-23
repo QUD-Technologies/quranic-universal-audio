@@ -101,14 +101,6 @@ EXPECTED_MATRIX = {
         "card_type": "generic",
         "severity": "info",
     },
-    "basmala_amin": {
-        "can_ignore": True,
-        "auto_suppress": True,
-        "persists_ignore": True,
-        "scope": "per_segment",
-        "card_type": "generic",
-        "severity": "info",
-    },
     "hidden_pause": {
         "can_ignore": True,
         "auto_suppress": True,

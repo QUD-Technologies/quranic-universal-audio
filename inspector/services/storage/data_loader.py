@@ -301,46 +301,6 @@ def load_probe_v2(reciter: str) -> cache.ProbeV2:
     return result
 
 
-def load_pipeline_meta(reciter: str) -> dict | None:
-    """Load ``pipeline_meta.json`` for *reciter* (immutable post-extraction).
-
-    Returns the validated ``PipelineMeta`` dict, or ``None`` if the sidecar
-    is missing. The cache is **never invalidated by save** — the sidecar
-    records extraction-time facts that no user edit can change.
-
-    Callers that depend on a field (e.g. ``deleted_basmala_chapters``) should
-    hard-fail on ``None`` rather than silently substituting an empty set;
-    missing sidecar means the backfill script hasn't run for this reciter.
-    """
-    from qua_shared.schemas import PipelineMeta
-
-    cached = cache.get_seg_pipeline_meta(reciter)
-    if cached is not None:
-        return cached
-    doc = data_dir.read_pipeline_meta_doc(reciter)
-    if doc is None:
-        return None
-    try:
-        # ``exclude_none`` so an optional field the sidecar doesn't carry
-        # (e.g. ``riwayah`` on a pre-multi-riwayah extraction) stays absent
-        # rather than being served as an explicit ``null``.
-        validated = PipelineMeta.model_validate(doc).model_dump(mode="json", exclude_none=True)
-    except Exception:  # noqa: BLE001 — a malformed/forward sidecar must not 500 the validation panel
-        # The sidecar is a hot read on /api/seg/validate; a single un-migrated
-        # or forward-compat field would otherwise raise ValidationError →
-        # HTTP 500 for the reciter's entire validation view. Degrade to the
-        # raw doc (consumers read declared keys like deleted_basmala_chapters)
-        # and surface the drift to the nightly bucket validator instead.
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "[%s] pipeline_meta failed PipelineMeta validation; serving raw doc", reciter
-        )
-        validated = doc
-    cache.set_seg_pipeline_meta(reciter, validated)
-    return validated
-
-
 def load_auto_split(reciter: str) -> tuple[dict[str, dict], dict | None]:
     """Load ``auto_split_v1.json`` sidecar for *reciter*.
 

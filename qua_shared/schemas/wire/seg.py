@@ -762,28 +762,6 @@ class SegValQalqalaItem(BaseModel):
     classified_issues: list[str] = Field(default_factory=list)
 
 
-class SegValBasmalaAminItem(BaseModel):
-    """``basmala_amin`` — a basmala/amin verse-boundary convention candidate.
-
-    ``missed_basmala`` is stamped ``true`` on the augmented "possibly missed
-    Basmala" candidates (first seg of a chapter whose Basmala was not stripped);
-    absent on the canonical 1:1 / 1:7 candidates.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    chapter: int
-    seg_index: int
-    segment_uid: str | None = None
-    ref: Ref
-    # ``time`` rides through only on the augmented "missed Basmala" candidates
-    # (``{**first_seg, ...}`` in detail.py — first_seg carries it); the
-    # canonical 1:1 / 1:7 candidates omit it. Optional, not required.
-    time: str | None = None
-    missed_basmala: bool | None = None
-    classified_issues: list[str] = Field(default_factory=list)
-
-
 # Plain union over every variant — NOT a Pydantic discriminator union (no
 # shared on-wire discriminator field exists). json2ts renders this as a named
 # TS union of the member interfaces.
@@ -803,7 +781,6 @@ SegValAnyItemUnion = (
     | SegValRepetitionItem
     | SegValMuqattaatItem
     | SegValQalqalaItem
-    | SegValBasmalaAminItem
 )
 
 
@@ -891,7 +868,6 @@ class SegValidateResponse(BaseModel):
     repetitions: list[SegValRepetitionItem] = Field(default_factory=list)
     muqattaat: list[SegValMuqattaatItem] = Field(default_factory=list)
     qalqala: list[SegValQalqalaItem] = Field(default_factory=list)
-    basmala_amin: list[SegValBasmalaAminItem] = Field(default_factory=list)
     category_counts: dict[str, int] = Field(default_factory=dict)
     stats: SegValStats | None = None
     split_group_index: dict[str, list[str]] = Field(default_factory=dict)

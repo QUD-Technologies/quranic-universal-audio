@@ -113,22 +113,6 @@ def wasl_recheck_path(slug: str) -> str:
     return storage_paths.wasl_recheck_path(slug)
 
 
-def pipeline_meta_path(slug: str) -> str:
-    return storage_paths.pipeline_meta_path(slug)
-
-
-def read_pipeline_meta_doc(slug: str) -> dict | None:
-    """Return the parsed ``pipeline_meta.json`` doc, or ``None`` if absent."""
-    try:
-        return get_backend().read_json(pipeline_meta_path(slug))  # type: ignore[return-value]
-    except StorageNotFound:
-        return None
-
-
-def write_pipeline_meta_doc(slug: str, doc: dict) -> None:
-    get_backend().write_json_atomic(pipeline_meta_path(slug), doc)
-
-
 def has_reciter(slug: str) -> bool:
     """True if the reciter directory exists under ``reciters/``."""
     return get_backend().exists(storage_paths.reciter_dir(slug))
@@ -267,3 +251,15 @@ def read_timestamps_chapter(slug: str, chapter: int) -> bytes | None:
     """
     compressed = read_timestamps_chapter_br(slug, chapter)
     return brotli.decompress(compressed) if compressed is not None else None
+
+
+def read_specials_doc(slug: str) -> dict | None:
+    """Return the parsed ``specials.json`` doc, or ``None`` if the reciter has none."""
+    try:
+        return get_backend().read_json(storage_paths.specials_path(slug))  # type: ignore[return-value]
+    except StorageNotFound:
+        return None
+
+
+def write_specials_doc(slug: str, doc: dict) -> None:
+    get_backend().write_json_atomic(storage_paths.specials_path(slug), doc)

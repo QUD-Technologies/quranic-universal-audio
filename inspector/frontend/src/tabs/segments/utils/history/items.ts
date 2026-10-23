@@ -71,6 +71,7 @@ export const SHORT_LABELS: Record<string, string> = {
     qalqala: 'qalqala',
 };
 
+// `basmala_amin`: legacy category, still hidden in old history.
 const HISTORY_NEUTRAL_CATEGORIES = new Set(['basmala_amin', 'muqattaat']);
 
 export function versesFromRef(ref: string | null | undefined): string[] {

@@ -150,6 +150,8 @@ def _manifest_doc(files: dict[str, bytes], run_riwayah: str = "hafs") -> dict:
             for p, b in files.items()
         ],
         "required": sorted(files),
+        # Legacy producer key: the manifest ignores it and promote no longer
+        # writes it to pipeline_meta.json.
         "deleted_basmala_chapters": [CHAPTER],
     }
 
@@ -208,9 +210,9 @@ class Harness:
         self.events: list[str] = []
         prefix = f"staging/{SLUG}/{RUN_ID}"
         bucket = {f"{prefix}/{p}": b for p, b in staged.items()}
-        bucket[f"{prefix}/manifest.json"] = json.dumps(
-            _manifest_doc(staged, run_riwayah)
-        ).encode("utf-8")
+        bucket[f"{prefix}/manifest.json"] = json.dumps(_manifest_doc(staged, run_riwayah)).encode(
+            "utf-8"
+        )
         bucket.update(published or {})
         self.backend = FakeBackend(bucket, self.events)
         self.written: dict[str, object] = {}
@@ -291,7 +293,7 @@ def test_promote_publishes_every_artifact(monkeypatch, harness):
         f"{base}/audio/{CHAPTER}.mp3",
         f"{base}/peaks/{CHAPTER}.json.gz",
     }
-    assert _published(h, "pipeline_meta.json")["deleted_basmala_chapters"] == [CHAPTER]
+    assert "deleted_basmala_chapters" not in _published(h, "pipeline_meta.json")
 
 
 def test_stamping_is_unconditional(monkeypatch, harness):
@@ -537,9 +539,7 @@ def test_a_projected_run_publishes_the_inspector_vocabulary_slug():
     assert pa.build_meta(_manifest_model(run_riwayah="warsh"))["riwayah"] == "warsh_an_nafi"
 
 
-def test_a_projected_run_stamps_its_edition_on_both_artifacts_and_the_sidecar(
-    monkeypatch, harness
-):
+def test_a_projected_run_stamps_its_edition_on_both_artifacts_and_the_sidecar(monkeypatch, harness):
     h = harness(riwayah="warsh_an_nafi", run_riwayah="warsh")
     assert _run(monkeypatch) == 0
 

@@ -428,7 +428,6 @@ def build_artifacts(
                 schema_version=1,
                 # The run's stamp, not promote's clock — one run, one timestamp.
                 generated_at=manifest.created_at,
-                deleted_basmala_chapters=sorted(manifest.deleted_basmala_chapters),
                 riwayah=meta_riwayah(manifest),
                 # exclude_none so a Hafs run's sidecar keeps the bytes it has always
                 # had — the key appears only where it says something.

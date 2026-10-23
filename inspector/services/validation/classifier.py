@@ -177,11 +177,6 @@ def classify_flags(
         "qalqala": False,
         "qalqala_letter": None,
         "end_of_verse": False,
-        # basmala_amin detection lives in services/validation/detail.py
-        # (per-chapter scan + verse 1:1 / 1:7 overlap rule) rather than
-        # here. classify_flags exposes the key as False so per-seg ignore
-        # tests can iterate every CAN_IGNORE category uniformly.
-        "basmala_amin": False,
     }
 
     matched_ref = seg.get("matched_ref", "")

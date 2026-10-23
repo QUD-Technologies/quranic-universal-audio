@@ -103,26 +103,26 @@ Wire shape (`qua_shared/schemas/wire/mark_ready.py::MarkReadyRequest`):
     "failed_alignments": true,
     "missing_words": true,
     "low_confidence": true,
-    "splits_wasl_waqf": true,
-    "basmala_amin_intros": true
+    "repetitions": true,
+    "splits_wasl_waqf": true
   },
   "comment_checks": "...",   // optional, ≤4000 chars
   "comment_issues": "..."    // optional, ≤4000 chars
 }
 ```
 
-The six checklist keys mirror to the FE copy module at `inspector/frontend/src/tabs/segments/copy/mark-ready/index.ts`. The labels themselves live in sibling `.md` files (`form.md`, `checklist.md`, `comments.md`) so wording edits don't require touching components. Parity is asserted by `inspector/frontend/src/tabs/segments/__tests__/parity/mark-ready-copy.test.ts` and by the schema codegen guard.
+The five checklist keys mirror to the FE copy module at `inspector/frontend/src/tabs/segments/copy/mark-ready/index.ts`. The labels themselves live in sibling `.md` files (`form.md`, `checklist.md`, `comments.md`) so wording edits don't require touching components. Claims marked ready before the `basmala_amin` category was retired store a sixth key, `basmala_amin_intros`; `services/admin/reviews.py::_build_submission` drops it on read so the Reviews drawer still validates them. Parity is asserted by `inspector/frontend/src/tabs/segments/__tests__/parity/mark-ready-copy.test.ts` and by the schema codegen guard.
 
 Two gates run inside `_h_marked_ready` before the transition is accepted:
 
 1. **Checklist completeness.** Every key in the live validate result's `checklist_keys` MUST be `True`; the others are not shown and may be `False`. A box is shown only when one of its categories (`CHECKLIST_CATEGORIES` in `qua_shared/schemas/wire/mark_ready.py`) ever had an item for the reciter — listed now (resolved included; low confidence only under the strict cutoff), in a segment's `ignored_categories`, or edited from its card (`op_context_category`; failed also counts an edit of a segment with no `matched_ref`) — see `services/validation/checklist_scope.py`. Any shown key `False` → `InvalidTransition("checklist incomplete", details={unchecked: [...]})`. `splits_wasl_waqf` now attests that every Low Confidence Waqf cut is tagged wasl or waqf.
-2. **Blocking validation counts.** The handler calls `services.validation.validate_reciter_segments(slug)` and checks the five keys in `BLOCKING_COUNT_KEYS` (`qua_shared/schemas/wire/mark_ready.py`) against the live `category_counts` — `missed_waqf` counts items with an unlabelled cut (`cross_verse` is a review aid and deliberately absent):
+2. **Blocking validation counts.** The handler calls `services.validation.validate_reciter_segments(slug)` and checks the four keys in `BLOCKING_COUNT_KEYS` (`qua_shared/schemas/wire/mark_ready.py`) against the live `category_counts` — `missed_waqf` counts items with an unlabelled cut (`cross_verse` is a review aid and deliberately absent):
 
    | Key | Accordion |
    |---|---|
    | `low_confidence` | Low confidence |
    | `low_confidence_v2` | Low confidence v2 |
-   | `basmala_amin` | Basmala + amin |
+   | `missed_waqf` | Low Confidence Waqf |
    | `repetitions` | Repetitions |
 
    Any non-zero count → `InvalidTransition("blocking validation counts must be zero before mark-ready", details={blocking_counts: {...}})`. The client mirrors the same gate via `$segValidation?.category_counts` as a UX guard, but the server is authoritative.

@@ -53,8 +53,7 @@ export type SegValAnyItem =
   | SegValAudioBleedingItem
   | SegValRepetitionItem
   | SegValMuqattaatItem
-  | SegValQalqalaItem
-  | SegValBasmalaAminItem;
+  | SegValQalqalaItem;
 export type AudioCategory = "by_surah" | "by_ayah";
 
 export interface AdminActiveClaim {
@@ -457,7 +456,7 @@ export interface MarkReadySubmission {
   [k: string]: unknown;
 }
 /**
- * The six attestation checkboxes. Every key the reciter's validation
+ * The five attestation checkboxes. Every key the reciter's validation
  * lists in ``checklist_keys`` MUST be True at submit time — the handler
  * raises ``InvalidTransition`` otherwise; the rest are sent False.
  *
@@ -475,7 +474,6 @@ export interface MarkReadyChecklist {
   low_confidence: boolean;
   repetitions: boolean;
   splits_wasl_waqf: boolean;
-  basmala_amin_intros: boolean;
 }
 /**
  * Full per-recitation payload for the General drawer.
@@ -2252,22 +2250,6 @@ export interface SegValQalqalaItem {
   classified_issues?: string[];
 }
 /**
- * ``basmala_amin`` — a basmala/amin verse-boundary convention candidate.
- *
- * ``missed_basmala`` is stamped ``true`` on the augmented "possibly missed
- * Basmala" candidates (first seg of a chapter whose Basmala was not stripped);
- * absent on the canonical 1:1 / 1:7 candidates.
- */
-export interface SegValBasmalaAminItem {
-  chapter: number;
-  seg_index: number;
-  segment_uid?: string | null;
-  ref: string;
-  time?: string | null;
-  missed_basmala?: boolean | null;
-  classified_issues?: string[];
-}
-/**
  * ``GET /api/seg/validate/<reciter>`` — issues grouped by category.
  *
  * ``errors`` and ``structural_errors`` are the SAME list under two keys
@@ -2302,7 +2284,6 @@ export interface SegValidateResponse {
   repetitions?: SegValRepetitionItem[];
   muqattaat?: SegValMuqattaatItem[];
   qalqala?: SegValQalqalaItem[];
-  basmala_amin?: SegValBasmalaAminItem[];
   category_counts?: {
     [k: string]: number;
   };
@@ -2316,14 +2297,7 @@ export interface SegValidateResponse {
   false_split_meta?: SegValBoundaryMeta | null;
   unmarked_wasl_meta?: SegValBoundaryMeta | null;
   wasl_recheck?: string[];
-  checklist_keys?: (
-    | "failed_alignments"
-    | "missing_words"
-    | "low_confidence"
-    | "repetitions"
-    | "splits_wasl_waqf"
-    | "basmala_amin_intros"
-  )[];
+  checklist_keys?: ("failed_alignments" | "missing_words" | "low_confidence" | "repetitions" | "splits_wasl_waqf")[];
 }
 /**
  * ``stats`` — per-reciter structural segmentation statistics.

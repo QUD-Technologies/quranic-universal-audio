@@ -41,6 +41,7 @@
     import { ERROR_CAT_LABELS } from '../../utils/constants';
     import { deriveOpIssueDelta } from '../../utils/validation/classified-issues';
 
+    // `basmala_amin`: legacy category, still hidden in old history.
     const HISTORY_NEUTRAL_CATEGORIES = new Set(['basmala_amin', 'muqattaat']);
     const historyCategory = (cat: string | null | undefined): string | null =>
         cat && !HISTORY_NEUTRAL_CATEGORIES.has(cat) ? cat : null;

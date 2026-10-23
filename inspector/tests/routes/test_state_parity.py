@@ -195,7 +195,7 @@ def test_mark_ready_propagates_to_all_endpoints(
     _seed_state([_state_row_kwargs("test_slug", state="under_review", assignee_hf_id="u-1")])
 
     # The mark-ready state handler re-validates the live segments to gate
-    # on five category_counts being zero. Tests don't ship segments — stub
+    # on the blocking category_counts being zero. Tests don't ship segments — stub
     # the validator to report a clean result so the gate passes.
     from services import validation as _validation
 
@@ -205,7 +205,6 @@ def test_mark_ready_propagates_to_all_endpoints(
                 "low_confidence": 0,
                 "low_confidence_v2": 0,
                 "cross_verse": 0,
-                "basmala_amin": 0,
                 "repetitions": 0,
             }
         }
@@ -223,7 +222,6 @@ def test_mark_ready_propagates_to_all_endpoints(
                 "low_confidence": True,
                 "repetitions": True,
                 "splits_wasl_waqf": True,
-                "basmala_amin_intros": True,
             },
             "comment_checks": "",
             "comment_issues": "",

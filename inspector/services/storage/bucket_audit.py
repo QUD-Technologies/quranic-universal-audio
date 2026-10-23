@@ -445,8 +445,8 @@ def _audit_auto_split_v1(backend, path: str) -> FileResult:
 
 
 def _audit_pipeline_meta(backend, path: str) -> FileResult:
-    """``pipeline_meta.json`` — extraction-time facts (Inspector hard-fails
-    on missing/invalid sidecar). Validated via the canonical Pydantic model."""
+    """``pipeline_meta.json`` — extraction-time facts (optional; nothing in
+    Inspector reads it). Validated via the canonical Pydantic model."""
     from qua_shared.schemas import PipelineMeta
 
     try:
@@ -466,16 +466,14 @@ def _audit_pipeline_meta(backend, path: str) -> FileResult:
         except Exception as e:
             return FileResult(path, "error", f"schema fail: {e}", size=size)
 
-    n_ch = len(validated.deleted_basmala_chapters)
     n_info = sum(1 for lvl, _ in captured if lvl == logging.INFO)
     n_warn = sum(1 for lvl, _ in captured if lvl >= logging.WARNING)
     return FileResult(
         path,
         "ok",
-        f"deleted_basmala_chapters={n_ch} @ {validated.generated_at}" + _summarise_extras(captured),
+        f"riwayah={validated.riwayah or 'hafs'} @ {validated.generated_at}"
+        + _summarise_extras(captured),
         size=size,
-        items_ok=n_ch,
-        items_total=n_ch,
         n_info=n_info,
         n_warn=n_warn,
     )
@@ -609,10 +607,7 @@ TOP_LEVEL_AUDITORS: list[tuple[str, Callable, bool]] = [
     ("false_split_v1.json", _audit_by_uid_sidecar, False),
     ("unmarked_wasl_v1.json", _audit_by_uid_sidecar, False),
     ("wasl_recheck_v1.json", _audit_by_uid_sidecar, False),
-    # pipeline_meta.json is required: Inspector hard-fails on missing sidecar
-    # to make backfill a deploy gate. Older reciters need
-    # scripts/backfills/backfill_deleted_basmala.py.
-    ("pipeline_meta.json", _audit_pipeline_meta, True),
+    ("pipeline_meta.json", _audit_pipeline_meta, False),
     ("audio/_done.json", _audit_done_sentinel, False),
 ]
 

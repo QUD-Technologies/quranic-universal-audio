@@ -17,7 +17,7 @@ import pytest
 
 # Helpers ---------------------------------------------------------------
 # Mark-ready takes a JSON body. The route's pydantic gate accepts only the
-# canonical six-key checklist (all True) plus two optional comment strings;
+# canonical five-key checklist (all True) plus two optional comment strings;
 # the state handler additionally re-computes the live validation counts.
 # Tests use this canonical payload + the ``clean_validation`` fixture to
 # short-circuit the count gate so they don't need on-disk segs to pass.
@@ -29,7 +29,6 @@ _FULL_CHECKLIST_BODY = {
         "low_confidence": True,
         "repetitions": True,
         "splits_wasl_waqf": True,
-        "basmala_amin_intros": True,
     },
     "comment_checks": "",
     "comment_issues": "",
@@ -54,7 +53,6 @@ def clean_validation(monkeypatch):
                 "low_confidence_v2": 0,
                 "missed_waqf": 0,
                 "cross_verse": 0,
-                "basmala_amin": 0,
             },
             "checklist_keys": list(_FULL_CHECKLIST_BODY["checklist"]),
         }
@@ -450,7 +448,6 @@ def test_mark_ready_rejects_nonzero_blocking_counts(
                 "low_confidence": 3,
                 "low_confidence_v2": 0,
                 "cross_verse": 0,
-                "basmala_amin": 0,
                 "repetitions": 0,
             },
         }
@@ -499,7 +496,6 @@ def test_mark_ready_lc_count_uses_strict_threshold_not_detail(
                 "low_confidence": 3,
                 "low_confidence_v2": 0,
                 "cross_verse": 0,
-                "basmala_amin": 0,
                 "repetitions": 0,
             },
         }
@@ -528,7 +524,6 @@ def test_mark_ready_lc_count_uses_strict_threshold_not_detail(
                 "low_confidence": 2,
                 "low_confidence_v2": 0,
                 "cross_verse": 0,
-                "basmala_amin": 0,
                 "repetitions": 0,
             },
         }

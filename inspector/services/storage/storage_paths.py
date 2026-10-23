@@ -233,17 +233,6 @@ def wasl_recheck_path(slug: str) -> str:
     return reciter_file(slug, "wasl_recheck_v1.json")
 
 
-def pipeline_meta_path(slug: str) -> str:
-    """Per-reciter immutable extraction-time facts.
-
-    Schema: ``qua_shared/schemas/pipeline_meta.py::PipelineMeta``. Written
-    once by extraction (or the backfill script for legacy reciters); read
-    by ``services/storage/data_loader.load_pipeline_meta``. Immutable
-    post-extraction — never invalidated by save.
-    """
-    return reciter_file(slug, "pipeline_meta.json")
-
-
 def timestamps_path_br(slug: str, chapter: str | int) -> str:
     """Brotli-compressed compact v12 shard served as a byte pass-through."""
     return reciter_file(slug, f"timestamps/{chapter}.json.br")
@@ -252,6 +241,16 @@ def timestamps_path_br(slug: str, chapter: str | int) -> str:
 def timing_path_br(slug: str, chapter: str | int) -> str:
     """Brotli stored segment times of one audio chapter (written by the aligner)."""
     return reciter_file(slug, f"timing/{chapter}.json.br")
+
+
+def specials_path(slug: str) -> str:
+    """Per-reciter timed specials (Isti'adha / Basmala before ayah 1, …).
+
+    Schema: ``qua_shared/schemas/bucket/specials.py::SpecialsDoc``. Written by
+    the align pipeline at promote time and by the specials backfill; word
+    timings and voice verdicts are merged in by the timestamps run.
+    """
+    return reciter_file(slug, "specials.json")
 
 
 def prefetched_audio_path(slug: str, chapter: str | int) -> str:
@@ -311,4 +310,5 @@ PER_RECITER_FILES: tuple[str, ...] = (
     "unmarked_wasl_v1.json",
     "wasl_recheck_v1.json",
     "pipeline_meta.json",
+    "specials.json",
 )

@@ -1,7 +1,7 @@
 """Per-segment detail-list builder for validate_reciter_segments.
 
 Iterates entries and returns the detail lists (failed, low_confidence,
-cross_verse, audio_bleeding, repetitions, muqattaat, qalqala, basmala_amin)
+cross_verse, audio_bleeding, repetitions, muqattaat, qalqala)
 plus the verse_segments coverage map. Each detail item carries a
 ``classified_issues`` field — the full category list the segment matches
 under the unified classifier (forward-compat for multi-category card
@@ -13,9 +13,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from config import LOW_CONFIDENCE_DETAIL_THRESHOLD, MISSED_BASMALA_FLAG_MIN_DELETED
+from config import LOW_CONFIDENCE_DETAIL_THRESHOLD
 from qua_shared.riwayat import DEFAULT_SDK_RIWAYAH
-from services.reference import edition_tables
 from services.reference.quran_refs import dk_text_for_ref
 from services.storage.data_loader import load_detailed
 from services.validation.classifier import (
@@ -242,7 +241,6 @@ def _build_detail_lists(
     word_counts: dict,
     probe_failed_uids: set | None = None,
     probe_words: dict[str, list[dict]] | None = None,
-    deleted_basmala_chapters: set[int] | None = None,
     hidden_pause_map: dict[str, dict] | None = None,
     missed_waqf_map: dict[str, dict] | None = None,
     false_split_map: dict[str, dict] | None = None,
@@ -255,7 +253,7 @@ def _build_detail_lists(
       chapter_seg_idx, verse_segments,
       failed, low_confidence, low_confidence_v2, hidden_pause, missed_waqf,
       false_split, unmarked_wasl, cross_verse, audio_bleeding, repetitions,
-      muqattaat, qalqala, basmala_amin.
+      muqattaat, qalqala.
 
     ``hidden_pause_map`` / ``missed_waqf_map`` / ``false_split_map`` /
     ``unmarked_wasl_map`` are the ``by_uid`` maps of the offline boundary-review
@@ -269,15 +267,6 @@ def _build_detail_lists(
     the sidecar isn't present and the v2 list should stay empty.
     ``probe_words`` maps a flagged uid to the words that made it Low
     Confidence (``load_probe_v2``); each v2 item carries its list as ``words``.
-
-    ``deleted_basmala_chapters`` is the set of chapters from which the
-    alignment pipeline (strip_specials) already deleted a Basmala. When the
-    count of deleted chapters reaches ``MISSED_BASMALA_FLAG_MIN_DELETED``, the
-    rule flags the first segment of every other chapter (excluding 1 and 9)
-    as a "possibly missed Basmala" in ``basmala_amin``. Below the threshold
-    (or when the set is empty / ``None``) the augmentation is skipped — the
-    reciter is treated as one who doesn't routinely recite inter-chapter
-    basmalas, so flagging every chapter would just be noise.
     """
     # Precompute surah-offsets table once per validate pass. Used by every
     # ``_word_ord`` call below to convert (surah, ayah, word) refs into a
@@ -298,16 +287,9 @@ def _build_detail_lists(
     repetitions: list[dict] = []
     muqattaat: list[dict] = []
     qalqala: list[dict] = []
-    basmala_11: list[tuple[dict, bool]] = []
-    basmala_amin_17: list[tuple[dict, bool]] = []
     chapter_seg_idx: dict[int, int] = {}
     verse_segments: dict[tuple[int, int], list] = defaultdict(list)
     sequence_gaps: list[dict] = []
-    first_seg_by_chapter: dict[int, dict] = {}
-    # Parallel store: the live seg dict for each chapter's first segment, so
-    # the missed-Basmala augmentation below can honour per-segment ignores
-    # via ``is_suppressed_for(seg, "basmala_amin")``.
-    first_seg_obj_by_chapter: dict[int, dict] = {}
 
     for entry in entries:
         chapter = chapter_from_ref(entry["ref"])
@@ -322,19 +304,6 @@ def _build_detail_lists(
             t_start = seg.get("time_start", 0)
             t_end = seg.get("time_end", 0)
             seg_uid = seg.get("segment_uid") or None
-
-            if i == 0 and chapter not in first_seg_by_chapter:
-                # Capture identity of the first seg of every chapter, regardless
-                # of whether matched_ref is valid — the missed-Basmala rule
-                # below needs this even when the first seg failed to align.
-                first_seg_by_chapter[chapter] = {
-                    "chapter": chapter,
-                    "seg_index": 0,
-                    "segment_uid": seg_uid,
-                    "ref": matched_ref,
-                    "time": f"{format_ms(t_start)}-{format_ms(t_end)}",
-                }
-                first_seg_obj_by_chapter[chapter] = seg
 
             if not matched_ref:
                 # Respect is_ignored_for so _all / ignored=True suppresses the
@@ -619,39 +588,6 @@ def _build_detail_lists(
                     }
                 )
 
-            # Two independent sub-checks on al-Fatiha, and only the second
-            # applies to every edition.
-            #
-            # The sounded-Basmala check asks "is the Basmala at 1:1 covered by a
-            # segment?", which is a question only where the Basmala IS verse 1:1
-            # — Hafs and Shu'bah. Warsh and Qalun render it as an unnumbered
-            # opener that the offline pipeline strips, so there is no 1:1 to
-            # cover and flagging one would be permanent, unresolvable noise.
-            #
-            # The Amin check asks about the verse AFTER al-Fatiha's last, which
-            # every edition has. Warsh's al-Fatiha still ends at 7 (it drops the
-            # numbered Basmala and splits a later verse), but the number is read
-            # from the edition rather than assumed.
-            if surah == 1:
-                item = {
-                    "chapter": chapter,
-                    "seg_index": i,
-                    "segment_uid": seg_uid,
-                    "ref": matched_ref,
-                    "classified_issues": classified,
-                }
-                # Suppression is applied at the output gate (below), not at
-                # candidate collection. If a user resolves the canonical
-                # candidate (first 1:1 or last 1:<fatiha_last>), the card should
-                # disappear -- NOT promote a neighbouring seg, which would
-                # be whack-a-mole.
-                suppressed = is_suppressed_for(seg, "basmala_amin")
-                fatiha_last = edition_tables.fatiha_last_ayah(riwayah)
-                if edition_tables.basmala_is_numbered(riwayah) and s_ayah <= 1 <= e_ayah:
-                    basmala_11.append((item, suppressed))
-                if s_ayah <= fatiha_last <= e_ayah:
-                    basmala_amin_17.append((item, suppressed))
-
             # Accumulate verse coverage (3-tuple: word_from, word_to, seg_index)
             if s_ayah != e_ayah:
                 for ayah in range(s_ayah, e_ayah + 1):
@@ -665,66 +601,6 @@ def _build_detail_lists(
                         verse_segments[(surah, ayah)].append((1, wc, i))
             else:
                 verse_segments[(surah, s_ayah)].append((s_word, e_word, i))
-
-    # "Missed Basmala" augmentation. For every chapter (≠1, ≠9) whose Basmala
-    # the alignment pipeline did NOT strip, the first segment is flagged as a
-    # candidate that may need manual handling. Chapter 1 (Al-Fatiha) has
-    # Basmala as its first ayah by design (the canonical 1:1 entry is already
-    # flagged above); chapter 9 (At-Tawbah) traditionally has no Basmala.
-    #
-    # Gated on ``len(deleted_basmala_chapters) >= MISSED_BASMALA_FLAG_MIN_DELETED``:
-    # for reciters who don't conventionally recite an inter-chapter Basmala the
-    # pipeline strips none of them, so flagging every chapter would flood the
-    # accordion with false positives. Only kick the augmentation in once the
-    # reciter has shown they DO recite basmalas regularly.
-    missed_basmalas: list[dict] = []
-    if (
-        deleted_basmala_chapters is not None
-        and len(deleted_basmala_chapters) >= MISSED_BASMALA_FLAG_MIN_DELETED
-    ):
-        for chapter, first_seg in first_seg_by_chapter.items():
-            if chapter in (1, 9):
-                continue
-            if chapter in deleted_basmala_chapters:
-                continue
-            seg_obj = first_seg_obj_by_chapter.get(chapter)
-            if seg_obj is not None and is_suppressed_for(seg_obj, "basmala_amin"):
-                continue
-            missed_basmalas.append(
-                {
-                    **first_seg,
-                    "missed_basmala": True,
-                    "classified_issues": ["basmala_amin"],
-                }
-            )
-
-    # Order: first 1:1 seg → last 1:7 seg → remaining 1:1 segs → missed basmalas
-    # (from other chapters). Dedup by (chapter, seg_index, segment_uid) preserves
-    # the explicit order while collapsing the overlap when a single seg spans
-    # both 1:1 and 1:7 (synthetic short fixtures).
-    #
-    # Suppression is applied here, not at candidate collection: if the canonical
-    # candidate (first 1:1, last 1:7) is ignored or resolved-by-edit, the slot
-    # is left empty instead of being filled by the next-best seg.
-    combined_basmala_amin: list[dict] = []
-    seen_basmala_amin: set[tuple[int, int, str | None]] = set()
-    ordered_items: list[dict] = []
-    if basmala_11 and not basmala_11[0][1]:
-        ordered_items.append(basmala_11[0][0])
-    if basmala_amin_17:
-        last_item, last_suppressed = basmala_amin_17[-1]
-        if not last_suppressed:
-            ordered_items.append(last_item)
-    for item, suppressed in basmala_11[1:]:
-        if not suppressed:
-            ordered_items.append(item)
-    ordered_items.extend(missed_basmalas)
-    for item in ordered_items:
-        key = (item["chapter"], item["seg_index"], item.get("segment_uid"))
-        if key in seen_basmala_amin:
-            continue
-        seen_basmala_amin.add(key)
-        combined_basmala_amin.append(item)
 
     return {
         "chapter_seg_idx": chapter_seg_idx,
@@ -742,7 +618,6 @@ def _build_detail_lists(
         "repetitions": repetitions,
         "muqattaat": muqattaat,
         "qalqala": qalqala,
-        "basmala_amin": combined_basmala_amin,
     }
 
 

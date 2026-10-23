@@ -88,7 +88,6 @@ def _build_reciter_dir(backend: FilesystemBackend, slug: str, detailed: dict) ->
     pipeline_meta = {
         "schema_version": 1,
         "generated_at": "2026-01-01T00:00:00Z",
-        "deleted_basmala_chapters": [],
     }
     backend.write_bytes_atomic(
         f"{base}/pipeline_meta.json", json.dumps(pipeline_meta).encode("utf-8")

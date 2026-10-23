@@ -15,11 +15,10 @@ Playbook for one-shot migrations / backfills against bucket data (`reciters/<slu
 | `backfill_qalqala_letter.py` | detailed.json | persist `qalqala_letter` per seg | yes (drift-gated) | Migration #2. See [validation.md](validation.md). |
 | `purge_pad_migration.py` | edit_history.jsonl | strip `batch_type=="pad_migration"` batches | yes (noop on clean) | Migration #3. |
 | `convert_peaks_v2_to_v3.py` | peaks/ | plain `<ch>.json` v2 → slim `<ch>.json.gz` v3 | yes | Migration #5 wire shape. See the inspector-audio skill. |
-| `backfill_deleted_basmala.py` | pipeline_meta.json | derive `deleted_basmala_chapters` sidecar | yes (byte-equal) | Migration #5. |
-| `derive_pipeline_meta.py` | pipeline_meta.json | derive sidecar for a local slug dir | yes (modulo `generated_at`) | New-pipeline + legacy fallback paths. |
+| `backfill_deleted_basmala.py` | pipeline_meta.json | derive `deleted_basmala_chapters` sidecar | yes (byte-equal) | Migration #5. **Retired** with the `basmala_amin` category — nothing reads the field. |
+| `derive_pipeline_meta.py` | pipeline_meta.json | derive sidecar for a local slug dir | yes (modulo `generated_at`) | New-pipeline + legacy fallback paths. **Retired** with `backfill_deleted_basmala.py`. |
 | `backfill_pipeline_peaks.py` | edit_history_peaks.jsonl | resync per-op pipeline peaks with history | yes | Migration #5 catch-up tool. |
 | `backfill_peaks_slim.py` / `rollback_peaks_slim.py` | peaks/ | legacy `.json` → slim `.json.gz` (+ reverse) | yes | See the inspector-audio skill. |
-| `backfill_deleted_basmala.py` is paired with extraction's native write | — | — | — | New reciters land pre-stamped; backfill is legacy catch-up only. |
 | `unignore_category.py` | edit_history.jsonl | bulk-revert `ignore_issue` ops for a category | yes (skips reverted) | Data fix, not a migration — drives `services.segments.undo.undo_ops`. |
 | `audit_bucket_reciter.py` | (read-only) | per-reciter integrity audit | n/a | Run before publishing a reciter. |
 | `restamp_timestamps_v12.py` | timestamps/ | historical chapter shard → native v12 staging object | separate output | Migration #7; strict local cutover only. |
@@ -78,7 +77,8 @@ A pipeline-era cluster of changes; the post-#5 invariants are: every history sna
 
 - **`convert_peaks_v2_to_v3.py`** — walks a dir of plain `peaks/<ch>.json` (v2: `schema_version:2`, nested float `peaks`) → emits slim `<ch>.json.gz` siblings (mirrors `services/audio/peaks_slim.py::pack_slim`). Deletes the plain files unless `--keep-legacy`. Runs in a download → migrate → re-upload flow; orphaned plain `.json` on the bucket need a separate delete pass. Peaks shape detail lives in the **inspector-audio skill**.
 - **`derive_pipeline_meta.py`** — derives `<dir>/pipeline_meta.json` for a local slug dir. New path: walk `strip_specials` snapshots, collect Basmala-class chapters from the `chapter` stamp. Legacy fallback: pair each Basmala-class op with the next `batch.chapters[]` entry (valid because strip ops emit in chapter+time order). Idempotent modulo `generated_at`.
-- **`backfill_deleted_basmala.py`** — same derivation via `qua_shared/pipeline_meta.py::collect_deleted_basmalas` (the helper extraction calls — byte-identical), writing the `deleted_basmala_chapters` sidecar field for legacy reciters. The post-#5 inspector reads this sidecar instead of re-deriving from `edit_history.jsonl` on every cold validate. `--slug` / `--all --dry-run`. Deterministic — re-run as a drift check.
+- **`backfill_deleted_basmala.py`** — same derivation via `qua_shared/pipeline_meta.py::collect_deleted_basmalas` (the helper extraction calls — byte-identical), writing the `deleted_basmala_chapters` sidecar field for legacy reciters. The post-#5 inspector read this sidecar instead of re-deriving from `edit_history.jsonl` on every cold validate. `--slug` / `--all --dry-run`. Deterministic — re-run as a drift check.
+- **Retired (both scripts above).** The `basmala_amin` validation category that consumed `deleted_basmala_chapters` is gone, so validation no longer reads `pipeline_meta.json` and promote no longer writes the field. `PipelineMeta` keeps it as a deprecated, never-serialized field (`exclude=True`) so old sidecars still validate under `extra="forbid"`; `promote_run.py --compare` drops it from both sides.
 - **`backfill_pipeline_peaks.py`** — catch-up when `edit_history_peaks.jsonl` drifts from `edit_history.jsonl` (partial migration / manual mutation / pre-#5 reciter). Assumes the #5 invariants — if unmet, fix source data (`.local/extraction/scripts/migrate_wip5_in_place.py`) or re-extract rather than adding fallbacks here.
 
 ## Migration #7 — native timestamp shards and report targets

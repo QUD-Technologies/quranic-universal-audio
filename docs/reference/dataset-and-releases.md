@@ -98,7 +98,7 @@ The same predicate drives the Releases-tab buckets and the cut job's member disc
 
 | Action | Eligibility |
 |---|---|
-| TS gen | `state == READY` + segments saved + `pipeline_meta.json` present |
+| TS gen | `state == READY` + segments saved |
 | HF publish (per-reciter) | current `ts` row (`release.publish_hf` cap) |
 | GH cut (global) | ≥1 eligible reciter (`release.cut_gh` cap, owner-only by default) |
 

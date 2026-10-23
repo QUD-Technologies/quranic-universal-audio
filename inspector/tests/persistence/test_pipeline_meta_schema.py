@@ -2,8 +2,7 @@
 
 Schema lives at ``qua_shared/schemas/bucket/pipeline_meta.py``. The artefact
 is the per-reciter ``reciters/<slug>/pipeline_meta.json`` — immutable facts
-emitted by the offline extraction pipeline (currently the set of chapters
-whose Basmala was stripped) so Inspector doesn't re-derive them at runtime.
+emitted by the offline extraction pipeline (currently the edition it ran under).
 
 These assert the canonical shape round-trips byte/shape-equal, the required
 ``generated_at`` provenance, and that the artefact is pure ``extra="forbid"``
@@ -18,11 +17,10 @@ from qua_shared.schemas import PipelineMeta
 
 
 def _canonical_meta() -> dict:
-    """Canonical pipeline_meta — generated_at + a couple stripped chapters."""
+    """Canonical pipeline_meta — schema version + generated_at."""
     return {
         "schema_version": 1,
         "generated_at": "2026-05-16T21:46:39.362Z",
-        "deleted_basmala_chapters": [9, 1],
     }
 
 
@@ -33,7 +31,6 @@ def test_canonical_meta_validates():
     m = PipelineMeta.model_validate(_canonical_meta())
     assert m.schema_version == 1
     assert m.generated_at == "2026-05-16T21:46:39.362Z"
-    assert m.deleted_basmala_chapters == [9, 1]
 
 
 def test_generated_at_required():
@@ -44,14 +41,13 @@ def test_generated_at_required():
         PipelineMeta.model_validate(raw)
 
 
-def test_deleted_basmala_defaults_empty():
-    """A reciter with no stripped Basmala still validates — the list
-    defaults to empty."""
-    raw = _canonical_meta()
-    raw.pop("deleted_basmala_chapters")
+def test_legacy_deleted_basmala_validates_and_is_never_written():
+    """Old sidecars carry the deprecated ``deleted_basmala_chapters`` list: it
+    must still validate under ``extra="forbid"``, and no dump writes it back."""
+    raw = {**_canonical_meta(), "deleted_basmala_chapters": [9, 1]}
     m = PipelineMeta.model_validate(raw)
-    assert m.deleted_basmala_chapters == []
-    assert m.model_dump()["deleted_basmala_chapters"] == []
+    assert m.deleted_basmala_chapters == [9, 1]
+    assert m.model_dump(exclude_none=True) == _canonical_meta()
 
 
 # -- pure extra="forbid" policy ----------------------------------------

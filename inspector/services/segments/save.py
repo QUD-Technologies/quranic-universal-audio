@@ -54,9 +54,9 @@ SaveResult = dict | tuple[dict, int]
 # "classified_issues" deltas. They exist in the validation accordion for
 # review/awareness but represent display-only context, not gains/losses
 # from an edit.
-#   - ``basmala_amin`` flags verse-boundary basmala / amin conventions and
-#     would otherwise show up as a noisy +/- pill on every boundary edit.
 #   - ``muqattaat`` flags huruf-muqattaʼat verse openings — display-only.
+#   - ``basmala_amin`` is a retired category (legacy category, still hidden
+#     in old history).
 HISTORY_NEUTRAL_CATEGORIES = frozenset({"basmala_amin", "muqattaat"})
 
 
