@@ -40,7 +40,11 @@ _BUCKETS = {
 FATIHA = 1
 _VERSE_1 = "1:1:1-"
 #: Attributed on the undo batch; the pipeline principal marks it as tooling, not a person.
-MIGRATION_ACTOR = {"hf_user_id": "pipeline", "login_at_time": "restore_fatiha_basmala", "role": "pipeline"}
+MIGRATION_ACTOR = {
+    "hf_user_id": "pipeline",
+    "login_at_time": "restore_fatiha_basmala",
+    "role": "pipeline",
+}
 
 
 @dataclass(frozen=True)
@@ -89,7 +93,9 @@ def has_verse_1(entries: list[dict]) -> bool:
 def latest_deletion(history: list[dict]) -> Deletion | None:
     """The newest un-reverted op that deleted chapter 1's 1:1 row."""
     reverted_batches = {
-        r["reverts_batch_id"] for r in history if r.get("reverts_batch_id") and not r.get("reverts_op_ids")
+        r["reverts_batch_id"]
+        for r in history
+        if r.get("reverts_batch_id") and not r.get("reverts_op_ids")
     }
     reverted_ops = {op for r in history for op in (r.get("reverts_op_ids") or [])}
     found = None
@@ -151,9 +157,13 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     ap.add_argument("--slug", nargs="+", required=True)
     ap.add_argument("--bucket", choices=sorted(_BUCKETS), default="prod")
-    ap.add_argument("--execute", action="store_true", help="Write. Without it the script only reports.")
+    ap.add_argument(
+        "--execute", action="store_true", help="Write. Without it the script only reports."
+    )
     args = ap.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
     for noisy in ("httpx", "httpx2"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     _setup_paths_and_env(args.bucket)
@@ -169,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
         "load_detailed": load_detailed,
         "parse_history": parse_history_for_reciter,
         "undo_ops": undo_ops,
-        "actor": Actor(**MIGRATION_ACTOR),
+        "actor": Actor.model_validate(MIGRATION_ACTOR),
         "read_specials": data_dir.read_specials_doc,
         "write_specials": data_dir.write_specials_doc,
         "validate_specials": lambda doc: SpecialsDoc.model_validate(doc).model_dump(mode="json"),
