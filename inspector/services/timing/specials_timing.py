@@ -66,8 +66,8 @@ def with_openers(entries: list[dict], openers: list[dict]) -> list[dict]:
     return [{**first, "segments": openers + first["segments"]}, *rest]
 
 
-def store_words(slug: str, chapter: int, openers: list[dict], times: bytes) -> int:
-    """Write each timed opener's word intervals (chapter ms) onto its specials entry."""
+def opener_words(openers: list[dict], times: bytes) -> dict[int, list[tuple[int, int]]]:
+    """Each timed opener's word intervals (chapter ms), keyed by its start."""
     stored = json.loads(brotli.decompress(times)).get("segments") or {}
     words_at: dict[int, list[tuple[int, int]]] = {}
     for seg in openers:
@@ -80,18 +80,29 @@ def store_words(slug: str, chapter: int, openers: list[dict], times: bytes) -> i
             for _, s, e, *_ in held["words"]
             if s is not None and e is not None
         ]
-    if not words_at:
+    return words_at
+
+
+def write_words(slug: str, by_chapter: dict[int, dict[int, list[tuple[int, int]]]]) -> int:
+    """Write ``opener_words`` results for several chapters onto their specials entries at once."""
+    if not any(by_chapter.values()):
         return 0
     with specials_service.WRITE_LOCK:
         doc = specials_service.read_doc(slug)
         if doc is None:
             return 0
-        for entry in doc.chapters.get(str(chapter), []):
-            if entry.type in OPENERS and entry.start_ms in words_at:
-                entry.words = words_at[entry.start_ms]
+        for chapter, words_at in by_chapter.items():
+            for entry in doc.chapters.get(str(chapter), []):
+                if entry.type in OPENERS and entry.start_ms in words_at:
+                    entry.words = words_at[entry.start_ms]
         doc = SpecialsDoc.model_validate(doc.model_dump())  # re-check spans after the edit
         data_dir.write_specials_doc(slug, doc.model_dump(mode="json"))
-    return len(words_at)
+    return sum(len(w) for w in by_chapter.values())
+
+
+def store_words(slug: str, chapter: int, openers: list[dict], times: bytes) -> int:
+    """Write each timed opener's word intervals (chapter ms) onto its specials entry."""
+    return write_words(slug, {chapter: opener_words(openers, times)})
 
 
 def verse_failures(slug: str, chapter: int, reply: dict) -> list[dict]:
