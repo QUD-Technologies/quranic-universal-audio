@@ -57,6 +57,11 @@ RETRY_BACKOFF_S = 2.0
 WORKERS = 16
 DEFAULT_OUT_DIR = ".local/mp3quran_cdn_urls"
 
+#: One keep-alive pool: a fresh connection per HEAD exhausts Windows' ephemeral
+#: ports (WinError 10048) over ~50k requests.
+_SESSION = requests.Session()
+_SESSION.mount("https://", requests.adapters.HTTPAdapter(pool_maxsize=WORKERS))
+
 
 class ResolveError(RuntimeError):
     """A legacy url did not redirect to a live CDN copy of the same file."""
@@ -91,7 +96,7 @@ def _head(url: str, head: Callable) -> requests.Response:
     raise AssertionError("unreachable")
 
 
-def resolve_redirect(url: str, *, head: Callable = requests.head) -> str:
+def resolve_redirect(url: str, *, head: Callable = _SESSION.head) -> str:
     """The CDN url ``url`` redirects to, checked to be the same file and live."""
     resp = _head(url, head)
     location = resp.headers.get("location")
