@@ -286,7 +286,9 @@ def test_start_adopts_a_replaced_upstream_recording_then_aligns_it(align_env, mo
     }
     backend.write_json_atomic(storage_paths.audio_manifest_path(SLUG), doc)
     audio_meta._stage_for_test(SLUG, doc)
-    stale = [f"reciters/{SLUG}/{p}" for p in ("audio/112.mp3", "peaks/112.json.gz", "levels/112.json.gz")]
+    stale = [
+        f"reciters/{SLUG}/{p}" for p in ("audio/112.mp3", "peaks/112.json.gz", "levels/112.json.gz")
+    ]
     for path in stale:
         backend.write_bytes_atomic(path, b"old recording")
     monkeypatch.setattr(

@@ -21,7 +21,6 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
-
 from opener_job import SR, _fs, _samples
 
 POOL_CHAPTERS = 24
@@ -33,11 +32,17 @@ def _fatiha_span(slug: str) -> list[int] | None:
     from qua_timing_batch.retime import inputs
 
     try:
-        doc = json.loads(_fs().read_text(inputs.reciter_path(slug, "specials.json"), encoding="utf-8"))
+        doc = json.loads(
+            _fs().read_text(inputs.reciter_path(slug, "specials.json"), encoding="utf-8")
+        )
     except FileNotFoundError:
         return None
     rows = [e for e in doc.get("chapters", {}).get("1", []) if e.get("source") == "fatiha_verse"]
     return [rows[0]["start_ms"], rows[0]["end_ms"]] if rows else None
+
+
+def _cut(y: np.ndarray, start_ms: int, end_ms: int) -> np.ndarray:
+    return np.asarray(y[start_ms * SR // 1000 : end_ms * SR // 1000], dtype=np.float32)
 
 
 def _pool_chapters(bodies: list[dict]) -> set[int]:
@@ -70,17 +75,29 @@ def score_reciter(slug: str, bodies: list[dict], work: str) -> dict:
             ref = str(body["entries"][0]["ref"]) if body else "1"
             y = _samples(slug, ref, max(e for _, e in spans) + PAD_MS, Path(work))
 
-            def cut(s, e):
-                return np.asarray(y[s * SR // 1000 : e * SR // 1000], dtype=np.float32)
-
-            pool += [V.clip_features(c) for s, e in refs if len(c := cut(s, e)) > V.MIN_CLIP_S * SR]
+            pool += [
+                V.clip_features(c) for s, e in refs if len(c := _cut(y, s, e)) > V.MIN_CLIP_S * SR
+            ]
             for s in segs:
-                clips.append((ch, str(s["time_start"]), s["matched_ref"], cut(s["time_start"], s["time_end"])))
+                clips.append(
+                    (
+                        ch,
+                        str(s["time_start"]),
+                        s["matched_ref"],
+                        _cut(y, s["time_start"], s["time_end"]),
+                    )
+                )
             if ch == 1 and fatiha:
-                clips.append((None, str(fatiha[0]), "Basmala", cut(*fatiha)))
+                clips.append((None, str(fatiha[0]), "Basmala", _cut(y, *fatiha)))
         out = {"pool": len(pool), "fatiha": None, "openers": {}}
         for ch, key, kind, y in clips:
-            rec = {"type": kind, "dur_ms": round(len(y) * 1000 / SR), "z": None, "groups": None, "mfcc": None}
+            rec = {
+                "type": kind,
+                "dur_ms": round(len(y) * 1000 / SR),
+                "z": None,
+                "groups": None,
+                "mfcc": None,
+            }
             if len(pool) >= V.MIN_REFERENCES and len(y) >= V.MIN_CLIP_S * SR:
                 f = V.clip_features(y)
                 groups = V.group_z(f, pool)
@@ -107,7 +124,9 @@ def _task(slug: str, bodies: list[dict], out: str, work: str) -> str:
     part.write_text(json.dumps(result), encoding="utf-8")
     os.replace(part, target)
     n = sum(len(v) for v in result["openers"].values())
-    return f"ok {slug} pool={result['pool']} openers={n} fatiha_z={(result['fatiha'] or {}).get('z')}"
+    return (
+        f"ok {slug} pool={result['pool']} openers={n} fatiha_z={(result['fatiha'] or {}).get('z')}"
+    )
 
 
 def main() -> int:

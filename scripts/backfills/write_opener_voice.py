@@ -108,7 +108,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--slug", nargs="+", help="only these reciters")
     ap.add_argument("--execute", action="store_true", help="Write. Without it only count.")
     args = ap.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
     verdicts = json.loads(args.verdicts.read_text("utf-8"))
     slugs = args.slug or sorted(verdicts)
 
@@ -131,7 +133,9 @@ def main(argv: list[str] | None = None) -> int:
             log.info("%s: %s", slug, counts)
             continue
         changed = S.write_voice(specials_timing, slug, {ch: v for ch, v in final.items()})
-        if changed and not notify_ts_refreshed(S._INSPECTORS[args.bucket], slug, reason="opener_voice"):
+        if changed and not notify_ts_refreshed(
+            S._INSPECTORS[args.bucket], slug, reason="opener_voice"
+        ):
             log.error("%s: verdicts written but the ts-refreshed report was not accepted", slug)
             failed += 1
         log.info("%s: %s, %d changed", slug, counts, changed)
