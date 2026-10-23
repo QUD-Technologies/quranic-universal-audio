@@ -28,6 +28,7 @@
     import { catalogData, deliveryRiwayah, loadCatalog, startCatalogPolling } from '../dashboard/stores/catalog-data';
     import EditOverlay from './components/edit/EditOverlay.svelte';
     import FiltersBar from './components/filters/FiltersBar.svelte';
+    import BasmalaVoiceNotice from './components/specials/BasmalaVoiceNotice.svelte';
     import SegmentsFooter from './components/footer/SegmentsFooter.svelte';
     import HistoryPanel from './components/history/HistoryPanel.svelte';
     import MarkReadyReviewModal from './components/footer/MarkReadyReviewModal.svelte';
@@ -582,6 +583,9 @@
         <FiltersBar hidden={filterBarHidden} />
 
         {#if !$accordionViewActive}
+            {#if !$isSampleMode}
+                <BasmalaVoiceNotice />
+            {/if}
             <SegmentsList onRestore={onNavigationRestore} />
         {/if}
 

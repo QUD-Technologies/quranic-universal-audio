@@ -535,5 +535,18 @@
   "segments_samples_back_to_list_title": "Back to the samples list",
   "segments_chip_low_conf": "Low confidence",
   "segments_chip_repetition": "Repetition",
-  "segments_chip_missing_words": "Missing words"
+  "segments_chip_missing_words": "Missing words",
+  "segments_basmala_voice_label": "Al-Fatiha Basmala voice",
+  "segments_basmala_voice_prompt_unsure": "The aligner couldn't tell whether the Basmala is in the reciter's own voice. Listen, then decide.",
+  "segments_basmala_voice_prompt_same": "The aligner judged the Basmala to be in the reciter's own voice. Overrule it if that's wrong.",
+  "segments_basmala_voice_prompt_different": "The aligner judged the Basmala to be in another voice. Overrule it if that's wrong.",
+  "segments_basmala_voice_saved_same": "Confirmed: the Basmala is in the reciter's own voice.",
+  "segments_basmala_voice_saved_different": "Confirmed: the Basmala is in another voice.",
+  "segments_basmala_voice_play": "Play Basmala",
+  "segments_basmala_voice_pause": "Pause",
+  "segments_basmala_voice_same": "Same voice",
+  "segments_basmala_voice_different": "Different voice",
+  "segments_basmala_voice_change": "Change",
+  "segments_basmala_voice_saving": "Saving…",
+  "segments_basmala_voice_load_error": "Couldn't load the Basmala voice check."
 }

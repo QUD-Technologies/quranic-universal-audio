@@ -559,5 +559,18 @@
   "segments_samples_back_to_list_title": "العودة إلى قائمة العينات",
   "segments_chip_low_conf": "ثقة منخفضة",
   "segments_chip_repetition": "تكرار",
-  "segments_chip_missing_words": "كلمات ناقصة"
+  "segments_chip_missing_words": "كلمات ناقصة",
+  "segments_basmala_voice_label": "صوت بسملة الفاتحة",
+  "segments_basmala_voice_prompt_unsure": "لم تحسم المحاذاة ما إذا كانت البسملة بصوت القارئ نفسه. استمع ثم قرر.",
+  "segments_basmala_voice_prompt_same": "رجحت المحاذاة أن البسملة بصوت القارئ نفسه. صحح ذلك إن كان خاطئا.",
+  "segments_basmala_voice_prompt_different": "رجحت المحاذاة أن البسملة بصوت آخر. صحح ذلك إن كان خاطئا.",
+  "segments_basmala_voice_saved_same": "تم التأكيد: البسملة بصوت القارئ نفسه.",
+  "segments_basmala_voice_saved_different": "تم التأكيد: البسملة بصوت آخر.",
+  "segments_basmala_voice_play": "تشغيل البسملة",
+  "segments_basmala_voice_pause": "إيقاف مؤقت",
+  "segments_basmala_voice_same": "الصوت نفسه",
+  "segments_basmala_voice_different": "صوت مختلف",
+  "segments_basmala_voice_change": "تغيير",
+  "segments_basmala_voice_saving": "جارٍ الحفظ…",
+  "segments_basmala_voice_load_error": "تعذر تحميل فحص صوت البسملة."
 }
