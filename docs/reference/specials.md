@@ -73,6 +73,11 @@ aligner times them and gives each opener its own shard reading:
 Chapter-0 parts are never verses: `timestamps_native.is_verse_ref` keeps them out of the
 release's verse projection and `reference/timestamps._ayah_of` files them under no ayah.
 
+## Frontend
+
+- **Timestamps tab:** opener readings decode with their `special` flag (`lib/recitation-data/specials.ts`). They show as named filmstrip cells, animate in the mega cells, and appear in teleprompter word and letter mode. Peaks follow because the chapter comes from `_meta.chapter`. They are guarded out of verse navigation and reports. Detail is in [`frontend.md`](frontend.md#tabstimestamps).
+- **Segments tab:** `components/BasmalaVoiceNotice.svelte` + `utils/specials/basmala-voice.ts`. On chapter 1, for a `segments.confirm_basmala_voice` holder whose Al-Fatiha Basmala has a verdict or a saved call, a compact notice plays the clip through the preview player. It offers Same / Different voice and POSTs to `/api/seg/specials/<reciter>/voice`. A saved call can be changed.
+
 ## Release
 
 `qua_jobs/cut_release._build_specials_json` emits `specials.json` per recitation
