@@ -23,7 +23,6 @@ export const VALIDATION_TITLE: Readonly<Record<string, () => string>> = Object.f
     missed_waqf: m.segments_validation_missed_waqf_title,
     qalqala: m.segments_validation_qalqala_title,
     muqattaat: m.segments_validation_muqattaat_title,
-    basmala_amin: m.segments_validation_basmala_amin_title,
     hidden_pause: m.segments_validation_hidden_pause_title,
     false_split: m.segments_validation_false_split_title,
     unmarked_wasl: m.segments_validation_unmarked_wasl_title,

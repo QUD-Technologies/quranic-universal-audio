@@ -14,6 +14,7 @@ begins. ``@require_edit_lock`` on the route layer is the writer gate (signed-in
 + claim + state checks).
 """
 
+import logging
 from collections import defaultdict
 from copy import deepcopy
 from datetime import UTC, datetime
@@ -32,6 +33,7 @@ from qua_shared.schemas.bucket.segment import DetailedSegment, DetailedWordTimin
 from services.audio import op_peaks as op_peaks_svc
 from services.audio.peaks_history import append_peaks_records
 from services.reference.delivery_edition import sdk_riwayah_for
+from services.segments import specials as specials_svc
 from services.segments.stamping import stamp_segment
 from services.storage import cache, data_dir, storage_paths
 from services.storage.data_loader import (
@@ -54,9 +56,9 @@ SaveResult = dict | tuple[dict, int]
 # "classified_issues" deltas. They exist in the validation accordion for
 # review/awareness but represent display-only context, not gains/losses
 # from an edit.
-#   - ``basmala_amin`` flags verse-boundary basmala / amin conventions and
-#     would otherwise show up as a noisy +/- pill on every boundary edit.
 #   - ``muqattaat`` flags huruf-muqattaʼat verse openings — display-only.
+#   - ``basmala_amin`` is a retired category (legacy category, still hidden
+#     in old history).
 HISTORY_NEUTRAL_CATEGORIES = frozenset({"basmala_amin", "muqattaat"})
 
 
@@ -266,7 +268,31 @@ def persist_detailed(reciter: str, meta: dict, entries: list[dict], chapters) ->
             seg.pop("_resolved_by_edit", None)
     data_dir.write_detailed_doc(reciter, {"_meta": meta, "entries": entries})
     rebuild_segments_json(reciter, entries)
+    _sync_labelled_specials(reciter, entries, chapters)
     retime_queue.schedule(reciter, chapters)
+
+
+def _sync_labelled_specials(reciter: str, entries: list[dict], chapters) -> None:
+    """Mirror the changed chapters' labelled special rows into ``specials.json``.
+
+    Only by-surah recordings: a special's times are chapter-audio ms. A failure
+    leaves ``specials.json`` behind until the chapter's next save; the edit itself
+    is already durable, so it is logged rather than failing the save.
+    """
+    wanted = {int(c) for c in chapters}
+    by_chapter = {
+        chapter_from_ref(str(e["ref"])): e.get("segments", [])
+        for e in entries
+        if ":" not in str(e["ref"]) and chapter_from_ref(str(e["ref"])) in wanted
+    }
+    if not by_chapter:
+        return
+    try:
+        specials_svc.sync_from_detailed(reciter, by_chapter, generated_at=_utc_now_iso())
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "specials sync failed for %s chapters %s", reciter, sorted(by_chapter)
+        )
 
 
 def normalize_ref_with_wc(ref: str, riwayah: str = DEFAULT_SDK_RIWAYAH) -> str:

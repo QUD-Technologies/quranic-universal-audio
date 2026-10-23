@@ -53,7 +53,8 @@ async function render(): Promise<void> {
     const reciter = p.get('reciter');
     const ref = p.get('ref'); // e.g. "45:32"
     if (!reciter || !ref) throw new Error('need ?reciter=<slug>&ref=<surah:verse>');
-    const chapter = parseInt(ref.split(':')[0] ?? '0', 10);
+    // An opener's ref (`0:2`) names no chapter: `&chapter=N` says which shard holds it.
+    const chapter = parseInt(p.get('chapter') ?? ref.split(':')[0] ?? '0', 10);
 
     const manifest = await loadManifest();
     const reciterAudio = reciterAudioFromManifest(manifest, reciter);

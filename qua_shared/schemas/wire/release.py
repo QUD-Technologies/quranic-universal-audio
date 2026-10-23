@@ -328,6 +328,59 @@ class LetterTimestampsDoc(_TimestampDoc):
         return row[0], row[3]
 
 
+class ReleaseSpecial(BaseModel):
+    """One timed opener before a chapter's ayah 1, on the same timeline as the tier files."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    start_ms: int = Field(..., ge=0)
+    end_ms: int = Field(..., ge=0)
+    #: True when the clip is the reciter's own voice, False when it is another
+    #: voice spliced in, None when undecided.
+    same_voice: bool | None = None
+    #: ``[n, start_ms, end_ms]`` per word, n counting from 1 — the word-tier shape.
+    words: list[list[int]] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _shape(self):
+        if self.end_ms <= self.start_ms:
+            raise ValueError("special span must be non-empty")
+        if not all(_is_word(w) for w in self.words):
+            raise ValueError("special words must be [n,start_ms,end_ms]")
+        return self
+
+
+class ReleaseChapterSpecials(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    istiadha: ReleaseSpecial | None = None
+    basmala: ReleaseSpecial | None = None
+
+
+class ReleaseDefaultBasmala(BaseModel):
+    """The reciter's cleanest own-voice Basmala — one clip an app can cut once and
+    play before any chapter whose recording has none."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    chapter: int = Field(..., ge=1, le=114)
+    start_ms: int = Field(..., ge=0)
+    end_ms: int = Field(..., ge=0)
+
+
+class ReleaseSpecialsDoc(BaseModel):
+    """``specials.json`` in a recitation's release folder."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal[3] = SCHEMA_VERSION
+    slug: str
+    units: Literal["ms"] = "ms"
+    #: Chapter number (string key) → its openers. Chapters without one are absent.
+    chapters: dict[str, ReleaseChapterSpecials] = Field(default_factory=dict)
+    default_basmala: ReleaseDefaultBasmala | None = None
+
+
 class DigitalKhattWord(BaseModel):
     model_config = ConfigDict(extra="allow")
 

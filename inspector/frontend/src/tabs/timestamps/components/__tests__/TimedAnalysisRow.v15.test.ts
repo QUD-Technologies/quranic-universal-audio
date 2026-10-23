@@ -19,7 +19,7 @@ type Row = { updateHighlights: () => void };
 
 function show(reading: TsShardReading, ref: string): void {
     const data = assembleWaslGroup(
-        'r', chapterOccasions([reading]), ref, {}, {}, { audio_category: 'by_surah' }, '',
+        'r', chapterOccasions([reading], 1), ref, {}, {}, { audio_category: 'by_surah' }, '',
     );
     loadedVerse.set({ data, tsSegOffset: reading.parts[0]!.t[0] / 1000, tsSegEnd: 1e9 });
 }

@@ -217,10 +217,9 @@ against a 5–10 MB quota), so switching editions and back refetches by design.
 
 ### Validation
 
-Every table read is per-edition. `basmala_amin` emits its sounded-Basmala
-sub-check **only** where the edition numbers the Basmala as `1:1` (hafs, shuba);
-the Amin check and the missed-Basmala augmentation stay for all four, resolving
-the edition's last Fatiha verse rather than hardcoding 7.
+Every table read is per-edition (`edition_tables.muqattaat_words`). The retired
+`basmala_amin` category was the only reader of the edition's Basmala numbering
+and last Fatiha verse, so `basmala_is_numbered` / `fatiha_last_ayah` went with it.
 
 Not produced for non-Hafs (**D12**): `low_confidence_v2.json`,
 `ts_validation.json`. Both are tight-beam MFA probes against Hafs proxy phones —

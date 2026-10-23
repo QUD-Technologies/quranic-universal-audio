@@ -10,7 +10,8 @@
  * Run FROM inspector/frontend (so `vite` + `playwright` resolve from its
  * node_modules):
  *   node <skill>/scripts/shoot.mjs --reciter <slug> --ref 45:32 [--ref 11:57] \
- *       [--words 1-3] [--out DIR] [--api https://…hf.space] [--port 5199]
+ *       [--words 1-3] [--chapter N] [--out DIR] [--api https://…hf.space] [--port 5199]
+ *   `--chapter` names the shard when the ref is not a verse (an opener: `--ref 0:2 --chapter 2`).
  *
  * A ref may name an occasion: `--ref 2:26@3` shoots the THIRD time the reciter
  * started that verse (default the first). A verse the reciter broke mid-way has
@@ -35,6 +36,7 @@ const { values } = parseArgs({
         reciter: { type: 'string' },
         ref: { type: 'string', multiple: true },
         words: { type: 'string' },
+        chapter: { type: 'string' },
         out: { type: 'string', default: '.' },
         api: { type: 'string', default: 'https://qud-technologies-quranic-inspector-dev.hf.space' },
         port: { type: 'string', default: '5199' },
@@ -72,6 +74,7 @@ for (const spec of values.ref) {
     const qs = new URLSearchParams({ reciter: values.reciter, ref });
     if (occ) qs.set('occ', occ);
     if (values.words) qs.set('words', values.words);
+    if (values.chapter) qs.set('chapter', values.chapter);
     if (values.alltj) qs.set('alltj', '1');
     if (values.wasl) qs.set('wasl', '1');
     const url = `http://localhost:${port}/harness/analysis.html?${qs}`;

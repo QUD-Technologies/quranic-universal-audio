@@ -427,12 +427,28 @@ def _gzip_deterministic(doc: dict) -> bytes:
     return gzip.compress(payload, compresslevel=6, mtime=0)
 
 
-def _json_model_bytes(model) -> bytes:
+def _json_model_bytes(model, *, exclude_none: bool = False) -> bytes:
     """Serialize a Pydantic model as deterministic compact JSON bytes."""
-    body = model.model_dump(mode="json", by_alias=True)
+    body = model.model_dump(mode="json", by_alias=True, exclude_none=exclude_none)
     return json.dumps(body, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode(
         "utf-8"
     )
+
+
+def _build_specials_json(slug: str, chapters: set[int]) -> bytes | None:
+    """The recitation's public ``specials.json`` (openers before ayah 1), or ``None``
+    when the reciter has no bucket ``specials.json`` or no opener in a shipped
+    chapter. Absent keys mean "none" / "unknown" (``exclude_none``)."""
+    from qua_shared.schemas.bucket.specials import SpecialsDoc
+    from qua_shared.specials import project_release
+
+    path = _bucket_root() / "reciters" / slug / "specials.json"
+    if not path.exists():
+        return None
+    doc = project_release(SpecialsDoc.model_validate_json(path.read_bytes()), slug, chapters)
+    if not doc.chapters:
+        return None
+    return _json_model_bytes(doc, exclude_none=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1325,11 +1341,16 @@ def _build_member(rec: dict, ctx: _BuildContext) -> dict | None:
     # shallower tiers are exact prefixes of it, so hashing the deepest one
     # still detects any timing change; naming it by tier keeps the hash
     # meaningful for a delivery that has no letter tier.
+    # specials.json — openers before ayah 1, only for the chapters this cut ships.
+    specials_bytes = _build_specials_json(slug, {s for s, _a in present_refs})
+
     deepest = f"{tiers[-1]}_timestamps.json.gz"
-    content_hash = _sha256_hex(tier_files[deepest] + catalog_bytes)
+    content_hash = _sha256_hex(tier_files[deepest] + catalog_bytes + (specials_bytes or b""))
 
     files = dict(tier_files)
     files["catalog.json"] = catalog_bytes
+    if specials_bytes is not None:
+        files["specials.json"] = specials_bytes
 
     coverage_ayahs = sum(1 for k in verses if not k.startswith("_"))
     change_kind = _classify_change_kind(rec, ctx.prior_members, content_hash)

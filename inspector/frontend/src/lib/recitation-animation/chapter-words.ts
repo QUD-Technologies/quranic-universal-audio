@@ -16,7 +16,7 @@
  * offset isn't known here, so the dashboard guards them out before calling this.
  */
 
-import type { TsVerseData } from '../types/ts-client';
+import type { SpecialKind, TsVerseData } from '../types/ts-client';
 import type { AnimUnit, AyahBoundary, ChapterRecitation, TimeSpan } from './types';
 
 /** One assembled occasion (a contiguous recitation of a verse). A verse may
@@ -27,6 +27,9 @@ export interface AssembledVerse {
     /** Target ayahKey when this occasion's LAST word continues into the next
      *  verse without a stop (cross-verse waṣl); from `ChapterOccasion.waslOutTo`. */
     waslOutTo?: string | null;
+    /** Set when the occasion is a recited opener (`verseRef` is its `0:x` ref);
+     *  from `ChapterOccasion.special`. */
+    special?: SpecialKind | null;
 }
 
 function parseLocation(location: string): { surah: number; ayah: number; word: number } {
@@ -61,7 +64,7 @@ export function buildChapterRecitation(
     // Flatten every occasion's words to chapter-absolute units — one per recited
     // occurrence (repeats included).
     const flat: AnimUnit[] = [];
-    for (const { data, waslOutTo } of occasions) {
+    for (const { data, waslOutTo, special } of occasions) {
         const offsetSec = data.time_start_ms / 1000;
         for (let wi = 0; wi < data.words.length; wi++) {
             const w = data.words[wi]!;
@@ -84,6 +87,7 @@ export function buildChapterRecitation(
                 start,
                 end,
                 intervals: [span],
+                ...(special ? { special } : {}),
                 letters: w.letters.map((lt) => ({
                     char: lt.char,
                     start: lt.start === null ? null : lt.start + offsetSec,
@@ -125,6 +129,8 @@ export function buildChapterRecitation(
         }
     }
 
+    // Openers sit on chapter-0 refs (`0:1` Isti'adha, `0:2` Basmala), so the
+    // surah-first order puts them ahead of ayah 1 in recitation order.
     const units = [...byLoc.values()].sort(
         (a, b) => a.surah - b.surah || a.ayah - b.ayah || a.word - b.word,
     );

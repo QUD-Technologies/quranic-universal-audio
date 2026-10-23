@@ -84,14 +84,12 @@ def _hafs_tables() -> dict:
     """The frozen constants, verbatim — the identity case."""
     return {
         "muqattaat_words": _HAFS_MUQATTAAT_WORDS,
-        "fatiha_last_ayah": 7,
     }
 
 
 def _projected_tables(riwayah: str) -> dict:
     return {
         "muqattaat_words": _project_words(_HAFS_MUQATTAAT_WORDS, riwayah),
-        "fatiha_last_ayah": editions.surah(1, riwayah).ayah_count,
     }
 
 
@@ -103,13 +101,3 @@ def muqattaat_words(riwayah: str) -> frozenset[WordRef]:
     verse, so ``42:1:1`` and ``42:1:2`` are both muqattaat there.
     """
     return _tables(riwayah)["muqattaat_words"]
-
-
-def fatiha_last_ayah(riwayah: str) -> int:
-    """Al-Fatiha's final verse number — where the Amin check looks."""
-    return _tables(riwayah)["fatiha_last_ayah"]
-
-
-def basmala_is_numbered(riwayah: str) -> bool:
-    """True iff this edition counts the Fatiha Basmala as verse ``1:1``."""
-    return editions.basmala_is_numbered(riwayah)

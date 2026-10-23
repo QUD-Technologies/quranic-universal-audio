@@ -931,8 +931,9 @@ def _h_marked_ready(slug, before, actor, payload, reason):
     """Reviewer mark-ready handler.
 
     Validates the submission payload (well-formed ``MarkReadyRequest`` with
-    all six checklist values True) and re-computes the six gated validation
-    category counts against the on-disk segs. Either gate raises
+    every applicable checklist value True) and re-computes the gated
+    validation category counts (``BLOCKING_COUNT_KEYS``) against the on-disk
+    segs. Either gate raises
     ``InvalidTransition`` so the reviewer sees a structured 400.
 
     Holders of ``claim.mark_ready_skip_gates`` (owners by default) skip

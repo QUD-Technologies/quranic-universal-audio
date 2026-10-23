@@ -71,7 +71,7 @@ describe('decodeTimestampShard — word profile', () => {
 
     it('splits into occasions like a native reading', () => {
         const shard = decodeTimestampShard(WORD_SHARD) as TsWordShardResponse;
-        const occasions = chapterOccasions(shard.readings);
+        const occasions = chapterOccasions(shard.readings, 112);
         expect(occasions).toHaveLength(1);
         expect(occasions[0]!.ref).toBe('112:1');
         expect(occasions[0]!.parts[0]!.word_ids).toEqual([0, 1, 2, 3]);

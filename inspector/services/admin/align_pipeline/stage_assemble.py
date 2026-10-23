@@ -107,11 +107,12 @@ def _publish(slug, run_id, params, chapters, sources, started_at) -> int:
     docs = staging.read_chapters(slug, run_id, chapters)
     with tempfile.TemporaryDirectory(prefix=f"align_{slug}_") as tmp:
         run_dir = Path(tmp)
-        deleted_basmala = _materialise(run_dir, docs, chapters, sources, params.riwayah)
+        _materialise(run_dir, docs, chapters, sources, params.riwayah)
+        _write_voice(run_dir, docs)
         _materialise_sidecars(run_dir, slug, run_id, params.riwayah)
         outcome = staging.read_json(staging.run_file(slug, run_id, staging.SPLIT_OUTCOME_FILE))
         _write_coverage(run_dir, chapters, outcome or {})
-        manifest = _manifest(slug, run_id, params, chapters, deleted_basmala, started_at)
+        manifest = _manifest(slug, run_id, params, chapters, started_at)
         built = promote_build.build_artifacts(
             run_dir, manifest, slug, peaks_blobs=_peaks_blobs(slug, chapters)
         )
@@ -125,18 +126,15 @@ def _publish(slug, run_id, params, chapters, sources, started_at) -> int:
     return len(built)
 
 
-def _materialise(run_dir, docs, chapters, sources, riwayah) -> list[int]:
+def _materialise(run_dir, docs, chapters, sources, riwayah) -> None:
     (run_dir / "candidates").mkdir(parents=True)
     events: list[dict] = []
-    deleted_basmala: list[int] = []
     for ch in chapters:
-        candidate, ch_events, basmala = adapt.adapt_chapter(
+        candidate, ch_events, _basmala = adapt.adapt_chapter(
             ch, docs[ch], source_url=sources[ch], riwayah=riwayah
         )
         _dump(run_dir / "candidates" / f"{ch}.json", candidate)
         events.extend(ch_events)
-        if basmala:
-            deleted_basmala.append(ch)
     _dump(run_dir / "events.json", events)
     _dump(
         run_dir / "chapter_sources.json",
@@ -145,7 +143,16 @@ def _materialise(run_dir, docs, chapters, sources, riwayah) -> list[int]:
             for ch in chapters
         },
     )
-    return deleted_basmala
+
+
+def _write_voice(run_dir: Path, docs: dict[int, dict]) -> None:
+    """Hand Al-Fatiha's ``basmala_voice`` result to ``promote_build`` (it lands in specials.json)."""
+    from services.segments.promote_build import VOICE_FILE
+
+    voice = (docs.get(1) or {}).get("basmala_voice")
+    if voice:
+        run_dir.mkdir(parents=True, exist_ok=True)
+        _dump(run_dir / VOICE_FILE, voice)
 
 
 def _materialise_sidecars(run_dir: Path, slug: str, run_id: str, riwayah: str | None) -> None:
@@ -212,7 +219,7 @@ def _write_coverage(run_dir: Path, chapters: list[int], outcome: dict) -> None:
     )
 
 
-def _manifest(slug, run_id, params: AlignParams, chapters, deleted_basmala, started_at):
+def _manifest(slug, run_id, params: AlignParams, chapters, started_at):
     knobs = {
         "pad_left_ms": params.pad_left_ms,
         "pad_right_ms": params.pad_right_ms,
@@ -237,7 +244,6 @@ def _manifest(slug, run_id, params: AlignParams, chapters, deleted_basmala, star
         ),
         artifacts=[],
         required=[],
-        deleted_basmala_chapters=sorted(deleted_basmala),
     )
 
 

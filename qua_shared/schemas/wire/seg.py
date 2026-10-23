@@ -33,9 +33,10 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel, StrictBool
 
 from ..bucket.segment import JoinVerdict
+from ..bucket.specials import SpecialEntry
 from .mark_ready import ChecklistKey
 
 # ===========================================================================
@@ -416,6 +417,25 @@ class SegUndoOpsRequest(BaseModel):
     op_ids: list[str]
 
 
+class SegSpecialsResponse(BaseModel):
+    """``GET /api/seg/specials/<reciter>`` — the reciter's specials by chapter; empty when it has none."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    chapters: dict[str, list[SpecialEntry]] = Field(default_factory=dict)
+
+
+class SegSpecialsVoiceRequest(BaseModel):
+    """``POST /api/seg/specials/<reciter>/voice`` — a maintainer's call on whether
+    the special starting at ``start_ms`` in ``chapter`` is the reciter's own voice."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    chapter: int = Field(ge=1, le=114)
+    start_ms: int = Field(ge=0)
+    same_voice: StrictBool
+
+
 class SegUndoResponse(BaseModel):
     """Success body for both undo routes — ``{"ok": true, "operations_reversed": N}``."""
 
@@ -762,28 +782,6 @@ class SegValQalqalaItem(BaseModel):
     classified_issues: list[str] = Field(default_factory=list)
 
 
-class SegValBasmalaAminItem(BaseModel):
-    """``basmala_amin`` — a basmala/amin verse-boundary convention candidate.
-
-    ``missed_basmala`` is stamped ``true`` on the augmented "possibly missed
-    Basmala" candidates (first seg of a chapter whose Basmala was not stripped);
-    absent on the canonical 1:1 / 1:7 candidates.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    chapter: int
-    seg_index: int
-    segment_uid: str | None = None
-    ref: Ref
-    # ``time`` rides through only on the augmented "missed Basmala" candidates
-    # (``{**first_seg, ...}`` in detail.py — first_seg carries it); the
-    # canonical 1:1 / 1:7 candidates omit it. Optional, not required.
-    time: str | None = None
-    missed_basmala: bool | None = None
-    classified_issues: list[str] = Field(default_factory=list)
-
-
 # Plain union over every variant — NOT a Pydantic discriminator union (no
 # shared on-wire discriminator field exists). json2ts renders this as a named
 # TS union of the member interfaces.
@@ -803,7 +801,6 @@ SegValAnyItemUnion = (
     | SegValRepetitionItem
     | SegValMuqattaatItem
     | SegValQalqalaItem
-    | SegValBasmalaAminItem
 )
 
 
@@ -891,7 +888,6 @@ class SegValidateResponse(BaseModel):
     repetitions: list[SegValRepetitionItem] = Field(default_factory=list)
     muqattaat: list[SegValMuqattaatItem] = Field(default_factory=list)
     qalqala: list[SegValQalqalaItem] = Field(default_factory=list)
-    basmala_amin: list[SegValBasmalaAminItem] = Field(default_factory=list)
     category_counts: dict[str, int] = Field(default_factory=dict)
     stats: SegValStats | None = None
     split_group_index: dict[str, list[str]] = Field(default_factory=dict)

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#PBS -N qua-openers
+#PBS -j oe
+# Time every exported chapter's openers + score their voice (opener_job.py). Resources and
+# OPENER_WORKERS come from qsub; bodies/ and replies/ sit beside this file.
+set -euo pipefail
+R=/srv/scratch/z5344896/qua_runs/openers
+mkdir -p "$R/logs"
+exec > >(stdbuf -oL -eL tee -a "$R/logs/${PBS_JOBNAME}_${PBS_JOBID:-local}.log") 2>&1
+echo "===== ${PBS_JOBID:-nojob} $(date -Is) ($(cat "$R/repo/STAGED_COMMIT")) ====="
+trap 'echo "[job] exit $? $(date -Is)"' EXIT
+source "$R/env.sh"
+cd "$R"
+python opener_job.py bodies replies --workers "${OPENER_WORKERS:-8}" --threads "${OPENER_THREADS:-2}" --shard "${OPENER_SHARD:-0/1}"

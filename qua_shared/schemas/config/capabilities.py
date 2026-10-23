@@ -494,6 +494,16 @@ CAPABILITIES: tuple[Capability, ...] = (
         maintainer=True,
     ),
     _c(
+        "segments.confirm_basmala_voice",
+        G_ADMIN,
+        "Confirm a Basmala voice verdict",
+        "Decide whether a recitation's Basmala is the reciter's own voice when the "
+        "automatic check is unsure (or overrule it). The release flags a Basmala in "
+        "another voice instead of presenting it as the reciter's.",
+        contributor=False,
+        maintainer=True,
+    ),
+    _c(
         "timestamps.resolve_report",
         G_ADMIN,
         "Resolve a timestamps report",

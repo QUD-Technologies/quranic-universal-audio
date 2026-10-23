@@ -69,6 +69,20 @@ class _OmitsAbsent(BaseModel):
         return data
 
 
+#: The opener a special reading times, and the part ref it must sit on — a
+#: chapter-0 ref that can never collide with a verse.
+TsSpecialName = Literal["Isti'adha", "Basmala"]
+TS_SPECIAL_PARTS: dict[str, str] = {"Isti'adha": "0:1", "Basmala": "0:2"}
+
+
+def _check_special_parts(special: str | None, parts: list[TsShardPart]) -> None:
+    if special is None:
+        return
+    want = TS_SPECIAL_PARTS[special]
+    if any(ref != want for ref, *_ in parts):
+        raise ValueError(f"a {special} reading's parts must all be {want!r}")
+
+
 class TsCompactRender(_Closed):
     v: Literal[1]
     m: tuple[str, str, str]
@@ -155,13 +169,15 @@ class TsVariantDefinition(_Closed):
 
 
 class TsShardReading(_OmitsAbsent, _Closed):
-    optional_fields: ClassVar[tuple[str, ...]] = ("variants",)
+    optional_fields: ClassVar[tuple[str, ...]] = ("variants", "special")
 
     id: str = Field(min_length=1)
     parts: list[TsShardPart]
     render: TsCompactRender
     timing: TsShardTiming
     variants: list[TsReadingVariant] | None = None
+    #: Set on a recited opener (timed before ayah 1), absent on a verse reading.
+    special: TsSpecialName | None = None
 
     @model_validator(mode="after")
     def _closure(self):
@@ -176,6 +192,7 @@ class TsShardReading(_OmitsAbsent, _Closed):
                 raise ValueError("invalid compact part")
             if first + count > len(self.render.w):
                 raise ValueError("compact part references unknown words")
+        _check_special_parts(self.special, self.parts)
         for variant in self.variants or ():
             self._variant_ranges(variant)
         return self
@@ -306,11 +323,15 @@ class TsWordShardMeta(BaseModel):
     projection_sha256: str | None = None
 
 
-class TsWordShardReading(_Closed):
+class TsWordShardReading(_OmitsAbsent, _Closed):
+    optional_fields: ClassVar[tuple[str, ...]] = ("special",)
+
     id: str = Field(min_length=1)
     parts: list[TsShardPart]
     words: list[TsWordRow]
     boundaries: list[TsWordBoundary]
+    #: Set on a recited opener (timed before ayah 1), absent on a verse reading.
+    special: TsSpecialName | None = None
 
     @model_validator(mode="after")
     def _closure(self):
@@ -329,6 +350,7 @@ class TsWordShardReading(_Closed):
                 raise ValueError("invalid word part")
             if first + count > len(self.words):
                 raise ValueError("word part references unknown words")
+        _check_special_parts(self.special, self.parts)
         return self
 
 
@@ -341,6 +363,8 @@ class TsWordShardDoc(_Closed):
 
 __all__ = [
     "TS_SHARD_SCHEMA_VERSION",
+    "TS_SPECIAL_PARTS",
+    "TsSpecialName",
     "TS_WORD_BOUNDARY_STATES",
     "TsColumnTiming",
     "TsCompactRender",

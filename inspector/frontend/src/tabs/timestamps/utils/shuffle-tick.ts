@@ -64,6 +64,9 @@ export interface ShuffleFireArgs {
     /** True once the jump has already fired for the occasion in focus
      *  (once-per-occasion guard). */
     firedForCurrentFocus: boolean;
+    /** The occasion in focus is a recited opener (Isti'adha/Basmala), not a
+     *  verse: it leads into ayah 1, so its end is no ayah end to shuffle at. */
+    focusSpecial?: boolean;
 }
 
 /** The end-of-occasion fire predicate: armed, the auditioned occasion's end is
@@ -73,8 +76,8 @@ export interface ShuffleFireArgs {
  *  leak bug violated by re-measuring against the next occasion after focus had
  *  advanced. */
 export function shouldFireShuffle(args: ShuffleFireArgs): boolean {
-    const { armed, ms, focusEndMs, guardMs, firedForCurrentFocus } = args;
-    if (!armed || focusEndMs === null || firedForCurrentFocus) return false;
+    const { armed, ms, focusEndMs, guardMs, firedForCurrentFocus, focusSpecial } = args;
+    if (!armed || focusEndMs === null || firedForCurrentFocus || focusSpecial) return false;
     return ms >= focusEndMs - guardMs;
 }
 

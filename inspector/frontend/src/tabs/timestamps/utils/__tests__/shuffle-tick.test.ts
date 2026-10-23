@@ -169,6 +169,34 @@ describe('shouldFireShuffle', () => {
     });
 });
 
+describe('resolveShuffleTick — recited opener ahead of ayah 1', () => {
+    // A Basmala special (part 0:2) then ayah 1, as the chapter's first occasions.
+    const OPENER: ShuffleTickOccasion[] = [
+        { ref: '0:2', startMs: 1000, endMs: 3000, speechStartMs: 1000, speechEndMs: 3000 },
+        { ref: '2:1', startMs: 3400, endMs: 4400, speechStartMs: 3400, speechEndMs: 4400 },
+    ];
+    const args = { armed: true, guardMs: GUARD, firedForCurrentFocus: false, swapInFlight: false };
+
+    it('reads on from the opener into ayah 1 instead of shuffling at its end', () => {
+        expect(resolveShuffleTick({
+            ...args, occasions: OPENER, ms: 3000, focusEndMs: 3000, focusSpecial: true,
+        })).toEqual({ kind: 'focus', idx: 0 });
+        expect(resolveShuffleTick({
+            ...args, occasions: OPENER, ms: 3500, focusEndMs: 3000, focusSpecial: true,
+        })).toEqual({ kind: 'focus', idx: 1 });
+    });
+
+    it('still shuffles at the end of ayah 1 once it is in focus', () => {
+        expect(resolveShuffleTick({
+            ...args, occasions: OPENER, ms: 4400, focusEndMs: 4400, focusSpecial: false,
+        })).toEqual({ kind: 'fire' });
+    });
+
+    it('lands a jump to ayah 1 on ayah 1, not the opener before it', () => {
+        expect(occasionIndexAt(OPENER, 3400)).toBe(1);
+    });
+});
+
 describe('occasionIndexAt', () => {
     it('follows the verse being read inside a segment that reads two verses', () => {
         const shared: ShuffleTickOccasion[] = [

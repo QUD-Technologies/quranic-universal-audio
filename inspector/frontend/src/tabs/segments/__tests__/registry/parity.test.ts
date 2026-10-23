@@ -25,11 +25,10 @@ const PY_SNAPSHOT = {
   cross_verse:       { canIgnore: false, autoSuppress: false, persistsIgnore: false, scope: 'per_segment', cardType: 'generic',        severity: 'warning', accordionOrder: 10, displayTitle: 'Cross-verse' },
   qalqala:           { canIgnore: false, autoSuppress: false, persistsIgnore: false, scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 11, displayTitle: 'Qalqala', ownerOnly: true },
   muqattaat:         { canIgnore: false, autoSuppress: false, persistsIgnore: false, scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 12, displayTitle: 'Muqattaʼat' },
-  basmala_amin:      { canIgnore: true,  autoSuppress: true,  persistsIgnore: true,  scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 13, displayTitle: 'Basmala + Amin' },
-  hidden_pause:      { canIgnore: true,  autoSuppress: true,  persistsIgnore: true,  scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 14, displayTitle: 'Hidden Pause (review)' },
+  hidden_pause:      { canIgnore: true,  autoSuppress: true,  persistsIgnore: true,  scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 13, displayTitle: 'Hidden Pause (review)' },
   missed_waqf:       { canIgnore: true,  autoSuppress: true,  persistsIgnore: true,  scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 7, displayTitle: 'Low Confidence Waqf' },
-  false_split:       { canIgnore: true,  autoSuppress: true,  persistsIgnore: true,  scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 15, displayTitle: 'False Split (review)' },
-  unmarked_wasl:     { canIgnore: true,  autoSuppress: true,  persistsIgnore: true,  scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 16, displayTitle: 'Unmarked Wasl (review)' },
+  false_split:       { canIgnore: true,  autoSuppress: true,  persistsIgnore: true,  scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 14, displayTitle: 'False Split (review)' },
+  unmarked_wasl:     { canIgnore: true,  autoSuppress: true,  persistsIgnore: true,  scope: 'per_segment', cardType: 'generic',        severity: 'info',    accordionOrder: 15, displayTitle: 'Unmarked Wasl (review)' },
 };
 
 describe('TS ↔ Python registry parity', () => {

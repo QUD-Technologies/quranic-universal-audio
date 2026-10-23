@@ -32,7 +32,6 @@ All in `services/storage/cache.py` unless noted. `_KeyedCache` = LRU-20 (`_KEYED
 |---|---|---|
 | `_seg`, `_seg_meta`, `_seg_verses`, `_seg_resolved_by_edit`, `_seg_probe_v2`, `_seg_edit_history`, `_seg_history_peaks`, `_seg_validate_result`, `_seg_stats_result` | KeyedCache LRU-20 | popped every save/undo (`pop_seg_caches_affected_by_segment_edit`) |
 | `_seg_auto_split` | LRU-20 | only when uid set changes (`batch_changes_segment_set`) |
-| `_seg_pipeline_meta` | LRU-20 | never on save (extraction-time immutable); explicit pop only |
 | `_seg_history_batches`, `_seg_split_group_index` | LRU-20 | appended/extended in place on save, popped on undo |
 | `_seg_history_peaks_response` | LRU-20 (bytes) | save + anon write-back |
 | **`_PEAKS_CACHE`** (per reciter,url envelope) | manual dict, lock | **UNBOUNDED — never invalidated; process-restart only** |
@@ -58,7 +57,6 @@ All in `services/storage/cache.py` unless noted. `_KeyedCache` = LRU-20 (`_KEYED
 | `qalqala_letter` | extraction / save / backfill | `detailed.json` seg | `services/segments/qalqala.py::compute_qalqala_letter` |
 | `classified_issues` (per-op) | save (`_attach_classified_issues`) | `edit_history.jsonl` op snapshots | `snapshot_classifier.classify_snapshot` |
 | per-op history peaks | save (`op_peaks.build_op_records`) / backfill / lazy-on-play | `edit_history_peaks.jsonl` | `services/audio/op_peaks.py` — slices baked int8 chapter peaks, no ffmpeg |
-| `deleted_basmala_chapters` | extraction / backfill | `pipeline_meta.json` | `qua_shared/pipeline_meta.py::collect_deleted_basmalas` (post-#5: reads sidecar, not re-derived per cold validate) |
 | chapter peaks (10 bps int8) | offline extraction | `peaks/<ch>.json.gz` | extraction; served verbatim |
 | catalog snapshot / public reciters | read-time, db_seq cached | not persisted | `repo_catalog.snapshot()` |
 
@@ -98,7 +96,7 @@ INSPECTOR_BUCKET_REPO=QUD-Technologies/quranic-inspector-bucket-dev \
 ```
 Run with **and** without `--mount` to quantify the mount-vs-`hffs.cat_file` gap before trusting any bucket-I/O number. Benches `state/`, catalog, `detailed.json`, `segments.json`, `edit_history.jsonl`, a TS shard, plus `list_dir`/`exists`/write/append.
 
-**Validation drift/bench harness** (gitignored, outside the working tree — `bench/snapshot.py`, `bench/drift.py`, `bench/measure.py` + committed `bench/ground_truth/<slug>.json`; see `docs/reference/validation.md`). The drift gate asserts **byte-equivalent per-category output** vs the ground-truth snapshot across the WIP reciter set. Backfill scripts (`backfill_qalqala_letter.py`, `backfill_deleted_basmala.py`) are themselves deterministic drift checks (stamp → validate against persisted fields → compare → promote only on byte-equal). **Any compute-placement / caching / parallelism / persisted-writer change must pass drift before landing.**
+**Validation drift/bench harness** (gitignored, outside the working tree — `bench/snapshot.py`, `bench/drift.py`, `bench/measure.py` + committed `bench/ground_truth/<slug>.json`; see `docs/reference/validation.md`). The drift gate asserts **byte-equivalent per-category output** vs the ground-truth snapshot across the WIP reciter set. Backfill scripts (`backfill_qalqala_letter.py`) are themselves deterministic drift checks (stamp → validate against persisted fields → compare → promote only on byte-equal). **Any compute-placement / caching / parallelism / persisted-writer change must pass drift before landing.**
 
 **cProfile / perf_counter** — no committed cProfile harness; `perf_counter` markers exist at `services/reference/tajweed.py` (phonemizer init). For ad-hoc work: wrap the **service** function (not the route — strip Flask/CDN variance) under cProfile, or add `perf_counter` deltas inside `validate_reciter_segments` / `save_seg_data` between phases.
 

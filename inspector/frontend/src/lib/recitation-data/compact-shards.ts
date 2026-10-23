@@ -18,6 +18,7 @@ import type {
     TsWordShardMeta,
 } from '../types/generated/schemas';
 import type {
+    SpecialKind,
     TsBoundaryTiming,
     TsShardPart,
     TsShardReading,
@@ -40,6 +41,7 @@ interface StoredWordReading {
     parts: StoredPart[];
     words: StoredWordRow[];
     boundaries: StoredWordBoundary[];
+    special?: SpecialKind | null;
 }
 
 interface StoredWordShard {
@@ -61,6 +63,7 @@ interface StoredReading {
         c: StoredColumn[];
     };
     variants?: TsReadingVariant[] | null;
+    special?: SpecialKind | null;
 }
 
 interface StoredShard {
@@ -138,6 +141,7 @@ function readingOf(
         ...(raw.variants?.length && catalogue
             ? { variants: raw.variants, variantCatalogue: catalogue }
             : {}),
+        ...(raw.special ? { special: raw.special } : {}),
     };
 }
 
@@ -197,6 +201,7 @@ function wordReadingOf(raw: StoredWordReading): TsWordShardReading {
             // phoneme-free, so the two profiles agree on boundary timing.
             boundaries: boundariesOf(parts, wordSpans),
         },
+        ...(raw.special ? { special: raw.special } : {}),
     };
 }
 

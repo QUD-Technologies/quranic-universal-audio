@@ -6,7 +6,7 @@
 |---|---|
 | `manifest.json` | Release-level index: reciter zips, download URLs, checksums, sizes, coverage, and change type. |
 | `catalog.json` | Release-level catalog: reciter names, riwayah, style, coverage, audio metadata, and the audio URLs paired with the timestamp data. |
-| `<recitation>.zip` | One recitation's verse, word, and letter timestamp files, plus its own `catalog.json`. |
+| `<recitation>.zip` | One recitation's verse, word, and letter timestamp files, its own `catalog.json`, and `specials.json` (its Isti'adha / Basmala) when it has any. |
 | `shard.py` | Optional helper that splits a large timestamp file into one JSON file per surah. |
 | `check_updates.py` | Optional helper that checks the latest release for updates to the reciters you use; add `--sync` to re-download them. |
 | `download_audio.py` | Optional helper that fetches a reciter's source audio (YouTube/Drive/CDN) re-encoded so the timestamps line up. |
@@ -65,6 +65,28 @@ python shard.py word_timestamps.json.gz --out-dir per_surah
 ```
 
 By design, timestamps have no gaps between them except at pauses, making highlighting appear smooth and continuous during one breath. 
+
+## Isti'adha and Basmala
+
+Many recordings open a chapter with the Isti'adha and/or Basmala before ayah 1. They are not verses, so they are not in the tier files; `specials.json` in the zip times them on the same millisecond timeline (absent when a recitation has none):
+
+```jsonc
+{
+  "schema_version": 3, "slug": "example_reciter", "units": "ms",
+  "chapters": {
+    // chapter -> its openers; [n, start_ms, end_ms] per word, as in the word tier
+    "2": {
+      "istiadha": { "start_ms": 200, "end_ms": 3900, "same_voice": true, "words": [[1, 200, 900], "…"] },
+      "basmala": { "start_ms": 4000, "end_ms": 8800, "same_voice": true, "words": [[1, 4000, 4600], "…"] }
+    }
+  },
+  "default_basmala": { "chapter": 36, "start_ms": 40, "end_ms": 3007 }
+}
+```
+
+- `same_voice` on each opener (Isti'adha and Basmala) says whether it is the reciter's own voice; `false` marks a clip spliced in from another voice (e.g. a stock clip). It is left out only on an Al-Fatiha 1:1 still awaiting review.
+- In Hafs and Shu'ba, Al-Fatiha's Basmala is verse 1:1: it stays in the tier files and is also listed under chapter `1`, so `same_voice` tells you whose voice it is.
+- `default_basmala` is the reciter's cleanest Basmala in their own voice, to play before a chapter whose recording has none; it is left out when the reciter has no own-voice Basmala.
 
 ## Programmatic use
 

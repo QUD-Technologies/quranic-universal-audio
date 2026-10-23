@@ -21,10 +21,6 @@ logger = logging.getLogger(__name__)
 # ``cross_verse`` is excluded -- it's a hard structural rule. Self-resolving
 # categories (``low_confidence``, ``failed``) are excluded because the
 # classifier already drops them when ``confidence`` flips to 1.0.
-# ``basmala_amin`` is included: the user has reviewed the seg from the card
-# and any edit (trim/split/merge/editReference) signals "I dealt with it" --
-# revalidation must not re-raise the flag for that uid.
-#
 # ``low_confidence_v2`` IS included even though v1 is excluded: v2 is
 # sourced from a frozen extraction-time MFA tight-beam probe sidecar keyed
 # by ``segment_uid`` (see classifier.classify_flags lines around the
@@ -41,7 +37,6 @@ RESOLVES_BY_EDIT_CATEGORIES: frozenset[str] = frozenset(
         "audio_bleeding",
         "repetitions",
         "low_confidence_v2",
-        "basmala_amin",
     }
 )
 

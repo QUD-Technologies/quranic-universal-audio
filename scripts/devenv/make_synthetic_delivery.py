@@ -255,7 +255,6 @@ def main() -> int:
             {
                 "schema_version": 1,
                 "generated_at": datetime.now(UTC).isoformat(),
-                "deleted_basmala_chapters": [],
                 "riwayah": from_sdk_slug(args.riwayah),
             }
         ),

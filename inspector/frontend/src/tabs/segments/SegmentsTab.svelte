@@ -28,6 +28,7 @@
     import { catalogData, deliveryRiwayah, loadCatalog, startCatalogPolling } from '../dashboard/stores/catalog-data';
     import EditOverlay from './components/edit/EditOverlay.svelte';
     import FiltersBar from './components/filters/FiltersBar.svelte';
+    import BasmalaVoiceNotice from './components/specials/BasmalaVoiceNotice.svelte';
     import SegmentsFooter from './components/footer/SegmentsFooter.svelte';
     import HistoryPanel from './components/history/HistoryPanel.svelte';
     import MarkReadyReviewModal from './components/footer/MarkReadyReviewModal.svelte';
@@ -71,7 +72,7 @@
     import { loadChapterData } from './utils/data/chapter-actions';
     import { clearPerReciterState } from './utils/data/clear-per-reciter-state';
     import { clearSegConfig, loadSegConfig } from './utils/data/config-loader';
-    import { reloadCurrentReciter } from './utils/data/reciter-actions';
+    import { firstChapter, reloadCurrentReciter } from './utils/data/reciter-actions';
     import { handleSegmentsKey } from './utils/keyboard';
     import { playFromSegment } from './utils/playback/playback';
     import { executeSave } from './utils/save/actions';
@@ -349,6 +350,12 @@
             localStorage.setItem(LS_KEYS.SEG_RECITER, reciter);
         }
         await reloadCurrentReciter();
+        // A freshly opened recitation lands on its first chapter, not an empty list.
+        if (isSampleSlug(reciter) || get(selectedReciter) !== reciter || get(selectedChapter)) return;
+        const chapter = firstChapter(get(segAllData));
+        if (!chapter) return;
+        selectedChapter.set(chapter);
+        void loadChapterData(reciter, chapter);
     }
     /** Leaving a sample restores the normal Editor selection. */
     function leaveSample(tab: SegmentsSubTab): void {
@@ -582,6 +589,9 @@
         <FiltersBar hidden={filterBarHidden} />
 
         {#if !$accordionViewActive}
+            {#if !$isSampleMode}
+                <BasmalaVoiceNotice />
+            {/if}
             <SegmentsList onRestore={onNavigationRestore} />
         {/if}
 

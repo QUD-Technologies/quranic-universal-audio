@@ -46,6 +46,7 @@ def register_blueprints(app):
     from routes.segments.data import seg_data_bp
     from routes.segments.edit import seg_edit_bp
     from routes.segments.peaks import peaks_bp
+    from routes.segments.specials import seg_specials_bp
     from routes.segments.validation import seg_val_bp
     from routes.timestamps.reports import ts_reports_bp
     from routes.timestamps.timestamps import ts_bp
@@ -79,6 +80,7 @@ def register_blueprints(app):
     app.register_blueprint(seg_data_bp)
     app.register_blueprint(seg_edit_bp)
     app.register_blueprint(seg_val_bp)
+    app.register_blueprint(seg_specials_bp)
     app.register_blueprint(peaks_bp)
     app.register_blueprint(audio_proxy_bp)
     app.register_blueprint(audio_meta_bp)

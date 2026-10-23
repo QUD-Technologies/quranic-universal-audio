@@ -18,6 +18,7 @@ from __future__ import annotations
 import base64
 import gzip
 import json
+from pathlib import Path
 
 import pytest
 
@@ -28,6 +29,15 @@ from services.storage.bucket_audit import (
 )
 from services.storage.hf_bucket import FilesystemBackend
 from tests.conftest import FIXTURES_DIR
+
+GOLDEN_SPECIALS = (
+    Path(__file__).resolve().parents[3]
+    / "qua_shared"
+    / "schemas"
+    / "bucket"
+    / "fixtures"
+    / "specials.golden.json"
+)
 
 SLUG = "fixture_reciter"
 
@@ -98,7 +108,6 @@ def _build_reciter_dir(backend: FilesystemBackend, detailed: dict, *, edit_histo
     pipeline_meta = {
         "schema_version": 1,
         "generated_at": "2026-01-01T00:00:00Z",
-        "deleted_basmala_chapters": [],
     }
     backend.write_bytes_atomic(
         f"{base}/pipeline_meta.json", json.dumps(pipeline_meta).encode("utf-8")
@@ -148,6 +157,49 @@ def test_clean_reciter_audits_ok_with_no_strips(backend, load_fixture):
     parity = by_path[f"reciters/{SLUG}/(audio|peaks)/"]
     assert parity.status == "ok"
     assert parity.items_ok == 1
+
+
+def test_missing_pipeline_meta_is_optional(backend, load_fixture):
+    """Nothing in Inspector reads ``pipeline_meta.json`` any more, so a reciter
+    without one is reported as an optional absence, not an error."""
+    clean = _clean_detailed(load_fixture("112-ikhlas"))
+    _build_reciter_dir(backend, clean, edit_history=b"")
+    backend.delete(f"reciters/{SLUG}/pipeline_meta.json")
+
+    result = audit(backend, "test-bucket", SLUG)
+
+    meta = {f.path: f for f in result.files}[f"reciters/{SLUG}/pipeline_meta.json"]
+    assert meta.status == "missing"
+    assert meta.detail.startswith("(optional")
+    assert result.n_errors == 0
+
+
+def test_specials_json_validates_and_counts_entries(backend, load_fixture):
+    clean = _clean_detailed(load_fixture("112-ikhlas"))
+    _build_reciter_dir(backend, clean, edit_history=b"")
+    golden = GOLDEN_SPECIALS
+    backend.write_bytes_atomic(f"reciters/{SLUG}/specials.json", golden.read_bytes())
+
+    by_path = {f.path: f for f in audit(backend, "test-bucket", SLUG).files}
+
+    specials = by_path[f"reciters/{SLUG}/specials.json"]
+    assert specials.status == "ok"
+    assert specials.items_total == sum(
+        len(v) for v in json.loads(golden.read_bytes())["chapters"].values()
+    )
+
+
+def test_bad_specials_json_surfaces_as_error(backend, load_fixture):
+    clean = _clean_detailed(load_fixture("112-ikhlas"))
+    _build_reciter_dir(backend, clean, edit_history=b"")
+    backend.write_bytes_atomic(
+        f"reciters/{SLUG}/specials.json",
+        b'{"schema_version":1,"generated_at":"t","chapters":{"0":[]}}',
+    )
+
+    by_path = {f.path: f for f in audit(backend, "test-bucket", SLUG).files}
+
+    assert by_path[f"reciters/{SLUG}/specials.json"].status == "error"
 
 
 def test_legacy_edit_history_surfaces_as_error(backend, load_fixture):

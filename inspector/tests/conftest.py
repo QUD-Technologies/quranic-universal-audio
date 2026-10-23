@@ -377,7 +377,6 @@ _SEG_CACHE_NAMES = (
     "_seg_false_split",
     "_seg_unmarked_wasl",
     "_seg_wasl_recheck",
-    "_seg_pipeline_meta",
     "_seg_history_batches",
     "_seg_split_group_index",
     "_seg_edit_history",
@@ -439,8 +438,6 @@ def tmp_reciter_dir(tmp_path, monkeypatch):
     layout (``reciters/<slug>/segments.json``, etc.); the ``install`` helper
     drops fixtures there and seeds a state row for installed reciters.
     """
-    from datetime import datetime, timezone
-
     from services import hf_bucket as _hf_bucket
     from services import storage_paths as _storage_paths
 
@@ -494,23 +491,6 @@ def tmp_reciter_dir(tmp_path, monkeypatch):
                     _storage_paths.edit_history_path(reciter),
                     f.read(),
                 )
-
-        # pipeline_meta.json is required for validate (the basmala_amin rule
-        # reads ``deleted_basmala_chapters`` from this sidecar — see
-        # services/validation/__init__.py::_read_deleted_basmala_chapters).
-        # Fixtures don't ship a pipeline_meta; seed an empty one so tests
-        # exercise the post-migration code path without hitting hard-fail.
-        from qua_shared.schemas import PipelineMeta
-
-        pipeline_meta_doc = PipelineMeta(
-            schema_version=1,
-            generated_at=datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
-            deleted_basmala_chapters=[],
-        ).model_dump(mode="json")
-        backend.write_json_atomic(
-            _storage_paths.pipeline_meta_path(reciter),
-            pipeline_meta_doc,
-        )
 
         # Build a matching segments.json so consumers that read both files
         # see a consistent on-disk state for the fixture.

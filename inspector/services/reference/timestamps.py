@@ -464,8 +464,10 @@ def _ayah_of(ref: str) -> int | None:
     chapter, say). Those belong to no ayah and are skipped rather than guessed
     at, so a malformed ref can never be filed under verse 0.
     """
-    _, _, tail = ref.partition(":")
-    return int(tail) if tail.isdigit() else None
+    head, _, tail = ref.partition(":")
+    if not (head.isdigit() and int(head) >= 1 and tail.isdigit() and int(tail) >= 1):
+        return None
+    return int(tail)
 
 
 def _ayah_ranges(ayahs: list[int], readings: list[dict]) -> list[list[int]]:

@@ -361,5 +361,12 @@
   "common_delivery_bitrate_mixed": "mixed",
   "common_filmstrip_not_recited": "Not recited",
   "common_filmstrip_missing_words": "Missing words",
-  "common_filmstrip_missing_words_list": "Missing words: {indices}"
+  "common_filmstrip_missing_words_list": "Missing words: {indices}",
+  "common_filmstrip_special_istiadha": "Isti'adha",
+  "common_filmstrip_special_basmala": "Basmala",
+  "common_special_amin": "Amin",
+  "common_special_sadaqa": "Sadaqa",
+  "common_special_takbir": "Takbir",
+  "common_special_tahmeed": "Tahmeed",
+  "common_special_tasleem": "Tasleem"
 }

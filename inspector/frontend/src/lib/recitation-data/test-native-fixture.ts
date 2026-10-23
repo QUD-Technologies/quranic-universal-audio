@@ -1,4 +1,4 @@
-import type { TsShardReading, TsShardResponse } from '../types/ts-client';
+import type { SpecialKind, TsShardReading, TsShardResponse } from '../types/ts-client';
 
 export interface FixturePart {
     ref: string;
@@ -7,7 +7,11 @@ export interface FixturePart {
     text?: string;
 }
 
-export function nativeReading(id: string, parts: FixturePart[]): TsShardReading {
+export function nativeReading(
+    id: string,
+    parts: FixturePart[],
+    options: { special?: SpecialKind } = {},
+): TsShardReading {
     const words = parts.map((part, index) => ({
         id: index,
         ref: `${part.ref}:${parts.slice(0, index).filter((prior) => prior.ref === part.ref).length + 1}`,
@@ -60,7 +64,8 @@ export function nativeReading(id: string, parts: FixturePart[]): TsShardReading 
                         boundary_id: word.after_boundary_id,
                         columns: [], sounds: [], bridges: [],
                         state: word.id + 1 < words.length ? 'join' : 'stop',
-                        verse_end: Number(word.ref.split(':')[1]),
+                        // An opener ends no verse.
+                        verse_end: options.special ? null : Number(word.ref.split(':')[1]),
                         exclusive_group: null,
                     })),
                 },
@@ -82,10 +87,11 @@ export function nativeReading(id: string, parts: FixturePart[]): TsShardReading 
             boundaries: [],
             columns: [],
         },
+        ...(options.special ? { special: options.special } : {}),
     };
 }
 
-export function nativeShard(readings: TsShardReading[]): TsShardResponse {
+export function nativeShard(readings: TsShardReading[], chapter = 1): TsShardResponse {
     return {
         _meta: {
             schema_version: 15,
@@ -94,10 +100,33 @@ export function nativeShard(readings: TsShardReading[]): TsShardResponse {
             native_profile: {
                 riwayah: 'hafs', script: 'uthmani', variant: {}, extra_phonemes: [],
             },
-            chapter: 1,
+            chapter,
             audio_category: 'by_surah',
             phonemizer_version: '2.15',
         },
         readings,
     };
+}
+
+/** Al-Baqarah's chapter number — a by-surah chapter whose ayah 1 the Basmala precedes. */
+export const BASMALA_FIXTURE_CHAPTER = 2;
+
+/**
+ * A chapter that opens with a timed Basmala special reading (part `0:2`, words
+ * `0:2:1`..`0:2:4`, 1.0–3.0 s) and then ayah 1 and ayah 2 as ordinary readings.
+ * Ayah 2 exists so an opener keyed by its `ayah` (2 of `0:2`) would collide.
+ */
+export function basmalaShard(chapter = BASMALA_FIXTURE_CHAPTER): TsShardResponse {
+    const basmala = nativeReading('r1', [
+        { ref: '0:2', start: 1000, end: 1500, text: 'بِسْمِ' },
+        { ref: '0:2', start: 1500, end: 2000, text: 'ٱللَّهِ' },
+        { ref: '0:2', start: 2000, end: 2500, text: 'ٱلرَّحْمَـٰنِ' },
+        { ref: '0:2', start: 2500, end: 3000, text: 'ٱلرَّحِيمِ' },
+    ], { special: 'Basmala' });
+    const ayah1 = nativeReading('r2', [{ ref: `${chapter}:1`, start: 3400, end: 4400, text: 'الٓمٓ' }]);
+    const ayah2 = nativeReading('r3', [
+        { ref: `${chapter}:2`, start: 4800, end: 5600 },
+        { ref: `${chapter}:2`, start: 5600, end: 6400 },
+    ]);
+    return nativeShard([basmala, ayah1, ayah2], chapter);
 }

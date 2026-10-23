@@ -10,10 +10,14 @@ import type { WirePayload } from '@quranic-phonemizer/cells';
 import type {
     TsReadingVariant,
     TsShardMeta,
+    TsShardReading as StoredShardReading,
     TsVariantDefinition,
     TsWordShardMeta,
 } from './generated/schemas';
 import type { VerseRef } from './view-models';
+
+/** The recited opener a special reading carries (`lib/recitation-data/specials.ts`). */
+export type SpecialKind = NonNullable<StoredShardReading['special']>;
 
 // ---------------------------------------------------------------------------
 // Client verse model (assembled by ts_client)
@@ -118,6 +122,9 @@ export interface TsVerseData {
      * narrow the shard with `isWordShard`) before assuming geometry exists.
      */
     wordReadings: WordProfileReading[];
+    /** The recited opener this occasion is, when it is one rather than a verse
+     *  (`verse_ref` is then its `0:1`/`0:2` part ref). Absent on verses. */
+    special?: SpecialKind | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -229,6 +236,8 @@ export interface TsShardReading {
     variants?: TsReadingVariant[];
     /** The chapter's definitions of `variants[].id`, copied from `_meta`. */
     variantCatalogue?: Record<string, TsVariantDefinition>;
+    /** Set on a recited opener's reading (part `0:1`/`0:2`); absent on verses. */
+    special?: SpecialKind;
 }
 
 export interface TsNativeShardResponse {
@@ -262,6 +271,8 @@ export interface TsWordShardReading {
         words: TsWordTiming[];
         boundaries: TsBoundaryTiming[];
     };
+    /** Set on a recited opener's reading (part `0:1`/`0:2`); absent on verses. */
+    special?: SpecialKind;
 }
 
 export interface TsWordShardResponse {

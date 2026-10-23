@@ -51,7 +51,7 @@ Each user action dispatches a `SegmentCommand` through `applyCommand`. `confiden
 | Trim | `trim` | `1.0` | `utils/edit/trim.ts`, `trim-zoom.ts`, `enter.ts` | full_replace path; `_make_seg` + `stamping.stamp_segment` |
 | Split | `split` | children inherit parent (→ `1.0` on later ref-edit) | `utils/edit/split.ts`, `split-zoom.ts`, `enter.ts` | full_replace; new child UIDs persisted |
 | Merge | `merge` | `1.0` | `utils/edit/merge.ts` | full_replace; consumed UID dropped, kept UID = earlier seg |
-| Edit reference | `editReference` (`op_type` `edit_reference` \| `confirm_reference`) | `1.0` | `utils/edit/reference.ts` (`beginRefEdit`/`commitRefEdit`) | patch path (field-level) or full_replace |
+| Edit reference | `editReference` (`op_type` `edit_reference` \| `confirm_reference`) | `1.0` | `utils/edit/reference.ts` (`beginRefEdit`/`commitRefEdit`); a special's name (`Basmala`, `istiatha` …) is accepted and stored canonically — see [`specials.md`](specials.md) | patch path (field-level) or full_replace |
 | Delete | `delete` | n/a | `utils/edit/delete.ts` | full_replace; seg removed |
 | Auto-fill / auto-fix | `autoFixMissingWord` | `1.0` | `utils/edit/auto-fix.ts`, `reference.ts` | full_replace; `op_context_category` defaults `missing_words`, `fix_kind=auto_fix` |
 | Ignore | `ignoreIssue` | `1.0` | `utils/edit/ignore.ts` | patch path; appends `category` to `ignored_categories` |
@@ -227,7 +227,7 @@ Client: `utils/save/undo.ts` — `onBatchUndoClick`, `onOpUndoClick`, `onChainUn
 
 ## History view
 
-Server: `services/activity/history_query.py`. `load_edit_history` (cached, per-reciter lock) → `{batches, summary}`. `parse_history_for_reciter` reads raw records (cache-aware; save/undo append in place). Derived indices over the same parsed list: `build_split_group_index` (`{root_uid: [descendants]}`, transitive closure of `split_segment` ops, fixpoint capped at `_SPLIT_GROUP_MAX_PASSES=32`) and `build_resolved_by_edit_index` (`{uid: {category}}` for ops whose `op_context_category ∈ RESOLVES_BY_EDIT_CATEGORIES`; lets a card disappear after an edit without writing `ignored_categories`). `HISTORY_NEUTRAL_CATEGORIES = {basmala_amin, muqattaat}` are excluded from per-op classified-issue deltas in `save.py`.
+Server: `services/activity/history_query.py`. `load_edit_history` (cached, per-reciter lock) → `{batches, summary}`. `parse_history_for_reciter` reads raw records (cache-aware; save/undo append in place). Derived indices over the same parsed list: `build_split_group_index` (`{root_uid: [descendants]}`, transitive closure of `split_segment` ops, fixpoint capped at `_SPLIT_GROUP_MAX_PASSES=32`) and `build_resolved_by_edit_index` (`{uid: {category}}` for ops whose `op_context_category ∈ RESOLVES_BY_EDIT_CATEGORIES`; lets a card disappear after an edit without writing `ignored_categories`). `HISTORY_NEUTRAL_CATEGORIES = {basmala_amin, muqattaat}` are excluded from per-op classified-issue deltas in `save.py` (`basmala_amin` is a retired category kept there only so old history stays hidden).
 
 Client store: `stores/history.ts` (`historyData`, `historyDataStale`, edit chains). Utils `utils/history/`: `loader.ts` (lazy per-reciter fetch + `resetHistoryLoader`), `render.ts` (response → store), `chains.ts` (`buildEditChains` — split-chain construction), `items.ts` (`groupRelatedOps`, flatten batches into display items), `actions.ts` (panel lifecycle). Components `components/history/`: `HistoryPanel`, `HistoryBatch`, `HistoryOp`, `HistoryArrows`, `HistoryFilters`, `EditChainRow`.
 

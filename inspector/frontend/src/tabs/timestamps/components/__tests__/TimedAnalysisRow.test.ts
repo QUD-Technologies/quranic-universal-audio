@@ -39,7 +39,7 @@ describe('TimedAnalysisRow native renderer integration', () => {
             boundary_id: 1, start_ms: 300, end_ms: 500,
         }];
         const data = assembleWaslGroup(
-            'r', chapterOccasions([reading]), '1:1', {}, {}, { audio_category: 'by_surah' }, '',
+            'r', chapterOccasions([reading], 1), '1:1', {}, {}, { audio_category: 'by_surah' }, '',
         );
         loadedVerse.set({ data, tsSegOffset: 0.1, tsSegEnd: 0.5 });
         vi.spyOn(dashPort, 'currentTimeMs').mockReturnValue(400);
@@ -56,7 +56,7 @@ describe('TimedAnalysisRow native renderer integration', () => {
             { ref: '1:3', start: 100, end: 1_000, text: 'a' },
             { ref: '1:4', start: 1_000, end: 2_000, text: 'b' },
         ]);
-        const occasions = chapterOccasions([reading]);
+        const occasions = chapterOccasions([reading], 1);
         const data = assembleWaslGroup(
             'r', occasions, '1:3', {}, {}, { audio_category: 'by_surah' }, '',
         );
@@ -95,7 +95,7 @@ describe('TimedAnalysisRow native renderer integration', () => {
             sound: { sound_id: 1, column_ids: [firstColumn, secondColumn], rule_occurrence_ids: [7] },
         }];
         const data = assembleWaslGroup(
-            'r', chapterOccasions([reading]), '1:1', {}, {}, { audio_category: 'by_surah' }, '',
+            'r', chapterOccasions([reading], 1), '1:1', {}, {}, { audio_category: 'by_surah' }, '',
         );
         loadedVerse.set({ data, tsSegOffset: 0.1, tsSegEnd: 0.5 });
 
@@ -142,7 +142,7 @@ describe('TimedAnalysisRow native renderer integration', () => {
         ];
 
         const data = assembleWaslGroup(
-            'r', chapterOccasions([reading]), '1:1', {}, {}, { audio_category: 'by_surah' }, '',
+            'r', chapterOccasions([reading], 1), '1:1', {}, {}, { audio_category: 'by_surah' }, '',
         );
         loadedVerse.set({ data, tsSegOffset: 0.1, tsSegEnd: 0.3 });
 
@@ -185,7 +185,7 @@ describe('TimedAnalysisRow native renderer integration', () => {
             rule_id: 'lam_shamsiyyah',
         }];
         const data = assembleWaslGroup(
-            'r', chapterOccasions([reading]), '1:1', {}, {}, { audio_category: 'by_surah' }, '',
+            'r', chapterOccasions([reading], 1), '1:1', {}, {}, { audio_category: 'by_surah' }, '',
         );
         loadedVerse.set({ data, tsSegOffset: 0.1, tsSegEnd: 0.3 });
         vi.spyOn(dashPort, 'currentTimeMs').mockReturnValue(200);
@@ -223,7 +223,7 @@ describe('TimedAnalysisRow native renderer integration', () => {
             rule_id: 'lam_shamsiyyah',
         }];
         const data = assembleWaslGroup(
-            'r', chapterOccasions([reading]), '1:1', {}, {}, { audio_category: 'by_surah' }, '',
+            'r', chapterOccasions([reading], 1), '1:1', {}, {}, { audio_category: 'by_surah' }, '',
         );
         loadedVerse.set({ data, tsSegOffset: 0.1, tsSegEnd: 0.3 });
         enterTajweed('r', '1:1', 'wrong_rule');
@@ -252,7 +252,7 @@ describe('TimedAnalysisRow native renderer integration', () => {
         reading.timing.words = [{ word_id: 0, start_ms: 100, end_ms: 400 }];
         const columnId = String(reading.wire.cells.cell_view.words[0]!.columns[0]!.id);
         const data = assembleWaslGroup(
-            'r', chapterOccasions([reading]), '1:1', {}, {}, { audio_category: 'by_surah' }, '',
+            'r', chapterOccasions([reading], 1), '1:1', {}, {}, { audio_category: 'by_surah' }, '',
         );
         loadedVerse.set({ data, tsSegOffset: 0.1, tsSegEnd: 0.4 });
         enterTiming('r', '1:1');

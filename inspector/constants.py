@@ -44,7 +44,6 @@ GUIDE_VIEW_KEYS = (
     "missed_waqf",
     "qalqala",
     "muqattaat",
-    "basmala_amin",
     "flagging",
 )
 GUIDE_VIEW_KEY_ALIASES = {

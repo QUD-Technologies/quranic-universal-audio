@@ -2,7 +2,6 @@ import type { Locale } from '$lib/i18n/locale-store';
 
 import { IssueRegistry } from '../domain/registry';
 
-import basmalaAminGuide from './accordion/basmala_amin.guide';
 import crossVerseGuide from './accordion/cross_verse.guide';
 import failedGuide from './accordion/failed.guide';
 import flaggingGuide from './accordion/flagging.guide';
@@ -30,7 +29,6 @@ const accordionGuides: Readonly<Record<string, string>> = Object.freeze({
     missed_waqf: missedWaqfGuide,
     qalqala: qalqalaGuide,
     muqattaat: muqattaatGuide,
-    basmala_amin: basmalaAminGuide,
     flagging: flaggingGuide,
 });
 
@@ -119,7 +117,6 @@ export const ALL_GUIDE_KEYS: readonly string[] = Object.freeze([
     'missed_waqf',
     'qalqala',
     'muqattaat',
-    'basmala_amin',
     'flagging',
 ]);
 

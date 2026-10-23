@@ -29,7 +29,6 @@ from services.storage.data_loader import (
     load_false_split,
     load_hidden_pause,
     load_missed_waqf,
-    load_pipeline_meta,
     load_probe_v2,
     load_seg_verses,
     load_unmarked_wasl,
@@ -83,22 +82,6 @@ def _load_resolved_idx_cached(reciter: str) -> dict:
         resolved = build_resolved_by_edit_index(reciter)
         cache.set_seg_resolved_by_edit(reciter, resolved)
     return resolved
-
-
-def _read_deleted_basmala_chapters(reciter: str) -> set[int]:
-    """Read the stripped-basmala set from the ``pipeline_meta.json`` sidecar.
-
-    Hard-fails on missing sidecar (clear deploy signal): silent skip would
-    drop basmala_amin counts to 0 without anyone noticing. Run
-    ``scripts/backfills/backfill_deleted_basmala.py`` for any reciter that
-    pre-dates the extraction-time write.
-    """
-    meta = load_pipeline_meta(reciter)
-    if meta is None:
-        raise RuntimeError(
-            f"pipeline_meta.json missing for {reciter!r}; run scripts/backfill_deleted_basmala.py"
-        )
-    return set(meta.get("deleted_basmala_chapters") or [])
 
 
 BOUNDARY_REVIEW_CATEGORIES: tuple[str, ...] = (
@@ -190,7 +173,6 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
                     seg["_resolved_by_edit"] = resolved_idx[uid]
                     _injected_segs.append(seg)
 
-    deleted_basmala_chapters = _read_deleted_basmala_chapters(reciter)
     # Precomputed split-group closures (pure function of cached batch list).
     # Shipped at the response top level as ``split_group_index`` (uid → list of
     # transitive descendants) so the FE can expand accordion cards without
@@ -209,7 +191,6 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
         word_counts,
         probe_failed_uids=probe_failed_uids,
         probe_words=probe_words,
-        deleted_basmala_chapters=deleted_basmala_chapters,
         hidden_pause_map=hidden_pause_map,
         missed_waqf_map=missed_waqf_map,
         false_split_map=false_split_map,
@@ -253,7 +234,6 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
         "cross_verse": unresolved_cross_verse,
         "qalqala": len(detail["qalqala"]),
         "muqattaat": len(detail["muqattaat"]),
-        "basmala_amin": len(detail["basmala_amin"]),
     }
 
     result = {
@@ -273,7 +253,6 @@ def validate_reciter_segments(reciter: str, *, include_boundary_review: bool = T
         "repetitions": detail["repetitions"],
         "muqattaat": detail["muqattaat"],
         "qalqala": detail["qalqala"],
-        "basmala_amin": detail["basmala_amin"],
         "category_counts": category_counts,
         "stats": stats,
         # Precomputed split-group closures keyed by root uid. The FE reads

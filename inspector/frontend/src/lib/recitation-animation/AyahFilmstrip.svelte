@@ -47,6 +47,8 @@
     import { createStripScroller, GLIDE_MIN_MS, glideDur } from './filmstrip-scroll.svelte';
     import type { ActiveCellInfo, CellMissing, FilmstripModel } from './filmstrip-model';
     import { buildSortedIntervals, findActiveAt, nextIntervalAfter } from './recitation-active';
+    import { specialLabel } from './special-label';
+    import type { SpecialKind } from '../types/ts-client';
     import type { AnimUnit } from './types';
 
     interface Props {
@@ -97,6 +99,9 @@
      *  duration to scale from, and playback skips it, so it gets a fixed visible
      *  width purely to stay legible as a skipped slot. */
     const PLACEHOLDER_CELL_PX = 30;
+    /** Legibility floor (px) of a recited opener's cell, which shows its name
+     *  ("Basmala") rather than a 1–3 digit ayah number. */
+    const SPECIAL_CELL_MIN_PX = 64;
     /** An inter-verse gap shorter than this (seconds) is connected flow, not a
      *  waqf stop: it's laid out time-true (no visual floor) and the needle holds lit
      *  straight through it instead of greying + bursting across a floored gap it has
@@ -136,7 +141,11 @@
     $effect(() => () => scroll.dispose()); // tear down its rAF on destroy
 
     interface Cell {
+        /** Model `ayahKey` — unique per cell (an opener's is its `0:x` ref). */
+        key: string;
         ayah: number;
+        /** Recited opener (labelled by name, sits before ayah 1), else null. */
+        special: SpecialKind | null;
         w: number; // visible width (floored to filmstripMinCellPx)
         aw: number; // active span the cursor crosses (time-true, ≤ w)
         cumBefore: number; // px before this cell's left (cells + gaps)
@@ -173,7 +182,7 @@
         const mc = model.cells;
         if (!mc.length) return [];
         const pxPerSec = config.filmstripPxPerSec;
-        const minPx = config.filmstripMinCellPx;
+        const verseMinPx = config.filmstripMinCellPx;
         const out: Cell[] = [];
         let cum = 0;
         for (let i = 0; i < mc.length; i++) {
@@ -191,6 +200,7 @@
             // so it's time-true (`w = aw`) and the group crosses at constant
             // velocity; `gapAfter` derives the same way (gapless inside a group).
             const merged = mergeRight || mergeLeft;
+            const minPx = c.special ? SPECIAL_CELL_MIN_PX : verseMinPx;
             const w = placeholder
                 ? PLACEHOLDER_CELL_PX
                 : merged ? aw : Math.round(aw + Math.max(0, minPx - aw));
@@ -204,7 +214,8 @@
             );
             const gapAfter = mergeRight ? 0 : baseGap;
             out.push({
-                ayah: c.ayah, w, aw, cumBefore: cum, gapAfter, missing: c.missing,
+                key: c.ayahKey, ayah: c.ayah, special: c.special,
+                w, aw, cumBefore: cum, gapAfter, missing: c.missing,
                 waslNext: c.waslNext, mergeRight, mergeLeft,
             });
             cum += w + gapAfter;
@@ -287,6 +298,20 @@
         const list = i18n.locale === 'ar' ? mw.map(toArabicNumeral).join('، ') : mw.join(', ');
         return m.common_filmstrip_missing_words_list({ indices: list });
     }
+
+    /** The cell's visible label: an opener's name, else its ayah number. */
+    function cellLabel(c: Cell): string {
+        void i18n.locale; // re-evaluate the label on locale switch
+        if (c.special) return specialLabel(c.special);
+        return i18n.locale === 'ar' ? toArabicNumeral(c.ayah) : String(c.ayah);
+    }
+
+    /** Slider value of a cell: its ayah, or 0 for an opener (it precedes ayah 1). */
+    const ariaValue = (c: Cell): number => (c.special ? 0 : c.ayah);
+
+    /** Spoken slider value — only an opener needs one (its name, not "0"). */
+    const ariaValueText = (c: Cell): string | undefined =>
+        (c.special ? cellLabel(c) : undefined);
 
     const sorted = $derived(buildSortedIntervals(units));
     const lastRight = $derived(
@@ -438,7 +463,7 @@
     const reportedIdx = $derived(silent ? frozenIdx : activeIdx);
     $effect(() => {
         const c = reportedIdx >= 0 ? cells[reportedIdx] : undefined;
-        onActiveCell?.(c ? { ayah: c.ayah, missing: c.missing } : null);
+        onActiveCell?.(c ? { ayah: c.ayah, missing: c.missing, special: c.special } : null);
     });
 
     // The lit fill bar shows the CURSOR's position within ITS cell (`fillIdx`),
@@ -784,9 +809,10 @@
         role="slider"
         tabindex="0"
         aria-label={scrubberAriaLabel}
-        aria-valuemin={cells[0]!.ayah}
-        aria-valuemax={cells[cells.length - 1]!.ayah}
-        aria-valuenow={cells[activeIdx]?.ayah ?? cells[0]!.ayah}
+        aria-valuemin={ariaValue(cells[0]!)}
+        aria-valuemax={ariaValue(cells[cells.length - 1]!)}
+        aria-valuenow={ariaValue(cells[activeIdx] ?? cells[0]!)}
+        aria-valuetext={ariaValueText(cells[activeIdx] ?? cells[0]!)}
         onpointerdown={onPointerDown}
         onpointermove={onHoverMove}
         onkeydown={(e) => {
@@ -812,7 +838,7 @@
             style:transform="translateX({-scroll.offset}px)"
         >
             <div class="pad" style:width="{pad}px"></div>
-            {#each cells as c, i (c.ayah)}
+            {#each cells as c, i (c.key)}
                 <div
                     class="cell"
                     class:active={!silent && i === activeIdx && c.missing !== 'full'}
@@ -823,14 +849,15 @@
                     class:cursor={i === cursorIdx}
                     class:missing-words={c.missing === 'words'}
                     class:missing-full={c.missing === 'full'}
-                    title={missingTitle(c)}
+                    class:special={!!c.special}
+                    title={c.special ? cellLabel(c) : missingTitle(c)}
                     style:width="{c.w}px"
                     style:margin-right="{c.gapAfter}px"
                 >
                     {#if c.missing !== 'full'}
                         <div class="cell-fill" class:glide={jumping && i === fillIdx}></div>
                     {/if}
-                    <span class="cell-num">{i18n.locale === 'ar' ? toArabicNumeral(c.ayah) : c.ayah}</span>
+                    <span class="cell-num" class:cell-name={!!c.special}>{cellLabel(c)}</span>
                 </div>
             {/each}
             <div class="pad" style:width="{pad}px"></div>
@@ -1003,6 +1030,15 @@
     }
     .cell.active .cell-num {
         color: var(--accent);
+    }
+    /* A recited opener names itself ("Basmala") in the UI face, not a mono numeral. */
+    .cell-num.cell-name {
+        font-family: var(--font-sans);
+        font-variant-numeric: normal;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding: 0 var(--s-1);
     }
     .cell.reached .cell-num {
         color: var(--text-secondary);

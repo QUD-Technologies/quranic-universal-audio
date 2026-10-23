@@ -33,8 +33,6 @@ def _clear_edition_caches():
 
 def test_hafs_tables_are_the_frozen_constants():
     assert edition_tables.muqattaat_words("hafs") == {(s, a, 1) for s, a in MUQATTAAT_VERSES}
-    assert edition_tables.fatiha_last_ayah("hafs") == 7
-    assert edition_tables.basmala_is_numbered("hafs") is True
 
 
 def test_hafs_tables_build_without_the_optional_package(monkeypatch):
@@ -94,15 +92,6 @@ def test_the_two_shura_openings_share_one_verse_but_stay_two_words(riwayah):
     assert (42, 1, 1) in words
     assert (42, 1, 2) in words
     assert (42, 2, 1) not in words
-
-
-@has_editions
-@pytest.mark.parametrize("riwayah", ("warsh", "qalun"))
-def test_the_amin_check_still_looks_at_fatihas_seventh_verse(riwayah):
-    # The Basmala is unnumbered here, but Warsh splits a later verse to
-    # compensate, so al-Fatiha still ends at 7.
-    assert edition_tables.fatiha_last_ayah(riwayah) == 7
-    assert edition_tables.basmala_is_numbered(riwayah) is False
 
 
 @has_editions

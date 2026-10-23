@@ -62,7 +62,7 @@ separate from publish status. Publish status lives in three tables, all written 
     update immediately from SQLite after the durable edit.
 
   A third reason — **`segments_edited`** — lives on the **`ts`** track and is **computed, never
-  stamped** (`services/segments/ts_staleness.py::ts_stale_info`, called from the status route). The
+  stamped** (`services/segments/ts_staleness.py::ts_stale_info`, called from the status route). An undo batch carries no ops of its own; it counts when the ops it reverted were timestamp-affecting. The
   generated timestamps go stale the moment a timestamp-affecting segment edit
   (`qua_shared/segment_edit_ops.py::TS_AFFECTING_OP_TYPES` = trim/split/merge/delete + edit_reference
   + auto_fix_missing_word — annotations like confirm_reference/ignore_issue/flag_segment/set_is_wasl
@@ -98,7 +98,7 @@ The same predicate drives the Releases-tab buckets and the cut job's member disc
 
 | Action | Eligibility |
 |---|---|
-| TS gen | `state == READY` + segments saved + `pipeline_meta.json` present |
+| TS gen | `state == READY` + segments saved |
 | HF publish (per-reciter) | current `ts` row (`release.publish_hf` cap) |
 | GH cut (global) | ≥1 eligible reciter (`release.cut_gh` cap, owner-only by default) |
 
@@ -122,7 +122,7 @@ The same predicate drives the Releases-tab buckets and the cut job's member disc
    that starts after a higher ayah of its surah (a stray lead-in take that won canonical, a stale shard)
    → builds the three
    tier files (verse/word/letter, top-down), `catalog.json`, a per-recitation `manifest.json`; packs
-   a deterministic `<slug>.zip`; computes `content_hash = SHA-256(letter_tier.gz || catalog.json)`.
+   a deterministic `<slug>.zip`; computes `content_hash = SHA-256(letter_tier.gz || catalog.json || specials.json)` (the last only when shipped).
    `catalog.json` is built from `catalog/audio_manifest/<slug>.json` — each chapter's native
    `source_url` (falling back to `url`) plus `source_offset_ms` → `chapter_offsets_ms` (see
    [Audio policy](#audio-policy-as-built)); legacy sidecar metadata is tolerated here because the GH
@@ -185,6 +185,7 @@ verse_timestamps.json.gz   # tier 1: [ref,start,end,canonical,silence_after] per
 word_timestamps.json.gz    # tier 2: verse row + words
 letter_timestamps.json.gz  # tier 3: word row + exact DK text + paint tokens
 catalog.json               # this reciter's catalog projection (carries audio chapter_urls)
+specials.json              # openers before ayah 1 per shipped chapter + default_basmala (absent when none; see specials.md)
 ```
 
 The zip carries no per-reciter `manifest.json`: zip integrity is the release-level `manifest.json`'s

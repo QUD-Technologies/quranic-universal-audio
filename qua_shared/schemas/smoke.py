@@ -264,10 +264,7 @@ def smoke() -> int:
             raise AssertionError("expected ValidationError on retired file_hash_after")
 
         # 7. PipelineMeta (extraction-time sidecar)
-        pmeta = PipelineMeta(
-            generated_at="2026-05-18T00:00:00Z",
-            deleted_basmala_chapters=[2, 3, 5, 17],
-        )
+        pmeta = PipelineMeta(generated_at="2026-05-18T00:00:00Z", riwayah="warsh_an_nafi")
         _round_trip("PipelineMeta", pmeta)
 
         # 8. DetailedSegment — pure extra="forbid". The retired matched_text /

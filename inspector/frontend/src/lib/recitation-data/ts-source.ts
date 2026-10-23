@@ -358,6 +358,8 @@ export function assembleOccasion(
         reciter,
         members,
         verseRef: occasion.ref,
+        chapter: occasion.chapter,
+        special: occasion.special,
         audioCategory: reciterAudio.audio_category,
         audioUrl: chapterAudioUrl,
     };
@@ -379,6 +381,9 @@ export function assembleWaslGroup(
         reciter,
         members,
         verseRef,
+        chapter: members[0]?.chapter ?? 0,
+        // A waṣl chain joins verses; an opener is its own reading and never joins.
+        special: null,
         audioCategory: reciterAudio.audio_category,
         audioUrl: chapterAudioUrl,
     };

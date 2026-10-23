@@ -97,9 +97,6 @@ _seg_missed_waqf: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache
 _seg_false_split: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
 _seg_unmarked_wasl: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
 _seg_wasl_recheck: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
-# pipeline_meta.json sidecar — extraction-time facts (deleted_basmala_chapters,
-# generated_at, ...). Immutable post-extraction; NEVER invalidated by save.
-_seg_pipeline_meta: _KeyedCache[dict] = _KeyedCache()
 # Parsed edit_history.jsonl batches (list[dict]). Filled lazily on first read;
 # every save APPENDS the new batch (no full re-parse). Undo also appends a
 # revert batch. The cache slot itself is never popped on save/undo — only on
@@ -248,19 +245,6 @@ def pop_seg_auto_split(reciter: str) -> None:
     _seg_auto_split.pop(reciter)
 
 
-def get_seg_pipeline_meta(reciter: str) -> dict | None:
-    return _seg_pipeline_meta.get(reciter)
-
-
-def set_seg_pipeline_meta(reciter: str, value: dict) -> None:
-    _seg_pipeline_meta.set(reciter, value)
-
-
-def pop_seg_pipeline_meta(reciter: str) -> None:
-    """Explicit eviction (e.g. for the backfill script when it rewrites)."""
-    _seg_pipeline_meta.pop(reciter)
-
-
 # ---------------------------------------------------------------------------
 # Edit-history-derived caches (incremental on save, pop+rebuild on undo)
 # ---------------------------------------------------------------------------
@@ -363,14 +347,9 @@ def invalidate_seg_caches(reciter: str) -> None:
       here would cost a ~500 ms cold miss on every autosave (every few
       seconds) for nothing. The LRU still naturally evicts under pressure
       (50-entry global ceiling) and on process restart.
-    - The **pipeline_meta sidecar cache** — extraction-time facts that no
-      user edit can change. Invalidating per save would burn the cache on
-      every autosave for zero benefit.
 
     Add an explicit ``pop_reciter_peaks_response_cache`` call wherever a
-    future code path actually rewrites peaks on the bucket; add an explicit
-    ``pop_seg_pipeline_meta`` call wherever extraction or backfill rewrites
-    the sidecar.
+    future code path actually rewrites peaks on the bucket.
     """
     _seg.pop(reciter)
     _seg_meta.pop(reciter)
@@ -397,7 +376,6 @@ def pop_seg_caches_affected_by_segment_edit(reciter: str) -> None:
     """Surgical eviction of caches a segment edit invalidates.
 
     Excludes:
-    - ``_seg_pipeline_meta`` — extraction-time, immutable.
     - ``_seg_history_batches`` — appended in place (no re-parse).
     - ``_seg_split_group_index`` — extended in place on save; explicitly
       popped on undo via ``pop_seg_split_group_index``.

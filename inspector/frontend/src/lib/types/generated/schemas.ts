@@ -53,8 +53,7 @@ export type SegValAnyItem =
   | SegValAudioBleedingItem
   | SegValRepetitionItem
   | SegValMuqattaatItem
-  | SegValQalqalaItem
-  | SegValBasmalaAminItem;
+  | SegValQalqalaItem;
 export type AudioCategory = "by_surah" | "by_ayah";
 
 export interface AdminActiveClaim {
@@ -457,7 +456,7 @@ export interface MarkReadySubmission {
   [k: string]: unknown;
 }
 /**
- * The six attestation checkboxes. Every key the reciter's validation
+ * The five attestation checkboxes. Every key the reciter's validation
  * lists in ``checklist_keys`` MUST be True at submit time — the handler
  * raises ``InvalidTransition`` otherwise; the rest are sent False.
  *
@@ -475,7 +474,6 @@ export interface MarkReadyChecklist {
   low_confidence: boolean;
   repetitions: boolean;
   splits_wasl_waqf: boolean;
-  basmala_amin_intros: boolean;
 }
 /**
  * Full per-recitation payload for the General drawer.
@@ -1938,6 +1936,36 @@ export interface SegSegmentPeaks {
   peaks?: [unknown, unknown][];
 }
 /**
+ * ``GET /api/seg/specials/<reciter>`` — the reciter's specials by chapter; empty when it has none.
+ */
+export interface SegSpecialsResponse {
+  chapters?: {
+    [k: string]: SpecialEntry[];
+  };
+}
+export interface SpecialEntry {
+  type: "Isti'adha" | "Basmala" | "Amin" | "Sadaqa" | "Takbir" | "Tahmeed" | "Tasleem";
+  position?: "pre" | "post";
+  start_ms: number;
+  end_ms: number;
+  words?: [unknown, unknown][];
+  confidence?: number | null;
+  source: "align" | "fatiha_verse" | "pipeline_strip" | "user_delete" | "in_detailed" | "aligner_backfill";
+  clipped?: boolean;
+  voice_z?: number | null;
+  voice_verdict?: ("same" | "different" | "needs_confirmation") | null;
+  voice_confirmed?: boolean | null;
+}
+/**
+ * ``POST /api/seg/specials/<reciter>/voice`` — a maintainer's call on whether
+ * the special starting at ``start_ms`` in ``chapter`` is the reciter's own voice.
+ */
+export interface SegSpecialsVoiceRequest {
+  chapter: number;
+  start_ms: number;
+  same_voice: boolean;
+}
+/**
  * One segment's stored word intervals and the span they were timed on.
  */
 export interface SegStoredTimes {
@@ -2253,22 +2281,6 @@ export interface SegValQalqalaItem {
   classified_issues?: string[];
 }
 /**
- * ``basmala_amin`` — a basmala/amin verse-boundary convention candidate.
- *
- * ``missed_basmala`` is stamped ``true`` on the augmented "possibly missed
- * Basmala" candidates (first seg of a chapter whose Basmala was not stripped);
- * absent on the canonical 1:1 / 1:7 candidates.
- */
-export interface SegValBasmalaAminItem {
-  chapter: number;
-  seg_index: number;
-  segment_uid?: string | null;
-  ref: string;
-  time?: string | null;
-  missed_basmala?: boolean | null;
-  classified_issues?: string[];
-}
-/**
  * ``GET /api/seg/validate/<reciter>`` — issues grouped by category.
  *
  * ``errors`` and ``structural_errors`` are the SAME list under two keys
@@ -2303,7 +2315,6 @@ export interface SegValidateResponse {
   repetitions?: SegValRepetitionItem[];
   muqattaat?: SegValMuqattaatItem[];
   qalqala?: SegValQalqalaItem[];
-  basmala_amin?: SegValBasmalaAminItem[];
   category_counts?: {
     [k: string]: number;
   };
@@ -2317,14 +2328,7 @@ export interface SegValidateResponse {
   false_split_meta?: SegValBoundaryMeta | null;
   unmarked_wasl_meta?: SegValBoundaryMeta | null;
   wasl_recheck?: string[];
-  checklist_keys?: (
-    | "failed_alignments"
-    | "missing_words"
-    | "low_confidence"
-    | "repetitions"
-    | "splits_wasl_waqf"
-    | "basmala_amin_intros"
-  )[];
+  checklist_keys?: ("failed_alignments" | "missing_words" | "low_confidence" | "repetitions" | "splits_wasl_waqf")[];
 }
 /**
  * ``stats`` — per-reciter structural segmentation statistics.
@@ -2735,6 +2739,7 @@ export interface TsShardReading {
   render: TsCompactRender;
   timing: TsShardTiming;
   variants?: TsReadingVariant[] | null;
+  special?: ("Isti'adha" | "Basmala") | null;
 }
 export interface TsShardTiming {
   w: [unknown, unknown][];
@@ -2836,4 +2841,5 @@ export interface TsWordShardReading {
   parts: [unknown, unknown, unknown, unknown, unknown][];
   words: [unknown, unknown, unknown, unknown][];
   boundaries: [unknown, unknown][];
+  special?: ("Isti'adha" | "Basmala") | null;
 }

@@ -33,6 +33,10 @@ _BUCKET_STATES: tuple[str, ...] = (
     ReciterState.UNDER_REVIEW.value,
 )
 
+# Checklist keys a retired validation category left behind in old claims rows.
+# ``MarkReadyChecklist`` is ``extra="forbid"``, so they are dropped on read.
+_RETIRED_CHECKLIST_KEYS: tuple[str, ...] = ("basmala_amin_intros",)
+
 
 _SQL = (
     "SELECT "
@@ -71,6 +75,9 @@ def _build_submission(row) -> MarkReadySubmission | None:
         return None
 
     checklist = _serde.json_loads(raw_checklist) if raw_checklist else None
+    if checklist:
+        for key in _RETIRED_CHECKLIST_KEYS:
+            checklist.pop(key, None)
     return MarkReadySubmission(
         checklist=checklist,
         comment_checks=row["mark_ready_comment_checks"] or "",

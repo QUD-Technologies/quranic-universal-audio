@@ -284,6 +284,47 @@ def test_special_ordinals_bypass_the_coordinate_check():
     assert audit_word_document(raw)
 
 
+def _special_reading(name: str, part: str) -> dict:
+    words = [[f"{part}:{n}", f"s{n}", 700 * (n - 1), 700 * n] for n in range(1, 5)]
+    return {
+        "id": "s1",
+        "special": name,
+        "parts": [[part, 0, 2800, 0, 4]],
+        "words": words,
+        "boundaries": [[1, None]] * 4,
+    }
+
+
+def test_a_special_reading_round_trips_and_passes_the_audit():
+    raw = copy.deepcopy(WORD_SHARD)
+    raw["readings"].insert(0, _special_reading("Basmala", "0:2"))
+    doc = TsWordShardDoc.model_validate(raw)
+    assert doc.model_dump(mode="json", by_alias=True, exclude_none=True) == raw
+    assert audit_word_document(raw)
+
+
+def test_a_reading_without_special_dumps_without_the_key():
+    dumped = TsWordShardDoc.model_validate(WORD_SHARD).readings[0].model_dump(mode="json")
+    assert "special" not in dumped
+
+
+@pytest.mark.parametrize(
+    ("name", "part"), [("Basmala", "0:1"), ("Isti'adha", "2:1"), ("Amin", "0:3")]
+)
+def test_a_special_reading_must_sit_on_its_own_part(name, part):
+    raw = copy.deepcopy(WORD_SHARD)
+    raw["readings"].insert(0, _special_reading(name, part))
+    with pytest.raises(ValidationError):
+        TsWordShardDoc.model_validate(raw)
+
+
+def test_special_part_refs_are_refused_on_a_verse_reading():
+    raw = copy.deepcopy(WORD_SHARD)
+    raw["readings"][0]["words"][0] = ["0:2:1", "basmala", 0, 700]
+    with pytest.raises(WordAuditError):
+        audit_word_document(raw)
+
+
 # -- Writer dispatch --------------------------------------------------------
 
 

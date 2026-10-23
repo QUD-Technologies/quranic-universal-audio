@@ -2,7 +2,7 @@
     /**
      * MarkReadyModal — the reviewer's attestation form.
      *
-     * Up to six checkboxes — only those whose categories ever had an item for
+     * Up to five checkboxes — only those whose categories ever had an item for
      * the reciter (`checklist_keys`), all required — + two optional textareas.
      * Submit is blocked when any blocking validation `category_counts` is non-zero;
      * the offending categories are listed inline with links into the

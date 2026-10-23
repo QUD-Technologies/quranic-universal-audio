@@ -42,9 +42,18 @@ def test_an_ignored_item_keeps_its_box():
 def test_an_item_edited_away_keeps_its_box():
     history = {
         "batches": [
-            {"operations": [{"op_context_category": "basmala_amin", "targets_before": []}]},
+            {"operations": [{"op_context_category": "repetitions", "targets_before": []}]},
             {"operations": [{"targets_before": [{"segment_uid": "f", "matched_ref": ""}]}]},
         ]
     }
     keys = applicable_checklist_keys({}, _entries(), history, CUTOFF)
-    assert keys == ["failed_alignments", "basmala_amin_intros"]
+    assert keys == ["failed_alignments", "repetitions"]
+
+
+def test_an_edit_from_a_retired_category_card_adds_no_box():
+    history = {
+        "batches": [
+            {"operations": [{"op_context_category": "basmala_amin", "targets_before": []}]},
+        ]
+    }
+    assert applicable_checklist_keys({}, _entries(), history, CUTOFF) == []

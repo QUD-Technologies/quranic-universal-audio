@@ -26,6 +26,7 @@ from collections import defaultdict
 from services.admin.align_pipeline import params as aligner_params
 from services.storage import storage_paths
 from services.storage.hf_bucket import StorageNotFound, get_backend, resolve_bucket_repo
+from services.timing import specials_timing
 
 log = logging.getLogger("inspector")
 
@@ -110,30 +111,37 @@ def time_chapter(
         if not entries:
             return None
         times = read_times(slug, chapter)
-        reply = _post(
-            {
-                "slug": slug,
-                "chapter": chapter,
-                "riwayah": riwayah,
-                "audio_category": audio_category(detailed),
-                "entries": entries,
-                "audio_refs": {str(e["ref"]): _audio_ref(slug, e["ref"]) for e in entries},
-                "frame_refs": {
-                    str(e["ref"]): _frames_ref(slug, e["ref"])
-                    for e in entries
-                    if str(e["ref"]).isdigit()
-                },
-                "times": base64.b64encode(times).decode() if times else None,
-                "full": full,
-                "shards": shards,
-                "delivery_lazim_ms": delivery_lazim_ms,
+        category = audio_category(detailed)
+        # By-ayah audio has no lead-in before ayah 1 to time an opener in.
+        openers = (
+            specials_timing.opener_segments(slug, chapter) if category == "by_surah_audio" else []
+        )
+        body = {
+            "slug": slug,
+            "chapter": chapter,
+            "riwayah": riwayah,
+            "audio_category": category,
+            "entries": specials_timing.with_openers(entries, openers),
+            "audio_refs": {str(e["ref"]): _audio_ref(slug, e["ref"]) for e in entries},
+            "frame_refs": {
+                str(e["ref"]): _frames_ref(slug, e["ref"])
+                for e in entries
+                if str(e["ref"]).isdigit()
             },
-            f"ch{chapter}",
-        )
-        get_backend().write_bytes_atomic(
-            storage_paths.timing_path_br(slug, chapter), base64.b64decode(reply["times"])
-        )
+            "times": base64.b64encode(times).decode() if times else None,
+            "full": full,
+            "shards": shards,
+            "delivery_lazim_ms": delivery_lazim_ms,
+        }
+        if openers:
+            body["specials"] = True
+        reply = _post(body, f"ch{chapter}")
+        new_times = base64.b64decode(reply["times"])
+        get_backend().write_bytes_atomic(storage_paths.timing_path_br(slug, chapter), new_times)
         _store_frames(slug, reply.get("frames") or {})
+        if openers:
+            specials_timing.store_words(slug, chapter, openers, new_times)
+            reply["failed_segments"] = specials_timing.verse_failures(slug, chapter, reply)
     return reply
 
 

@@ -25,8 +25,8 @@ import {
 import { OWNER_ONLY_CATEGORIES } from '../../domain/registry';
 
 describe('mark-ready copy module', () => {
-    it('exports exactly six checklist keys', () => {
-        expect(CHECKLIST_ORDER).toHaveLength(6);
+    it('exports exactly five checklist keys', () => {
+        expect(CHECKLIST_ORDER).toHaveLength(5);
     });
 
     it('checklist keys match the codegen MarkReadyChecklist interface', () => {
@@ -38,7 +38,6 @@ describe('mark-ready copy module', () => {
             low_confidence: true,
             repetitions: true,
             splits_wasl_waqf: true,
-            basmala_amin_intros: true,
         };
         const expected = Object.keys(sample).sort();
         const actual = [...CHECKLIST_ORDER].sort();
@@ -83,7 +82,6 @@ describe('mark-ready copy module', () => {
         // qua_shared/schemas/wire/mark_ready.py — these must stay aligned.
         // `cross_verse` is a review aid with nothing to do, so it never gates.
         expect([...BLOCKING_COUNT_KEYS].sort()).toEqual([
-            'basmala_amin',
             'low_confidence',
             'low_confidence_v2',
             'missed_waqf',
@@ -106,7 +104,6 @@ describe('mark-ready copy module', () => {
             low_confidence: true,
             repetitions: true,
             splits_wasl_waqf: true,
-            basmala_amin_intros: true,
         };
         expect(isAllChecked(full)).toBe(true);
     });

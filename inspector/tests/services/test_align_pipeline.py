@@ -173,6 +173,18 @@ def test_align_batch_requests_only_auto_split_candidate_timings():
     assert body["include_word_timestamps"] is False
     assert body["include_auto_split_timings"] is True
     assert body["include_review_checks"] is True
+    assert body["include_basmala_voice"] is True
+
+
+def test_the_fatiha_voice_verdict_is_carried_into_the_run_dir(tmp_path):
+    from services.admin.align_pipeline import stage_assemble
+    from services.segments import promote_build
+
+    voice = {"verdict": "same", "z": 0.8, "version": 1}
+    stage_assemble._write_voice(tmp_path, {1: {"basmala_voice": voice}, 2: {}})
+    assert promote_build.read_voice(tmp_path) == voice
+    stage_assemble._write_voice(tmp_path / "x", {2: {}})
+    assert promote_build.read_voice(tmp_path / "x") is None
 
 
 # ---------------------------------------------------------------------------
@@ -274,7 +286,9 @@ def test_start_adopts_a_replaced_upstream_recording_then_aligns_it(align_env, mo
     }
     backend.write_json_atomic(storage_paths.audio_manifest_path(SLUG), doc)
     audio_meta._stage_for_test(SLUG, doc)
-    stale = [f"reciters/{SLUG}/{p}" for p in ("audio/112.mp3", "peaks/112.json.gz", "levels/112.json.gz")]
+    stale = [
+        f"reciters/{SLUG}/{p}" for p in ("audio/112.mp3", "peaks/112.json.gz", "levels/112.json.gz")
+    ]
     for path in stale:
         backend.write_bytes_atomic(path, b"old recording")
     monkeypatch.setattr(
@@ -445,7 +459,16 @@ def test_assemble_publishes_reciter_and_auto_detect_fires(align_env):
     assert "final_index" not in waqf["targets_after"][0]
 
     meta = json.loads(backend.read_bytes(f"reciters/{SLUG}/pipeline_meta.json"))
-    assert meta["deleted_basmala_chapters"] == [112]
+    assert "deleted_basmala_chapters" not in meta  # legacy key, no longer written
+    specials = json.loads(backend.read_bytes(f"reciters/{SLUG}/specials.json"))
+    [basmala] = specials["chapters"]["112"]
+    assert (basmala["type"], basmala["position"], basmala["start_ms"], basmala["end_ms"]) == (
+        "Basmala",
+        "pre",
+        820,
+        6680,
+    )
+    assert basmala["source"] == "align"
     assert json.loads(backend.read_bytes(f"reciters/{SLUG}/low_confidence_v2.json")) == {"v": 2}
     assert backend.exists(f"reciters/{SLUG}/edit_history_peaks.jsonl")
     assert backend.exists(f"reciters/{SLUG}/chapter_sources.json")

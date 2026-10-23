@@ -53,7 +53,8 @@ _PROMOTABLE_STATES = ("catalogued", "awaiting_alignment")
 _COMPARE_DROP = {
     "detailed.json": (("_meta", "created_at"),),
     "segments.json": (("_meta", "created_at"),),
-    "pipeline_meta.json": (("generated_at",),),
+    # deleted_basmala_chapters: legacy key old sidecars carry; promote no longer writes it.
+    "pipeline_meta.json": (("generated_at",), ("deleted_basmala_chapters",)),
 }
 _COMPARE_JSON = ("detailed.json", "segments.json", "pipeline_meta.json", "chapter_sources.json")
 _MAX_REPORTED_DIFFS = 10
@@ -344,7 +345,7 @@ def compare(backend, slug: str, built: dict[str, bytes]) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     parser.add_argument("run", help="staged run as <slug>/<run-id>")
     parser.add_argument("--force", action="store_true", help="overwrite an existing reciter")
     parser.add_argument("--dry-run", action="store_true", help="build everything, write nothing")

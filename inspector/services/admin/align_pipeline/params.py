@@ -68,6 +68,8 @@ class AlignParams:
             "include_auto_split_timings": True,
             "include_review_checks": True,
             "include_merge_groups": True,
+            # The aligner answers this on a Hafs/Shu'ba Al-Fatiha item only.
+            "include_basmala_voice": True,
             "discard_session": True,
         }
 

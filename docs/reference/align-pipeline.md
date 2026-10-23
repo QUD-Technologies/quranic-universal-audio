@@ -89,7 +89,10 @@ sidecars  one reciter-wide POST /api/v1/extraction/sidecars (SSE) — the aligne
 assemble  in-process: adapt → promote_build.build_artifacts (peaks from the acquired blobs,
           no ffmpeg) → reciters/<slug>/{detailed,segments,pipeline_meta,chapter_sources,
           coverage_report,edit_history*.jsonl,low_confidence_v2,auto_split_v1,
-          missed_waqf_v2,verse_ends_v1}.json
+          missed_waqf_v2,verse_ends_v1,specials}.json
+          specials.json comes from the strip events (openers before ayah 1, clipped at it;
+          closers after the last ayah) plus the Fatiha 1:1 Basmala on hafs/shuba, which
+          carries the aligner's basmala_voice verdict (see specials.md)
           chapter_sources carries each chapter's offset inside its source file;
           coverage_report lists split drops as missing; mislabelled files, suspect cuts and
           files with no recitation as unresolved
@@ -132,7 +135,7 @@ to CPU still counts as GPU, not as the CPU slot. The Requests payload carries
 counters and disables a spent lane.
 
 Parameters (`params.py`): model `Large` (the `hetchyy/r7` checkpoint), `pad_left_ms=100`, `pad_right_ms=100`, `min_silence_floor_ms=50`,
-matcher/thresholds = whatever the Space runs, `include_merge_groups=true`,
+matcher/thresholds = whatever the Space runs, `include_merge_groups=true`, `include_basmala_voice=true`,
 `include_auto_split_timings=true`, `discard_session=true`, no full word-timestamp
 pass, no aligner-side split. Only Auto Split candidates are timed — the aligner's
 `batches._is_auto_split_candidate` (cross-verse and repetition rows, and rows carrying

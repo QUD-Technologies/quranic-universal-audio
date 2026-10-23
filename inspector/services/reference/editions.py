@@ -212,19 +212,6 @@ def projection(riwayah: str) -> Any:
     return built
 
 
-def basmala_is_numbered(riwayah: str) -> bool:
-    """True iff this edition counts the Fatiha Basmala as verse ``1:1``.
-
-    Hafs and Shu'bah do; Warsh and Qalun render it as an unnumbered opener. The
-    ``basmala_amin`` validation category emits its sounded-Basmala check only
-    when this holds — elsewhere the offline pipeline strips the opener and there
-    is no ``1:1`` to flag.
-    """
-    if riwayah == DEFAULT_SDK_RIWAYAH:
-        return True
-    return _require(riwayah).counts_basmala_as_verse(riwayah)
-
-
 def provenance() -> dict[str, str]:
     """Installed-package provenance for ``/healthz`` and the boot assertion."""
     module = _module()

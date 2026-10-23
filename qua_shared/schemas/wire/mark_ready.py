@@ -6,7 +6,7 @@ then ``repo_claims.set_marked_ready`` persists it on the open claim. The
 admin Reviews drawer surfaces both checklist + comments back to the
 maintainer reviewing the submission.
 
-The six checklist keys MUST stay in lockstep with the FE copy module at
+The five checklist keys MUST stay in lockstep with the FE copy module at
 ``inspector/frontend/src/tabs/segments/copy/mark-ready/index.ts`` — both
 sides declare them as a literal union and a parity test in the FE
 ``__tests__`` guards drift.
@@ -22,7 +22,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# The six checklist keys — string-literal union for type safety in both
+# The five checklist keys — string-literal union for type safety in both
 # layers. New keys here MUST be mirrored in the FE copy module (single
 # source of truth at the wire shape level).
 ChecklistKey = Literal[
@@ -31,7 +31,6 @@ ChecklistKey = Literal[
     "low_confidence",
     "repetitions",
     "splits_wasl_waqf",
-    "basmala_amin_intros",
 ]
 
 # The validation category_counts that gate submission. Both client and
@@ -50,7 +49,6 @@ BLOCKING_COUNT_KEYS: tuple[str, ...] = (
     "low_confidence",
     "low_confidence_v2",
     "missed_waqf",
-    "basmala_amin",
     "repetitions",
 )
 
@@ -64,12 +62,11 @@ CHECKLIST_CATEGORIES: dict[str, tuple[str, ...]] = {
     "low_confidence": ("low_confidence", "low_confidence_v2"),
     "repetitions": ("repetitions",),
     "splits_wasl_waqf": ("missed_waqf",),
-    "basmala_amin_intros": ("basmala_amin",),
 }
 
 
 class MarkReadyChecklist(BaseModel):
-    """The six attestation checkboxes. Every key the reciter's validation
+    """The five attestation checkboxes. Every key the reciter's validation
     lists in ``checklist_keys`` MUST be True at submit time — the handler
     raises ``InvalidTransition`` otherwise; the rest are sent False.
 
@@ -89,7 +86,6 @@ class MarkReadyChecklist(BaseModel):
     low_confidence: bool
     repetitions: bool
     splits_wasl_waqf: bool
-    basmala_amin_intros: bool
 
 
 class MarkReadyRequest(BaseModel):
