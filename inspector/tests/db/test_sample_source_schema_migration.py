@@ -10,7 +10,10 @@ from services.db import migrate
 from services.db import sync
 
 
-def test_normalizes_legacy_sample_labels_without_touching_concrete_schemas(tmp_path):
+def test_normalizes_legacy_sample_labels_without_touching_concrete_schemas(tmp_path, monkeypatch):
+    # The DB only has the samples table, so stop at 0032.
+    migrations = migrate._discover()
+    monkeypatch.setattr(migrate, "_discover", lambda: [row for row in migrations if row[0] <= 32])
     conn = sqlite3.connect(tmp_path / "samples-v31.db", isolation_level=None)
     conn.row_factory = sqlite3.Row
     conn.executescript(

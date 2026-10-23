@@ -19,7 +19,7 @@ from services.state import state as state_service
 from services.storage import cache
 from utils.uuid7 import uuid7
 
-from . import limits, progress, sources, stage_acquire, staging
+from . import limits, manifest, progress, sources, stage_acquire, staging
 from . import params as _params
 from .params import AlignParams
 
@@ -71,14 +71,11 @@ def start(
         raise AlignRunError(f"{slug}: {exc}", 400) from exc
     if not groups:
         raise AlignRunError(f"{slug}: audio manifest lists no chapters or sources", 400)
+    # Nothing is aligned yet, so a source replaced since intake is adopted, not refused.
     changed = upstream.blocking_changes(audio_meta.manifest_chapters(slug))
     if changed:
-        listed = ", ".join(c.describe() for c in changed[:5])
-        raise AlignRunError(
-            f"{slug}: upstream audio changed since intake ({listed}); "
-            "refresh those chapters before aligning",
-            409,
-        )
+        manifest.adopt_upstream(slug, changed)
+        log.info("align: %s adopted upstream changes: %s", slug, [c.describe() for c in changed])
     units = sum(g.weight for g in groups)
     try:
         riwayah = resolve_sdk_slug(delivery.riwayah or DEFAULT_RIWAYAH)
@@ -97,6 +94,8 @@ def start(
             params_json=params.to_json(),
             chapters_total=units,
         )
+    if changed:
+        progress.set_detail(run_id, upstream_refreshed=[c.describe() for c in changed])
     cache.invalidate_admin_requests_cache()
     log.info(
         "align: %s started run %s for %s (%d units, %s lane)",
