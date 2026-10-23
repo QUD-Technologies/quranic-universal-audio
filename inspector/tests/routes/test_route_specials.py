@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 
 import pytest
 
-from services.db import repo_transitions
+from services.db import repo_releases, repo_transitions
+from services.db import sync as _sync
 
 RECITER = "fixture_reciter"
 _ORIGIN = {"Origin": "http://localhost"}
@@ -75,3 +77,32 @@ def test_confirming_an_unknown_entry_is_404(with_specials, signed_in_client):
 def test_a_bad_body_is_400(with_specials, signed_in_client):
     client, _ = signed_in_client(hf_user_id="m-1", login="maint", role="maintainer")
     assert _confirm(client, same_voice="yes").status_code == 400
+
+
+def _gh_member() -> int:
+    with _sync.durable_transaction():
+        rel = repo_releases.insert_gh_release(
+            version="v0.1.0", produced_at=datetime.now(UTC), produced_by="a"
+        )
+        repo_releases.insert_gh_release_recitation(
+            release_id=rel, slug=RECITER, catalog_snapshot={"slug": RECITER}, zip_sha256="z",
+            zip_bytes=1, coverage_ayahs=1, content_hash="h", ts_version="1", change_kind="added",
+        )  # fmt: skip
+    return rel
+
+
+def test_a_changed_call_stamps_the_gh_member_stale(with_specials, signed_in_client):
+    rel = _gh_member()
+    client, _ = signed_in_client(hf_user_id="m-1", login="maint", role="maintainer")
+    assert _confirm(client, same_voice=True).status_code == 200
+    [member] = repo_releases.gh_release_recitations(rel)
+    assert member["stale_reason"] == "catalog_edit"
+
+
+def test_repeating_the_same_call_leaves_the_release_fresh(with_specials, signed_in_client):
+    client, _ = signed_in_client(hf_user_id="m-1", login="maint", role="maintainer")
+    assert _confirm(client, same_voice=False).status_code == 200
+    rel = _gh_member()
+    assert _confirm(client, same_voice=False).status_code == 200
+    [member] = repo_releases.gh_release_recitations(rel)
+    assert member["stale_since"] is None

@@ -161,6 +161,29 @@ def test_stamp_stale_marks_hf_with_reason(fresh_db):
     assert hf_row["stale_reason"] == "ts_regen"
 
 
+def test_stamp_stale_can_be_limited_to_the_gh_track(fresh_db):
+    """A change only the GH cut ships (specials.json) stamps the GH member, not HF."""
+    now = _now()
+    with db.transaction():
+        slug = _seed_minimal_delivery()
+        repo_releases.insert_per_recitation_release(
+            track="hf", slug=slug, version="abc123", produced_at=now, produced_by="a"
+        )
+        rel_id = repo_releases.insert_gh_release(version="v0.1.0", produced_at=now, produced_by="a")
+        repo_releases.insert_gh_release_recitation(
+            release_id=rel_id, slug=slug, catalog_snapshot={"slug": slug}, zip_sha256="abc",
+            zip_bytes=1, coverage_ayahs=1, content_hash="d", ts_version="1", change_kind="added",
+        )  # fmt: skip
+        n = repo_releases.stamp_stale(
+            slug, at=now, reason=StaleReason.CATALOG_EDIT, tracks=("gh",)
+        )
+    assert n == 1
+    hf_row = repo_releases.current_release("hf", slug)
+    assert hf_row is not None and hf_row["stale_since"] is None
+    [gh] = repo_releases.gh_release_recitations(rel_id)
+    assert gh["stale_reason"] == "catalog_edit"
+
+
 def test_stamp_stale_catalog_edit_then_ts_regen_upgrades_reason(fresh_db):
     """A more-severe ts_regen overrides an existing catalog_edit reason (the
     clear path must not later treat the row as catalog-only)."""
