@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from splice_opener_readings import has_openers, splice
+from splice_opener_readings import has_openers, splice, voice_refs
 
 _META = {"chapter": 2, "variant_policy": "kept"}
 
@@ -33,3 +33,21 @@ def test_splicing_again_replaces_the_openers():
     out = splice(shard, built)
     assert [r["parts"][0][0] for r in out["readings"]] == ["0:1", "0:2", "2:1"]
     assert has_openers(out) and not has_openers({"readings": [_reading("r1", "2:1")]})
+
+
+def test_voice_refs_take_the_first_long_verse_clips_and_skip_fatiha_basmala():
+    def seg(ref, start, end):
+        return {"matched_ref": ref, "time_start": start, "time_end": end}
+
+    segments = [
+        seg("1:2:1-1:2:4", 9000, 9500),  # too short
+        seg("1:1:1-1:1:4", 4000, 8000),  # Al-Fatiha's Basmala
+        seg("Isti'adha", 0, 3500),
+        seg("", 8000, 9000),  # no match
+        seg("1:3:1-1:3:2", 10000, 12000),
+        seg("1:4:1-1:4:3", 13000, 15000),
+    ]
+    assert voice_refs(1, segments, frozenset({"Isti'adha", "Basmala"})) == [
+        [10000, 12000],
+        [13000, 15000],
+    ]

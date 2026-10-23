@@ -14,13 +14,22 @@ back to ``specials.json``, and each reciter that changed is reported through
 Skips by-ayah deliveries (no lead-in to time), chapters with no shard, and
 chapters whose shard already has opener readings, so a rerun resumes.
 
-Dry run by default. Needs ``HF_TOKEN``, ``INSPECTOR_EXTRACTION_SECRET`` and
-``INSPECTOR_WEBHOOK_SECRET``.
+The timing can run off the aligner, on Katana: ``--export DIR`` writes each reciter's
+chapter request bodies (plus ``voice_refs``, the chapter's own verse clips) to
+``DIR/<slug>.json`` for qua's opener job, and ``--replies DIR`` then reads its
+``DIR/<slug>/<chapter>.json`` replies in place of aligner calls. Those replies also
+carry a voice verdict per opener (the Al-Fatiha Basmala check, against the chapter's
+own verses), written to ``specials.json`` for every chapter, spliced already or not.
+
+Dry run by default. Needs ``HF_TOKEN``, ``INSPECTOR_EXTRACTION_SECRET`` (aligner calls
+only) and ``INSPECTOR_WEBHOOK_SECRET``.
 
 Examples::
 
     python scripts/backfills/splice_opener_readings.py --slug-file slugs.txt --bucket prod
     python scripts/backfills/splice_opener_readings.py --slug-file slugs.txt --bucket prod --execute --workers 6
+    python scripts/backfills/splice_opener_readings.py --slug-file slugs.txt --export bodies/
+    python scripts/backfills/splice_opener_readings.py --slug-file slugs.txt --replies replies/ --execute
 """
 
 from __future__ import annotations
@@ -47,6 +56,11 @@ _INSPECTORS = {
 }
 #: The aligner both Inspector Spaces time against (their ``INSPECTOR_ALIGNER_URL``).
 ALIGNER_URL = "https://qud-technologies-quranic-universal-aligner-dev.hf.space"
+#: Verse clips a chapter's openers are voice-scored against (the Fatiha check uses 1:2-1:7).
+VOICE_REFS = 6
+VOICE_REF_MIN_MS = 1_000
+#: Chapters of one reciter read from the bucket at once while exporting.
+_EXPORT_THREADS = 16
 
 
 def splice(shard: dict, openers: dict) -> dict:
@@ -59,6 +73,21 @@ def splice(shard: dict, openers: dict) -> dict:
 
 def has_openers(shard: dict) -> bool:
     return any(r.get("special") for r in shard["readings"])
+
+
+def voice_refs(chapter: int, segments: list[dict], specials: frozenset[str]) -> list[list[int]]:
+    """The chapter's first verse clips long enough to score a voice against, by time.
+    Al-Fatiha's 1:1 is left out: it is a Basmala itself."""
+    out = []
+    for seg in sorted(segments, key=lambda s: s["time_start"]):
+        ref = seg.get("matched_ref") or ""
+        if not ref or ref in specials or (chapter == 1 and ref.startswith("1:1:")):
+            continue
+        if seg["time_end"] - seg["time_start"] >= VOICE_REF_MIN_MS:
+            out.append([seg["time_start"], seg["time_end"]])
+        if len(out) == VOICE_REFS:
+            break
+    return out
 
 
 def _setup_paths_and_env(bucket: str) -> None:
@@ -85,7 +114,7 @@ def _setup_paths_and_env(bucket: str) -> None:
 class _Splicer:
     """One reciter's chapters: time their openers and splice them into the shards."""
 
-    def __init__(self, slug: str, execute: bool):
+    def __init__(self, slug: str, execute: bool, replies: Path | None = None):
         import brotli
 
         from services.reference.delivery_edition import sdk_riwayah_for
@@ -94,13 +123,15 @@ class _Splicer:
         from services.timing import aligner_timing as at
         from services.timing import specials_timing
 
-        self.slug, self.execute = slug, execute
+        self.slug, self.execute, self.replies = slug, execute, replies
         self.brotli, self.paths, self.backend = brotli, storage_paths, get_backend()
         self.at, self.timing = at, specials_timing
         self.detailed = at.read_detailed(slug)
         self.riwayah = sdk_riwayah_for(slug)
         #: Opener word times per spliced chapter, written to specials.json once at the end.
         self.words: dict[int, dict] = {}
+        #: Opener voice verdicts per chapter (Katana replies only), written likewise.
+        self.voice: dict[int, dict] = {}
 
     def by_surah(self) -> bool:
         return self.at.audio_category(self.detailed) == "by_surah_audio"
@@ -122,11 +153,18 @@ class _Splicer:
         shard = self._shard(chapter)
         if shard is None:
             return "no_shard"
-        if has_openers(shard):
+        present = has_openers(shard)
+        if present and self.replies is None:
             return "present"
         if not self.execute:
-            return "would_splice"
-        reply = self._time(chapter, openers)
+            return "present" if present else "would_splice"
+        reply = self._reply(chapter, openers)
+        if reply is None:
+            return "no_reply"
+        if "voice" in reply:
+            self.voice[chapter] = reply["voice"]
+        if present:
+            return "present"
         if reply["failed_segments"] or reply.get("untimed"):
             log.error(
                 "%s ch%d: openers not timed: %s", self.slug, chapter, reply["failed_segments"]
@@ -140,12 +178,34 @@ class _Splicer:
         self.words[chapter] = self.timing.opener_words(openers, base64.b64decode(reply["times"]))
         return "spliced"
 
-    def _time(self, chapter: int, openers: list[dict]) -> dict:
+    def _reply(self, chapter: int, openers: list[dict]) -> dict | None:
+        if self.replies is None:
+            return self.at._post(self.body(chapter, openers), f"{self.slug} ch{chapter} openers")
+        path = self.replies / self.slug / f"{chapter}.json"
+        return json.loads(path.read_text("utf-8")) if path.is_file() else None
+
+    def export(self) -> list[dict]:
+        """Every chapter with openers and a shard, as an opener-only timing body."""
+
+        def one(chapter: int) -> dict | None:
+            openers = self.timing.opener_segments(self.slug, chapter)
+            if openers and self._shard_exists(chapter):
+                return self.body(chapter, openers)
+            return None
+
+        with ThreadPoolExecutor(_EXPORT_THREADS) as pool:
+            return [b for b in pool.map(one, self.chapters()) if b is not None]
+
+    def _shard_exists(self, chapter: int) -> bool:
+        return self.backend.exists(self.paths.timestamps_path_br(self.slug, chapter))
+
+    def body(self, chapter: int, openers: list[dict]) -> dict:
         at = self.at
         entries = at.entries_by_chapter(self.detailed)[chapter]
         times = at.read_times(self.slug, chapter)
         bare = [{**e, "segments": []} for e in entries]
-        body = {
+        segments = [s for e in entries for s in e.get("segments", [])]
+        return {
             "slug": self.slug,
             "chapter": chapter,
             "riwayah": self.riwayah,
@@ -160,12 +220,39 @@ class _Splicer:
             "specials": True,
             # A one-off backfill: keep it off the ZeroGPU quota live alignments use.
             "device": "CPU",
+            "voice_refs": voice_refs(chapter, segments, self.timing.SPECIAL_NAMES),
         }
-        return at._post(body, f"{self.slug} ch{chapter} openers")
 
 
-def _run_slug(slug: str, execute: bool, workers: int, notify) -> dict[str, int]:
-    splicer = _Splicer(slug, execute)
+def write_voice(timing, slug: str, by_chapter: dict[int, dict]) -> int:
+    """Each opener's voice verdict onto its specials entry; a maintainer's call stays."""
+    from qua_shared.schemas.bucket.specials import SpecialsDoc
+
+    if not any(by_chapter.values()):
+        return 0
+    service, changed = timing.specials_service, 0
+    with service.WRITE_LOCK:
+        doc = service.read_doc(slug)
+        if doc is None:
+            return 0
+        for chapter, by_start in by_chapter.items():
+            for entry in doc.chapters.get(str(chapter), []):
+                got = by_start.get(str(entry.start_ms))
+                if entry.type not in timing.OPENERS or got is None:
+                    continue
+                if (entry.voice_verdict, entry.voice_z) != (got["verdict"], got["z"]):
+                    entry.voice_verdict, entry.voice_z = got["verdict"], got["z"]
+                    changed += 1
+        if changed:
+            doc = SpecialsDoc.model_validate(doc.model_dump())
+            timing.data_dir.write_specials_doc(slug, doc.model_dump(mode="json"))
+    return changed
+
+
+def _run_slug(
+    slug: str, execute: bool, workers: int, notify, replies: Path | None = None
+) -> dict[str, int]:
+    splicer = _Splicer(slug, execute, replies)
     if not splicer.by_surah():
         log.info("%s: by-ayah audio, skipped", slug)
         return {"by_ayah": 1}
@@ -182,11 +269,31 @@ def _run_slug(slug: str, execute: bool, workers: int, notify) -> dict[str, int]:
         for outcome in pool.map(one, splicer.chapters()):
             counts[outcome] = counts.get(outcome, 0) + 1
     splicer.timing.write_words(slug, splicer.words)
-    if counts.get("spliced") and not notify(slug):
+    if voiced := write_voice(splicer.timing, slug, splicer.voice):
+        counts["voice_changed"] = voiced
+    if (counts.get("spliced") or voiced) and not notify(slug):
         log.error("%s: spliced but the ts-refreshed report was not accepted", slug)
         counts["unreported"] = 1
     log.info("%s: %s", slug, counts)
     return counts
+
+
+def _export(slugs, out: Path, workers: int) -> int:
+    """Each by-surah reciter's opener timing bodies to ``out/<slug>.json``."""
+    out.mkdir(parents=True, exist_ok=True)
+
+    def one(slug: str) -> int:
+        splicer = _Splicer(slug, execute=False)
+        bodies = splicer.export() if splicer.by_surah() else []
+        if bodies:
+            (out / f"{slug}.json").write_text(json.dumps(bodies), "utf-8")
+        log.info("%s: %d chapter bodies", slug, len(bodies))
+        return len(bodies)
+
+    with ThreadPoolExecutor(max(1, workers)) as pool:
+        total = sum(pool.map(one, slugs))
+    log.info("EXPORTED: %d chapter bodies to %s", total, out)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -196,6 +303,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--bucket", choices=sorted(_BUCKETS), default="prod")
     ap.add_argument("--workers", type=int, default=4, help="chapters timed at once")
     ap.add_argument("--execute", action="store_true", help="Write. Without it only count.")
+    ap.add_argument("--export", type=Path, help="write timing bodies here for the Katana job")
+    ap.add_argument("--replies", type=Path, help="read the Katana job's replies from here")
     args = ap.parse_args(argv)
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -208,6 +317,8 @@ def main(argv: list[str] | None = None) -> int:
     if not slugs:
         ap.error("no slugs given")
     _setup_paths_and_env(args.bucket)
+    if args.export:
+        return _export(dict.fromkeys(slugs), args.export, args.workers)
 
     from qua_shared.inspector_notify import notify_ts_refreshed
 
@@ -216,7 +327,7 @@ def main(argv: list[str] | None = None) -> int:
 
     total: dict[str, int] = {}
     for slug in dict.fromkeys(slugs):
-        for k, v in _run_slug(slug, args.execute, args.workers, notify).items():
+        for k, v in _run_slug(slug, args.execute, args.workers, notify, args.replies).items():
             total[k] = total.get(k, 0) + v
     log.info("%s: %s", "EXECUTED" if args.execute else "DRY RUN", total)
     return 1 if total.get("failed") or total.get("unreported") else 0
