@@ -26,6 +26,7 @@ node ../../.claude/skills/inspector-playwright/scripts/shoot.mjs \
 
 - `--reciter` — slug, e.g. `nasser_al_qatami_mp3quran` (find it from the manifest / the Timestamps surah-picker search).
 - `--ref` — `surah:verse[@occasion]`, repeatable; one PNG per ref → `<out>/<slug>_<s>-<v>[_occN].png`. A verse the reciter broke mid-way has one occasion per run, and a stop sign lives on an occasion's **last** boundary — `--ref 2:26@3` shoots the third run at that verse (default the first).
+- `--chapter N` — the shard to load when the ref names no chapter: an opener reading (`--ref 0:2 --chapter 2` = that chapter's Basmala, `0:1` its Isti'adha).
 - `--words a-b` — optional 1-based **inclusive** word range, for a narrow crop of a long verse.
 - `--api` — backend the harness fetches shards from. Default is the **dev Space** (`https://qud-technologies-quranic-inspector-dev.hf.space`): its shard endpoint is public (no auth) and `no-store` (always fresh after a re-stamp), so no local Flask is needed. Point at `http://127.0.0.1:5000` only when a local backend is up.
 - `--out` — output dir (default cwd). `--port` — Vite port (default 5199).
