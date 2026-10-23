@@ -28,6 +28,7 @@ import logging
 import os
 import sys
 import tempfile
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -147,9 +148,12 @@ def _restore(slug: str, execute: bool, deps: dict) -> str:
     if isinstance(result, tuple):
         log.error("%s: undo refused: %s", slug, result)
         return "undo_failed"
-    doc = deps["read_specials"](slug)
-    if doc is not None and relabel_special(doc, deletion.time_start, deletion.time_end):
-        deps["write_specials"](slug, deps["validate_specials"](doc))
+    # The undo re-times chapter 1 on a thread that writes opener words into the
+    # same file; hold its lock so neither write drops the other.
+    with deps.get("specials_lock") or nullcontext():
+        doc = deps["read_specials"](slug)
+        if doc is not None and relabel_special(doc, deletion.time_start, deletion.time_end):
+            deps["write_specials"](slug, deps["validate_specials"](doc))
     return "restored"
 
 
@@ -171,6 +175,7 @@ def main(argv: list[str] | None = None) -> int:
     from qua_shared.schemas import Actor
     from qua_shared.schemas.bucket.specials import SpecialsDoc
     from services.activity.history_query import parse_history_for_reciter
+    from services.segments import specials
     from services.segments.undo import undo_ops
     from services.storage import data_dir
     from services.storage.data_loader import load_detailed
@@ -182,6 +187,7 @@ def main(argv: list[str] | None = None) -> int:
         "actor": Actor.model_validate(MIGRATION_ACTOR),
         "read_specials": data_dir.read_specials_doc,
         "write_specials": data_dir.write_specials_doc,
+        "specials_lock": specials.WRITE_LOCK,
         "validate_specials": lambda doc: SpecialsDoc.model_validate(doc).model_dump(mode="json"),
     }
     outcomes = {slug: _restore(slug, args.execute, deps) for slug in args.slug}

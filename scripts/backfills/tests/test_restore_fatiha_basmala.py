@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+
 from restore_fatiha_basmala import _restore, has_verse_1, latest_deletion, relabel_special
 
 VERSE_1 = {"matched_ref": "1:1:1-1:1:4", "time_start": 300, "time_end": 5200, "segment_uid": "u1"}
@@ -60,3 +62,18 @@ def test_a_dry_run_writes_nothing():
     }
     assert _restore("r", False, deps) == "would_restore"
     assert calls == []
+
+
+def test_the_relabel_holds_the_specials_lock():
+    lock = threading.Lock()
+    held: list[bool] = []
+    deps = {
+        "load_detailed": lambda slug: [{"ref": "1", "segments": []}],
+        "parse_history": lambda slug: [_batch("a", _delete("o1"))],
+        "undo_ops": lambda *a, **k: {},
+        "actor": None,
+        "specials_lock": lock,
+        "read_specials": lambda slug: held.append(lock.locked()),
+    }
+    assert _restore("r", True, deps) == "restored"
+    assert held == [True]
