@@ -41,6 +41,7 @@ import {
     dkTextForRef,
     getVerseWordCounts,
     parseSegRef,
+    specialRefName,
 } from '../data/references';
 import type { RowEntry, RowInstanceRole } from '../playback/row-registry';
 import { getRowEntriesFor } from '../playback/row-registry';
@@ -191,7 +192,8 @@ export async function commitRefEdit(seg: Segment, newRefIn: string): Promise<Com
     const oldRef = seg.matched_ref || '';
     const chapter = seg.chapter || parseInt(get(selectedChapter));
     const vwc = getVerseWordCounts();
-    const normalized = _normalizeRefLib(newRefIn, vwc) ?? '';
+    const special = specialRefName(newRefIn);
+    const normalized = special ?? _normalizeRefLib(newRefIn, vwc) ?? '';
     const pending = getPendingOp();
     const ctxCat = pending?.op_context_category ?? null;
 
@@ -218,6 +220,15 @@ export async function commitRefEdit(seg: Segment, newRefIn: string): Promise<Com
         } else {
             setPendingOp(null);
         }
+        clearEdit();
+        await _handoffPendingChain();
+        return { status: 'ok' };
+    }
+
+    // A special (Basmala, Isti'adha …) has no verse words to resolve; the save
+    // mirrors it into specials.json when it sits at a chapter edge.
+    if (special) {
+        _dispatchRefEdit(seg, chapter, special, '', ctxCat, 'edit_reference');
         clearEdit();
         await _handoffPendingChain();
         return { status: 'ok' };

@@ -1,5 +1,6 @@
 import { get } from 'svelte/store';
 
+import type { SpecialName } from '../../../../lib/recitation-animation/special-label';
 import { quranRefs } from '../../../../lib/refs/quran-refs';
 import type { Ref, VerseRef } from '../../../../lib/types/view-models';
 import { _ARABIC_DIGITS } from '../constants';
@@ -14,6 +15,33 @@ export interface ParsedSegRef {
 }
 
 type VerseWordCounts = Record<VerseRef, number>;
+
+/** What a reviewer may type for each special, lower-cased with apostrophes, hyphens and spaces dropped. */
+const _SPECIAL_SPELLINGS: Record<SpecialName, readonly string[]> = {
+    "Isti'adha": ['istiadha', 'istiatha', 'istiaza', 'istiaadha', 'istiaatha', 'taawwudh', 'taawudh'],
+    Basmala: ['basmala', 'basmalah', 'bismillah'],
+    Amin: ['amin', 'ameen', 'aameen'],
+    Sadaqa: ['sadaqa', 'sadaqallah'],
+    Takbir: ['takbir', 'takbeer'],
+    Tahmeed: ['tahmeed', 'tahmid'],
+    Tasleem: ['tasleem', 'taslim'],
+};
+
+const _SPECIAL_BY_SPELLING = new Map<string, SpecialName>(
+    (Object.entries(_SPECIAL_SPELLINGS) as [SpecialName, readonly string[]][])
+        .flatMap(([name, spellings]) => spellings.map((s) => [s, name] as const)),
+);
+
+/** The special a typed ref names (`basmala`, `Istiatha` …), canonically spelled; `null` for anything else. */
+export function specialRefName(input: string | null | undefined): SpecialName | null {
+    const key = (input ?? '').toLowerCase().replace(/['’ʿʾ`\-\s]/g, '');
+    return _SPECIAL_BY_SPELLING.get(key) ?? null;
+}
+
+/** Whether a stored `matched_ref` is a special rather than a verse ref. */
+export function isSpecialRef(ref: Ref | null | undefined): ref is SpecialName {
+    return !!ref && Object.hasOwn(_SPECIAL_SPELLINGS, ref);
+}
 
 /** Read verse-word-counts from the shared Quran-refs bundle. */
 export function getVerseWordCounts(): VerseWordCounts | undefined {

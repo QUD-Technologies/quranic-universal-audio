@@ -411,5 +411,10 @@
   "common_filmstrip_missing_words": "كلمات ناقصة",
   "common_filmstrip_missing_words_list": "كلمات ناقصة: {indices}",
   "common_filmstrip_special_istiadha": "الاستعاذة",
-  "common_filmstrip_special_basmala": "البسملة"
+  "common_filmstrip_special_basmala": "البسملة",
+  "common_special_amin": "آمين",
+  "common_special_sadaqa": "صدق الله العظيم",
+  "common_special_takbir": "التكبير",
+  "common_special_tahmeed": "التحميد",
+  "common_special_tasleem": "التسليم"
 }

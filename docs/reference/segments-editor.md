@@ -51,7 +51,7 @@ Each user action dispatches a `SegmentCommand` through `applyCommand`. `confiden
 | Trim | `trim` | `1.0` | `utils/edit/trim.ts`, `trim-zoom.ts`, `enter.ts` | full_replace path; `_make_seg` + `stamping.stamp_segment` |
 | Split | `split` | children inherit parent (→ `1.0` on later ref-edit) | `utils/edit/split.ts`, `split-zoom.ts`, `enter.ts` | full_replace; new child UIDs persisted |
 | Merge | `merge` | `1.0` | `utils/edit/merge.ts` | full_replace; consumed UID dropped, kept UID = earlier seg |
-| Edit reference | `editReference` (`op_type` `edit_reference` \| `confirm_reference`) | `1.0` | `utils/edit/reference.ts` (`beginRefEdit`/`commitRefEdit`) | patch path (field-level) or full_replace |
+| Edit reference | `editReference` (`op_type` `edit_reference` \| `confirm_reference`) | `1.0` | `utils/edit/reference.ts` (`beginRefEdit`/`commitRefEdit`); a special's name (`Basmala`, `istiatha` …) is accepted and stored canonically — see [`specials.md`](specials.md) | patch path (field-level) or full_replace |
 | Delete | `delete` | n/a | `utils/edit/delete.ts` | full_replace; seg removed |
 | Auto-fill / auto-fix | `autoFixMissingWord` | `1.0` | `utils/edit/auto-fix.ts`, `reference.ts` | full_replace; `op_context_category` defaults `missing_words`, `fix_kind=auto_fix` |
 | Ignore | `ignoreIssue` | `1.0` | `utils/edit/ignore.ts` | patch path; appends `category` to `ignored_categories` |

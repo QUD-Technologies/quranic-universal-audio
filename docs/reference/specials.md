@@ -44,6 +44,7 @@ In Hafs and Shu'ba the Basmala is verse 1:1. It stays in `detailed.json`, in the
 | Writer | What it records |
 |---|---|
 | Align run / offline promote — `services/segments/specials_doc.py::specials_from_run`, called by `promote_build.build_artifacts` | Each `delete_segment` strip event whose `matched_ref` is a special name: `pre` if it ends by ayah 1 (+300 ms), clipped if it runs into ayah 1, `post` if it starts at the last ayah's end; mid-chapter rows dropped. Plus Al-Fatiha's 1:1 Basmala on `hafs`/`shuba` with the aligner's `basmala_voice` verdict (`run_dir/basmala_voice.json`, staged by `stage_assemble._write_voice`; `unavailable` records none). |
+| Edit Ref — `services/segments/specials.py::sync_from_detailed`, called by `save.persist_detailed` (save + undo) | A row a reviewer labels with a special's name (Edit Ref accepts `Basmala`, `istiatha`, `bismillah` … → canonical spelling, `utils/data/references.ts::specialRefName`) stays in `detailed.json` and is mirrored as source `in_detailed` on every persist of a by-surah chapter, through the same `pre`/`post`/clipped edge rule. It supersedes a recorded entry of the same type and position (never `fatiha_verse`); relabelling it back as a verse drops it. A special inside the chapter is not recorded. |
 | Timing — `services/timing/specials_timing.py` (via `aligner_timing.time_chapter`) | Fills `words` on each `pre` opener after a timing call (see below). |
 | Voice confirm — `services/segments/specials.py::confirm_voice` | `voice_confirmed`, audited `specials.voice_confirmed`; a call that changes the answer stamps the reciter's current GH member stale (`catalog_edit`, `stamp_stale(..., tracks=("gh",))`) so the next cut ships it. HF does not ship specials. |
 | Backfill (one-shot) | The prod audit harness `.local/specials_audit/` (`build_specials.py` → `out/<slug>.json`). |
@@ -70,6 +71,7 @@ aligner times them and gives each opener its own shard reading:
   `0:1` (Isti'adha, words `0:1:1`–`0:1:5`) or `0:2` (Basmala, words `0:2:1`–`0:2:4`);
   `ts_shard.py` pins a special reading's parts to its ref and omits the key when absent;
   the word audit admits `0:[12]:N` only on a special reading.
+- labelled special rows in `detailed.json` are never sent as segments (`with_openers` drops them); at a chapter edge they come back as the opener.
 - the returned stored times give each opener's words, written back to `specials.json`.
 - a failed opener (`failed_segments[].special`) is logged and dropped — it never holds
   back the chapter's verse shards.
@@ -80,7 +82,7 @@ release's verse projection and `reference/timestamps._ayah_of` files them under 
 ## Frontend
 
 - **Timestamps tab:** opener readings decode with their `special` flag (`lib/recitation-data/specials.ts`). They show as named filmstrip cells, animate in the mega cells, and appear in teleprompter word and letter mode. Peaks follow because the chapter comes from `_meta.chapter`. They are guarded out of verse navigation and reports. Detail is in [`frontend.md`](frontend.md#tabstimestamps).
-- **Segments tab:** `components/BasmalaVoiceNotice.svelte` + `utils/specials/basmala-voice.ts`. On chapter 1, for a `segments.confirm_basmala_voice` holder whose Al-Fatiha Basmala has a verdict or a saved call, a compact notice plays the clip through the preview player. It offers Same / Different voice and POSTs to `/api/seg/specials/<reciter>/voice`. A saved call can be changed.
+- **Segments tab:** `components/BasmalaVoiceNotice.svelte` + `utils/specials/basmala-voice.ts`. On chapter 1, for a `segments.confirm_basmala_voice` holder whose Al-Fatiha Basmala has a verdict or a saved call, a compact notice plays the clip through the preview player. It offers Same / Different voice and POSTs to `/api/seg/specials/<reciter>/voice`. A saved call can be changed. Edit Ref takes a special's name; the row then shows the localized name (`lib/recitation-animation/special-label.ts`) in place of verse text.
 
 ## Release
 

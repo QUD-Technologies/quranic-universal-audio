@@ -16,10 +16,16 @@ import re
 from collections.abc import Iterable
 from typing import cast, get_args
 
-from qua_shared.schemas.bucket.specials import SpecialEntry, SpecialsDoc, SpecialType, VoiceVerdict
+from qua_shared.schemas.bucket.specials import (
+    SpecialEntry,
+    SpecialsDoc,
+    SpecialSource,
+    SpecialType,
+    VoiceVerdict,
+)
 from qua_shared.schemas.bucket.staged_run import PipelineAuditEvent
 
-_NAMES = set(get_args(SpecialType))
+SPECIAL_NAMES = frozenset(get_args(SpecialType))
 _VERDICTS = set(get_args(VoiceVerdict))
 _VERSE = re.compile(r"^(\d+):(\d+):\d+")
 #: SDK riwayah slugs whose Al-Fatiha numbers the Basmala as verse 1:1.
@@ -29,7 +35,8 @@ NUMBERED_BASMALA = frozenset({"hafs", "shuba"})
 EDGE_TOL_MS = 300
 
 
-def _verse_bounds(segments: list[dict], chapter: int) -> tuple[int, int] | None:
+def verse_bounds(segments: list[dict], chapter: int) -> tuple[int, int] | None:
+    """``(first verse start, last verse end)`` of ``chapter``'s verse rows; ``None`` without any."""
     spans = [
         (s["time_start"], s["time_end"])
         for s in segments
@@ -40,12 +47,14 @@ def _verse_bounds(segments: list[dict], chapter: int) -> tuple[int, int] | None:
     return min(a for a, _ in spans), max(b for _, b in spans)
 
 
-def _edge_entry(ev: PipelineAuditEvent, bounds: tuple[int, int]) -> SpecialEntry | None:
-    snap = ev.targets_before[0]
-    if snap.matched_ref not in _NAMES:
+def edge_entry(row: dict, bounds: tuple[int, int], *, source: SpecialSource) -> SpecialEntry | None:
+    """``row`` (``matched_ref``/``time_start``/``time_end``/``confidence``) as a chapter-edge
+    special, or ``None`` when it is not a special or sits inside the chapter."""
+    name = row.get("matched_ref")
+    if name not in SPECIAL_NAMES:
         return None
     first, last = bounds
-    start, end = snap.time_start, snap.time_end
+    start, end = row["time_start"], row["time_end"]
     if end <= first + EDGE_TOL_MS:
         position, clipped = "pre", False
     elif start < first:  # ran into ayah 1 (a swallowed muqattaʿ): keep the part before it
@@ -57,12 +66,12 @@ def _edge_entry(ev: PipelineAuditEvent, bounds: tuple[int, int]) -> SpecialEntry
     if end <= start:
         return None
     return SpecialEntry(
-        type=cast(SpecialType, snap.matched_ref),
+        type=cast(SpecialType, name),
         position=position,
         start_ms=start,
         end_ms=end,
-        confidence=snap.confidence,
-        source="align",
+        confidence=row.get("confidence"),
+        source=source,
         clipped=clipped,
     )
 
@@ -101,8 +110,9 @@ def specials_from_run(
     for ev in events:
         if ev.kind != "delete_segment" or not ev.targets_before or ev.chapter not in by_chapter:
             continue
-        bounds = _verse_bounds(by_chapter[ev.chapter]["segments"], ev.chapter)
-        entry = bounds and _edge_entry(ev, bounds)
+        bounds = verse_bounds(by_chapter[ev.chapter]["segments"], ev.chapter)
+        snap = ev.targets_before[0].model_dump()
+        entry = bounds and edge_entry(snap, bounds, source="align")
         if entry:
             chapters.setdefault(ev.chapter, []).append(entry)
     if riwayah in NUMBERED_BASMALA and 1 in by_chapter:

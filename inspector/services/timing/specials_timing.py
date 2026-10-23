@@ -17,6 +17,7 @@ import brotli
 from domain.identity import derive_uid
 from qua_shared.schemas.bucket.specials import SpecialsDoc
 from services.segments import specials as specials_service
+from services.segments.specials_doc import SPECIAL_NAMES
 from services.storage import data_dir
 
 log = logging.getLogger(__name__)
@@ -45,11 +46,24 @@ def opener_segments(slug: str, chapter: int) -> list[dict]:
 
 
 def with_openers(entries: list[dict], openers: list[dict]) -> list[dict]:
-    """``entries`` with the openers in front of the chapter recording's segments."""
+    """``entries`` without their labelled special rows, the openers in front.
+
+    A row a reviewer labelled ``Basmala`` … is not a verse; at a chapter edge it
+    is already mirrored into ``specials.json`` and comes back as an opener.
+    """
+    verses = [
+        {
+            **e,
+            "segments": [
+                s for s in e.get("segments", []) if s.get("matched_ref") not in SPECIAL_NAMES
+            ],
+        }
+        for e in entries
+    ]
     if not openers:
-        return entries
-    first, *rest = entries
-    return [{**first, "segments": openers + list(first.get("segments", []))}, *rest]
+        return verses
+    first, *rest = verses
+    return [{**first, "segments": openers + first["segments"]}, *rest]
 
 
 def store_words(slug: str, chapter: int, openers: list[dict], times: bytes) -> int:

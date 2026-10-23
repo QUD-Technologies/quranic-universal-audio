@@ -34,6 +34,7 @@
     import { localeStore, tr } from '../../../../lib/i18n/locale-store';
     import * as m from '../../../../lib/paraglide/messages';
     import { displayTimeMs } from '../../../../lib/playback/audio-graph';
+    import { specialLabel } from '../../../../lib/recitation-animation/special-label';
     import { quranRefs } from '../../../../lib/refs/quran-refs';
     import { currentUser } from '../../../../lib/stores/current-user';
     import { pushToast } from '../../../../lib/stores/toast';
@@ -98,6 +99,7 @@ import type { Segment } from '../../../../lib/types/view-models';
         formatRef,
         formatTimeMs,
         isCrossVerse,
+        isSpecialRef,
         wordLocationsForRef,
     } from '../../utils/data/references';
     import { deleteSegment } from '../../utils/edit/delete';
@@ -321,10 +323,10 @@ import type { Segment } from '../../../../lib/types/view-models';
     $: bodyText = (() => {
         const text = dkTextForRef(bodyRef, $quranRefs?.dk_words, $quranRefs?.verse_word_counts);
         if (!text) {
-            // Special segs (Basmala/Isti'adha/Amin/Takbir/...) carry their
-            // Arabic text on the snapshot but have non-Quran-ref matched_refs,
-            // so the dk_words lookup is empty. Fall back to matched_text.
+            // Special segs (Basmala/Isti'adha/Amin/Takbir/...) have no verse
+            // words: history snapshots carry their Arabic text, else name them.
             if (seg.matched_text) return seg.matched_text;
+            if (isSpecialRef(bodyRef)) return tr($localeStore, specialLabel(bodyRef));
             return seg.matched_ref ? tr($localeStore, m.segments_row_no_text_fallback()) : tr($localeStore, m.segments_row_no_match_fallback());
         }
         return _addVerseMarkers(text, bodyRef, $quranRefs?.verse_word_counts) || text;
