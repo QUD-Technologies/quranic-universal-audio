@@ -201,3 +201,65 @@ def test_a_projected_segment_is_relabelled_word_for_word():
     )
     assert [w["location"] for w in out["a"]["words"]] == ["112:2:1", "112:2:2"]
     assert "b" not in out
+
+
+def _specials(backend, chapters: dict) -> None:
+    backend.write_json_atomic(
+        "reciters/r/specials.json", {"schema_version": 1, "generated_at": "t", "chapters": chapters}
+    )
+
+
+def test_openers_are_timed_with_the_chapter_and_their_words_stored(delivery, monkeypatch):
+    import requests
+
+    _specials(delivery, {"112": [
+        {"type": "Basmala", "position": "pre", "start_ms": 100, "end_ms": 900, "source": "align"},
+        {"type": "Sadaqa", "position": "post", "start_ms": 3100, "end_ms": 3900, "source": "align"},
+    ]})  # fmt: skip
+    sent: list = []
+
+    def post(url, json, headers, timeout):
+        sent.append(json)
+        [opener] = [s for s in json["entries"][0]["segments"] if s["matched_ref"] == "Basmala"]
+        words = [[f"0:0:{n}", 200 * (n - 1), 200 * n] for n in range(1, 5)]
+        held = {"status": "ok", "span": [100, 900], "ref": "Basmala", "words": words}
+        times = _doc({opener["segment_uid"]: held})
+        return _Reply({
+            "model": "head@1", "times": base64.b64encode(times).decode(), "shards": {},
+            "timed": 2, "kept": 0, "failed": 0, "failed_segments": [], "specials_skipped": [],
+        })  # fmt: skip
+
+    monkeypatch.setattr(requests, "post", post)
+    aligner_timing.retime("r", [112])
+
+    assert sent[0]["specials"] is True
+    segs = sent[0]["entries"][0]["segments"]
+    assert [s["matched_ref"] for s in segs] == ["Basmala", SEG["matched_ref"]]  # Sadaqa not sent
+    stored = json.loads(delivery.read_bytes("reciters/r/specials.json"))["chapters"]["112"][0]
+    assert stored["words"] == [[100, 300], [300, 500], [500, 700], [700, 900]]
+
+
+def test_a_chapter_without_openers_is_sent_without_the_flag(delivery, monkeypatch):
+    sent: list = []
+    _serve(monkeypatch, sent)
+    aligner_timing.retime("r", [112])
+    assert "specials" not in sent[0]
+
+
+def test_a_failed_opener_does_not_count_as_a_failed_segment(delivery, monkeypatch):
+    import requests
+
+    _specials(delivery, {"112": [
+        {"type": "Basmala", "position": "pre", "start_ms": 100, "end_ms": 900, "source": "align"},
+    ]})  # fmt: skip
+
+    def post(url, json, headers, timeout):
+        return _Reply({
+            "model": "head@1", "times": base64.b64encode(_doc({})).decode(), "shards": {},
+            "timed": 1, "kept": 0, "failed": 2, "specials_skipped": [],
+            "failed_segments": [{"segment_uid": "o", "special": "Basmala"}, {"segment_uid": "a"}],
+        })  # fmt: skip
+
+    monkeypatch.setattr(requests, "post", post)
+    reply = aligner_timing.time_chapter("r", 112, riwayah="hafs")
+    assert reply["failed_segments"] == [{"segment_uid": "a"}]

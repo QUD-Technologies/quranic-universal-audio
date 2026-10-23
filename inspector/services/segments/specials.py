@@ -16,7 +16,7 @@ from services.state import audit
 from services.storage import data_dir
 
 #: Serialises read-modify-write of any reciter's specials.json (writes are rare).
-_WRITE_LOCK = threading.Lock()
+WRITE_LOCK = threading.Lock()
 
 
 def read_doc(slug: str) -> SpecialsDoc | None:
@@ -28,7 +28,7 @@ def confirm_voice(
     slug: str, *, chapter: int, start_ms: int, same_voice: bool, actor: Actor
 ) -> bool:
     """Store the call on the entry starting at ``start_ms``; ``False`` when there is no such entry."""
-    with _WRITE_LOCK:
+    with WRITE_LOCK:
         doc = read_doc(slug)
         entries = doc.chapters.get(str(chapter), []) if doc else []
         entry = next((e for e in entries if e.start_ms == start_ms), None)
