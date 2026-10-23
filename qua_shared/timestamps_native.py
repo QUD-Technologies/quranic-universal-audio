@@ -319,10 +319,19 @@ def project_word_shard(shard: dict) -> dict[str, dict]:
     return _select_occasions(_word_segments(shard))
 
 
+def is_verse_ref(ref: str) -> bool:
+    """``surah:ayah`` with both parts >= 1. Special readings (Isti'adha /
+    Basmala before ayah 1) use refs outside this grammar and are not verses."""
+    surah, sep, ayah = ref.partition(":")
+    return bool(sep) and surah.isdigit() and ayah.isdigit() and int(surah) >= 1 and int(ayah) >= 1
+
+
 def _segments(shard: dict) -> list[dict]:
-    if shard_profile(shard) == "word":
-        return _word_segments(shard)
-    return _native_segments(shard)
+    """Verse segments only — the single choke point every release projection
+    (canonical, all-occurrences, HF) passes through, so a special reading can
+    never become a verse row. Specials ship in ``specials.json`` instead."""
+    rows = _word_segments(shard) if shard_profile(shard) == "word" else _native_segments(shard)
+    return [row for row in rows if is_verse_ref(row["ref"])]
 
 
 def project_shard(shard: dict) -> dict[str, dict]:

@@ -465,7 +465,7 @@ def _ayah_of(ref: str) -> int | None:
     at, so a malformed ref can never be filed under verse 0.
     """
     _, _, tail = ref.partition(":")
-    return int(tail) if tail.isdigit() else None
+    return int(tail) if tail.isdigit() and int(tail) >= 1 else None
 
 
 def _ayah_ranges(ayahs: list[int], readings: list[dict]) -> list[list[int]]:
