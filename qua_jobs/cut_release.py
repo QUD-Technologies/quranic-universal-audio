@@ -1113,10 +1113,14 @@ def _preflight() -> int:
 # ---------------------------------------------------------------------------
 
 #: Parallel build workers; unset = ``DEFAULT_BUILD_WORKERS`` (capped by CPU count).
-#: Set ``1`` to force serial. A reciter build peaks at several GB, so one worker
-#: per vCPU OOM-kills the 8-vCPU/32 GB ``cpu-upgrade`` flavor.
+#: Set ``1`` to force serial. A build is mostly bucket reads: v4.0.0 on 3 workers
+#: held 19% CPU and 5 GB of the 8-vCPU/32 GB ``cpu-upgrade`` flavor. One worker per
+#: vCPU once OOM-killed it (letter tiers on), so stop short of that.
 BUILD_WORKERS_ENV = "CUT_BUILD_WORKERS"
-DEFAULT_BUILD_WORKERS = 3
+DEFAULT_BUILD_WORKERS = 6
+#: Reciters whose upstream recordings are probed at once (each probes its chapters
+#: on its own thread pool); serially, 102 reciters took 14 minutes.
+UPSTREAM_RECITER_WORKERS = 8
 
 
 @dataclass(frozen=True)
@@ -1135,17 +1139,18 @@ class _BuildContext:
 def _upstream_changes(eligible: list[dict]) -> dict[str, dict[int, str]]:
     """``{slug: {62: "ch62 recording (465s → 321s)", …}}`` for chapters
     whose upstream recording differs from the audio used for alignment."""
-    changed: dict[str, dict[int, str]] = {}
-    for rec in eligible:
+
+    def one(rec: dict) -> tuple[str, dict[int, str]]:
         path = _bucket_root() / "catalog" / "audio_manifest" / f"{rec['slug']}.json"
         try:
             chapters = json.loads(path.read_bytes()).get("chapters") or {}
         except (OSError, json.JSONDecodeError):
-            continue
+            return rec["slug"], {}
         blocking = upstream.blocking_changes(chapters)
-        if blocking:
-            changed[rec["slug"]] = {int(c.chapter.split(":", 1)[0]): c.describe() for c in blocking}
-    return changed
+        return rec["slug"], {int(c.chapter.split(":", 1)[0]): c.describe() for c in blocking}
+
+    with concurrent.futures.ThreadPoolExecutor(UPSTREAM_RECITER_WORKERS) as pool:
+        return {slug: found for slug, found in pool.map(one, eligible) if found}
 
 
 class _FatalViolations(Exception):
