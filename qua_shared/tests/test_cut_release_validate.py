@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import pickle
 from pathlib import Path
 
 import pytest
@@ -578,6 +579,29 @@ def test_build_members_propagates_fatal_violations(monkeypatch):
     monkeypatch.setattr(cut_release, "_build_member", boom)
     with pytest.raises(cut_release._FatalViolations, match="a: 1 fatal"):
         cut_release._build_members([{"slug": "a"}], _ctx())
+
+
+def test_fatal_violations_survive_the_build_pool_boundary():
+    sent = cut_release._FatalViolations("a", [{"violation": "foreign_chapter"}], {"n": 1})
+    got = pickle.loads(pickle.dumps(sent))
+    assert (got.slug, got.fatal, got.summary) == ("a", [{"violation": "foreign_chapter"}], {"n": 1})
+
+
+def test_build_members_logs_every_failing_reciter_before_aborting(monkeypatch, caplog):
+    monkeypatch.setenv(cut_release.BUILD_WORKERS_ENV, "1")
+
+    def build(rec, ctx):
+        if rec["slug"] == "ok":
+            return {"slug": "ok"}
+        raise cut_release._FatalViolations(rec["slug"], [{"violation": "x"}], {})
+
+    monkeypatch.setattr(cut_release, "_build_member", build)
+    with pytest.raises(cut_release._FatalViolations, match="a: 1 fatal"):
+        cut_release._build_members([{"slug": "a"}, {"slug": "ok"}, {"slug": "b"}], _ctx())
+    failing = [
+        r.getMessage().split(":")[0].strip() for r in caplog.records if "fatal" in r.getMessage()
+    ]
+    assert failing == ["a", "b"]
 
 
 def test_build_workers_env_override(monkeypatch):

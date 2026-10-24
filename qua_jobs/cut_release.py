@@ -1115,12 +1115,11 @@ def _preflight() -> int:
 #: Parallel build workers; unset = a default by whether letter tiers are built. Set
 #: ``1`` to force serial. A build mostly waits on bucket reads, so the pool may exceed
 #: the vCPU count: v4.0.0 on 3 workers held 19% CPU and ~1.7 GB per worker of the
-#: 8-vCPU/32 GB ``cpu-upgrade`` flavor. 12 workers built 102 recitations in 14 min but
-#: were OOM-killed at the tail, where the parent holds every finished member's files.
+#: 8-vCPU/32 GB ``cpu-upgrade`` flavor; 12 workers built 102 recitations in 14 min.
 #: Letter tiers cost several GB more per build (8 workers with them once OOM-killed
 #: it), hence the smaller pool.
 BUILD_WORKERS_ENV = "CUT_BUILD_WORKERS"
-DEFAULT_BUILD_WORKERS = 8
+DEFAULT_BUILD_WORKERS = 12
 DEFAULT_BUILD_WORKERS_WITH_LETTERS = 6
 #: Reciters whose upstream recordings are probed at once (each probes its chapters
 #: on its own thread pool); serially, 102 reciters took 14 minutes.
@@ -1164,6 +1163,10 @@ class _FatalViolations(Exception):
         super().__init__(f"{slug}: {len(fatal)} fatal boundary violations")
         self.slug, self.fatal, self.summary = slug, fatal, summary
 
+    def __reduce__(self):
+        # Crosses the build pool's process boundary; the default reduce passes only the message.
+        return type(self), (self.slug, self.fatal, self.summary)
+
 
 #: Set once in the parent before the pool forks so workers inherit it without
 #: pickling the multi-MB DigitalKhatt word index per task.
@@ -1194,12 +1197,24 @@ def _build_members(eligible: list[dict], ctx: _BuildContext) -> list[dict]:
             mp_context=multiprocessing.get_context("fork"),
         ) as pool:
             results = list(pool.map(_build_member_task, eligible))
-    return [m for m in results if m is not None]
+    failed = [r for r in results if isinstance(r, _FatalViolations)]
+    for exc in failed:
+        log.error("  %s: %d fatal boundary violations", exc.slug, len(exc.fatal))
+        for v in exc.fatal[:5]:
+            log.error("    %s", v)
+    if failed:
+        raise failed[0]
+    return [m for m in results if isinstance(m, dict)]
 
 
-def _build_member_task(rec: dict) -> dict | None:
+def _build_member_task(rec: dict) -> dict | _FatalViolations | None:
+    """One reciter's build; a hard failure comes back as a value so every failing
+    reciter is reported once the pool drains, not just the first to finish."""
     assert _BUILD_CTX is not None
-    return _build_member(rec, _BUILD_CTX)
+    try:
+        return _build_member(rec, _BUILD_CTX)
+    except _FatalViolations as exc:
+        return exc
 
 
 def _verse_counts(riwayah: str, surah_info: dict) -> dict[int, int]:
@@ -1499,9 +1514,7 @@ def main() -> int:
     try:
         members = _build_members(eligible, ctx)
     except _FatalViolations as exc:
-        log.error("  %s: %d fatal boundary violations — aborting cut", exc.slug, len(exc.fatal))
-        for v in exc.fatal[:5]:
-            log.error("    %s", v)
+        log.error("aborting cut: fatal boundary violations (first: %s)", exc.slug)
         _post_webhook(
             version=version_override or "",
             job_id=job_id,
