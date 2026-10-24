@@ -140,8 +140,9 @@ The same predicate drives the Releases-tab buckets and the cut job's member disc
 Global single-flight: only one cut in flight at a time; a publish landing mid-cut is rejected.
 
 Per-recitation builds (shard load, layout, validation, tier files, catalog.json) fan out over a
-forked process pool — 6 workers by default (builds are mostly bucket reads: 3 workers used 19% CPU
-and 5 GB on the 8-vCPU/32 GB `cpu-upgrade` flavor; 8 workers with letter tiers once OOM-killed it),
+forked process pool — 12 workers by default, 6 when letter tiers are built (builds mostly wait on
+bucket reads, so the pool exceeds the vCPU count: 3 workers used 19% CPU and ~1.7 GB each on the
+8-vCPU/32 GB `cpu-upgrade` flavor; 8 workers with letter tiers once OOM-killed it),
 `CUT_BUILD_WORKERS` overrides (`1` = serial; serial is also the fallback where `fork` is
 unavailable). The upstream-recording check before it probes 8 reciters at once. Results keep
 catalog order; the first fatal-violation reciter aborts the cut. Job timeout defaults to 4h

@@ -584,7 +584,11 @@ def test_build_workers_env_override(monkeypatch):
     monkeypatch.setenv(cut_release.BUILD_WORKERS_ENV, "3")
     assert cut_release._build_workers() == 3
     monkeypatch.setenv(cut_release.BUILD_WORKERS_ENV, "")
-    assert 1 <= cut_release._build_workers() <= cut_release.DEFAULT_BUILD_WORKERS
+    assert cut_release._build_workers() == cut_release.DEFAULT_BUILD_WORKERS
+    assert (
+        cut_release._build_workers(include_letters=True)
+        == cut_release.DEFAULT_BUILD_WORKERS_WITH_LETTERS
+    )
 
 
 def test_validate_occurrences_aborts_on_a_verse_timed_in_another_chapters_audio():

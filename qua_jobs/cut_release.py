@@ -1112,12 +1112,14 @@ def _preflight() -> int:
 # Per-recitation build — one worker per reciter, fanned out over a process pool.
 # ---------------------------------------------------------------------------
 
-#: Parallel build workers; unset = ``DEFAULT_BUILD_WORKERS`` (capped by CPU count).
-#: Set ``1`` to force serial. A build is mostly bucket reads: v4.0.0 on 3 workers
-#: held 19% CPU and 5 GB of the 8-vCPU/32 GB ``cpu-upgrade`` flavor. One worker per
-#: vCPU once OOM-killed it (letter tiers on), so stop short of that.
+#: Parallel build workers; unset = a default by whether letter tiers are built. Set
+#: ``1`` to force serial. A build mostly waits on bucket reads, so the pool may exceed
+#: the vCPU count: v4.0.0 on 3 workers held 19% CPU and ~1.7 GB per worker of the
+#: 8-vCPU/32 GB ``cpu-upgrade`` flavor. Letter tiers cost several GB more per build
+#: (8 workers with them once OOM-killed it), hence the smaller pool.
 BUILD_WORKERS_ENV = "CUT_BUILD_WORKERS"
-DEFAULT_BUILD_WORKERS = 6
+DEFAULT_BUILD_WORKERS = 12
+DEFAULT_BUILD_WORKERS_WITH_LETTERS = 6
 #: Reciters whose upstream recordings are probed at once (each probes its chapters
 #: on its own thread pool); serially, 102 reciters took 14 minutes.
 UPSTREAM_RECITER_WORKERS = 8
@@ -1166,11 +1168,11 @@ class _FatalViolations(Exception):
 _BUILD_CTX: _BuildContext | None = None
 
 
-def _build_workers() -> int:
+def _build_workers(include_letters: bool = False) -> int:
     raw = os.environ.get(BUILD_WORKERS_ENV, "").strip()
     if raw.isdigit() and int(raw) > 0:
         return int(raw)
-    return max(1, min(DEFAULT_BUILD_WORKERS, os.cpu_count() or 1))
+    return DEFAULT_BUILD_WORKERS_WITH_LETTERS if include_letters else DEFAULT_BUILD_WORKERS
 
 
 def _build_members(eligible: list[dict], ctx: _BuildContext) -> list[dict]:
@@ -1179,7 +1181,7 @@ def _build_members(eligible: list[dict], ctx: _BuildContext) -> list[dict]:
     Raises ``_FatalViolations`` for the first reciter that fails hard."""
     global _BUILD_CTX  # noqa: PLW0603 — fork-inherited context, see above
     _BUILD_CTX = ctx
-    workers = min(_build_workers(), len(eligible))
+    workers = min(_build_workers(ctx.include_letter_timestamps), len(eligible))
     can_fork = "fork" in multiprocessing.get_all_start_methods()
     if workers <= 1 or not can_fork:
         results = [_build_member_task(rec) for rec in eligible]
