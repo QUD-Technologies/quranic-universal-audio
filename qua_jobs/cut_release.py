@@ -542,6 +542,10 @@ def _build_catalog_json(
     if not audio_urls:
         raise RuntimeError(f"{rec['slug']}: audio_manifest has no usable audio URLs")
     surahs = {key.split(":", 1)[0] for key in verses if not key.startswith("_")}
+    # A chapter the manifest serves but the recitation never timed ships no
+    # rows, so it gets no URL either.
+    audio_urls = {k: v for k, v in audio_urls.items() if k.split(":", 1)[0] in surahs}
+    audio_offsets = {k: v for k, v in audio_offsets.items() if k in audio_urls}
     coverage_ayahs = sum(1 for k in verses if not k.startswith("_"))
     catalog = ReleaseRecitationCatalog(
         schema_version=SCHEMA_VERSION,

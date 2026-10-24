@@ -257,6 +257,7 @@ from jobs launched before deployment. Owners get a notification either way: publ
 (listing recitations and chapters left out because their upstream audio changed), or
 failed. A clean cut sends the plain publication notification. `scripts/diagnostics/upstream_drift.py` reports the
 same check fleet-wide.
+`chapter_urls` (and `chapter_offsets_ms`) list only the chapters the recitation ships timestamps for: a chapter the audio manifest serves but that has no segments gets no URL.
 `chapter_offsets_ms` is **omitted from the JSON when empty** (model_serializer on `ReleaseCatalogAudio`),
 so CDN by-surah catalogs stay byte-stable and their `content_hash` doesn't churn.
 

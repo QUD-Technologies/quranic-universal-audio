@@ -491,6 +491,26 @@ def test_empty_audio_urls_are_fatal_for_catalog_build():
         cut_release._build_catalog_json(rec, sidecar, verses)
 
 
+def test_catalog_lists_audio_only_for_chapters_with_timestamps():
+    # The manifest serves ch45, but the recitation has no segments there: a URL
+    # for it would promise timings the zip does not carry.
+    rec = {"slug": "example_reciter", "audio_category": "by_surah"}
+    verses = {"44:1": {"words": [[1, 0, 100]]}}
+    sidecar = {
+        "schema_version": 1,
+        "slug": "example_reciter",
+        "_meta": {"checksum": "abc", "chapter_count": 2, "category": "by_surah"},
+        "chapters": {
+            "44": {"url": "https://cdn.example.org/044.mp3", "source_offset_ms": 300},
+            "45": {"url": "https://cdn.example.org/045.mp3", "source_offset_ms": 500},
+        },
+    }
+
+    audio = json.loads(cut_release._build_catalog_json(rec, sidecar, verses))["audio"]
+    assert audio["chapter_urls"] == {"44": "https://cdn.example.org/044.mp3"}
+    assert audio["chapter_offsets_ms"] == {"44": 300}
+
+
 # ---------------------------------------------------------------------------
 # Shards vs the catalog row.
 # ---------------------------------------------------------------------------
