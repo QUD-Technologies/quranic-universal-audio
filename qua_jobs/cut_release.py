@@ -1115,10 +1115,12 @@ def _preflight() -> int:
 #: Parallel build workers; unset = a default by whether letter tiers are built. Set
 #: ``1`` to force serial. A build mostly waits on bucket reads, so the pool may exceed
 #: the vCPU count: v4.0.0 on 3 workers held 19% CPU and ~1.7 GB per worker of the
-#: 8-vCPU/32 GB ``cpu-upgrade`` flavor. Letter tiers cost several GB more per build
-#: (8 workers with them once OOM-killed it), hence the smaller pool.
+#: 8-vCPU/32 GB ``cpu-upgrade`` flavor. 12 workers built 102 recitations in 14 min but
+#: were OOM-killed at the tail, where the parent holds every finished member's files.
+#: Letter tiers cost several GB more per build (8 workers with them once OOM-killed
+#: it), hence the smaller pool.
 BUILD_WORKERS_ENV = "CUT_BUILD_WORKERS"
-DEFAULT_BUILD_WORKERS = 12
+DEFAULT_BUILD_WORKERS = 8
 DEFAULT_BUILD_WORKERS_WITH_LETTERS = 6
 #: Reciters whose upstream recordings are probed at once (each probes its chapters
 #: on its own thread pool); serially, 102 reciters took 14 minutes.
