@@ -12,7 +12,9 @@ back to ``specials.json``, and each reciter that changed is reported through
 ``POST /api/admin/internal/ts-refreshed`` so its releases go stale.
 
 Skips by-ayah deliveries (no lead-in to time), chapters with no shard, and
-chapters whose shard already has opener readings, so a rerun resumes.
+chapters whose shard already has opener readings, so a rerun resumes; ``--redo``
+names chapters to re-time anyway (openers whose spans changed, e.g. after
+``clamp_opener_spans.py``), and their readings are replaced.
 
 The timing can run off the aligner, on Katana: ``--export DIR`` writes each reciter's
 chapter request bodies (plus ``voice_refs``, the chapter's own verse clips) to
@@ -114,7 +116,13 @@ def _setup_paths_and_env(bucket: str) -> None:
 class _Splicer:
     """One reciter's chapters: time their openers and splice them into the shards."""
 
-    def __init__(self, slug: str, execute: bool, replies: Path | None = None):
+    def __init__(
+        self,
+        slug: str,
+        execute: bool,
+        replies: Path | None = None,
+        redo: list[int] | None = None,
+    ):
         import brotli
 
         from services.reference.delivery_edition import sdk_riwayah_for
@@ -124,6 +132,8 @@ class _Splicer:
         from services.timing import specials_timing
 
         self.slug, self.execute, self.replies = slug, execute, replies
+        #: Chapters to re-time even though their shard already has openers.
+        self.redo = set(redo or ())
         self.brotli, self.paths, self.backend = brotli, storage_paths, get_backend()
         self.at, self.timing = at, specials_timing
         self.detailed = at.read_detailed(slug)
@@ -135,6 +145,8 @@ class _Splicer:
         return self.at.audio_category(self.detailed) == "by_surah_audio"
 
     def chapters(self) -> list[int]:
+        if self.redo:
+            return sorted(self.redo)
         doc = self.timing.specials_service.read_doc(self.slug)
         return sorted(int(c) for c in (doc.chapters if doc else {}))
 
@@ -151,7 +163,7 @@ class _Splicer:
         shard = self._shard(chapter)
         if shard is None:
             return "no_shard"
-        if has_openers(shard):
+        if has_openers(shard) and chapter not in self.redo:
             return "present"
         if not self.execute:
             return "would_splice"
@@ -218,9 +230,14 @@ class _Splicer:
 
 
 def _run_slug(
-    slug: str, execute: bool, workers: int, notify, replies: Path | None = None
+    slug: str,
+    execute: bool,
+    workers: int,
+    notify,
+    replies: Path | None = None,
+    redo: list[int] | None = None,
 ) -> dict[str, int]:
-    splicer = _Splicer(slug, execute, replies)
+    splicer = _Splicer(slug, execute, replies, redo)
     if not splicer.by_surah():
         log.info("%s: by-ayah audio, skipped", slug)
         return {"by_ayah": 1}
@@ -271,13 +288,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--execute", action="store_true", help="Write. Without it only count.")
     ap.add_argument("--export", type=Path, help="write timing bodies here for the Katana job")
     ap.add_argument("--replies", type=Path, help="read the Katana job's replies from here")
+    ap.add_argument(
+        "--redo",
+        type=Path,
+        help="JSON {slug: [chapters]}: re-time just these chapters' openers, spliced or not",
+    )
     args = ap.parse_args(argv)
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
     for noisy in ("httpx", "httpx2"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
-    slugs = list(args.slug or [])
+    redo: dict[str, list[int]] = json.loads(args.redo.read_text("utf-8")) if args.redo else {}
+    slugs = list(args.slug or redo)
     if args.slug_file:
         slugs += Path(args.slug_file).read_text("utf-8").split()
     if not slugs:
@@ -293,7 +316,10 @@ def main(argv: list[str] | None = None) -> int:
 
     total: dict[str, int] = {}
     for slug in dict.fromkeys(slugs):
-        for k, v in _run_slug(slug, args.execute, args.workers, notify, args.replies).items():
+        counts = _run_slug(
+            slug, args.execute, args.workers, notify, args.replies, redo.get(slug)
+        )
+        for k, v in counts.items():
             total[k] = total.get(k, 0) + v
     log.info("%s: %s", "EXECUTED" if args.execute else "DRY RUN", total)
     return 1 if total.get("failed") or total.get("unreported") else 0
