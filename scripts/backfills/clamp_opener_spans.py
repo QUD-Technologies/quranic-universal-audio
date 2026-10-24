@@ -37,7 +37,8 @@ def first_verse_starts(entries: list[dict], specials: frozenset[str]) -> dict[in
         for seg in entry.get("segments", []):
             if ":" not in (seg.get("matched_ref") or "") or seg["matched_ref"] in specials:
                 continue
-            out[chapter] = min(out.get(chapter, seg["time_start"]), seg["time_start"])
+            start = int(seg["time_start"])
+            out[chapter] = min(out.get(chapter, start), start)
     return out
 
 
@@ -58,7 +59,9 @@ def clamp_chapter(items: list[dict], ayah1_start: int | None) -> list[str]:
         if limit is None or entry["end_ms"] <= limit:
             continue
         if limit <= entry["start_ms"]:
-            notes.append(f"!! {entry['type']}@{entry['start_ms']} starts at/after {limit}; left as is")
+            notes.append(
+                f"!! {entry['type']}@{entry['start_ms']} starts at/after {limit}; left as is"
+            )
             continue
         notes.append(f"{entry['type']} {entry['start_ms']}-{entry['end_ms']} -> {limit}")
         entry.update(end_ms=limit, clipped=True, words=[])
@@ -86,7 +89,9 @@ def process(slug: str, *, apply: bool) -> list[int]:
             for note in notes:
                 print(f"  {slug} ch{ch}: {note}")
         if changed and apply:
-            data_dir.write_specials_doc(slug, SpecialsDoc.model_validate(raw).model_dump(mode="json"))
+            data_dir.write_specials_doc(
+                slug, SpecialsDoc.model_validate(raw).model_dump(mode="json")
+            )
     return sorted(changed)
 
 

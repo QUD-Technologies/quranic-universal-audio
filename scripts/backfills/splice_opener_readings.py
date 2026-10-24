@@ -316,9 +316,7 @@ def main(argv: list[str] | None = None) -> int:
 
     total: dict[str, int] = {}
     for slug in dict.fromkeys(slugs):
-        counts = _run_slug(
-            slug, args.execute, args.workers, notify, args.replies, redo.get(slug)
-        )
+        counts = _run_slug(slug, args.execute, args.workers, notify, args.replies, redo.get(slug))
         for k, v in counts.items():
             total[k] = total.get(k, 0) + v
     log.info("%s: %s", "EXECUTED" if args.execute else "DRY RUN", total)
