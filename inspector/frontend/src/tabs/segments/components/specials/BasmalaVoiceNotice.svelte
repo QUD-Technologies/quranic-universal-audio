@@ -7,7 +7,7 @@
      * and settles (or overrules) it. Playback rides an isolated preview context
      * (its own hidden `<audio>` + bounded AudioRange, as SavePreview does), so
      * it never disturbs the main list's playback state. Hidden for everyone
-     * else, on any other chapter, and for a reciter with no voice-scored Basmala.
+     * else, on any other chapter, and for a reciter with no Al-Fatiha Basmala.
      */
     import { onDestroy, untrack } from 'svelte';
 
@@ -59,7 +59,8 @@
         }
         if (entry?.voice_verdict === 'same') return m.segments_basmala_voice_prompt_same();
         if (entry?.voice_verdict === 'different') return m.segments_basmala_voice_prompt_different();
-        return m.segments_basmala_voice_prompt_unsure();
+        if (entry?.voice_verdict === 'needs_confirmation') return m.segments_basmala_voice_prompt_unsure();
+        return m.segments_basmala_voice_prompt_unchecked();
     });
 
     // Fetch the reciter's specials once per reciter while the notice applies.

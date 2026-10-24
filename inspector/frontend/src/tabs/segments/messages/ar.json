@@ -562,6 +562,7 @@
   "segments_chip_missing_words": "كلمات ناقصة",
   "segments_basmala_voice_label": "صوت بسملة الفاتحة",
   "segments_basmala_voice_prompt_unsure": "لم تحسم المحاذاة ما إذا كانت البسملة بصوت القارئ نفسه. استمع ثم قرر.",
+  "segments_basmala_voice_prompt_unchecked": "لم يُجرَ فحص تلقائي للصوت على هذه البسملة. استمع ثم قرر هل هي بصوت القارئ نفسه.",
   "segments_basmala_voice_prompt_same": "رجحت المحاذاة أن البسملة بصوت القارئ نفسه. صحح ذلك إن كان خاطئا.",
   "segments_basmala_voice_prompt_different": "رجحت المحاذاة أن البسملة بصوت آخر. صحح ذلك إن كان خاطئا.",
   "segments_basmala_voice_saved_same": "تم التأكيد: البسملة بصوت القارئ نفسه.",

@@ -29,11 +29,18 @@ describe('fatihaBasmalaEntry', () => {
         expect(fatihaBasmalaEntry(doc)?.voice_confirmed).toBe(false);
     });
 
-    it('returns null without a voice-scored chapter-1 Basmala', () => {
+    it('keeps the 1:1 Basmala the voice check never scored, so it can still be called', () => {
+        const doc: SegSpecialsResponse = { chapters: { '1': [entry({ voice_verdict: null })] } };
+        expect(fatihaBasmalaEntry(doc)).toMatchObject({ source: 'fatiha_verse', start_ms: 1200 });
+    });
+
+    it('returns null without an Al-Fatiha Basmala', () => {
         expect(fatihaBasmalaEntry(null)).toBeNull();
         expect(fatihaBasmalaEntry({ chapters: {} })).toBeNull();
-        // Unscored (`unavailable` records no verdict) and other chapters don't count.
-        expect(fatihaBasmalaEntry({ chapters: { '1': [entry({ voice_verdict: null })] } })).toBeNull();
+        // An unscored recorded opener and other chapters don't count.
+        expect(fatihaBasmalaEntry({
+            chapters: { '1': [entry({ source: 'align', voice_verdict: null })] },
+        })).toBeNull();
         expect(fatihaBasmalaEntry({
             chapters: { '2': [entry({ source: 'align', voice_verdict: 'same' })] },
         })).toBeNull();

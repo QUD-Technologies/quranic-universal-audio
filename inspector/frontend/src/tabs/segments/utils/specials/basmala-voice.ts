@@ -21,11 +21,16 @@ export const BASMALA_VOICE_CAPABILITY = 'segments.confirm_basmala_voice';
 /** Al-Fatiha — the only chapter whose Basmala carries a voice verdict. */
 export const FATIHA_CHAPTER = 1;
 
-/** The voice-scored Basmala of Al-Fatiha, or null when there is none to call. */
+/**
+ * Al-Fatiha's Basmala to call, or null when there is none: the 1:1 verse entry
+ * even when the voice check never ran (so a maintainer can still settle it), else
+ * a chapter-1 Basmala that carries a verdict or a saved call.
+ */
 export function fatihaBasmalaEntry(doc: SegSpecialsResponse | null): SpecialEntry | null {
-    const entries = doc?.chapters?.[String(FATIHA_CHAPTER)] ?? [];
-    return entries.find((entry) => entry.type === 'Basmala'
-        && (entry.voice_verdict != null || entry.voice_confirmed != null)) ?? null;
+    const entries = (doc?.chapters?.[String(FATIHA_CHAPTER)] ?? []).filter((e) => e.type === 'Basmala');
+    return entries.find((entry) => entry.source === 'fatiha_verse')
+        ?? entries.find((entry) => entry.voice_verdict != null || entry.voice_confirmed != null)
+        ?? null;
 }
 
 /** The reciter's specials; null when unavailable (the notice then stays hidden). */

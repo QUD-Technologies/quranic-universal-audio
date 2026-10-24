@@ -538,6 +538,7 @@
   "segments_chip_missing_words": "Missing words",
   "segments_basmala_voice_label": "Al-Fatiha Basmala voice",
   "segments_basmala_voice_prompt_unsure": "The aligner couldn't tell whether the Basmala is in the reciter's own voice. Listen, then decide.",
+  "segments_basmala_voice_prompt_unchecked": "No automatic voice check ran on this Basmala. Listen, then decide whether it is in the reciter's own voice.",
   "segments_basmala_voice_prompt_same": "The aligner judged the Basmala to be in the reciter's own voice. Overrule it if that's wrong.",
   "segments_basmala_voice_prompt_different": "The aligner judged the Basmala to be in another voice. Overrule it if that's wrong.",
   "segments_basmala_voice_saved_same": "Confirmed: the Basmala is in the reciter's own voice.",

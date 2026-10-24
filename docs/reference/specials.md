@@ -96,7 +96,7 @@ release's verse projection and `reference/timestamps._ayah_of` files them under 
 ## Frontend
 
 - **Timestamps tab:** opener readings decode with their `special` flag (`lib/recitation-data/specials.ts`). They show as named filmstrip cells, animate in the mega cells, and appear in teleprompter word and letter mode. Peaks follow because the chapter comes from `_meta.chapter`. They are guarded out of verse navigation and reports. Detail is in [`frontend.md`](frontend.md#tabstimestamps).
-- **Segments tab:** `components/BasmalaVoiceNotice.svelte` + `utils/specials/basmala-voice.ts`. On chapter 1, for a `segments.confirm_basmala_voice` holder whose Al-Fatiha Basmala has a verdict or a saved call, a compact notice plays the clip through the preview player. It offers Same / Different voice and POSTs to `/api/seg/specials/<reciter>/voice`. A saved call can be changed. Edit Ref takes a special's name; the row then shows the localized name (`lib/recitation-animation/special-label.ts`) in place of verse text.
+- **Segments tab:** `components/BasmalaVoiceNotice.svelte` + `utils/specials/basmala-voice.ts`. On chapter 1, for a `segments.confirm_basmala_voice` holder whose Al-Fatiha 1:1 Basmala is listed (scored or not — an unscored one says no check ran), a compact notice plays the clip through the preview player. It offers Same / Different voice and POSTs to `/api/seg/specials/<reciter>/voice`. A saved call can be changed. Edit Ref takes a special's name; the row then shows the localized name (`lib/recitation-animation/special-label.ts`) in place of verse text.
 
 ## Release
 
