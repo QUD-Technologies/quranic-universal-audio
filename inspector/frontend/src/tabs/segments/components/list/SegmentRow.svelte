@@ -100,6 +100,7 @@ import type { Segment } from '../../../../lib/types/view-models';
         formatTimeMs,
         isCrossVerse,
         isSpecialRef,
+        specialTextForRef,
         wordLocationsForRef,
     } from '../../utils/data/references';
     import { deleteSegment } from '../../utils/edit/delete';
@@ -324,7 +325,10 @@ import type { Segment } from '../../../../lib/types/view-models';
         const text = dkTextForRef(bodyRef, $quranRefs?.dk_words, $quranRefs?.verse_word_counts);
         if (!text) {
             // Special segs (Basmala/Isti'adha/Amin/Takbir/...) have no verse
-            // words: history snapshots carry their Arabic text, else name them.
+            // words: an opener shows its edition text, a history snapshot its
+            // stored text, and any other special its name.
+            const specialText = specialTextForRef(bodyRef, $quranRefs);
+            if (specialText) return specialText;
             if (seg.matched_text) return seg.matched_text;
             if (isSpecialRef(bodyRef)) return tr($localeStore, specialLabel(bodyRef));
             return seg.matched_ref ? tr($localeStore, m.segments_row_no_text_fallback()) : tr($localeStore, m.segments_row_no_match_fallback());

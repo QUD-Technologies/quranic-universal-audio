@@ -1,7 +1,7 @@
 import { get } from 'svelte/store';
 
 import type { SpecialName } from '../../../../lib/recitation-animation/special-label';
-import { quranRefs } from '../../../../lib/refs/quran-refs';
+import { type QuranRefs, quranRefs } from '../../../../lib/refs/quran-refs';
 import type { Ref, VerseRef } from '../../../../lib/types/view-models';
 import { _ARABIC_DIGITS } from '../constants';
 
@@ -41,6 +41,11 @@ export function specialRefName(input: string | null | undefined): SpecialName | 
 /** Whether a stored `matched_ref` is a special rather than a verse ref. */
 export function isSpecialRef(ref: Ref | null | undefined): ref is SpecialName {
     return !!ref && Object.hasOwn(_SPECIAL_SPELLINGS, ref);
+}
+
+/** A special row's Arabic text in the loaded edition (an opener's `special_texts`), else null. */
+export function specialTextForRef(ref: Ref | null | undefined, refs: QuranRefs | null | undefined): string | null {
+    return isSpecialRef(ref) ? refs?.special_texts?.[ref] ?? null : null;
 }
 
 /** Read verse-word-counts from the shared Quran-refs bundle. */

@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Segment } from '../../../../lib/types/view-models';
-import { isSpecialRef, specialRefName } from '../../utils/data/references';
+import { isSpecialRef, specialRefName, specialTextForRef } from '../../utils/data/references';
 import { commitRefEdit } from '../../utils/edit/reference';
 
 describe('specialRefName', () => {
@@ -33,5 +33,20 @@ describe('commitRefEdit with a special', () => {
         } as Segment;
         expect(await commitRefEdit(seg, 'istiatha')).toEqual({ status: 'ok' });
         expect([seg.matched_ref, seg.matched_text, seg.confidence]).toEqual(["Isti'adha", '', 1]);
+    });
+});
+
+describe('specialTextForRef', () => {
+    const refs = {
+        riwayah: 'hafs', dk_words: {}, verse_word_counts: {}, verse_marker_prefix: '۝',
+        special_texts: { Basmala: 'بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ' },
+    };
+
+    it("shows an opener row's edition text, not its name", () => {
+        expect(specialTextForRef('Basmala', refs)).toBe('بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ');
+    });
+
+    it('has no text for a special the edition does not spell, or a verse ref', () => {
+        expect([specialTextForRef('Amin', refs), specialTextForRef('1:1:1-1:1:4', refs)]).toEqual([null, null]);
     });
 });

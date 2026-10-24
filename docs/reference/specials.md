@@ -85,6 +85,7 @@ aligner times them and gives each opener its own shard reading:
   `0:1` (Isti'adha, words `0:1:1`–`0:1:5`) or `0:2` (Basmala, words `0:2:1`–`0:2:4`);
   `ts_shard.py` pins a special reading's parts to its ref and omits the key when absent;
   the word audit admits `0:[12]:N` only on a special reading.
+- a labelled special row shows its Arabic text, not its name: the Quran-refs bundle carries `special_texts` per edition (`services/reference/quran_refs.special_texts` — Hafs joins the DK words the opener is read as, 1:1 / 2:67:15 + 16:98:5-8; other editions take `editions.special`), read by `references.ts::specialTextForRef`; Amin, Takbir and the rest keep their name.
 - labelled special rows in `detailed.json` are never sent as segments (`with_openers` drops them); at a chapter edge they come back as the opener.
 - the returned stored times give each opener's words, written back to `specials.json`.
 - a failed opener (`failed_segments[].special`) is logged and dropped — it never holds

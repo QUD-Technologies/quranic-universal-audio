@@ -1,9 +1,9 @@
 """Quran reference-data payload, one immutable static asset per edition.
 
-Bundles the three pieces of fixed reference data the Segments tab needs at edit
-time: the word map (``dk_words``), the per-verse word counts
-(``verse_word_counts``), and the end-of-ayah marker prefix
-(``verse_marker_prefix``). All are constant across users, reciters, chapters and
+Bundles the fixed reference data the Segments tab needs at edit time: the word
+map (``dk_words``), the per-verse word counts (``verse_word_counts``), the
+end-of-ayah marker prefix (``verse_marker_prefix``) and the opener specials'
+Arabic text (``special_texts``, what a ``Basmala`` / ``Isti'adha`` row shows). All are constant across users, reciters, chapters and
 sessions, so the frontend fetches one payload per edition per browser via
 ``/api/static/quran-refs.json?riwayah=…`` (immutable, content-hashed) and shares
 it across every tab.
@@ -43,6 +43,29 @@ def verse_marker_prefix(riwayah: str = DEFAULT_SDK_RIWAYAH) -> str:
     return VERSE_MARKER if riwayah == DEFAULT_SDK_RIWAYAH else ""
 
 
+#: The Hafs verse words an opener is read as (qua_sdk ``special_native``): a Hafs row draws
+#: from the DK word map, so an opener row shows these words like any verse.
+_HAFS_OPENER_WORDS = {
+    "Isti'adha": ("2:67:15", "16:98:5", "16:98:6", "16:98:7", "16:98:8"),
+    "Basmala": ("1:1:1", "1:1:2", "1:1:3", "1:1:4"),
+}
+
+
+def special_texts(riwayah: str = DEFAULT_SDK_RIWAYAH) -> dict[str, str]:
+    """The Arabic text of each opener special in this edition's script, keyed by its
+    ``matched_ref`` name. Other specials (Amin, Takbir …) have no edition text."""
+    if riwayah == DEFAULT_SDK_RIWAYAH:
+        dk = get_dk_words_flat(riwayah)
+        return {
+            name: " ".join(dk[ref] for ref in refs)
+            for name, refs in _HAFS_OPENER_WORDS.items()
+            if all(ref in dk for ref in refs)
+        }
+    from services.reference import editions
+
+    return {name: editions.special(name, riwayah) for name in _HAFS_OPENER_WORDS}
+
+
 def _build(riwayah: str) -> tuple[bytes, str]:
     """Serialise the reference bundle for one edition and hash it."""
     verse_word_counts = {
@@ -54,6 +77,7 @@ def _build(riwayah: str) -> tuple[bytes, str]:
             "dk_words": get_dk_words_flat(riwayah),
             "verse_word_counts": verse_word_counts,
             "verse_marker_prefix": verse_marker_prefix(riwayah),
+            "special_texts": special_texts(riwayah),
         }
     )
     digest = hashlib.sha256(body).hexdigest()[:12]

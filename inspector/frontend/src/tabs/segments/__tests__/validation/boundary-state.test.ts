@@ -30,7 +30,7 @@ const item = (o: Record<string, unknown>): SegValAnyItem => o as unknown as SegV
 
 beforeAll(() => {
     (quranRefs as unknown as { set: (v: unknown) => void }).set({
-        riwayah: 'hafs', dk_words: {}, verse_marker_prefix: '',
+        riwayah: 'hafs', dk_words: {}, verse_marker_prefix: '', special_texts: {},
         verse_word_counts: { '2:1': 4, '2:2': 3, '2:3': 2, '2:4': 5 },
     });
 });
