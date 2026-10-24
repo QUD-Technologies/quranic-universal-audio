@@ -10,7 +10,7 @@ import LineAnimation from '../LineAnimation.svelte';
 import type { ShapedGlyphFixture } from '../shaped-glyphs';
 import type { AnimUnit } from '../types';
 
-/** "ٱللَّهِ" — a Basmala word whose text is also a shaped chapter-2 verse word. */
+/** "ٱللَّهِ" — the Basmala's 1:1:2, whose DK text is also a shaped chapter-2 verse word. */
 const ALLAH = 'ٱللَّهِ';
 
 const shapedGlyphs = {
@@ -53,7 +53,7 @@ describe('LineAnimation — recited openers', () => {
         expect(markers.map((marker) => marker.dataset.afterWord)).toEqual(['2']);
     });
 
-    it("renders an opener's word as native text, never a same-text verse word's shaped outline", async () => {
+    it("draws an opener's word with its source verse word's shaped outline, like a verse", async () => {
         const config = {
             ...DEFAULT_RECITATION_CONFIG,
             granularity: 'char' as const,
@@ -61,20 +61,13 @@ describe('LineAnimation — recited openers', () => {
             clearOnOverflow: false,
             showAyahMarker: false,
         };
-        const renderWord = (special: boolean) => render(LineAnimation, {
-            units: [unit('0:2:2', 0, 1, { special, text: ALLAH })],
+        expect(shapedGlyphs.words[ALLAH]).toBeDefined();
+        const opener = render(LineAnimation, {
+            units: [unit('0:2:2', 0, 1, { special: true, text: ALLAH })],
             config, getTimeMs: () => 0, playing: false, shapedGlyphs,
         });
-        expect(shapedGlyphs.words[ALLAH]).toBeDefined();
-
-        const opener = renderWord(true);
         await tick();
-        expect(opener.container.querySelector('.ra-shaped-svg')).toBeNull();
-        expect(opener.container.querySelector('.ra-word-ink')?.textContent).toBe(ALLAH);
-        opener.unmount();
-
-        const verse = renderWord(false);
-        await tick();
-        expect(verse.container.querySelector('.ra-shaped-svg')).not.toBeNull();
+        expect(opener.container.querySelector('.ra-shaped-svg')).not.toBeNull();
+        expect(opener.container.querySelector('.ra-word-ink')).toBeNull();
     });
 });

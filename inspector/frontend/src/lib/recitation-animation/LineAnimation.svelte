@@ -67,10 +67,10 @@
         getTimeMs: () => number;
         /** Whether playback is running (drives the rAF loop). */
         playing: boolean;
-        /** Pre-shaped DigitalKhatt geometry for the active Hafs chapter. Keyed by
-         *  word text and covering only the chapter's verses, so an opener's word
-         *  (`unit.special`) never borrows a same-text verse word's token layout —
-         *  it renders as native text. Openers also get no `۝` ayah marker. */
+        /** Pre-shaped DigitalKhatt geometry for the active Hafs chapter, keyed by
+         *  word text: the chapter's verse words plus the verse words the openers
+         *  are read as (an opener word's text and tokens are its source word's),
+         *  so an Isti'adha / Basmala is drawn like a verse. Openers get no `۝`. */
         shapedGlyphs?: ShapedGlyphFixture;
         /** Reveal timing-only silent tokens without applying the active colour. */
         omitSilentHighlights?: boolean;
@@ -582,7 +582,7 @@
 >
     {#each structure as w, i (pageStart + '-' + i)}
         {@const u = pageUnits[i]}
-        {@const shaped = u && !u.special ? shapedGlyphs.words[u.text] : undefined}
+        {@const shaped = u ? shapedGlyphs.words[u.text] : undefined}
         {#if i > 0}{' '}{/if}<span
             class="ra-word"
             data-start={w.start}

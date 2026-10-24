@@ -6,7 +6,7 @@ import type { TsWordShardResponse } from '../../types/ts-client';
 import { decodeTimestampShard } from '../compact-shards';
 import { computeChapterCoverage } from '../coverage';
 import { chapterOccasions } from '../occasions';
-import { isSpecialRef, isVerseRef } from '../specials';
+import { isSpecialRef, isVerseRef, openerSourceRef } from '../specials';
 import { basmalaShard, BASMALA_FIXTURE_CHAPTER } from '../test-native-fixture';
 import { WORD_SHARD } from '../test-word-fixture';
 import { assembleOccasion, chapterVerseRefs, shardOccasions } from '../ts-source';
@@ -31,6 +31,23 @@ describe('special refs', () => {
         expect(isVerseRef('0:2')).toBe(false);
         expect(isVerseRef('2:1')).toBe(true);
         expect(isVerseRef('10:2')).toBe(true);
+    });
+});
+
+describe('opener source words', () => {
+    it('reads each opener word as the verse word it is analysed as', () => {
+        expect(['0:2:1', '0:2:4'].map(openerSourceRef)).toEqual(['1:1:1', '1:1:4']);
+        expect(['0:1:1', '0:1:2', '0:1:5'].map(openerSourceRef)).toEqual(['2:67:15', '16:98:5', '16:98:8']);
+        expect(openerSourceRef('2:1:1')).toBeNull();
+        expect(openerSourceRef('0:2:5')).toBeNull();
+    });
+
+    it("gives an opener word its source word's QPC and DigitalKhatt text", () => {
+        const [opener] = shardOccasions(basmalaShard());
+        const qpc = { '1:1:2': { text: 'qpc-allah' } };
+        const dk = { '1:1:2': { text: 'dk-allah' } };
+        const data = assembleOccasion('r', opener!, qpc, dk, BY_SURAH, 'chapter.mp3');
+        expect(data.words[1]).toMatchObject({ location: '0:2:2', text: 'qpc-allah', display_text: 'dk-allah' });
     });
 });
 

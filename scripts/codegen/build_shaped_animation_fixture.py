@@ -33,6 +33,13 @@ SPECIAL = {
 _BLOCKED = -1
 STOP_MARKS = {0x06D6, 0x06D7, 0x06D8, 0x06DA, 0x06DB}
 SILENT_COMPANION_ROLE = "silent_companion"
+#: The verse words an opener's shard words (``0:1:n`` Isti'adha, ``0:2:n`` Basmala) are read as
+#: (``qua_sdk.integrations.special_native``): their tokens are these words', so they take these
+#: words' shapes. Mirrored by ``OPENER_SOURCE_WORDS`` in the FE ``recitation-data/specials.ts``.
+OPENER_SOURCE_WORDS = (
+    ("2:67:15", "16:98:5", "16:98:6", "16:98:7", "16:98:8"),
+    ("1:1:1", "1:1:2", "1:1:3", "1:1:4"),
+)
 
 
 def _verse_refs(dk: dict[str, dict]) -> tuple[str, ...]:
@@ -91,6 +98,19 @@ def _dk_owners(source_text: str, source_owners: list[int | None], dk_text: str) 
             ),
         )
     return [None if owner == _BLOCKED else owner for owner in owners]
+
+
+def opener_words(dk: dict[str, dict], words: dict[str, dict]) -> dict[str, dict]:
+    """The shaped words the openers are read as, keyed by DK text like a chapter file."""
+    texts = [dk[ref]["text"] for refs in OPENER_SOURCE_WORDS for ref in refs]
+    return {text: words[text] for text in texts}
+
+
+def _write_json(target: Path, payload: dict) -> int:
+    target.write_text(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+    )
+    return target.stat().st_size
 
 
 def main() -> None:
@@ -267,10 +287,14 @@ def main() -> None:
         target = OUTPUT_DIR / f"{chapter}.json"
         target.write_text(payload, encoding="utf-8")
         total_bytes += target.stat().st_size
+    total_bytes += _write_json(
+        OUTPUT_DIR / "openers.json",
+        {"upem": units_per_em, "words": opener_words(dk, canonical_words)},
+    )
     print(
         f"{OUTPUT_DIR}: {location_count} locations, {len(canonical_words)} unique "
         f"words, {len(paths)} glyph outlines, {total_bytes} bytes across shared paths "
-        f"and 114 chapters"
+        f"and 114 chapters + openers"
     )
 
 

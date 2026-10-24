@@ -10,7 +10,7 @@ import type {
     TsWord,
 } from '../types/ts-client';
 import { type AnyShardReading, type ChapterOccasion, chapterOccasions } from './occasions';
-import { isVerseRef } from './specials';
+import { isVerseRef, openerSourceRef } from './specials';
 
 const occasionsByShard = new WeakMap<TsShardResponse, ChapterOccasion[]>();
 
@@ -117,10 +117,12 @@ function buildTimedRows(
                     end: span.end_ms / 1000 - offset,
                 });
             }
+            // An opener word reads as its source verse word, so it takes that word's text.
+            const textRef = openerSourceRef(word.ref) ?? word.ref;
             words.push({
                 location: word.ref,
-                text: qpc[word.ref]?.text ?? word.text,
-                display_text: dk[word.ref]?.text ?? qpc[word.ref]?.text ?? word.text,
+                text: qpc[textRef]?.text ?? word.text,
+                display_text: dk[textRef]?.text ?? qpc[textRef]?.text ?? word.text,
                 start: timed.start_ms / 1000 - offset,
                 end: timed.end_ms / 1000 - offset,
                 phoneme_indices: phonemeIndices,

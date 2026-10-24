@@ -142,3 +142,26 @@ def test_every_noon_iqlab_mark_can_paint_without_its_silent_noon_host():
     # Corpus guard: a source/update must not silently shrink the audited Hafs
     # DigitalKhatt noon+iqlab-mark population.
     assert occurrences == 270
+
+
+#: Isti'adha then Basmala, as the generator's ``OPENER_SOURCE_WORDS`` (its font deps stay out of CI).
+_OPENER_SOURCES = [
+    "2:67:15",
+    "16:98:5",
+    "16:98:6",
+    "16:98:7",
+    "16:98:8",
+    "1:1:1",
+    "1:1:2",
+    "1:1:3",
+    "1:1:4",
+]
+
+
+def test_opener_words_are_their_source_verse_words():
+    openers = json.loads((_FIXTURE_DIR / "openers.json").read_text(encoding="utf-8"))
+    assert openers["upem"] == 1000
+    sources = _OPENER_SOURCES
+    assert list(openers["words"]) == [_dk()[ref]["text"] for ref in sources]
+    for ref in sources:
+        assert openers["words"][_dk()[ref]["text"]] == _word(ref), ref
