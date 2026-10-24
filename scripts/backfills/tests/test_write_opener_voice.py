@@ -80,3 +80,12 @@ def test_a_clip_shared_with_another_reciter_is_different():
 def test_person_keeps_the_family_name_after_a_generic_token():
     assert person("saber_abdulhakam_warsh_way2quran") == person("saber_abdulhakam_yt")
     assert person("mohammed_al_tablawi_qdc") != person("mohammed_al_luhaidan_mp3quran")
+
+
+def test_a_live_opener_leans_foreign_in_a_mostly_foreign_reciter():
+    stock = {str(ch): {"0": _clip(2900 + ch, _STOCK, 3.5)} for ch in (2, 3, 4)}
+    doc = {"openers": {**stock, "27": {"0": _clip(2340, _own(1), 1.81)}}}
+    assert _verdicts(decide_reciter(doc, (False, 2.3), set()))[27] == "different"
+    own = {str(ch): {"0": _clip(4000 + 300 * ch, _own(ch), 0.8)} for ch in (2, 3, 4)}
+    doc = {"openers": {**own, "27": {"0": _clip(2340, _own(9), 1.81)}}}
+    assert _verdicts(decide_reciter(doc, (False, 2.3), set()))[27] == "same"

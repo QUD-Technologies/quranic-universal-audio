@@ -13,7 +13,8 @@ reused (a spliced clip); a source is, in order:
 3. reused across chapters → ``same`` when the median z of its clips is under the
    reciter's cut, else ``different``;
 4. recorded with its chapter (no twin) → ``same`` unless its z is over the cut plus
-   ``LIVE_MARGIN`` — a live opener leans to the reciter's own voice.
+   ``LIVE_MARGIN`` — a live opener leans the reciter's way: to its own voice, or to
+   foreign (under the cut minus the margin) when most of its openers are foreign.
 
 The cut is ``CUT``, moved by the reciter's Al-Fatiha 1:1 when its answer is known: a
 reciter whose own Basmala scores z ``f`` sits near ``f``, so the cut rises to
@@ -120,7 +121,7 @@ def reciter_cut(fatiha_same: bool | None, fatiha_z: float | None) -> float:
     return max(CUT, fatiha_z + ANCHOR_GAP) if fatiha_same else min(CUT, fatiha_z - ANCHOR_GAP)
 
 
-def _source_verdict(group, clips, fatiha_same, stock, cut) -> str:
+def _source_verdict(group, clips, fatiha_same, stock, cut, lean) -> str:
     zs = [clips[k]["z"] for k in group if k != FATIHA and clips[k].get("z") is not None]
     if FATIHA in group and fatiha_same is not None:
         return "same" if fatiha_same else "different"
@@ -130,7 +131,22 @@ def _source_verdict(group, clips, fatiha_same, stock, cut) -> str:
         return ""
     if len([k for k in group if k != FATIHA]) > 1:
         return "same" if statistics.median(zs) < cut else "different"
-    return "same" if zs[0] <= cut + LIVE_MARGIN else "different"
+    return "same" if zs[0] <= cut + lean else "different"
+
+
+def _decide(clips, fatiha_same, stock, cut, lean) -> dict[int, dict[str, dict]]:
+    out: dict[int, dict[str, dict]] = {}
+    for group in clip_groups(clips):
+        verdict = _source_verdict(group, clips, fatiha_same, stock, cut, lean)
+        for key in group:
+            if key != FATIHA:
+                row = {"verdict": verdict, "z": clips[key].get("z")}
+                out.setdefault(int(key[0]), {})[key[1]] = row
+    return out
+
+
+def _rows(out: dict) -> list[dict]:
+    return [row for by_start in out.values() for row in by_start.values()]
 
 
 def decide_reciter(
@@ -145,22 +161,13 @@ def decide_reciter(
     if doc.get("fatiha"):
         clips[FATIHA] = doc["fatiha"]
     cut = reciter_cut(*fatiha)
-    out: dict[int, dict[str, dict]] = {}
-    undecided = []
-    for group in clip_groups(clips):
-        verdict = _source_verdict(group, clips, fatiha[0], stock, cut)
-        for key in group:
-            if key == FATIHA:
-                continue
-            row = {"verdict": verdict, "z": clips[key].get("z")}
-            out.setdefault(int(key[0]), {})[key[1]] = row
-            if not verdict:
-                undecided.append(row)
-    if undecided:  # no verse to score against: the reciter's usual answer
-        votes = [r["verdict"] for ch in out.values() for r in ch.values() if r["verdict"]]
-        lean = statistics.mode(votes) if votes else "same"
-        for row in undecided:
-            row["verdict"] = lean
+    out = _decide(clips, fatiha[0], stock, cut, LIVE_MARGIN)
+    votes = [row["verdict"] for row in _rows(out) if row["verdict"]]
+    majority = statistics.mode(votes) if votes else "same"
+    if majority == "different":  # a mostly foreign reciter: live takes lean foreign too
+        out = _decide(clips, fatiha[0], stock, cut, -LIVE_MARGIN)
+    for row in _rows(out):
+        row["verdict"] = row["verdict"] or majority  # no verse to score against
     return out
 
 

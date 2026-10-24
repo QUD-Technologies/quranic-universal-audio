@@ -68,7 +68,7 @@ verdict is decided per audio source (`scripts/backfills/write_opener_voice.py`):
 1. Same audio as the reciter's Al-Fatiha 1:1 → that Basmala's answer (maintainer's call first).
 2. Same audio as another reciter's clip → `different` (a stock clip).
 3. One clip reused across chapters → `same` if its median z is under 2.0.
-4. An opener recorded with its chapter → `same` unless its z is over 2.3.
+4. An opener recorded with its chapter → `same` unless its z is over the cut + 0.3 (cut − 0.3 for a reciter whose openers are mostly foreign).
 
 The released reciters were backfilled on Katana; new align runs record only Al-Fatiha's
 verdict so far.
