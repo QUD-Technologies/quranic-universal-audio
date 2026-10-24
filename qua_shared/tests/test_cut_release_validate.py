@@ -603,3 +603,15 @@ def test_validate_occurrences_aborts_on_canonical_rows_out_of_order():
     with pytest.raises(cut_release._FatalViolations) as exc:
         cut_release._validate_occurrences("slug", [], {}, raw)
     assert [v["violation"] for v in exc.value.fatal] == ["canonical_order"]
+
+
+def test_cut_request_refuses_a_malformed_version_before_launch():
+    from pydantic import ValidationError
+
+    from qua_shared.schemas.wire.release import AdminCutReleaseRequest
+
+    for ok in ("v4.0.0", "4.0.0", "", None):
+        AdminCutReleaseRequest(version=ok)
+    for bad in ("v4.0", "v4", "4.0.0.1"):
+        with pytest.raises(ValidationError):
+            AdminCutReleaseRequest(version=bad)

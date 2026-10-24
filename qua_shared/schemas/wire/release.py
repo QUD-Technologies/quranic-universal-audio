@@ -659,7 +659,9 @@ class AdminReleasePreviewResponse(BaseModel):
 class AdminCutReleaseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    version: str | None = None
+    #: Manual ``vX.Y.Z`` override (``v`` optional; blank = auto). Checked here so a malformed one
+    #: is refused at launch rather than failing the job after it has queued.
+    version: str | None = Field(None, pattern=r"^\s*(v?\d+\.\d+\.\d+)?\s*$")
     expected_version_at_preview: str | None = None
     #: Clip-edge padding for the release tiers. ``None`` = server defaults. The
     #: SAME knobs the HF publish uses, so the two channels stay consistent.
