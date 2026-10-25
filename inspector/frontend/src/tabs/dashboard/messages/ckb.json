@@ -415,5 +415,7 @@
   ],
   "dashboard_timeline_tooltip_entered_count": "{label} — {count} جار چووەتە ناوی:\n{dates}",
   "dashboard_timeline_tooltip_ts_refreshed_count": "نیشانەکاتەکان نوێ کرانەوە — {count} جار:\n{dates}",
-  "dashboard_timeline_tooltip_ts_refreshed_single": "نیشانەکاتەکان لە {datetime} نوێ کرانەوە"
+  "dashboard_timeline_tooltip_ts_refreshed_single": "نیشانەکاتەکان لە {datetime} نوێ کرانەوە",
+  "dashboard_release_include_letter_timestamps": "فایلەکانی نیشانەکاتی پیت تێدا بێت",
+  "dashboard_release_letter_timestamps_hint": "بۆ وەشانە خشتەکراو و دەستییەکانی GitHub جێبەجێ دەبێت. کاتێک ناچالاکە، وەشانەکان تەنها فایلەکانی نیشانەکاتی ئایەت و وشە لەخۆ دەگرن."
 }
