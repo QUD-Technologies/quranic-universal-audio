@@ -359,6 +359,13 @@
   "common_filmstrip_not_recited": "نەخوێندراوەتەوە",
   "common_filmstrip_missing_words": "وشە ونبووەکان",
   "common_filmstrip_missing_words_list": "وشە ونبووەکان: {indices}",
+  "common_filmstrip_special_istiadha": "ئیستیعازە",
+  "common_filmstrip_special_basmala": "بەسمەلە",
+  "common_special_amin": "ئامین",
+  "common_special_sadaqa": "صدق الله العظيم",
+  "common_special_takbir": "تەکبیر",
+  "common_special_tahmeed": "تەحمید",
+  "common_special_tasleem": "تەسلیم",
   "common_locale_select_label": "زمان",
   "common_locale_auto_option": "خۆکار · {language}"
 }
