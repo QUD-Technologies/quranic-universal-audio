@@ -76,7 +76,7 @@ def edge_entry(row: dict, bounds: tuple[int, int], *, source: SpecialSource) -> 
     )
 
 
-def _fatiha_basmala(segments: list[dict], voice: dict | None) -> SpecialEntry | None:
+def fatiha_basmala(segments: list[dict], voice: dict | None) -> SpecialEntry | None:
     row = next((s for s in segments if (s.get("matched_ref") or "") == "1:1:1-1:1:4"), None)
     if row is None:
         return None
@@ -116,7 +116,7 @@ def specials_from_run(
         if entry:
             chapters.setdefault(ev.chapter, []).append(entry)
     if riwayah in NUMBERED_BASMALA and 1 in by_chapter:
-        fatiha = _fatiha_basmala(by_chapter[1]["segments"], voice)
+        fatiha = fatiha_basmala(by_chapter[1]["segments"], voice)
         if fatiha:
             chapters.setdefault(1, []).append(fatiha)
     if not chapters:

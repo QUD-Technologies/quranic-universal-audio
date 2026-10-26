@@ -288,7 +288,9 @@ def _sync_labelled_specials(reciter: str, entries: list[dict], chapters) -> None
     if not by_chapter:
         return
     try:
-        specials_svc.sync_from_detailed(reciter, by_chapter, generated_at=_utc_now_iso())
+        specials_svc.sync_from_detailed(
+            reciter, by_chapter, generated_at=_utc_now_iso(), riwayah=sdk_riwayah_for(reciter)
+        )
     except Exception:
         logging.getLogger(__name__).exception(
             "specials sync failed for %s chapters %s", reciter, sorted(by_chapter)

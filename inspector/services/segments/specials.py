@@ -9,7 +9,11 @@ next cut ships the new ``same_voice``.
 
 A special a reviewer labels in ``detailed.json`` (Edit Ref → ``Basmala`` …) is
 mirrored here as source ``in_detailed`` on every persist, so timing and the
-release pick it up like an aligner-recorded one.
+release pick it up like an aligner-recorded one. In editions that number the
+Basmala (Hafs, Shu'ba), Al-Fatiha's own 1:1 row is mirrored the same way as its
+``fatiha_verse`` entry: an align run whose 1:1 only came apart from 1:2 at the
+verse-end split, or a reviewer's split, still gets the entry the voice check and
+the release read.
 """
 
 from __future__ import annotations
@@ -23,7 +27,12 @@ from qua_shared.schemas.bucket.specials import SpecialEntry, SpecialsDoc
 from qua_shared.schemas.wire.release import StaleReason
 from services.db import repo_releases
 from services.db import sync as _sync
-from services.segments.specials_doc import edge_entry, verse_bounds
+from services.segments.specials_doc import (
+    NUMBERED_BASMALA,
+    edge_entry,
+    fatiha_basmala,
+    verse_bounds,
+)
 from services.state import audit
 from services.storage import data_dir
 
@@ -31,6 +40,8 @@ log = logging.getLogger(__name__)
 
 #: Specials mirrored from ``detailed.json`` rows; re-derived on every persist.
 IN_DETAILED = "in_detailed"
+
+FATIHA = 1
 
 #: Serialises read-modify-write of any reciter's specials.json (writes are rare).
 WRITE_LOCK = threading.Lock()
@@ -112,19 +123,51 @@ def _merge_chapter(old: list[SpecialEntry], labelled: list[SpecialEntry]) -> lis
     return sorted(kept + labelled, key=lambda e: e.start_ms)
 
 
+def _with_fatiha_verse(items: list[SpecialEntry], segments: list[dict]) -> list[SpecialEntry]:
+    """``items`` with Al-Fatiha's ``fatiha_verse`` entry on the chapter's 1:1 row.
+
+    Added when missing, moved when the row moved (its voice call is kept). A chapter
+    with no 1:1 row keeps its entry: the verse was deleted, not the Basmala, and
+    ``restore_fatiha_basmala.py`` puts the row back on that span.
+    """
+    row = fatiha_basmala(segments, None)
+    if row is None:
+        return items
+    current = next((e for e in items if e.source == "fatiha_verse"), None)
+    if current is None:
+        if any(e.type == "Basmala" and e.position == "pre" for e in items):
+            return items
+        return sorted([*items, row], key=lambda e: e.start_ms)
+    if (current.start_ms, current.end_ms) == (row.start_ms, row.end_ms):
+        return items
+    moved = current.model_copy(
+        update={"start_ms": row.start_ms, "end_ms": row.end_ms, "confidence": row.confidence}
+    )
+    return [moved if e is current else e for e in items]
+
+
 def sync_from_detailed(
-    slug: str, segments_by_chapter: dict[int, list[dict]], *, generated_at: str
+    slug: str,
+    segments_by_chapter: dict[int, list[dict]],
+    *,
+    generated_at: str,
+    riwayah: str | None = None,
 ) -> bool:
-    """Mirror each chapter's labelled special rows into ``specials.json``; ``True`` if it changed."""
+    """Mirror each chapter's labelled special rows (and, where the edition numbers the
+    Basmala, Al-Fatiha's 1:1 row) into ``specials.json``; ``True`` if it changed."""
     with WRITE_LOCK:
         doc = read_doc(slug) or SpecialsDoc(generated_at=generated_at, chapters={})
         changed = False
         for chapter, segments in segments_by_chapter.items():
             old = doc.chapters.get(str(chapter), [])
             labelled = _detailed_entries(segments, chapter)
-            if not labelled and all(e.source != IN_DETAILED for e in old):
-                continue
-            merged = _merge_chapter(old, labelled)
+            merged = (
+                old
+                if not labelled and all(e.source != IN_DETAILED for e in old)
+                else _merge_chapter(old, labelled)
+            )
+            if chapter == FATIHA and riwayah in NUMBERED_BASMALA:
+                merged = _with_fatiha_verse(merged, segments)
             if merged == old:
                 continue
             changed = True

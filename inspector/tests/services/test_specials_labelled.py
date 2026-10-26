@@ -7,7 +7,7 @@ import json
 import pytest
 
 from qua_shared.schemas.bucket.specials import SpecialsDoc
-from services.segments import save
+from services.segments import save, specials
 from services.timing.specials_timing import with_openers
 
 RECITER = "fixture_reciter"
@@ -85,3 +85,51 @@ def test_timing_sends_the_opener_not_the_labelled_row():
     [entry] = with_openers(entries, [opener])
     assert [s.get("segment_uid") for s in entry["segments"]] == ["o", None]
     assert [s["matched_ref"] for s in with_openers(entries, [])[0]["segments"]] == ["2:1:1-2:1:1"]
+
+
+def _persist_fatiha(*rows: dict) -> None:
+    save.persist_detailed(RECITER, {}, [{"ref": "1", "segments": list(rows)}], [1])
+
+
+def _chapter_1(path) -> list[tuple]:
+    doc = SpecialsDoc.model_validate_json(path.read_text("utf-8"))
+    return [
+        (e.type, e.start_ms, e.end_ms, e.source, e.voice_verdict) for e in doc.chapters.get("1", [])
+    ]
+
+
+def test_a_1_1_split_from_1_2_gets_its_fatiha_basmala_entry(specials_path):
+    # An align run whose Basmala only came apart from 1:2 at the verse-end split.
+    _persist_fatiha(_row("1:1:1-1:1:4", 120, 3240), _row("1:2:1-1:2:4", 3240, 6905))
+    assert _chapter_1(specials_path) == [("Basmala", 120, 3240, "fatiha_verse", None)]
+
+
+def test_a_moved_1_1_row_moves_its_entry_and_keeps_the_voice_call(specials_path):
+    doc = json.loads(specials_path.read_text("utf-8"))
+    doc["chapters"]["1"] = [
+        {"type": "Basmala", "start_ms": 100, "end_ms": 3000, "source": "fatiha_verse",
+         "voice_verdict": "same", "voice_z": 0.9}
+    ]  # fmt: skip
+    specials_path.write_text(json.dumps(doc), "utf-8")
+    _persist_fatiha(_row("1:1:1-1:1:4", 150, 3300), _row("1:2:1-1:2:4", 3400, 6905))
+    assert _chapter_1(specials_path) == [("Basmala", 150, 3300, "fatiha_verse", "same")]
+
+
+def test_a_deleted_1_1_keeps_its_entry_for_the_restore(specials_path):
+    doc = json.loads(specials_path.read_text("utf-8"))
+    doc["chapters"]["1"] = [
+        {"type": "Basmala", "start_ms": 100, "end_ms": 3000, "source": "fatiha_verse"}
+    ]
+    specials_path.write_text(json.dumps(doc), "utf-8")
+    _persist_fatiha(_row("1:2:1-1:2:4", 3400, 6905))
+    assert _chapter_1(specials_path) == [("Basmala", 100, 3000, "fatiha_verse", None)]
+
+
+def test_an_edition_without_a_numbered_basmala_gets_no_fatiha_entry(specials_path):
+    specials.sync_from_detailed(
+        RECITER,
+        {1: [_row("1:1:1-1:1:4", 120, 3240), _row("1:2:1-1:2:4", 3240, 6905)]},
+        generated_at="t",
+        riwayah="warsh",
+    )
+    assert _chapter_1(specials_path) == []
