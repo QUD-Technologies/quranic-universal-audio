@@ -182,7 +182,9 @@ def acquire_group(slug: str, group: SourceGroup, channels_override: int | None) 
         return outcome
     with tempfile.TemporaryDirectory(prefix=f"acq_{group.item}_") as tmp:
         work = Path(tmp)
-        raw = _fetch(group.url, work / "src.bin")
+        # No extension: ffmpeg would pick a demuxer by one (``.bin`` = bintext)
+        # over sniffing the bytes, and lose an mp3 behind a large ID3 tag.
+        raw = _fetch(group.url, work / "src")
         channels = channels_override or audio_io.probe_channels(raw)
         encoded = work / f"{group.item}.mp3"
         audio_io.encode(raw, encoded, channels)
