@@ -236,3 +236,19 @@ def test_acquire_keeps_going_when_levels_cannot_be_baked(mount, monkeypatch):
     report = json.loads((root / "staging" / SLUG / "run-1" / "acquire.json").read_text("utf-8"))
     assert report["failures"] == {}
     assert report["chapters"]["3"]["levels_missing"] == [3]
+
+
+def test_acquire_downloads_to_a_name_without_an_extension(mount, monkeypatch):
+    """A ``.bin`` name made ffmpeg pick its ``bintext`` demuxer over mp3 for files
+    with a large ID3 tag (hady_toure_qdc), so the encode found no audio stream."""
+    root, _ = mount
+    real = audio_io.fetch
+    names: list[str] = []
+
+    def record(url, dest):
+        names.append(dest.name)
+        return real(url, dest)
+
+    monkeypatch.setattr(audio_io, "fetch", record)
+    assert acquire_audio.main() == 0
+    assert names == ["src", "src"]
