@@ -1,0 +1,371 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "common_action_save": "پاشەکەوتکردن",
+  "common_action_cancel": "پاشگەزبوونەوە",
+  "common_action_close": "داخستن",
+  "common_action_retry": "هەوڵدانەوە",
+  "common_action_try_again": "دووبارە هەوڵ بدەرەوە",
+  "common_action_dismiss": "لابردن",
+  "common_action_clear_all": "سڕینەوەی هەمووی",
+  "common_action_change": "گۆڕین",
+  "common_action_back": "← گەڕانەوە",
+  "common_action_continue": "بەردەوامبوون",
+  "common_action_submit": "ناردن",
+  "common_action_play": "پەخشکردن",
+  "common_action_pause": "وەستانی کاتی",
+  "common_action_ok": "باشە",
+  "common_status_saving": "پاشەکەوت دەکرێت…",
+  "common_status_submitting": "دەنێردرێت…",
+  "common_state_loading": "بار دەکرێت…",
+  "common_label_optional": "ئارەزوومەندانە",
+  "common_label_optional_paren": "(ئارەزوومەندانە)",
+  "common_auth_sign_in": "چوونەژوورەوە",
+  "common_auth_sign_out": "چوونەدەرەوە",
+  "common_auth_sign_in_with_hf": "چوونەژوورەوە بە HF",
+  "common_auth_signed_in_as_title": "بە ناوی {login} چوویتە ژوورەوە",
+  "common_player_text_size_group": "قەبارەی دەق",
+  "common_player_filmstrip_controls_group": "کۆنترۆڵەکانی نواری ئایەتەکان",
+  "common_auth_continue_with_hf": "بەردەوامبوون بە Hugging Face",
+  "common_signin_edit_title": "بۆ دەستکاری بچۆ ژوورەوە",
+  "common_signin_edit_body": "دەستکاری بەشەکان پێویستی بە هەژماری Hugging Face هەیە. بچۆ ژوورەوە بۆ وەرگرتنی کاری ئەم قارییە و دەستپێکردنی بەشداری.",
+  "common_signin_claim_title": "بۆ وەرگرتنی کار بچۆ ژوورەوە",
+  "common_signin_claim_body": "وەرگرتنی کاری قاری پێویستی بە هەژماری Hugging Face هەیە. بۆ دەستپێکردنی بەشداری بچۆ ژوورەوە.",
+  "common_signin_request_title": "بۆ داواکردن بچۆ ژوورەوە",
+  "common_signin_request_body": "ناردنی داواکاری تلاوەت پێویستی بە هەژماری Hugging Face هەیە.",
+  "common_signin_save_title": "دانیشتنەکەت بەسەرچووە",
+  "common_signin_save_body": "پێش پاشەکەوتکردنی گۆڕانکارییەکان دانیشتنەکەت بەسەرچوو. بۆ بەردەوامبوون دووبارە بچۆ ژوورەوە.",
+  "common_signin_claim_expired_title": "بۆ بەردەوامبوون بچۆ ژوورەوە",
+  "common_signin_claim_expired_body": "دانیشتنەکەت بەسەرچووە. بۆ بەردەوامبوون لە وەرگرتنی کاری قارییەکان دووبارە بچۆ ژوورەوە.",
+  "common_signin_default_title": "بۆ بەشداری بچۆ ژوورەوە",
+  "common_signin_default_body": "بە هەژماری Hugging Face بچۆ ژوورەوە بۆ وەرگرتنی کاری قارییەک و دەستکاری بەشەکان. تەنها ناوی بەکارهێنەر و وێنەی هەژمارەکەت دەخوێنینەوە — هیچی تر نا.",
+  "common_signin_embedded_signing_in": "دەچێتە ژوورەوە…",
+  "common_signin_embedded_need_tab_title": "لە تابێکی نوێ بەردەوام بە",
+  "common_signin_embedded_need_tab_body": "ئەم وێبگەڕە چوونەژوورەوە لە ناو پەڕە تێخراوەکاندا ڕێگە پێنادات.",
+  "common_signin_embedded_open_tab": "کردنەوەی تابێکی نوێ",
+  "common_signin_embedded_awaiting_title": "چاوەڕێی چوونەژوورەوە",
+  "common_signin_embedded_awaiting_body": "لە تابەکەی تر تەواوی بکە.",
+  "common_signin_embedded_recheck": "پشکنینەوە",
+  "common_state_available_for_request": "بەردەست بۆ داواکردن",
+  "common_state_requested": "داواکراو",
+  "common_state_available_for_review": "بەردەست بۆ پێداچوونەوە",
+  "common_state_under_review": "لە پێداچوونەوەدایە",
+  "common_state_published": "بڵاوکراوە",
+  "common_state_discarded": "واز لێهێنراو",
+  "common_player_pick_surah": "سوورەت هەڵبژێرە",
+  "common_player_surah_fallback": "سوورەتی {num}",
+  "common_player_speed_title": "خێرایی پەخش",
+  "common_player_download_label": "داگرتنی سوورەت",
+  "common_player_missing_words_pill": "وشەی ونبوو",
+  "common_player_missing_words_list": "وشە ونبووەکان: {words}",
+  "common_player_missing_words_none": "ئەم ئایەتە وشەی ونبووی هەیە",
+  "common_player_recitation_display_group": "پیشاندانی تلاوەت",
+  "common_player_upcoming_visibility_label": "گۆڕینی شێوازی پیشاندانی دەقی داهاتوو",
+  "common_player_upcoming_text_title": "دەقی داهاتوو: {state}",
+  "common_player_upcoming_state_full": "تەواو",
+  "common_player_upcoming_state_hidden": "شاراوە",
+  "common_player_upcoming_state_dim": "کەمڕەنگ",
+  "common_player_granularity_toggle_label": "گۆڕینی وشە / پیت",
+  "common_player_silent_omit_label": "پیشاندان / شاردنەوەی تۆخکردنەوەی پیتە نەخوێندراوەکان",
+  "common_player_silent_omit_on_title": "پیتە نەخوێندراوەکان: پیشاندان بەبێ تۆخکردنەوە",
+  "common_player_silent_omit_off_title": "پیتە نەخوێندراوەکان: تۆخکردنەوەی هاوکات",
+  "common_player_granularity_char_title": "پیت بە پیت",
+  "common_player_granularity_word_title": "وشە بە وشە",
+  "common_player_motion_toggle_label": "گۆڕینی جوڵەی نواری ئایەتەکان",
+  "common_player_motion_snap_title": "بازدان بۆ ئایەت",
+  "common_player_motion_glide_title": "جوڵەی بەردەوام",
+  "common_player_collapse_line_title": "داخستنی دێڕ",
+  "common_player_expand_line_title": "فراوانکردنی دێڕ",
+  "common_player_text_size_color_group": "قەبارە و ڕەنگی دەق",
+  "common_player_highlight_color_label": "ڕەنگی تۆخکردنەوە",
+  "common_player_size_down_label": "کەمکردنەوەی قەبارەی دەق",
+  "common_player_size_down_title": "دەقی بچووکتر",
+  "common_player_size_up_label": "زیادکردنی قەبارەی دەق",
+  "common_player_size_up_title": "دەقی گەورەتر",
+  "common_player_bookmarks_group": "نیشانەکراوەکان",
+  "common_player_bookmark_remove_title": "لابردنی نیشانە",
+  "common_player_bookmark_add_title": "ئەم ئایەتە نیشان بکە",
+  "common_player_bookmarks_panel_open": "کردنەوەی پانێڵی نیشانەکراوەکان",
+  "common_player_prev_surah_label": "سوورەتی پێشوو",
+  "common_player_seek_back_label": "١٥ چرکە بۆ دواوە",
+  "common_player_loading_audio_label": "دەنگ بار دەکرێت",
+  "common_player_seek_forward_label": "١٥ چرکە بۆ پێشەوە",
+  "common_player_next_surah_label": "سوورەتی دواتر",
+  "common_player_highlight_colour_label": "ڕەنگی تۆخکردنەوە",
+  "common_player_pick_reciter_prompt": "بۆ دەستپێکردن قارییەک هەڵبژێرە",
+  "common_player_switch_combination_label": "گۆڕینی پێکهاتە",
+  "common_player_progress_label": "شوێنی پەخش",
+  "common_player_surah_picker_label": "هەڵبژێری سوورەت",
+  "common_player_surah_filter_placeholder": "پاڵاوتنی سوورەتەکان…",
+  "common_player_surah_no_matches": "هیچ هاوتایەک نییە",
+  "common_picker_default_title": "قارییەک هەڵبژێرە",
+  "common_picker_search_placeholder": "گەڕان بەدوای قاری — ناو بە ئینگلیزی یان عەرەبی",
+  "common_picker_loading": "بار دەکرێت…",
+  "common_picker_no_matches": "هیچ هاوتایەک نییە. پاڵاوتن یان گەڕانێکی تر تاقی بکەرەوە.",
+  "common_picker_section_your_active_claims": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "کارە وەرگیراوە چالاکەکانت",
+        "countPlural=other": "کارە وەرگیراوە چالاکەکانت"
+      }
+    }
+  ],
+  "common_picker_load_error_fallback": "بارکردنی قارییەکان سەرکەوتوو نەبوو",
+  "common_picker_filters_aria_label": "پاڵاوتنە لاوەکییەکان",
+  "common_picker_hint_navigate": "گەڕان",
+  "common_picker_hint_select": "هەڵبژاردن",
+  "common_picker_hint_close": "داخستن",
+  "common_picker_hint_search": "گەڕان",
+  "common_picker_review_ready_badge": "ئامادە",
+  "common_picker_review_ready_title": "بۆ پێداچوونەوە ئامادە نیشان کراوە",
+  "common_picker_review_claimed_by_title": "کارەکە لەلایەن {login} وەرگیراوە",
+  "common_picker_tab_all": "هەموو",
+  "common_picker_tabs_aria_label": "دۆخ",
+  "common_claim_confirm_release_first_title": "سەرەتا واز لە کارە ئێستاکەت بهێنە",
+  "common_claim_confirm_release_first_body": "پێشتر کاری {name}ت وەرگرتووە. لە هەر کاتێکدا دەتوانیت لەسەر یەک قاری کار بکەیت — پێش وەرگرتنی یەکێکی تر واز لەوە بهێنە یان ئامادە نیشانی بکە.",
+  "common_claim_confirm_title": "کاری پێداچوونەوەی ئەم تلاوەتە وەردەگریت؟",
+  "common_claim_confirm_body": "وەرگرتنی کاری ئەم تلاوەتە ڕێگەت پێدەدات بە سەربەخۆیی بەشەکانی دەستکاری و چاک بکەیتەوە. لە هەر کاتێکدا یەک کار وەردەگریت، و دوای تەواوکردنی دەستکاری و ئامادە نیشانکردن ئازاد دەبێت. هەروەها هەر کاتێک بتەوێت دەتوانیت واز بهێنیت یان بۆ یەکێکی تر بگۆڕیت.",
+  "common_claim_confirm_busy": "کار وەردەگیرێت…",
+  "common_claim_confirm_cta": "پشتڕاستکردنەوە",
+  "common_claim_button_label": "وەرگرتنی پێداچوونەوە",
+  "common_edit_gate_title_claimable": "بۆ دەستکاری کارەکە وەربگرە",
+  "common_edit_gate_title_holds_other_claim": "سەرەتا کارە ئێستاکەت تەواو بکە",
+  "common_edit_gate_title_wrong_assignee": "کەسێکی تر دەستکاری دەکات",
+  "common_edit_gate_title_marked_ready": "بۆ بڵاوکردنەوە قوفڵ کراوە",
+  "common_edit_gate_title_published": "پێشتر بڵاوکراوەتەوە",
+  "common_edit_gate_title_not_available": "هێشتا بۆ دەستکاری ئامادە نییە",
+  "common_edit_gate_title_discarded": "قاری بەردەست نییە",
+  "common_edit_gate_title_default": "بۆ دەستکاری بەردەست نییە",
+  "common_edit_gate_body_claimable": "ئەم قارییە بۆ کارکردن بەردەستە. بە دوگمەی خوارەوە کارەکە وەربگرە بۆ دەستپێکردنی دەستکاری بەشەکانی.",
+  "common_edit_gate_body_holds_other_claim": "ئەم قارییە بەردەستە، بەڵام لە هەر کاتێکدا دەتوانیت یەک کار وەربگریت. پێش وەرگرتنی ئەمە، واز لە قارییە ئێستاکەت بهێنە یان ئامادە نیشانی بکە.",
+  "common_edit_gate_body_wrong_assignee": "بەشداربوویەکی تر ئێستا لەسەر ئەم قارییە کار دەکات. دەتوانیت تەنها بیخوێنیتەوە، یان لە تابلۆی سەرەکی کاری یەکێکی تر وەربگریت.",
+  "common_edit_gate_body_marked_ready": "ئەم قارییەت بۆ بڵاوکردنەوە ئامادە نیشان کردووە، بۆیە قوفڵ کراوە. بۆ گۆڕانکاری لە ئاگادارکەرەوەکەدا «بەردەوامبوون لە دەستکاری» هەڵبژێرە.",
+  "common_edit_gate_body_published": "ئەم قارییە بڵاوکراوەتەوە و تەنها بۆ خوێندنەوەیە. نیشانەکاتەکانی وشەکان لە تابی نیشانەکاتەکان ببینە.",
+  "common_edit_gate_body_not_available": "ئەم قارییە هێشتا بۆ دەستکاری ئامادە نەکراوە. دوای پرۆسەکردنی تلاوەتەکەی دەکرێتەوە.",
+  "common_edit_gate_body_discarded": "واز لەم قارییە هێنراوە و بۆ دەستکاری بەردەست نییە.",
+  "common_edit_gate_body_default": "ئەم قارییە بۆ دەستکاری بەردەست نییە.",
+  "common_bookmarks_panel_aria_label": "نیشانەکراوەکان",
+  "common_bookmarks_heading": "نیشانەکراوەکان",
+  "common_bookmarks_empty": "هێشتا هیچ نیشانەکراوێک نییە. لە نیشانەکاتەکان ئایەتێک بکەرەوە و بۆ پاشەکەوتکردنی ☆ دابگرە.",
+  "common_bookmarks_item_surah_fallback": "سوورەتی {surah}",
+  "common_bookmarks_item_ayah": "ئایەتی {ayah}",
+  "common_bookmarks_remove_title": "لابردنی نیشانە",
+  "common_info_index_aria_label": "چوون بۆ بەش",
+  "common_reciter_row_play_aria_label": "پەخشکردنی {name}",
+  "common_reciter_row_combination_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} پێکهاتە",
+        "countPlural=other": "{count} پێکهاتە"
+      }
+    }
+  ],
+  "common_reciter_row_riwayah_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} ڕیوایەت",
+        "countPlural=other": "{count} ڕیوایەت"
+      }
+    }
+  ],
+  "common_reciter_row_style_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} شێواز",
+        "countPlural=other": "{count} شێواز"
+      }
+    }
+  ],
+  "common_search_input_placeholder": "گەڕان",
+  "common_search_input_count_label": "{count} لە {total}",
+  "common_select_no_results": "هیچ ئەنجامێک نییە",
+  "common_toggle_na_marker": "بەکار نایەت",
+  "common_toggle_na_aria_label": "پەیوەندیدار نییە",
+  "common_chip_multiselect_placeholder": "گەڕان…",
+  "common_chip_multiselect_all_added": "هەمووی زیاد کراوە",
+  "common_chip_multiselect_no_matches": "هیچ هاوتایەک نییە",
+  "common_chip_multiselect_remove_aria_label": "لابردنی {label}",
+  "common_external_links_nav_aria_label": "بەستەرەکانی پڕۆژە",
+  "common_external_links_releases_label": "وەشانەکان",
+  "common_external_links_dataset_label": "کۆمەڵەدراوە",
+  "common_speed_control_label": "خێرایی:",
+  "common_picker_switch_reciter_title": "گۆڕینی قاری",
+  "common_nav_tab_dashboard": "تابلۆی سەرەکی",
+  "common_nav_tab_timestamps": "نیشانەکاتەکان",
+  "common_nav_tab_segments": "بەشەکان",
+  "common_theme_toggle_system_label": "ڕووکار: شوێنکەوتنی ئامێرەکەت — بۆ ڕووناک کلیک بکە",
+  "common_theme_toggle_light_label": "ڕووکار: ڕووناک — بۆ تاریک کلیک بکە",
+  "common_theme_toggle_dark_label": "ڕووکار: تاریک — بۆ شوێنکەوتنی ئامێرەکەت کلیک بکە",
+  "common_player_preset_color_label": "ڕەنگی پێشوەختە دیاریکراو",
+  "common_player_hue_label": "جۆری ڕەنگ",
+  "common_player_saturation_label": "تێری ڕەنگ",
+  "common_player_filmstrip_scrubber_aria_label": "گواستنەوە لەنێوان ئایەتەکان",
+  "common_claim_unclaim_first_toast": "بۆ وەرگرتنی کاری {target}، سەرەتا واز لە {existing} بهێنە.",
+  "common_relative_time_just_now": "هەر ئێستا",
+  "common_relative_time_yesterday": "دوێنێ",
+  "common_relative_time_minutes_ago": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} خولەک لەمەوبەر",
+        "countPlural=other": "{count} خولەک لەمەوبەر"
+      }
+    }
+  ],
+  "common_relative_time_hours_ago": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} کاتژمێر لەمەوبەر",
+        "countPlural=other": "{count} کاتژمێر لەمەوبەر"
+      }
+    }
+  ],
+  "common_relative_time_days_ago": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} ڕۆژ لەمەوبەر",
+        "countPlural=other": "{count} ڕۆژ لەمەوبەر"
+      }
+    }
+  ],
+  "common_relative_time_weeks_ago": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} هەفتە لەمەوبەر",
+        "countPlural=other": "{count} هەفتە لەمەوبەر"
+      }
+    }
+  ],
+  "common_relative_time_months_ago": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} مانگ لەمەوبەر",
+        "countPlural=other": "{count} مانگ لەمەوبەر"
+      }
+    }
+  ],
+  "common_relative_time_years_ago": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} ساڵ لەمەوبەر",
+        "countPlural=other": "{count} ساڵ لەمەوبەر"
+      }
+    }
+  ],
+  "common_delivery_coverage_full": "تەواو",
+  "common_delivery_ayah_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} ئایەت",
+        "countPlural=other": "{count} ئایەت"
+      }
+    }
+  ],
+  "common_delivery_surah_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} سوورەت",
+        "countPlural=other": "{count} سوورەت"
+      }
+    }
+  ],
+  "common_delivery_category_ayah": "ئایەت",
+  "common_delivery_category_surah": "سوورەت",
+  "common_delivery_bitrate_cbr": "cbr",
+  "common_delivery_bitrate_vbr": "vbr",
+  "common_delivery_bitrate_mixed": "تێکەڵ",
+  "common_filmstrip_not_recited": "نەخوێندراوەتەوە",
+  "common_filmstrip_missing_words": "وشە ونبووەکان",
+  "common_filmstrip_missing_words_list": "وشە ونبووەکان: {indices}",
+  "common_filmstrip_special_istiadha": "ئیستیعازە",
+  "common_filmstrip_special_basmala": "بەسمەلە",
+  "common_special_amin": "ئامین",
+  "common_special_sadaqa": "صدق الله العظيم",
+  "common_special_takbir": "تەکبیر",
+  "common_special_tahmeed": "تەحمید",
+  "common_special_tasleem": "تەسلیم",
+  "common_locale_select_label": "زمان",
+  "common_locale_auto_option": "خۆکار · {language}"
+}

@@ -1,3 +1,5 @@
+import { localizeDigits } from '$lib/i18n/format';
+import { getLocale } from '$lib/paraglide/runtime';
 import * as m from '../../../../lib/paraglide/messages';
 import type { EditOp, GenerationBoundary, HistoryBatch } from '../../../../lib/types/view-models';
 import type {
@@ -114,11 +116,23 @@ export function countVersesFromItems(items: OpFlatItem[]): number {
     return verses.size;
 }
 
+const SORANI_MONTHS = [
+    'کانوونی دووەم', 'شوبات', 'ئازار', 'نیسان', 'ئایار', 'حوزەیران',
+    'تەممووز', 'ئاب', 'ئەیلوول', 'تشرینی یەکەم', 'تشرینی دووەم', 'کانوونی یەکەم',
+] as const;
+
 export function formatHistDate(isoStr: string | null | undefined): string {
     if (!isoStr) return m.segments_history_date_pending();
     try {
         const d = new Date(isoStr);
-        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        // Browser ICU builds may not ship Sorani date names. Use explicit
+        // Gregorian month names so selecting Kurdish never falls back to English.
+        if (getLocale() === 'ckb' && !Number.isNaN(d.getTime())) {
+            const month = SORANI_MONTHS[d.getMonth()];
+            const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+            return localizeDigits(`${d.getDate()} ${month} ${time}`, 'ckb');
+        }
+        return d.toLocaleDateString(getLocale(), { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' });
     } catch { return isoStr; }
 }
 

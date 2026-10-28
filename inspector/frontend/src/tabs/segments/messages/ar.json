@@ -573,5 +573,6 @@
   "segments_basmala_voice_different": "صوت مختلف",
   "segments_basmala_voice_change": "تغيير",
   "segments_basmala_voice_saving": "جارٍ الحفظ…",
-  "segments_basmala_voice_load_error": "تعذر تحميل فحص صوت البسملة."
+  "segments_basmala_voice_load_error": "تعذر تحميل فحص صوت البسملة.",
+  "segments_sections_aria_label": "أقسام المقاطع"
 }
