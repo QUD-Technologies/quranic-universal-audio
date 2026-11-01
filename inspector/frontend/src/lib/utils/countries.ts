@@ -10,8 +10,6 @@
  * narrows the dropdown.
  */
 
-import { countryName } from './delivery-label';
-
 export interface Country {
     code: string;   // ISO-3166-1 alpha-2 (uppercase)
     name: string;
@@ -294,6 +292,42 @@ function localizedNameIndex(locale: string): Map<string, string> {
     }
     _localizedIndex.set(locale, map);
     return map;
+}
+
+/**
+ * Country display name in `locale` (default English). Accepts the ISO-2 code
+ * the catalog stores today AND the legacy full English name some rows still
+ * carry ("Saudi Arabia") — `Intl.DisplayNames.of` throws on the latter, which
+ * used to fall through to an upper-cased raw string ("SAUDI ARABIA").
+ * Unresolvable input is returned trimmed, as-is. Instances cached per locale. */
+const _countryDisplay = new Map<string, Intl.DisplayNames | null>();
+function countryDisplayInstance(locale: string): Intl.DisplayNames | null {
+    const cached = _countryDisplay.get(locale);
+    if (cached !== undefined) return cached;
+    let dn: Intl.DisplayNames | null;
+    try {
+        dn = new Intl.DisplayNames([locale], { type: 'region' });
+    } catch {
+        dn = null;
+    }
+    _countryDisplay.set(locale, dn);
+    return dn;
+}
+
+export function countryName(raw: string | null | undefined, locale = 'en'): string {
+    if (!raw) return '';
+    const trimmed = raw.trim();
+    if (!trimmed) return '';
+    const known =
+        countryByCode(trimmed) ?? COUNTRIES.find((c) => c.name.toLowerCase() === trimmed.toLowerCase()) ?? null;
+    if (!known) return trimmed;
+    const dn = countryDisplayInstance(locale);
+    if (!dn) return known.name;
+    try {
+        return dn.of(known.code) ?? known.name;
+    } catch {
+        return known.name;
+    }
 }
 
 /**
