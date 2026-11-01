@@ -9,6 +9,10 @@ transport failures retry the chapter; a ``batch_not_found`` (the Space restarted
 or its in-memory registry expired) recreates the batch; a ZeroGPU quota refusal
 flips the rest of the run to the CPU lane.
 
+A chapter that still fails (the Space refused it, or every retry ran out) is
+recorded in the run's ``chapter_failures`` and the others carry on; the stage
+fails once every item has been tried, so a Retry only pays for the failures.
+
 Chapters use a rolling transport pool. The aligner owns resource admission and
 interleaves both single and batch requests fairly by caller; this pool merely
 avoids opening 114 simultaneous HTTP streams from the Inspector.
@@ -105,6 +109,7 @@ class _Tracker:
         self.done = done
         self.weights = weights
         self._active: dict[int, str] = {}
+        self.failures: list[str] = []
         self._lock = threading.Lock()
 
     def enter(self, chapter: int) -> None:
@@ -124,6 +129,12 @@ class _Tracker:
             self.done.add(chapter)
         self.publish(device=device)
 
+    def fail(self, chapter: int, message: str) -> None:
+        with self._lock:
+            self._active.pop(chapter, None)
+            self.failures.append(message)
+        self.publish()
+
     def publish(self, *, device: str | None = None) -> None:
         with self._lock:
             active = sorted(self._active)
@@ -133,6 +144,7 @@ class _Tracker:
                 "chapter": head,
                 "in_flight": len(active),
                 "aligner_stage": self._active.get(head) if head is not None else None,
+                "chapter_failures": list(self.failures),
             }
         if device is not None:
             fields["device"] = device
@@ -165,8 +177,23 @@ def run(slug: str, run_id: str, params: AlignParams, groups: list[SourceGroup]) 
         for group in pending:
             progress.check_cancel(run_id)
             _stage_item(batch, tracker, slug, run_id, group)
-        return
+    else:
+        _stage_pooled(batch, tracker, slug, run_id, pending, workers)
+    if tracker.failures:
+        raise AlignStageError(
+            f"{len(tracker.failures)} of {len(pending)} file(s) failed: "
+            + "; ".join(tracker.failures)
+        )
 
+
+def _stage_pooled(
+    batch: _Batch,
+    tracker: _Tracker,
+    slug: str,
+    run_id: str,
+    pending: list[SourceGroup],
+    workers: int,
+) -> None:
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="align") as pool:
         futures = [
             pool.submit(_stage_item, batch, tracker, slug, run_id, group) for group in pending
@@ -194,7 +221,12 @@ def _stage_item(
     progress.check_cancel(run_id)
     item = group.item
     tracker.enter(item)
-    result = _align_chapter(batch, tracker, slug, run_id, item)
+    try:
+        result = _align_chapter(batch, tracker, slug, run_id, item)
+    except AlignStageError as exc:
+        log.warning("align %s: %s", run_id, exc)
+        tracker.fail(item, str(exc))
+        return
     result["_inspector"] = {
         "auto_split_timing_source": _params.AUTO_SPLIT_TIMING_SOURCE,
     }
