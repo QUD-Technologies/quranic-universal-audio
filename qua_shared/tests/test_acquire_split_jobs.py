@@ -252,3 +252,47 @@ def test_acquire_downloads_to_a_name_without_an_extension(mount, monkeypatch):
     monkeypatch.setattr(audio_io, "fetch", record)
     assert acquire_audio.main() == 0
     assert names == ["src", "src"]
+
+
+def _stereo_tone(path: Path, right: str) -> Path:
+    """A stereo tone whose right channel is ``right`` times the left."""
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=440:duration={TONE_MS / 1000}",
+            "-af",
+            f"pan=stereo|c0=c0|c1={right}*c0",
+            str(path),
+        ],
+        check=True,
+    )
+    return path
+
+
+def test_is_antiphase_tells_inverted_channels_from_in_phase(tmp_path):
+    assert audio_io.is_antiphase(_stereo_tone(tmp_path / "inv.wav", "-1"))
+    assert not audio_io.is_antiphase(_stereo_tone(tmp_path / "ok.wav", "1"))
+
+
+def test_acquire_flips_an_antiphase_source_so_its_mono_fold_keeps_the_voice(
+    mount, monkeypatch, tmp_path
+):
+    """maher_al_muaiqly_muallim_mp3quran ships L = -R: every mono fold (VAD, ASR)
+    cancelled the voice and no chapter could be matched."""
+    root, _ = mount
+    inverted = _stereo_tone(tmp_path / "inv.wav", "-1")
+
+    def fetch(url, dest):
+        shutil.copyfile(inverted, dest)
+        return dest
+
+    monkeypatch.setattr(audio_io, "fetch", fetch)
+    assert acquire_audio.main() == 0
+    persisted = _reciter(root) / "audio" / "3.mp3"
+    assert audio_io.probe_channels(persisted) == 2
+    assert not audio_io.is_antiphase(persisted)

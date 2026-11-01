@@ -40,6 +40,14 @@ YTDLP_FORMAT = "bestaudio/best"
 _DRIVE_DOWNLOAD = "https://drive.usercontent.google.com/download?id={id}&export=download&confirm=t"
 _MS = 1000
 
+#: A stereo source whose mean inter-channel phase sits below this has one
+#: channel inverted: L = -R folds to near-silence in mono, which every VAD and
+#: ASR pass does. Silent frames read 0 and dilute the mean, so a fully inverted
+#: recitation measures about -0.5, an ordinary one +0.5 or more.
+ANTIPHASE_MAX_PHASE = -0.3
+#: Seconds of the source the phase check reads.
+ANTIPHASE_PROBE_S = 120
+
 #: Seconds between yt-dlp's HTTP requests — a burst from one account on a
 #: datacenter IP is what trips YouTube's bot check.
 YTDLP_SLEEP_REQUESTS_S = "1"
@@ -221,6 +229,20 @@ def _ffprobe(src: Path, entries: str, *, stream: str | None = None) -> str:
     ).stdout.strip()
 
 
+def is_antiphase(src: Path) -> bool:
+    """Whether ``src`` is stereo with one channel polarity-inverted."""
+    cmd = ["ffmpeg", "-v", "error", "-t", str(ANTIPHASE_PROBE_S), "-i", str(src), "-af"]
+    cmd += ["aphasemeter=video=0,ametadata=mode=print:key=lavfi.aphasemeter.phase:file=-"]
+    cmd += ["-f", "null", "-"]
+    out = subprocess.run(cmd, capture_output=True, text=True, timeout=600, check=True).stdout
+    phases = [
+        float(line.partition("=")[2])
+        for line in out.splitlines()
+        if line.startswith("lavfi.aphasemeter.phase=")
+    ]
+    return bool(phases) and sum(phases) / len(phases) < ANTIPHASE_MAX_PHASE
+
+
 def encode(
     src: Path,
     dest: Path,
@@ -228,8 +250,10 @@ def encode(
     *,
     start_ms: int | None = None,
     end_ms: int | None = None,
+    invert_right: bool = False,
 ) -> None:
-    """One canonical encode of ``src``, optionally only ``[start, end)``.
+    """One canonical encode of ``src``, optionally only ``[start, end)``;
+    ``invert_right`` flips the right channel's polarity (see ``is_antiphase``).
 
     The window uses input seeking, which is sample-accurate when transcoding
     (``-accurate_seek``, ffmpeg's default) and linear on a CBR source — the only
@@ -240,7 +264,10 @@ def encode(
     cmd += ["-i", str(src)]
     if end_ms is not None:
         cmd += ["-t", f"{(end_ms - (start_ms or 0)) / _MS:.3f}"]
-    cmd += ["-vn", "-c:a", "libmp3lame", "-b:a", CANONICAL_BITRATE]
+    cmd += ["-vn"]
+    if invert_right:
+        cmd += ["-af", "pan=stereo|c0=c0|c1=-1*c1"]
+    cmd += ["-c:a", "libmp3lame", "-b:a", CANONICAL_BITRATE]
     cmd += ["-ar", CANONICAL_SAMPLE_RATE, "-ac", str(channels), "-f", "mp3", str(dest)]
     subprocess.run(cmd, check=True, timeout=FFMPEG_TIMEOUT_S)
     if not dest.is_file() or dest.stat().st_size == 0:

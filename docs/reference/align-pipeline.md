@@ -56,7 +56,12 @@ acquire   CPU HF Job qua_jobs/acquire_audio.py (sources on a thread pool, one pe
           single   → reciters/<slug>/{audio/<ch>.mp3, peaks/<ch>.json.gz}
           combined / detect → reciters/<slug>/audio/<slot>.mp3 (encoded once, no peaks)
           + staging/<slug>/<run>/acquire.json; the runner then writes the real
-          size / duration back into the manifest (manifest.record_acquired)
+          size / duration back into the manifest (manifest.record_acquired).
+          A stereo source with one channel polarity-inverted (audio_io.is_antiphase,
+          mean aphasemeter phase < -0.3) is encoded with the right channel flipped:
+          L = -R folds to near-silence in mono, so VAD/ASR heard nothing and every
+          chapter failed to anchor (maher_al_muaiqly_muallim_mp3quran, 2026-11-01);
+          its acquire.json entry carries phase_inverted: true
 align     per-file loop, aligner Space POST /api/v1/batches (alignment-only) +
           items/<n>/audio/stream with audio_ref=hf://buckets/<repo>/reciters/<slug>/audio/<n>.mp3
           → staging/<slug>/<run>/chapters/<ch>.json (single) or sources/<slot>.json (slot)
@@ -236,7 +241,10 @@ Both long stages fan out, because neither is CPU-bound end to end:
   `batch_not_found` recreates the batch (the Space keys batches by caller IP
   hash, in memory); `gpu_quota_exhausted` flips the rest of the run to the CPU
   lane; the Space writes `: keepalive` SSE comments every 15 s so long silent
-  stages survive the proxy. Sidecars 409 (one run at a time on the Space) waits
+  stages survive the proxy. A chapter that still fails (a 4xx such as
+  `alignment_failed`, or retries exhausted) is recorded in the status's
+  `chapter_failures` while the other files carry on; the stage then fails with
+  `AlignStageError: N of M file(s) failed: …`, and Retry re-sends only those. Sidecars 409 (one run at a time on the Space) waits
   and retries for up to 6 h.
 - **Assemble guard**: state ∈ {catalogued, awaiting_alignment} and no
   `detailed.json` — a delivery that got content any other way is never
