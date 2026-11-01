@@ -187,13 +187,18 @@ def acquire_group(slug: str, group: SourceGroup, channels_override: int | None) 
         raw = _fetch(group.url, work / "src")
         channels = channels_override or audio_io.probe_channels(raw)
         encoded = work / f"{group.item}.mp3"
-        audio_io.encode(raw, encoded, channels)
+        antiphase = channels == 2 and audio_io.is_antiphase(raw)
+        if antiphase:
+            log.warning("%s: channels are polarity-inverted, flipping the right", _label(group))
+        audio_io.encode(raw, encoded, channels, invert_right=antiphase)
         outcome = {
             "url": group.url,
             "skipped": False,
             "bytes": encoded.stat().st_size,
             "channels": channels,
         }
+        if antiphase:
+            outcome["phase_inverted"] = True
         if group.combined:
             outcome["duration_ms"] = audio_io.probe_duration_ms(encoded)
         else:
