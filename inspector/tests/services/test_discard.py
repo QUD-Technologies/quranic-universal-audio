@@ -6,9 +6,11 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+import huggingface_hub
 import pytest
 
 from qua_shared.schemas import Actor, ReciterState, Role
+from services.storage import hf_bucket
 
 
 def test_inspector_runtime_installs_hf_catalog_writer_dependency():
@@ -259,3 +261,28 @@ def test_discard_purge_preserves_audio_manifest(tmp_path, monkeypatch):
 
     assert not backend.exists("reciters/alpha")
     assert backend.exists("catalog/audio_manifest/alpha.json")
+
+
+def test_mount_purge_finishes_when_an_emptied_dir_vanishes_first(tmp_path, monkeypatch):
+    """hf-mount drops a directory once its last file is deleted, so the rmtree
+    that follows found nothing and the whole discard failed on
+    ``reciters/<slug>/timing`` — before it reached the files after it."""
+    reciter = tmp_path / "reciters" / "alpha"
+    (reciter / "timing").mkdir(parents=True)
+    (reciter / "timing" / "1.json").write_bytes(b"t")
+    (reciter / "verse_ends_v1.json").write_bytes(b"v")
+    real_rmtree = hf_bucket.shutil.rmtree
+
+    def mount_rmtree(path, *args, **kwargs):
+        real_rmtree(path)
+        raise FileNotFoundError(2, "No such file or directory", str(path))
+
+    monkeypatch.setattr(hf_bucket.shutil, "rmtree", mount_rmtree)
+    monkeypatch.setattr(huggingface_hub, "batch_bucket_files", lambda *a, **k: None, raising=False)
+    monkeypatch.setattr(huggingface_hub, "list_bucket_tree", lambda *a, **k: [], raising=False)
+    monkeypatch.setattr(hf_bucket.BucketBackend, "_is_not_found", staticmethod(lambda e: True))
+    backend = hf_bucket.BucketBackend("o/b", token=None, mount=tmp_path)
+
+    hf_bucket.delete_tree_verified(backend, "reciters/alpha")
+
+    assert not reciter.exists()
