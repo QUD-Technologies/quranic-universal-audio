@@ -26,6 +26,7 @@ locking lives consistently in one place. Multi-worker scale-out is deferred
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import shutil
@@ -591,7 +592,8 @@ class BucketBackend:
         if self._mount is not None:
             mp = self._mount if path == "" else self._mount / PurePosixPath(path)
             if mp.is_dir():
-                return sorted(child.name for child in mp.iterdir())
+                with contextlib.suppress(FileNotFoundError):  # dropped since is_dir()
+                    return sorted(child.name for child in mp.iterdir())
 
         from huggingface_hub import list_bucket_tree  # type: ignore[import-not-found]
 
@@ -672,14 +674,19 @@ class BucketBackend:
                 logger.warning("BucketBackend.delete(%s) errored: %s", path, e)
 
     def delete_strict(self, path: str) -> None:
-        """Delete one object and propagate non-not-found API failures."""
+        """Delete one object and propagate non-not-found API failures.
+
+        hf-mount drops a directory once its last file is gone, so a path seen a
+        moment ago may already be absent; that is the outcome asked for, and the
+        caller's verify (``delete_tree_verified``) still checks it."""
         _ensure_posix(path)
         if self._mount is not None:
             mp = self._mount / PurePosixPath(path)
-            if mp.is_dir():
-                shutil.rmtree(mp)
-            elif mp.exists():
-                mp.unlink()
+            with contextlib.suppress(FileNotFoundError):
+                if mp.is_dir():
+                    shutil.rmtree(mp)
+                elif mp.exists():
+                    mp.unlink()
         from huggingface_hub import batch_bucket_files  # type: ignore[import-not-found]
 
         try:
