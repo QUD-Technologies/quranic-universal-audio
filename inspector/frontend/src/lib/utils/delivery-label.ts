@@ -130,31 +130,9 @@ export function combinationStandard(d: PublicDelivery): { line1: string; line2: 
     };
 }
 
-/** ISO-2 → country display name in a given locale (default English). Falls back to
- * the code when unknown. Instances are cached per locale. */
-const _countryDisplay = new Map<string, Intl.DisplayNames | null>();
-function countryDisplayInstance(locale: string): Intl.DisplayNames | null {
-    const cached = _countryDisplay.get(locale);
-    if (cached !== undefined) return cached;
-    let dn: Intl.DisplayNames | null;
-    try {
-        dn = new Intl.DisplayNames([locale], { type: 'region' });
-    } catch {
-        dn = null;
-    }
-    _countryDisplay.set(locale, dn);
-    return dn;
-}
-export function countryName(iso2: string | null | undefined, locale = 'en'): string {
-    if (!iso2) return '';
-    const dn = countryDisplayInstance(locale);
-    if (!dn) return iso2.toUpperCase();
-    try {
-        return dn.of(iso2.toUpperCase()) ?? iso2.toUpperCase();
-    } catch {
-        return iso2.toUpperCase();
-    }
-}
+// Country display names live in countries.ts (they need its name→code
+// table to resolve legacy full-name catalog rows); re-exported for callers.
+export { countryName } from './countries';
 
 /**
  * Render an ISO-3166-1 alpha-2 country code as its flag emoji using the
