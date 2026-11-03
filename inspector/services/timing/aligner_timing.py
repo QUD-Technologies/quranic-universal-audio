@@ -117,6 +117,8 @@ def time_chapter(
             specials_timing.opener_segments(slug, chapter) if category == "by_surah_audio" else []
         )
         body = {
+            # Background edits and TS generation must not spend the owner's ZeroGPU quota.
+            "device": "CPU",
             "slug": slug,
             "chapter": chapter,
             "riwayah": riwayah,

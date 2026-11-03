@@ -70,11 +70,23 @@ def test_retime_stores_times_alone(delivery, monkeypatch):
     out = aligner_timing.retime("r", [112, 7])
 
     assert list(out) == [112]
+    assert sent[0]["device"] == "CPU"
     assert sent[0]["shards"] is False and sent[0]["full"] is False
     assert sent[0]["audio_category"] == "by_surah_audio"
     assert delivery.read_bytes("reciters/r/timing/112.json.br") == b"times"
     assert sent[0]["frame_refs"] == {"112": "hf://buckets/o/b/reciters/r/audio_frames/112.bin"}
     assert delivery.read_bytes("reciters/r/audio_frames/112.bin") == b"index"
+
+
+@pytest.mark.parametrize("full", [False, True])
+def test_shard_generation_uses_cpu(delivery, monkeypatch, full):
+    sent: list = []
+    _serve(monkeypatch, sent)
+    aligner_timing.time_chapter("r", 112, riwayah="hafs", shards=True, full=full)
+
+    assert sent[0]["device"] == "CPU"
+    assert sent[0]["shards"] is True
+    assert sent[0]["full"] is full
 
 
 def test_word_times_show_only_segments_still_timed_as_stored():
