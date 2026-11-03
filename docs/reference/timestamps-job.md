@@ -8,6 +8,11 @@ letters and sounds, the model). Every call goes through the aligner's
 chapter's detailed.json entries, their bucket audio and the stored times, keeps every
 time whose segment is unchanged and times the rest.
 
+The Inspector explicitly sends `device: "CPU"` on every extraction timing request,
+so post-save/undo re-timing, timestamp generation and the final timing pass after
+Align run in the aligner's CPU pool without leasing ZeroGPU. The Align batch's
+GPU/CPU selection controls the alignment stage independently.
+
 - **Align** stores them: the run's assemble stage times every chapter's final segments.
 - **Saves and undos** re-time their chapter in the background
   (`services/timing/retime_queue.py`); only the changed segments are timed.
