@@ -1,0 +1,49 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "errors_auth_required": "تکایە بۆ بەردەوامبوون بچۆ ژوورەوە.",
+  "errors_forbidden_capability": "مۆڵەتی ئەم کردارەت نییە.",
+  "errors_not_authorized": "مۆڵەتی ئەم کردارەت نییە.",
+  "errors_not_editable_state_with_label": "ئەم قارییە ئێستا دەستکاری ناکرێت (دۆخەکەی {state_label}ە).",
+  "errors_not_editable_state": "ئەم قارییە ئێستا لە دۆخێکی شیاوی دەستکاریدا نییە.",
+  "errors_marked_ready_frozen": "ئەم قارییە بۆ بڵاوکردنەوە ئامادە نیشان کراوە و قوفڵ کراوە. بۆ گۆڕانکاری «بەردەوامبوون لە دەستکاری» هەڵبژێرە.",
+  "errors_visibility_blocked": "ئەم قارییە بۆ دەستکاری بەردەست نییە.",
+  "errors_not_claim_holder": "بۆ دەستکاری ئەم قارییە دەبێت کارەکەی بە چالاکی وەرگرتبێت.",
+  "errors_state_precondition_with_label": "کاتێک دۆخی قاری {state_label}ە ئەم کردارە بەردەست نییە.",
+  "errors_state_precondition": "ئەم کردارە لە دۆخی ئێستای قارییەکەدا بەردەست نییە.",
+  "errors_release_blocked_marked_ready": "پێش ئازادکردنی ئەم قارییە نیشانەی ئامادەبوون لاببە، یان داوا لە بەڕێوەبەر بکە بیگەڕێنێتەوە.",
+  "errors_reason_required_with_min": [
+    {
+      "declarations": [
+        "input min_chars",
+        "local countPlural = min_chars: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "تکایە هۆکارێک بنووسە (بەلایەنی کەمەوە {min_chars} نووسە).",
+        "countPlural=other": "تکایە هۆکارێک بنووسە (بەلایەنی کەمەوە {min_chars} نووسە)."
+      }
+    }
+  ],
+  "errors_reason_required": "تکایە هۆکارێک بنووسە.",
+  "errors_mark_ready_checklist": "پێش ئامادە نیشانکردن، هەموو بڕگەکانی لیستی پشکنین تەواو بکە.",
+  "errors_mark_ready_blocking_counts": "پێش ئامادە نیشانکردن، کێشە ڕێگرە ماوەکانی پشکنینی دروستی چارەسەر بکە.",
+  "errors_mark_ready_payload": "نێردراوەی ئامادەکردنەکەت ناتەواو بوو. تکایە پێداچوونەوە بکە و دووبارە بینێرەوە.",
+  "errors_mark_ready_no_segments": "ئامادە نیشان ناکرێت — ئەم قارییە هێشتا بەشی پاشەکەوتکراوی نییە.",
+  "errors_last_owner": "ناتوانیت دوا خاوەن لاببەیت — سەرەتا کەسێکی تر بکە بە خاوەن.",
+  "errors_unknown_reciter": "ئەو قارییە نەدۆزرایەوە.",
+  "errors_read_only": "ئەم وەشانە تەنها بۆ خوێندنەوەیە؛ گۆڕانکارییەکان پاشەکەوت ناکرێن.",
+  "errors_riwayah_mismatch": "تۆماری کەتەلۆگی ئەم تلاوەتە و داتا هاوتاکراوەکەی ڕیوایەتی جیاواز دیاری دەکەن، بۆیە ناتوانرێت بە دڵنیایی پیشان بدرێت.",
+  "errors_unsupported_riwayah": "ئەم ماڵپەڕە ناتوانێت ئەو ڕیوایەتە پێشکەش بکات.",
+  "errors_ref_not_in_edition": "ئەو ئاماژەیە وشەیەک لە ڕیوایەتی ئەم تلاوەتە دیاری ناکات.",
+  "errors_editions_unavailable": "ئەم بڵاوکراوەیە تەنها حەفس پێشکەش دەکات؛ داتای وەشانەکانی ڕیوایەتەکانی تر دانەمەزراوە.",
+  "errors_status_401": "تکایە بۆ بەردەوامبوون بچۆ ژوورەوە.",
+  "errors_status_403": "مۆڵەتی ئەم کردارەت نییە.",
+  "errors_status_404": "ئەوە نەدۆزرایەوە.",
+  "errors_status_409": "ئەم کردارە لەگەڵ دۆخی ئێستا ناکۆکە.",
+  "errors_status_503": "ئەو بەشەی ماڵپەڕ کاتێکی کورت بەردەست نییە.",
+  "errors_status_500": "لە لای ئێمە هەڵەیەک ڕوویدا. تکایە دووبارە هەوڵ بدەرەوە.",
+  "errors_generic_fallback": "هەڵەیەک ڕوویدا. تکایە دووبارە هەوڵ بدەرەوە.",
+  "errors_claim_unclaim_first": "بۆ وەرگرتنی کاری {target}، سەرەتا واز لە {existing} بهێنە."
+}

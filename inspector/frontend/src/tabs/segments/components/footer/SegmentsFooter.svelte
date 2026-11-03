@@ -251,7 +251,7 @@
     $: displaySurahName = ((): string | null => {
         const info = _surahMap[String(displaySurahNum)];
         if (!info) return null;
-        return $localeStore === 'ar' && info.name_ar ? info.name_ar.replace(/^سُورَةُ\s*/, '') : info.name_en;
+        return ['ar', 'ckb'].includes($localeStore) && info.name_ar ? info.name_ar.replace(/^سُورَةُ\s*/, '') : info.name_en;
     })();
 
     $: chipMeta = tr(
