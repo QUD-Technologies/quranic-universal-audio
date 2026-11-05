@@ -40,6 +40,7 @@ no-op-or-error by design. Idempotent `backfill_*`/`purge_*`/`convert_*` stay in
 - `bootstrap_dev_env.py` — provision a contributor's personal bucket + Space
 - `seed_fixtures.py` — download the public fixtures → `.fixtures` (offline tier-0)
 - `make_fixtures_dataset.py` — maintainer: (re)build the PII-free public fixtures dataset
+- `install_quran_data.py` — install the pinned `talqeen-quran-data` SDK and fetch its `quran-core.qref` pack into `data/` (gitignored) from `QUD-Technologies/talqeen-ai-data` (`qua_shared/quran_data_pin.py`), via `TALQEEN_DATA_READ_TOKEN` / `GH_TOKEN` / `gh` login; required (the Hafs reference data); `--wheel-dir` builds the wheel for the image
 - `install_qua_domain.py` — install the pinned `qua-domain` edition package from `QUD-Technologies/qua` via `PRIVATE_REPO_TOKEN` (with legacy SSH-key fallback); exits 0 having installed nothing when no credential exists (Hafs-only runtime)
 - `make_synthetic_delivery.py` — write a synthetic non-Hafs delivery (segs + optional word-profile shard, built from `qua_domain` itself) into a bucket, for multi-riwayah verification
 
@@ -75,6 +76,7 @@ no-op-or-error by design. Idempotent `backfill_*`/`purge_*`/`convert_*` stay in
 ### `diagnostics/`
 - `bench_storage.py` — benchmark backend read/write hot paths
 - `check_eligibility_parity.py` — assert DB-backed eligibility == legacy git-tracked set
+- `quran_data_integrity.py` — `capture` / `compare` every output the Hafs reference data feeds (surah info, word counts, quran-refs, TS resources, cut_release refs, stop signs, fixture validation) across the bundled-JSON → `talqeen-quran-data` swap
 
 ### `migrations/`
 Frozen one-shot schema moves — see [`../docs/reference/data-migrations.md`](../docs/reference/data-migrations.md).
