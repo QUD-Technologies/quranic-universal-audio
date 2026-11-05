@@ -55,6 +55,7 @@ def test_manifest_advertises_one_resource_per_stop_edition_layout():
 
 def test_layout_resource_is_the_dk_script_with_that_layouts_stops():
     body = ts_manifest._build_layout_resource("digital_khatt_madani-1405")
+    assert body is not None
     script = json.loads(gzip.decompress(body))
 
     assert script == quran_text.digital_khatt_script("madani-1405")
