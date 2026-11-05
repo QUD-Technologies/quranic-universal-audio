@@ -54,6 +54,14 @@ describe('readingHighlights', () => {
         expect(h.verse).toBeUndefined();
     });
 
+    it('bands and isolates nothing during an opener reading, which is not printed', () => {
+        const opener = { active: '', verseKey: '0:1', progress: '', anchor: '2:1:1' };
+        expect(byId(state({ scope: 'verse', pos: opener }))).toEqual({});
+        const h = byId(state({ scope: 'verse', showUpcoming: false, pos: opener }));
+        expect(Object.keys(h)).toEqual(['hidden-0']);
+        expect(h['hidden-0']!.target).toEqual({ from: '2:1:1', to: '114:6' });
+    });
+
     it('shows everything and lights the spotlight while picking', () => {
         const h = byId(state({ scope: 'verse', showUpcoming: false, spot: [{ surah: 2, ayah: 3 }, { surah: 2, ayah: 1 }] }));
         expect(Object.keys(h).filter((k) => k.startsWith('hidden'))).toEqual([]);

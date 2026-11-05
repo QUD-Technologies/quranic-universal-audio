@@ -413,10 +413,13 @@
         const el = element;
         if (!el) return;
         const clear = (): void => { spot = null; };
-        el.addEventListener('pointerover', onPageHover);
+        // On the shadow root: moving between words inside it never reaches the host as a
+        // pointerover (target and relatedTarget both retarget to the host).
+        const root = el.shadowRoot ?? el;
+        root.addEventListener('pointerover', onPageHover);
         el.addEventListener('pointerleave', clear);
         return () => {
-            el.removeEventListener('pointerover', onPageHover);
+            root.removeEventListener('pointerover', onPageHover);
             el.removeEventListener('pointerleave', clear);
         };
     });

@@ -83,12 +83,14 @@ export function readingHighlights(st: ReadingState): Highlight[] {
     const showUpcoming = picking || st.showUpcoming;
     if (pos?.verseKey) {
         const [s, a] = pos.verseKey.split(':').map(Number) as [number, number];
+        // An opener reading (surah 0) is recited but not printed: no verse to band or isolate.
+        const printed = s > 0;
         const hidden = [
-            ...(scope === 'verse' ? [before(st, s, a), after(st, s, a)] : []),
+            ...(printed && scope === 'verse' ? [before(st, s, a), after(st, s, a)] : []),
             showUpcoming ? null : upcoming(st, pos.progress),
         ].filter((t): t is HighlightTarget => t !== null);
         hidden.forEach((target, i) => out.push({ id: `hidden-${i}`, target, style: 'hidden', layer: 1 }));
-        const b = band(pos.verseKey, pos.progress, showUpcoming);
+        const b = printed ? band(pos.verseKey, pos.progress, showUpcoming) : null;
         if (b) out.push({ id: 'verse', target: b, style: 'band' });
     }
     if (pos?.active) out.push({ id: 'active', target: pos.active, style: 'text', layer: 2 });
