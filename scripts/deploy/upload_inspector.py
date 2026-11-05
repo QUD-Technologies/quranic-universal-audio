@@ -44,12 +44,11 @@ import tempfile
 import time
 from pathlib import Path
 
-# Files NOT pushed to the Space repo: the uncompressed qpc_hafs.json is >10 MB
-# and would be auto-LFS-promoted, leaving a 133-byte pointer in the Space build
-# context that defeats the Dockerfile COPY. The committed ``.gz`` (~1.5 MB) is
-# what the image and the HF Jobs consume; the uncompressed copy stays in the
-# repo for local-dev tools that read it directly.
-_SKIP_FROM_STAGE = ("data/qpc_hafs.json",)
+# Files NOT pushed to the Space repo. Large or binary data never rides the staged
+# tree (HF would LFS it into a pointer the Docker build cannot read): the Quran
+# data pack, its fonts and the TS SDK tarball are fetched by the image build itself
+# (Dockerfile stage 0).
+_SKIP_FROM_STAGE: tuple[str, ...] = ()
 _CELLS_PACKAGE = "@quranic-phonemizer/cells"
 _CELLS_VENDOR_PATH = "vendor/quran-cells"
 
@@ -328,6 +327,7 @@ def _upload(
     token: str,
     commit_msg: str,
     private_repo_token: str,
+    talqeen_token: str,
 ) -> str:
     api = HfApi(token=token)
     # The prod/dev Spaces are permanent — skip the create_repo call (it 409s on
@@ -349,6 +349,15 @@ def _upload(
         repo_id=repo_id,
         key="PRIVATE_REPO_TOKEN",
         value=private_repo_token,
+    )
+    # Read access to QUD-Technologies/talqeen-ai-data for the image build's Quran
+    # data stage (Dockerfile stage 0). A build credential; nothing at runtime reads it.
+    _retry_on_429(
+        "add_space_secret",
+        api.add_space_secret,
+        repo_id=repo_id,
+        key="TALQEEN_DATA_READ_TOKEN",
+        value=talqeen_token,
     )
     _retry_on_429(
         "upload_folder",
@@ -413,6 +422,10 @@ def main(argv: list[str] | None = None) -> int:
     if not private_repo_token and not args.dry_run:
         print("ERROR: PRIVATE_REPO_TOKEN missing in env.", file=sys.stderr)
         return 2
+    talqeen_token = os.environ.get("TALQEEN_DATA_READ_TOKEN")
+    if not talqeen_token and not args.dry_run:
+        print("ERROR: TALQEEN_DATA_READ_TOKEN missing in env.", file=sys.stderr)
+        return 2
 
     repo = repo_root()
     repo_id = SPACE_REPOS[args.env]
@@ -453,6 +466,7 @@ def main(argv: list[str] | None = None) -> int:
             token,
             commit_msg,
             private_repo_token or "",
+            talqeen_token or "",
         )
         print(f"==> Done. Space: {url}")
 

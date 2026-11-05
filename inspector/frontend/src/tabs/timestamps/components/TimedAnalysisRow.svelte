@@ -86,7 +86,7 @@
     const parsed = $derived.by((): DisplayReading[] => {
         void i18n.locale;
         const data = displayData;
-        const text = new Map(data?.words.map((word) => [word.location, word.display_text]) ?? []);
+        const text = new Map(data?.words.map((word) => [word.location, word.text]) ?? []);
         const readings: ParsedReading[] = data?.native.map((reading) => {
             const result = parse(nativePayload(reading), defineInspectorRule, {
                 iqlabTanween: 'mini-meem',

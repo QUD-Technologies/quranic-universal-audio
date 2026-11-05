@@ -21,6 +21,9 @@ setup_frontend() {
     # repo's pinned scripts: `npm run test` / check / lint / build, NOT
     # `npx vitest` or `npm exec -- vitest` (those can resolve a mismatched global
     # vitest that fails to transform .svelte files).
+    # The Mushaf view's data SDK installs from its release tarball, fetched first
+    # (TALQEEN_DATA_READ_TOKEN, GH_TOKEN or a gh login).
+    python3 "$ROOT/scripts/devenv/install_quran_data.py" --ts-only
     npm --prefix "$ROOT/inspector/frontend" ci
 }
 
@@ -47,6 +50,11 @@ setup_backend() {
         echo "   pip conflict (distro-managed package?); retrying --ignore-installed ..."
         python3 -m pip install --ignore-installed "${reqs[@]}"
     fi
+    # talqeen-quran-data + its pack are the Hafs reference data (DK v2 words, ayah
+    # ends, surah metadata). Required: needs TALQEEN_DATA_READ_TOKEN, GH_TOKEN or a
+    # gh login for the private data repo.
+    echo "==> Quran data (required): talqeen-quran-data SDK + pack"
+    python3 "$ROOT/scripts/devenv/install_quran_data.py"
     # qua-domain is the multi-riwayah edition data (scripts, fonts, coordinate
     # indexes, Hafs->target projection) from the private monorepo. Optional by
     # design: without a credential this installs nothing and the Inspector runs

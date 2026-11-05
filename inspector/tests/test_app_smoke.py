@@ -30,7 +30,7 @@ def test_surah_info_returns_json(client):
     payload = res.get_json()
     assert isinstance(payload, dict)
     # Sanity: at least one surah key should be present. `load_surah_info_lite`
-    # reads `data/surah_info.json`; shape is `{"1": {...}, ..., "114": {...}}`.
+    # reads `qua_shared.quran_text.surah_info()`; shape is `{"1": {...}, ..., "114": {...}}`.
     assert len(payload) > 0
 
 

@@ -5,7 +5,7 @@ import type { TsVerseData } from '../../types/ts-client';
 
 /** A word row carrying only the fields `buildChapterRecitation` reads. */
 function w(location: string, start: number, end: number) {
-    return { location, start, end, display_text: location, text: location, letters: [] };
+    return { location, start, end, text: location, letters: [] };
 }
 
 /** Minimal AssembledVerse — `data` cast to the fields the build consumes. */

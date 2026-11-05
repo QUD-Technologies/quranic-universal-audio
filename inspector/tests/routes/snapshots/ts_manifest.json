@@ -132,8 +132,7 @@
     }
   },
   "resources": {
-    "digital_khatt": "/api/ts/resource/digital_khatt",
-    "qpc_hafs": "/api/ts/resource/qpc_hafs"
+    "digital_khatt": "/api/ts/resource/digital_khatt"
   },
   "schema_version": 1,
   "shard_url_template": "/api/ts/shard/{reciter}/{chapter}",

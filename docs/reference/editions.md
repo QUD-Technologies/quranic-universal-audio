@@ -59,13 +59,13 @@ imports `qua_domain`. Everything else goes through it.
 `qua_domain`'s Hafs index has the same 77,433 refs but different glyph spellings
 in **44,481** words (U+0652 vs U+06E1 and friends). Swapping the Hafs display
 path to it would silently change every existing render, snapshot and qalqala
-derivation. Hafs display text stays on `data/qpc_hafs.json` +
-`data/digital_khatt_v2_script.json` + `DigitalKhattV2.otf`.
+derivation. Hafs display text stays on Digital Khatt v2 from the `talqeen-quran-data`
+pack ([quran-data.md](quran-data.md)) + `DigitalKhattV2.otf`.
 
-Hafs *counting* is a different matter: `surah_info.json` and
-`load_edition_index("hafs")` are byte-identical (6,236 verses, 77,433 words, zero
-diffs) and a parity test keeps them so. The Hafs runtime path therefore keeps
-reading `surah_info.json` and works with the package absent.
+Hafs *counting* is a different matter: the pack's surah metadata (`quran_text.surah_info()`)
+and `load_edition_index("hafs")` are identical (6,236 verses, 77,433 words, zero diffs)
+and a parity test keeps them so. The Hafs runtime path therefore never needs
+`qua-domain`.
 
 ### Degradation
 

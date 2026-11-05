@@ -128,7 +128,6 @@ describe('native timing ownership', () => {
         const cache = buildTimedEntityCache(root, [item], [{
             location: '1:1:1',
             text: 'a',
-            display_text: 'a',
             start: 0.1,
             end: 0.2,
             phoneme_indices: [],

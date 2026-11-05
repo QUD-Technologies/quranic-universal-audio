@@ -83,7 +83,7 @@ export function buildChapterRecitation(
                 surah,
                 ayah,
                 word,
-                text: w.display_text || w.text,
+                text: w.text,
                 start,
                 end,
                 intervals: [span],

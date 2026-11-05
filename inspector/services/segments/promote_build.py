@@ -397,14 +397,15 @@ def build_artifacts(
     ``peaks_blobs`` is forwarded to ``build_chapter_peaks`` (see there).
     """
     from adapters.segments_json import build_segments_doc
-    from config import DK_SCRIPT_PATH, SURAH_INFO_PATH
+    from qua_shared import quran_text
     from qua_shared.schemas.bucket.pipeline_meta import PipelineMeta
     from services.segments import stamping
     from services.segments.specials_doc import specials_from_run
 
-    for path in (SURAH_INFO_PATH, DK_SCRIPT_PATH):
-        if not Path(path).is_file():
-            raise ValueError(f"reference data missing: {path} — every stamp would be empty")
+    if not quran_text.available():
+        raise ValueError(
+            f"reference data missing: {quran_text.pack_path()} — every stamp would be empty"
+        )
 
     entries, by_chapter = read_entries(run_dir, manifest)
     n_segs = sum(len(e["segments"]) for e in entries)

@@ -142,7 +142,8 @@ def main(argv: list[str] | None = None) -> int:
         # Both deploy keys are optional at the docker layer (`required=false`);
         # absent, the image builds without the renderer package / without
         # qua-domain, and the boot assertion below still has to pass.
-        for secret in ("PRIVATE_REPO_TOKEN",):
+        # TALQEEN_DATA_READ_TOKEN is required (the Quran data stage fails without it).
+        for secret in ("PRIVATE_REPO_TOKEN", "TALQEEN_DATA_READ_TOKEN"):
             if os.environ.get(secret):
                 build.extend(["--secret", f"id={secret},env={secret}"])
         _run([*build, "-f", str(dockerfile), "-t", args.tag, str(context)])

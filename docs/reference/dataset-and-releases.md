@@ -175,8 +175,8 @@ gh:releases/v{X.Y.Z}/
 ├── shard.py              # consumer helper (per-surah file splitter)
 ├── check_updates.py      # consumer helper (per-reciter update check)
 ├── download_audio.py     # consumer helper (fetch source audio @ aligned CBR encode)
-├── surah_info.json       # static reference
-├── digital_khatt_v2_script.json # exact Hafs presentation text
+├── surah_info.json       # static reference (built from the talqeen-quran-data pack at job staging)
+├── digital_khatt_v2_script.json # exact Hafs presentation text (same; reading-order keys)
 ├── DigitalKhattV2.otf    # matching OFL-1.1 font
 └── LICENSE               # CC-BY-4.0
 ```

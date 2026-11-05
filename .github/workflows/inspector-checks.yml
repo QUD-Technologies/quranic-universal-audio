@@ -9,6 +9,9 @@ on:
       PAT_TOKEN:
         description: Read-only token for QUD Technologies private dependencies
         required: true
+      TALQEEN_DATA_READ_TOKEN:
+        description: Read access to QUD-Technologies/talqeen-ai-data (talqeen-quran-data SDK + pack)
+        required: true
 
 jobs:
   frontend-checks:
@@ -35,6 +38,11 @@ jobs:
         run: |
           AUTH="$(printf 'x-access-token:%s' "$PRIVATE_REPO_TOKEN" | base64 -w0)"
           git config --global http.https://github.com/.extraheader "AUTHORIZATION: basic $AUTH"
+
+      - name: Fetch the TS data SDK (talqeen-ai-data release tarball, sha256-pinned)
+        env:
+          TALQEEN_DATA_READ_TOKEN: ${{ secrets.TALQEEN_DATA_READ_TOKEN }}
+        run: python3 ../../scripts/devenv/install_quran_data.py --ts-only
 
       - name: Install deps
         run: npm ci
@@ -129,6 +137,13 @@ jobs:
         # The edition tests then skip and the degraded-path tests still run.
         run: python scripts/devenv/install_qua_domain.py
 
+      - name: Install talqeen-quran-data (Hafs reference data)
+        working-directory: ${{ github.workspace }}
+        env:
+          TALQEEN_DATA_READ_TOKEN: ${{ secrets.TALQEEN_DATA_READ_TOKEN }}
+        # Required: the SDK + quran-core.qref pack at qua_shared/quran_data_pin.py.
+        run: python scripts/devenv/install_quran_data.py
+
       - name: Install deps and run pytest
         run: |
           pip install -r requirements.txt -r requirements-dev.txt
@@ -214,7 +229,14 @@ jobs:
           # tests use (prevents silent JSON-schema drift if
           # pydantic-to-typescript's loose dep resolves to an older pydantic).
           pip install -r inspector/requirements.txt -r inspector/requirements-dev.txt
-          cd inspector/frontend && npm ci
+
+      - name: Install talqeen-quran-data (types for pyright; the TS SDK for npm ci)
+        env:
+          TALQEEN_DATA_READ_TOKEN: ${{ secrets.TALQEEN_DATA_READ_TOKEN }}
+        run: python scripts/devenv/install_quran_data.py
+
+      - name: Install frontend deps
+        run: cd inspector/frontend && npm ci
 
       - name: Regenerate FE types
         run: python scripts/codegen/regen_fe_types.py

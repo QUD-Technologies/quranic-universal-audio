@@ -7,14 +7,14 @@ Per-reciter reads (``load_seg_verses``, ``load_detailed``, ``load_probe_v2``,
 ``load_hidden_pause``, ``load_missed_waqf``, ``load_false_split``,
 ``load_unmarked_wasl``, ``load_wasl_recheck``)
 go through the storage backend via ``services.data_dir`` — no direct
-filesystem access to ``RECITATION_SEGMENTS_PATH``. Static reference data
-(qpc_hafs, surah_info, digital_khatt) still lives in the image at
-``INSPECTOR_DATA_DIR`` and is read directly.
+filesystem access to ``RECITATION_SEGMENTS_PATH``. Hafs reference data (Digital
+Khatt words, surah metadata) comes from the talqeen-quran-data pack through
+``qua_shared.quran_text``.
 
 The three reference accessors — ``get_dk_words_flat``, ``get_word_counts``,
 ``word_has_stop`` — take a riwayah, defaulting to
-Hafs. The Hafs branch reads the bundled files exactly as before (so every
-existing call site is byte-identical); every other edition is served from
+Hafs. The Hafs branch rebuilds the retired bundled documents from the pack (so
+every existing call site sees the same data); every other edition is served from
 ``services.reference.editions``, which owns the optional ``qua_domain``
 dependency. Nothing here falls back to Hafs for a non-Hafs riwayah: it raises.
 """
@@ -24,13 +24,10 @@ import threading
 from adapters.detailed_json import (
     load_entries_from_bytes as _load_detailed_entries_from_bytes,
 )
-from config import (
-    DK_SCRIPT_PATH,
-    SURAH_INFO_PATH,
-)
 from constants import STOP_SIGNS
+from qua_shared import quran_text
 from qua_shared.riwayat import DEFAULT_SDK_RIWAYAH
-from services.storage import cache, data_dir, static_refs
+from services.storage import cache, data_dir
 
 _detailed_locks: dict[str, threading.RLock] = {}
 _detailed_locks_guard = threading.Lock()
@@ -58,37 +55,9 @@ def detailed_lock(reciter: str) -> threading.RLock:
 # ---------------------------------------------------------------------------
 
 
-def load_qpc() -> dict[str, dict]:
-    """Load and cache qpc_hafs.json.
-
-    Byte resolution (local image → bucket) lives in
-    ``services.storage.static_refs.load_qpc_bytes`` — on the deployed Space the
-    image's ``.gz`` is an LFS pointer, so the real bytes come from the bucket.
-    """
-    cached = cache.get_qpc_cache()
-    if cached is not None:
-        return cached
-    import orjson
-
-    raw = static_refs.load_qpc_bytes()
-    data = orjson.loads(raw) if raw else {}
-    cache.set_qpc_cache(data)
-    return data
-
-
 def load_dk() -> dict[str, dict]:
-    """Load and cache digital_khatt_v2_script.json."""
-    cached = cache.get_dk_cache()
-    if cached is not None:
-        return cached
-    if DK_SCRIPT_PATH.exists():
-        import orjson
-
-        data = orjson.loads(DK_SCRIPT_PATH.read_bytes())
-    else:
-        data = {}
-    cache.set_dk_cache(data)
-    return data
+    """The Digital Khatt v2 script: every Hafs word plus one ``۝`` marker per ayah."""
+    return quran_text.digital_khatt_script()
 
 
 def get_dk_words_flat(riwayah: str = DEFAULT_SDK_RIWAYAH) -> dict[str, str]:
@@ -98,7 +67,7 @@ def get_dk_words_flat(riwayah: str = DEFAULT_SDK_RIWAYAH) -> dict[str, str]:
     ``/api/static/quran-refs.json`` asset (see ``services/reference/quran_refs``).
     Still consumed in-process by save / auto-split / validation.
 
-    Hafs comes from ``digital_khatt_v2_script.json`` — end-of-verse markers
+    Hafs comes from the Digital Khatt script (:func:`load_dk`) — end-of-verse markers
     (``۝``) stripped, since ``dkTextForRef`` walks bounded by verse word counts
     and never indexes them. Every other edition comes from its packaged index,
     which carries no marker entries to begin with.
@@ -431,7 +400,7 @@ def get_word_counts(riwayah: str = DEFAULT_SDK_RIWAYAH) -> dict[tuple[int, int],
     (6,214 ayahs against Hafs's 6,236), so a Hafs verse key can be out of range
     there entirely.
 
-    The Hafs branch loads ``surah_info.json`` once and caches it.
+    The Hafs branch reads the pack's surah metadata once and caches it.
     """
     if riwayah != DEFAULT_SDK_RIWAYAH:
         from services.reference import editions
@@ -441,13 +410,9 @@ def get_word_counts(riwayah: str = DEFAULT_SDK_RIWAYAH) -> dict[tuple[int, int],
     if cached is not None:
         return cached
     wc: dict[tuple[int, int], int] = {}
-    if SURAH_INFO_PATH.exists():
-        import orjson
-
-        si = orjson.loads(SURAH_INFO_PATH.read_bytes())
-        for surah_str, data in si.items():
-            for v in data["verses"]:
-                wc[(int(surah_str), v["verse"])] = v["num_words"]
+    for surah_str, data in quran_text.surah_info().items():
+        for v in data["verses"]:
+            wc[(int(surah_str), v["verse"])] = v["num_words"]
     cache.set_word_counts_cache(wc)
     return wc
 
@@ -457,11 +422,8 @@ def load_surah_info_lite() -> dict:
     cached = cache.get_surah_info_lite_cache()
     if cached is not None:
         return cached
-    import orjson
-
-    raw = orjson.loads(SURAH_INFO_PATH.read_bytes())
     result = {}
-    for num, info in raw.items():
+    for num, info in quran_text.surah_info().items():
         result[num] = {
             "name_en": info.get("name_en", ""),
             "name_ar": info.get("name_ar", ""),
@@ -474,8 +436,9 @@ def load_surah_info_lite() -> dict:
 def word_has_stop(surah: int, ayah: int, word_num: int, riwayah: str = DEFAULT_SDK_RIWAYAH) -> bool:
     """True iff this edition writes a waqf stop sign on the given word.
 
-    Hafs reads ``qpc_hafs.json`` against ``constants.STOP_SIGNS`` (four signs,
-    deliberately excluding the paired stop and the sakt). Other editions read
+    Hafs reads the Digital Khatt word (the pack's default, modern stops) against
+    ``constants.STOP_SIGNS`` (four signs, deliberately excluding the paired stop and
+    the sakt) — the stops the Segments tab shows. Other editions read
     their own script against their own observed inventory — Warsh and Qalun
     carry only U+06D6, on 9,948 words.
     """
@@ -484,8 +447,5 @@ def word_has_stop(surah: int, ayah: int, word_num: int, riwayah: str = DEFAULT_S
 
         text = editions.word_map(riwayah).get(f"{surah}:{ayah}:{word_num}", "")
         return bool(editions.stop_signs(riwayah) & set(text))
-    qpc = load_qpc()
-    entry = qpc.get(f"{surah}:{ayah}:{word_num}")
-    if not entry:
-        return False
-    return bool(STOP_SIGNS & set(entry.get("text", "")))
+    text = get_dk_words_flat().get(f"{surah}:{ayah}:{word_num}", "")
+    return bool(STOP_SIGNS & set(text))

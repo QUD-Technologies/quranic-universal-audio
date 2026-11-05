@@ -32,7 +32,7 @@ from pathlib import Path
 import brotli
 import orjson
 
-from config import DK_SCRIPT_PATH
+from qua_shared import quran_text
 from qua_shared.catalog_visibility import is_everyayah_channel
 from qua_shared.riwayat import (
     DEFAULT_RIWAYAH,
@@ -47,14 +47,16 @@ from services.audio.audio_meta import chapter_numbers, vbr_chapters_for_reciter
 from services.reference.editions import EditionsUnavailable
 from services.state import catalog as catalog_service
 from services.state import state as state_service
-from services.storage import data_dir, static_refs
+from services.storage import data_dir
 from utils.formatting import slug_to_name
 
 log = logging.getLogger("inspector")
 
-# Resource keys served at /api/ts/resource/<key>. The OTF font is bundled
-# with the SPA (frontend/public/fonts/) and intentionally absent here.
-_RESOURCE_KEYS = ("qpc_hafs", "digital_khatt")
+# Resource keys served at /api/ts/resource/<key>. The fonts are served by
+# /api/static/quran-data/<file> and intentionally absent here.
+# (The Mushaf view reads layouts and each layout's stop edition from the data pack
+# itself, through the TS SDK; the QPC text resource is retired.)
+_RESOURCE_KEYS = ("digital_khatt",)
 
 # Lazy-built caches. Single lock guards the build path; reads are dict
 # lookups so we don't need to hold the lock past `_ensure_built()`.
@@ -198,20 +200,20 @@ def _edition_blocks(reciters_block: dict[str, dict]) -> dict[str, dict]:
 def _build_resource_bytes() -> dict[str, bytes]:
     """Gzip every advertised resource for ``/api/ts/resource/<key>``.
 
-    ``qpc_hafs`` resolves via ``static_refs.load_qpc_bytes`` (local image →
-    bucket — the deployed Space's image ``.gz`` is an LFS pointer, so real
-    bytes come from the bucket). ``digital_khatt`` ships uncompressed in the
-    image and reads directly (HF auto-LFS is keyed on extension, so the
-    ~10 MB ``*.json`` is exempt). A missing/unavailable resource is skipped,
-    never raised — the manifest must not 500 on a degraded resource. The resources
-    are static, so a manifest rebuild reuses them; ``invalidate()`` drops them."""
-    out: dict[str, bytes] = {}
-    qpc = static_refs.load_qpc_bytes()
-    if qpc:
-        out["qpc_hafs"] = gzip.compress(qpc, compresslevel=6, mtime=0)
-    if DK_SCRIPT_PATH.exists():
-        out["digital_khatt"] = gzip.compress(DK_SCRIPT_PATH.read_bytes(), compresslevel=6, mtime=0)
-    return out
+    ``digital_khatt`` is the Digital Khatt v2 script (words + ayah-end markers) from
+    the talqeen-quran-data pack (``qua_shared.quran_text``). An unavailable pack skips
+    it, logged, never raised — the manifest must not 500 on a degraded resource. The
+    resource is static, so a manifest rebuild reuses it; ``invalidate()`` drops it."""
+    try:
+        bodies = {"digital_khatt": quran_text.digital_khatt_script_bytes()}
+    except quran_text.QuranDataUnavailable as exc:
+        log.error("timestamps resources unavailable: %s", exc)
+        return {}
+    return {key: _gzip(body) for key, body in bodies.items()}
+
+
+def _gzip(body: bytes) -> bytes:
+    return gzip.compress(body, compresslevel=6, mtime=0)
 
 
 def _published_reciter_slugs(*, include_everyayah: bool = False) -> list[str]:

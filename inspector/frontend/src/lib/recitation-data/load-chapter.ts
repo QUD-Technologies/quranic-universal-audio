@@ -31,8 +31,7 @@ import {
     loadChapterShard,
     loadDk,
     loadManifest,
-    loadQpc,
-    loadQpcVerseIndex,
+    loadVerseWordCounts,
     reciterAudioFromManifest,
     shardOccasions,
 } from './ts-source';
@@ -46,7 +45,7 @@ export interface ChapterRecitationData {
      *  duration from the transport when they have it. */
     contentEndMs: number;
     /** Mushaf coverage gaps (incomplete + fully-missing verses) for the chapter,
-     *  derived client-side from the recited units vs the qpc verse index.
+     *  derived client-side from the recited units vs the DK verse word counts.
      *
      *  Omitted for a word-profile (non-Hafs) delivery: the verse index is the
      *  Hafs one, and Warsh/Qalun renumber 50 of the 114 surahs, so diffing
@@ -80,13 +79,13 @@ export async function loadChapterRecitation(
     const shard = await loadChapterShard(reciter, chapter);
     if (signal?.aborted) return null;
 
-    // The Hafs script files back the native profile's display text only. A
+    // The Hafs script backs the native profile's display text only. A
     // word-profile shard carries its own edition's exact text per word, so
-    // fetching them would be two wasted megabytes and a tempting wrong answer.
+    // fetching it would be wasted megabytes and a tempting wrong answer.
     const wordShard = isWordShard(shard) ? shard : null;
-    const [qpc, dk, qpcVerseIndex] = wordShard
-        ? [{}, {}, null]
-        : await Promise.all([loadQpc(), loadDk(), loadQpcVerseIndex()]);
+    const [dk, verseWordCounts] = wordShard
+        ? [{}, null]
+        : await Promise.all([loadDk(), loadVerseWordCounts()]);
     if (signal?.aborted) return null;
 
     // The animation consumes only word/letter timings — `audio_url` is unused
@@ -96,7 +95,7 @@ export async function loadChapterRecitation(
     for (const occ of shardOccasions(shard)) {
         occasions.push({
             verseRef: occ.ref,
-            data: assembleOccasion(reciter, occ, qpc, dk, reciterAudio, ''),
+            data: assembleOccasion(reciter, occ, dk, reciterAudio, ''),
             waslOutTo: occ.waslOutTo,
             special: occ.special,
         });
@@ -108,8 +107,8 @@ export async function loadChapterRecitation(
         units: built.units,
         ayahs: built.ayahs,
         contentEndMs: built.contentEndMs,
-        coverage: qpcVerseIndex
-            ? computeChapterCoverage(built.units, chapter, qpcVerseIndex.get(chapter))
+        coverage: verseWordCounts
+            ? computeChapterCoverage(built.units, chapter, verseWordCounts.get(chapter))
             : undefined,
         riwayah: wordShard?._meta.riwayah ?? DEFAULT_SDK_RIWAYAH,
     };

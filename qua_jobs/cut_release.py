@@ -64,6 +64,7 @@ from qua_shared.audio.sources import (  # noqa: E402
 )
 from qua_shared.digital_khatt import (  # noqa: E402
     DIGITAL_KHATT_FONT_FILENAME,
+    DIGITAL_KHATT_FONT_PATH,
     DIGITAL_KHATT_SCRIPT_FILENAME,
     DIGITAL_KHATT_SCRIPT_ID,
     UNICODE_INDEXING,
@@ -908,9 +909,7 @@ def _post_webhook(
 # ---------------------------------------------------------------------------
 def _load_digital_khatt_assets(code_root: Path) -> tuple[bytes, bytes]:
     script = (code_root / "data" / DIGITAL_KHATT_SCRIPT_FILENAME).read_bytes()
-    font = (
-        code_root / "inspector" / "frontend" / "public" / "fonts" / DIGITAL_KHATT_FONT_FILENAME
-    ).read_bytes()
+    font = (code_root / DIGITAL_KHATT_FONT_PATH).read_bytes()
     try:
         DigitalKhattDoc.model_validate(json.loads(script))
     except Exception as exc:
@@ -1098,7 +1097,7 @@ def _preflight() -> int:
     for rel in (
         "data/surah_info.json",
         f"data/{DIGITAL_KHATT_SCRIPT_FILENAME}",
-        f"inspector/frontend/public/fonts/{DIGITAL_KHATT_FONT_FILENAME}",
+        DIGITAL_KHATT_FONT_PATH,
         ".github/config/repo.yml",
         "docs/templates/release_body.md",
         "LICENSE",

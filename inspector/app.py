@@ -267,7 +267,7 @@ _assert_single_worker()
 auth_service.assert_dev_mode_safe()
 
 # Flask's built-in static handler serves everything under FRONTEND_DIST at
-# the site root (`/assets/<hash>.js`, `/fonts/DigitalKhattV2.otf`, …). The
+# the site root (`/assets/<hash>.js`, `/favicon-dark.webp`, …). The
 # `/` route below handles index.html explicitly.
 app = Flask(__name__, static_folder=str(FRONTEND_DIST), static_url_path="")
 

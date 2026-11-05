@@ -20,7 +20,6 @@ const INERT_SYMBOLS = new Set([0x06de, 0x06e9]);
  *  (mapped) satisfy it — keeps the builder reusable across surfaces. */
 export interface AnimSourceWord {
     text: string;
-    display_text: string;
     start: number;
     end: number;
     letters: {
@@ -70,7 +69,7 @@ export interface AnimWord {
     trailing: Decorator[];
     /** Characters split for character-granularity animation (from `clean`). */
     chars: AnimChar[];
-    /** Whether the word has any char groups (empty display_text → render text directly). */
+    /** Whether the word has any char groups (empty text → render it directly). */
     hasChars: boolean;
 }
 
@@ -137,7 +136,7 @@ export function buildAnimStructure(words: AnimSourceWord[]): AnimWord[] {
         // Pull all non-recited decorator marks (waqf stops, rub-el-hizb, sajdah)
         // out before grouping — they carry no MFA timing and must never join the
         // reveal as a highlight cell.
-        const { clean, leading, trailing } = splitDecorators(word.display_text || word.text);
+        const { clean, leading, trailing } = splitDecorators(word.text);
         const letters = word.letters || [];
         const directTokens = letters.length > 0
             && letters.every((letter) => letter.tokenId !== undefined);

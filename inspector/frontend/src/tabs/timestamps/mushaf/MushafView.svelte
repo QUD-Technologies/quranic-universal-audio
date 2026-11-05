@@ -1,7 +1,8 @@
 <script lang="ts">
     /**
-     * Timestamps Mushaf view — the recitation read along in a two-page
-     * Madani mushaf (one page when the window is too narrow for two).
+     * Timestamps Mushaf view — the recitation read along in a Madani mushaf
+     * (`@qud-technologies/mushaf-svelte`: two pages, or one when the window is
+     * too narrow for two).
      *
      * Follows playback: the recited word lights up, the current verse gets a
      * faint band, and the book turns when the recitation reaches the next
@@ -13,6 +14,10 @@
      * holds the audio until the chapter's timings are in, so playback never
      * runs ahead of the page it's read along on.
      */
+    import type { HitPayload, PageChangePayload } from '@qud-technologies/mushaf-core';
+    import { QudMushaf } from '@qud-technologies/mushaf-svelte';
+    import type { QudMushafElement } from '@qud-technologies/mushaf-web';
+    import type { QuranPack } from '@qud-technologies/quran-data';
     import { onMount, tick, untrack } from 'svelte';
     import { get } from 'svelte/store';
 
@@ -22,6 +27,7 @@
     import { signalDashSeekIntent } from '../../../lib/playback/dash-buffering';
     import { dashPort } from '../../../lib/playback/dash-port';
     import { exitLoop } from '../../../lib/playback/loop';
+    import { loadQuranPack, quranFontUrl } from '../../../lib/quran-data/pack';
     import { loadChapterRecitation } from '../../../lib/recitation-data/load-chapter';
     import { loadManifest } from '../../../lib/recitation-data/ts-source';
     import { recitationConfigStore } from '../../../lib/recitation-animation/recitation-settings';
@@ -32,31 +38,9 @@
     import { TAB_NAMES } from '../../../lib/utils/constants';
     import { shouldHandleKey } from '../../../lib/utils/keyboard-guard';
     import { mushafScope, mushafShowUpcoming, mushafYear } from '../stores/mushaf';
-    import { fitPages, spreadFontPx, type PageMetrics } from './fit';
-    import {
-        ensureMushafFont,
-        SURAH_FRAME_FAMILY,
-        SURAH_NAME_FAMILY,
-        TEXT_FALLBACK_FAMILY,
-        textFamily,
-        textFontStack,
-    } from './fonts';
-    import { PageHighlighter } from './highlight';
-    import {
-        firstWordOfVerse,
-        isVerseMarker,
-        loadLayout,
-        loadWordIndex,
-        pageOfWord,
-        PAGE_COUNT,
-        surahsOnPage,
-        type MushafLayout,
-        type WordIndex,
-    } from './layout';
-    import { LineMeasurer } from './measure';
-    import MushafBook, { type Leaf } from './MushafBook.svelte';
-    import { indexChapter, positionAt, type ChapterIndex } from './position';
     import { mushafFullscreen } from './fullscreen.svelte';
+    import { readingHighlights } from './highlights';
+    import { indexChapter, positionAt, type ChapterIndex, type MushafPosition } from './position';
     import { mushafRepeat } from './repeat.svelte';
     import { compareRefs, type VerseRef } from './repeat-plan';
 
@@ -64,17 +48,18 @@
     /** Room kept under the book for the docked-footer handle in full screen. */
     const DOCK_HANDLE_PX = 22;
     const PLAYER_SELECTOR = '.player';
-    /** Page-turn duration (keep in step with `.mv-leaf` in MushafBook). */
-    const LEAF_MS = 620;
-    const LEAF_SLACK_MS = 80;
-    const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    /** A page change within this long of a layout switch is the switch's, not the reader's. */
+    const OWN_CHANGE_MS = 1500;
+    /** Give up waiting for a turn's `pageChange` (a hidden tab never ends the slide). */
+    const TURN_TIMEOUT_MS = 2000;
+    /** A playhead jump larger than this between frames is a seek → follow again. */
+    const SEEK_JUMP_MS = 1500;
 
     let root: HTMLDivElement | undefined = $state();
-    let stage: HTMLDivElement | undefined = $state();
+    let element: QudMushafElement | undefined = $state();
 
     // ---- data ----
-    let layout = $state.raw<MushafLayout | null>(null);
-    let words = $state.raw<WordIndex | null>(null);
+    let pack = $state.raw<QuranPack | null>(null);
     let failed = $state(false);
     let tsChapters = $state.raw(new Set<number>());
     let chapterIx = $state.raw<ChapterIndex | null>(null);
@@ -82,38 +67,13 @@
     let ixKey = $state('');
     /** "slug:chapter" whose timings are being fetched, '' when none. */
     let loadingKey = '';
-    /** Text face the pages are set in: the year's own, or the fallback when it won't load. */
-    let textFace = $state(TEXT_FALLBACK_FAMILY);
+    /** The element drew its first view (its controller and fonts are in). */
+    let ready = $state(false);
 
     const slug = $derived($playerContext.delivery?.slug ?? '');
     const chapter = $derived($playerContext.surahNum ?? 0);
     const live = $derived(chapterIx !== null && ixKey === `${slug}:${chapter}`);
-    const fontStack = $derived(textFontStack(textFace));
-
-    // Layout, its text face and the line measurements land together, so a
-    // year switch never renders the new layout against the old sizing.
-    $effect(() => {
-        const year = $mushafYear;
-        const w = words;
-        if (!w) return;
-        let cancelled = false;
-        void Promise.all([loadLayout(year), ensureMushafFont(textFamily(year))])
-            .then(([l, ok]) => {
-                if (cancelled) return;
-                const face = ok ? textFamily(year) : TEXT_FALLBACK_FAMILY;
-                measurer = new LineMeasurer(`"${face}"`);
-                const em = measurer.referenceEm(l, w);
-                fontCache.clear();
-                textFace = face;
-                refEm = em;
-                layout = l;
-            })
-            .catch((e: unknown) => {
-                console.error('Mushaf: layout load failed', e);
-                failed = true;
-            });
-        return () => { cancelled = true; };
-    });
+    const layout = $derived(`madani-${$mushafYear}`);
 
     $effect(() => {
         const s = slug;
@@ -127,8 +87,7 @@
     $effect(() => {
         const s = slug;
         const ch = chapter;
-        const w = words;
-        if (!s || !ch || !w) return;
+        if (!s || !ch) return;
         const key = `${s}:${ch}`;
         const ctrl = new AbortController();
         loadingKey = key;
@@ -136,7 +95,7 @@
         void loadChapterRecitation(s, ch, ctrl.signal)
             .then((data) => {
                 if (ctrl.signal.aborted) return;
-                chapterIx = data ? indexChapter(ch, data.units, w) : null;
+                chapterIx = data ? indexChapter(ch, data.units) : null;
                 ixKey = key;
                 lastUnit = -1;
                 following = true;
@@ -177,58 +136,26 @@
     let shownChapter = 0;
     $effect(() => {
         const ch = chapter;
-        const l = layout;
-        const w = words;
-        if (!ch || !l || !w || !metrics) return;
+        if (!ch || !ready) return;
         untrack(() => {
             if (ch === shownChapter) return;
-            const first = shownChapter === 0;
             shownChapter = ch;
             if (live) return; // already reading along in it
             following = true;
-            openView(viewOfPage(pageOfWord(l, landingWord(ch, w))), !first);
+            jumpTo(landingAnchor(ch));
         });
     });
 
     /** The word a chapter switch lands on: the pending seek's, else the first. */
-    function landingWord(ch: number, w: WordIndex): number {
+    function landingAnchor(ch: number): string {
         const t = pendingSeek?.chapter === ch ? pendingSeek.target : null;
-        if (t && 'loc' in t) return w.idOfLoc.get(t.loc) ?? firstWordOfVerse(w, ch, 1);
-        if (t) {
-            const [s, a] = t.verse.split(':').map(Number);
-            return firstWordOfVerse(w, s ?? ch, a ?? 1);
-        }
-        return firstWordOfVerse(w, ch, 1);
+        if (t && 'loc' in t) return t.loc;
+        if (t) return `${t.verse}:1`;
+        return `${ch}:1:1`;
     }
 
-    // ---- sizing ----
-    let vp = $state({ width: 0, height: 0 });
-    let refEm = $state(0);
-    let measurer: LineMeasurer | null = null;
-
-    const metrics = $derived<PageMetrics | null>(refEm > 0 && vp.width > 0 ? fitPages(vp, refEm) : null);
-    const spread = $derived(metrics?.spread ?? true);
-    const fontCache = new Map<string, number>();
-
-    function pagesOfView(v: number): number[] {
-        return spread ? [2 * v + 1, 2 * v + 2] : [v + 1];
-    }
-    function viewOfPage(p: number): number {
-        return spread ? Math.floor((p - 1) / 2) : p - 1;
-    }
-    const viewCount = $derived(spread ? PAGE_COUNT / 2 : PAGE_COUNT);
-
-    function fontOf(page: number): number {
-        if (!metrics || !layout || !words || !measurer) return 16;
-        const pages = pagesOfView(viewOfPage(page));
-        const key = `${metrics.fontPx}|${pages.join(',')}`;
-        let f = fontCache.get(key);
-        if (f === undefined) {
-            f = spreadFontPx(metrics, measurer.maxEm(layout, words, pages));
-            fontCache.set(key, f);
-        }
-        return f;
-    }
+    // ---- sizing: the element fills the box between the tab's top and the player ----
+    let boxHeight = $state(0);
 
     function measureViewport(): void {
         if (!root) return;
@@ -240,125 +167,123 @@
         const bottom = mushafFullscreen.docked
             ? window.innerHeight - DOCK_HANDLE_PX
             : player ? player.getBoundingClientRect().top : window.innerHeight - playerH;
-        const top = root.getBoundingClientRect().top;
-        vp = { width: root.clientWidth, height: Math.max(0, bottom - top) };
+        boxHeight = Math.max(0, bottom - root.getBoundingClientRect().top);
     }
 
     // ---- which pages are open ----
-    /** First (right) page of the open view. */
-    let anchorPage = $state(1);
     let following = $state(true);
-    let leaf = $state<Leaf | null>(null);
-    let leafTimer: ReturnType<typeof setTimeout> | null = null;
-    let slotPages = $state<number[]>([1, 2]);
+    /** A turn or jump we asked for is under way; its `pageChange` is ours, not the reader's. */
+    let ownTurn = false;
+    let ownUntil = 0;
+    let turnTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const view = $derived(viewOfPage(anchorPage));
-
-    function playableView(v: number): boolean {
-        if (!layout || !words) return false;
-        return pagesOfView(v).some((p) => surahsOnPage(layout!, words!, p).some((s) => tsChapters.has(s)));
+    function settleTurn(): void {
+        ownTurn = false;
+        if (turnTimer) clearTimeout(turnTimer);
+        turnTimer = null;
     }
 
-    /** Open view `v`, turning the page unless `animate` is off. */
-    function openView(v: number, animate = true): void {
-        const target = Math.max(0, Math.min(viewCount - 1, v));
-        const from = view;
-        anchorPage = pagesOfView(target)[0]!;
-        if (target === from) {
-            slotPages = pagesOfView(target);
+    function startOwnTurn(run: () => boolean): void {
+        ownTurn = true;
+        if (turnTimer) clearTimeout(turnTimer);
+        turnTimer = setTimeout(settleTurn, TURN_TIMEOUT_MS);
+        if (!run()) settleTurn();
+    }
+
+    /** Open the view holding `anchor` at once (no slide). */
+    function jumpTo(anchor: string): void {
+        const el = element;
+        if (!el?.state || !pack) return;
+        if (el.state.current.includes(pack.pageOf(layout, anchor))) return;
+        startOwnTurn(() => el.goTo(anchor));
+    }
+
+    /** Pages of surahs the reciter has are the only ones navigation lands on. */
+    function canNavigate(page: number): boolean {
+        const ctl = element?.controller;
+        if (!ctl) return true;
+        return ctl.pageView(page).chrome.surahs.some((s) => tsChapters.has(s));
+    }
+
+    function onPageChange(detail: PageChangePayload): void {
+        if (ownTurn) {
+            settleTurn();
             return;
         }
-        const dir: 1 | -1 = target > from ? 1 : -1;
-        const a = pagesOfView(from);
-        const b = pagesOfView(target);
-        if (reducedMotion || !metrics || !animate) {
-            leaf = null;
-            slotPages = b;
-        } else if (spread) {
-            // Right page first: forward keeps the old right page under the
-            // turning left one; back keeps the old left page.
-            slotPages = dir === 1 ? [a[0]!, b[1]!] : [b[0]!, a[1]!];
-            leaf = dir === 1 ? { front: a[1]!, back: b[0]!, dir } : { front: a[0]!, back: b[1]!, dir };
-        } else {
-            slotPages = b;
-            leaf = { front: a[0]!, back: 0, dir };
-        }
-        // `animationend` never fires in a hidden tab (animations pause), and a
-        // stuck leaf would freeze following — settle on a timer as well.
-        if (leafTimer) clearTimeout(leafTimer);
-        if (leaf) leafTimer = setTimeout(onLeafEnd, LEAF_MS + LEAF_SLACK_MS);
+        if (performance.now() < ownUntil) return;
+        // Paging by hand stops following; paging back onto the recited page resumes it.
+        following = !!pack && !!lastAnchor && detail.pages.includes(pack.pageOf(layout, lastAnchor));
     }
 
-    function onLeafEnd(): void {
-        if (leafTimer) clearTimeout(leafTimer);
-        leafTimer = null;
-        leaf = null;
-        slotPages = pagesOfView(view);
-    }
-
-    // Spread ↔ single switch (resize) keeps the anchor page.
+    // A layout switch re-opens the book on the same words: not the reader paging.
     $effect(() => {
-        void spread;
-        untrack(() => {
-            leaf = null;
-            slotPages = pagesOfView(viewOfPage(anchorPage));
-        });
+        void layout;
+        ownUntil = performance.now() + OWN_CHANGE_MS;
     });
 
-    function navigate(delta: 1 | -1): void {
-        let v = view + delta;
-        while (v >= 0 && v < viewCount && !playableView(v)) v += delta;
-        if (v < 0 || v >= viewCount) return;
-        // Paging back onto the recited page is the same as "Back to reciting".
-        following = !!layout && lastAnchorId > 0 && v === viewOfPage(pageOfWord(layout, lastAnchorId));
-        openView(v);
+    /** Keep the recited word in view: one slide reading on, a jump otherwise. */
+    function follow(anchor: string): void {
+        const el = element;
+        const st = el?.state;
+        if (!el || !st || !pack || ownTurn) return;
+        const page = pack.pageOf(layout, anchor);
+        const cur = st.current;
+        if (cur.includes(page)) return;
+        const first = cur[0]!;
+        const last = cur.at(-1)!;
+        const per = st.pagesPerView;
+        if (page > last && page <= last + per) startOwnTurn(() => el.next());
+        else if (page < first && page >= first - per) startOwnTurn(() => el.prev());
+        else startOwnTurn(() => el.goTo(anchor));
     }
 
     // ---- highlight + follow (per frame) ----
-    const highlighter = new PageHighlighter();
     let lastUnit = -1;
     let lastMs = 0;
     /** Word the recitation is at (or last was), for "am I on the recited page?". */
-    let lastAnchorId = 0;
+    let lastAnchor = '';
+    let position = $state.raw<MushafPosition | null>(null);
+    let spot = $state.raw<[VerseRef, VerseRef] | null>(null);
     let raf: number | null = null;
-    /** A playhead jump larger than this between frames is a seek → follow again. */
-    const SEEK_JUMP_MS = 1500;
+    let highlightKey = '';
 
+    function samePosition(a: MushafPosition | null, b: MushafPosition): boolean {
+        return !!a && a.active === b.active && a.verseKey === b.verseKey && a.progress === b.progress && a.anchor === b.anchor;
+    }
+
+    // Highlights follow the position and the prefs; the element only redraws on a change.
     $effect(() => {
-        void slotPages; void metrics; void layout; void $mushafScope; void $mushafShowUpcoming;
-        const r = root;
-        if (!r) return;
-        void tick().then(() => highlighter.rebuild(r));
+        const el = element;
+        const p = pack;
+        if (!el || !p || !ready) return;
+        const list = readingHighlights({
+            pos: live ? position : null,
+            firstAnchor: chapterIx?.firstAnchor ?? '',
+            scope: $mushafScope,
+            showUpcoming: $mushafShowUpcoming,
+            spot: mushafRepeat.picking !== null ? spot : null,
+            playable: tsChapters,
+            ayahs: (s) => p.counts(s).ayahs,
+        });
+        const key = JSON.stringify(list);
+        if (key === highlightKey) return;
+        highlightKey = key;
+        el.setHighlights(list);
     });
 
     function frame(): void {
         mushafRepeat.tick();
         if (loadingKey && !dashPort.paused) holdAudio(); // the player autoplayed the new chapter
         const ix = chapterIx;
-        const l = layout;
-        const w = words;
-        if (!ix || !l || !w || !live) return;
+        if (!ix || !live) return;
         const ms = dashPort.currentTimeMs();
         if (Math.abs(ms - lastMs) > SEEK_JUMP_MS) following = true;
         lastMs = ms;
         const { pos, unit } = positionAt(ix, ms / 1000, lastUnit);
         lastUnit = unit;
-        lastAnchorId = pos.anchorId;
-        // Picking a verse needs every verse visible and clickable.
-        const picking = mushafRepeat.picking !== null;
-        highlighter.apply(
-            {
-                ...pos,
-                scope: picking ? 'spread' : get(mushafScope),
-                showUpcoming: picking || get(mushafShowUpcoming),
-            },
-            w,
-        );
-        if (following && pos.anchorId && !leaf) {
-            const v = viewOfPage(pageOfWord(l, pos.anchorId));
-            // Reading on turns one leaf; a jump (seek, first load) cuts straight there.
-            if (v !== view) openView(v, Math.abs(v - view) === 1);
-        }
+        if (pos.anchor) lastAnchor = pos.anchor;
+        if (!samePosition(position, pos)) position = pos;
+        if (following && pos.anchor && ready) follow(pos.anchor);
     }
 
     function loop(): void {
@@ -408,28 +333,30 @@
         playerContext.update((s) => ({ ...s, surahNum: surah, positionMs: 0, isPlaying: play }));
     }
 
-    function onPageClick(e: MouseEvent): void {
-        const el = (e.target as HTMLElement).closest<HTMLElement>('.mv-slot [data-w]');
-        const w = words;
-        if (!el || !w) return;
-        const id = Number(el.dataset.w);
-        const surah = w.surah[id] ?? 0;
-        if (!tsChapters.has(surah)) return;
-        const ayah = w.ayah[id] ?? 0;
+    /** `{surah, ayah}` of a word (`s:a:w`) or ayah-end (`s:a`) anchor. */
+    function verseOf(anchor: string): VerseRef {
+        const [surah, ayah] = anchor.split(':').map(Number);
+        return { surah: surah ?? 0, ayah: ayah ?? 0 };
+    }
+
+    /** A tap on a word (`loc`) or a verse marker (`verse`). */
+    function onTap(detail: HitPayload, kind: 'loc' | 'verse'): void {
+        const v = verseOf(detail.anchor);
+        if (!tsChapters.has(v.surah)) return;
         if (mushafRepeat.picking) {
-            pickVerse({ surah, ayah });
+            pickVerse(v);
             return;
         }
         mushafRepeat.stop();
         exitLoop();
-        const target: SeekTarget = isVerseMarker(w.text[id] ?? '') ? { verse: `${surah}:${ayah}` } : { loc: w.loc[id]! };
+        const target: SeekTarget = kind === 'verse' ? { verse: detail.ayah } : { loc: detail.anchor };
         following = true;
-        if (surah === chapter && chapterIx?.chapter === chapter) {
+        if (v.surah === chapter && chapterIx?.chapter === chapter) {
             const ms = targetMs(chapterIx, target);
             if (ms !== null) seekTo(ms);
         } else {
-            pendingSeek = { chapter: surah, target };
-            switchChapter(surah, true);
+            pendingSeek = { chapter: v.surah, target };
+            switchChapter(v.surah, true);
         }
     }
 
@@ -448,51 +375,52 @@
         mushafRepeat.picking = null;
     }
 
+    /** The anchor of the word under a pointer event, read off the element's page DOM. */
+    function anchorAt(e: Event): string {
+        const ctl = element?.controller;
+        if (!ctl) return '';
+        const path = e.composedPath() as HTMLElement[];
+        const word = path.find((n) => n.classList?.contains('qm-w'));
+        const line = word?.closest<HTMLElement>('.qm-line');
+        const page = word?.closest<HTMLElement>('.qm-page');
+        if (!word || !line || !page) return '';
+        const lines = ctl.pageView(Number(page.dataset.page)).lines;
+        return lines.find((l) => l.index === Number(line.dataset.line))?.words[Number(word.dataset.i)]?.anchor ?? '';
+    }
+
     /** Repeat pick: light up the verse under the pointer, or the range it would make. */
-    function onPageHover(e: MouseEvent): void {
-        const w = words;
+    function onPageHover(e: Event): void {
         const end = mushafRepeat.picking;
-        if (!w || !end) return;
-        const el = (e.target as HTMLElement).closest<HTMLElement>('.mv-slot [data-w]');
-        const id = el ? Number(el.dataset.w) : 0;
-        const surah = w.surah[id] ?? 0;
-        if (!id || !tsChapters.has(surah)) {
-            highlighter.spotlight(null, w);
-            return;
-        }
-        const here: VerseRef = { surah, ayah: w.ayah[id] ?? 0 };
-        if (!pickable(here)) {
-            highlighter.spotlight(null, w);
+        if (!end) return;
+        const anchor = anchorAt(e);
+        const here = anchor ? verseOf(anchor) : null;
+        if (!here || !tsChapters.has(here.surah) || !pickable(here)) {
+            spot = null;
             return;
         }
         const to = mushafRepeat.to;
         const other = end === 'to'
             ? mushafRepeat.from
             : to && compareRefs(here, to) <= 0 ? to : null;
-        highlighter.spotlight([other ?? here, here], w);
-    }
-
-    function clearSpotlight(): void {
-        if (words) highlighter.spotlight(null, words);
+        spot = [other ?? here, here];
     }
 
     $effect(() => {
-        if (mushafRepeat.picking === null) untrack(clearSpotlight);
+        if (mushafRepeat.picking === null) spot = null;
     });
 
-    // Word clicks are delegated from the stage. The words themselves aren't tab
-    // stops (a page holds ~150); keyboard users page with ←/→ and type verses
-    // into Repeat instead.
     $effect(() => {
-        const el = stage;
+        const el = element;
         if (!el) return;
-        el.addEventListener('click', onPageClick);
-        el.addEventListener('mouseover', onPageHover);
-        el.addEventListener('mouseleave', clearSpotlight);
+        const clear = (): void => { spot = null; };
+        // On the shadow root: moving between words inside it never reaches the host as a
+        // pointerover (target and relatedTarget both retarget to the host).
+        const root = el.shadowRoot ?? el;
+        root.addEventListener('pointerover', onPageHover);
+        el.addEventListener('pointerleave', clear);
         return () => {
-            el.removeEventListener('click', onPageClick);
-            el.removeEventListener('mouseover', onPageHover);
-            el.removeEventListener('mouseleave', clearSpotlight);
+            root.removeEventListener('pointerover', onPageHover);
+            el.removeEventListener('pointerleave', clear);
         };
     });
 
@@ -511,9 +439,11 @@
             mushafFullscreen.exit();
             return;
         }
-        if (e.code !== 'ArrowLeft' && e.code !== 'ArrowRight') return;
+        // The element turns pages itself while it has focus.
+        if ((e.code !== 'ArrowLeft' && e.code !== 'ArrowRight') || e.defaultPrevented) return;
         e.preventDefault();
-        navigate(e.code === 'ArrowLeft' ? 1 : -1); // the book reads right to left
+        if (e.code === 'ArrowLeft') element?.next(); // the book reads right to left
+        else element?.prev();
     }
 
     // Full screen moves the book's top edge without resizing it — re-measure.
@@ -528,22 +458,29 @@
         if ($activeTab !== TAB_NAMES.TIMESTAMPS) untrack(() => mushafFullscreen.exit());
     });
 
-    /** Surah-name + header-frame fonts loaded? Pages fall back to plain text / a ruled box. */
-    let headerFonts = $state({ name: true, frame: true });
-
     // ---- theme-aware accent (the footer droplet colours the highlight) ----
     let theme = $state(themeStore.current);
     const accentStyle = $derived(accentVarText($recitationConfigStore.highlightColor, theme));
 
+    /** Re-evaluate a message on locale switch (reads the locale rune). */
+    const L = (s: string): string => (i18n.locale, s);
+    /** Numbers as before: Arabic-Indic digits in Arabic, Western digits otherwise. */
+    const bookLocale = $derived(i18n.locale === 'ar' ? 'ar' : 'en');
+    const labels = $derived({
+        juz: L(m.ts_mushaf_juz({ n: '{n}' })),
+        hizb: L(m.ts_mushaf_hizb({ n: '{n}' })),
+        page: L(m.ts_mushaf_page_aria({ n: '{n}' })),
+        next: L(m.ts_mushaf_next()),
+        prev: L(m.ts_mushaf_prev()),
+    });
+
     onMount(() => {
-        void loadWordIndex()
-            .then((w) => { words = w; })
+        void loadQuranPack()
+            .then((p) => { pack = p; })
             .catch((e: unknown) => {
-                console.error('Mushaf: script load failed', e);
+                console.error('Mushaf: Quran data load failed', e);
                 failed = true;
             });
-        void ensureMushafFont(SURAH_NAME_FAMILY).then((ok) => { headerFonts = { ...headerFonts, name: ok }; });
-        void ensureMushafFont(SURAH_FRAME_FAMILY).then((ok) => { headerFonts = { ...headerFonts, frame: ok }; });
 
         const detachWindowFull = mushafFullscreen.attachWindow();
         const detachRepeat = mushafRepeat.attach({
@@ -559,10 +496,7 @@
         const offTime = dashPort.onTimeUpdate(() => mushafRepeat.tick());
         const offPlay = dashPort.onPlay(holdAudio);
 
-        const ro = new ResizeObserver(() => {
-            measureViewport();
-            highlighter.invalidate();
-        });
+        const ro = new ResizeObserver(measureViewport);
         if (root) ro.observe(root);
         // The player grows when the footer wraps on a narrow window.
         const player = document.querySelector<HTMLElement>(PLAYER_SELECTOR);
@@ -574,7 +508,7 @@
         return () => {
             detachWindowFull();
             mushafFullscreen.exit();
-            if (leafTimer) clearTimeout(leafTimer);
+            settleTurn();
             detachRepeat();
             offEnded();
             offTime();
@@ -584,9 +518,6 @@
             window.removeEventListener(THEME_CHANGE_EVENT, onTheme);
         };
     });
-
-    /** Re-evaluate a message on locale switch (reads the locale rune). */
-    const L = (s: string): string => (i18n.locale, s);
 </script>
 
 <svelte:window onkeydown={onKeydown} />
@@ -595,39 +526,31 @@
     class="mv"
     class:picking={mushafRepeat.picking !== null}
     bind:this={root}
-    style="{accentStyle}; height: {vp.height}px"
+    style="{accentStyle}; height: {boxHeight}px"
 >
     {#if failed}
         <p class="mv-status">{L(m.ts_mushaf_load_failed())}</p>
-    {:else if !layout || !words || !metrics}
+    {:else if !pack}
         <p class="mv-status">{L(m.ts_mushaf_loading())}</p>
     {:else}
-        <div class="mv-row">
-            <button
-                type="button" class="mv-nav"
-                title={L(m.ts_mushaf_next())} aria-label={L(m.ts_mushaf_next())}
-                onclick={() => navigate(1)}
-            ><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" /></svg></button>
-
-            <div class="mv-stage" bind:this={stage}>
-                <!-- Keyed by print year: a new layout gets fresh pages, never re-used spans. -->
-                {#key layout.year}
-                    <MushafBook
-                        {layout} {words} {metrics} {fontOf} {fontStack} {headerFonts}
-                        playable={tsChapters}
-                        pages={slotPages}
-                        {leaf}
-                        onleafend={onLeafEnd}
-                    />
-                {/key}
-            </div>
-
-            <button
-                type="button" class="mv-nav"
-                title={L(m.ts_mushaf_prev())} aria-label={L(m.ts_mushaf_prev())}
-                onclick={() => navigate(-1)}
-            ><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5" /></svg></button>
-        </div>
+        <QudMushaf
+            bind:element
+            class="mv-book"
+            {pack}
+            fontUrl={quranFontUrl}
+            {layout}
+            mode="auto"
+            theme={{ scheme: theme === 'light' ? 'light' : 'dark' }}
+            locale={bookLocale}
+            {labels}
+            navButtons
+            {canNavigate}
+            onReady={() => { ready = true; }}
+            onPageChange={onPageChange}
+            onWordTap={(d) => onTap(d, 'loc')}
+            onAyahTap={(d) => onTap(d, 'verse')}
+            onError={(d) => console.error('Mushaf:', d.code, d.message)}
+        />
 
         {#if !following}
             <button type="button" class="mv-back" onclick={() => (following = true)}>
@@ -658,18 +581,41 @@
     .mv {
         position: relative;
         display: flex;
-        align-items: flex-start;
-        justify-content: center;
         overflow: hidden;
     }
-    /* Page-turn buttons flank the book (fit.ts NAV_SLOT_PX = button + gap). */
-    .mv-row { display: flex; align-items: center; gap: 12px; }
-    .mv-stage { display: flex; align-items: center; justify-content: center; }
-    .mv.picking .mv-stage :global(.mp-w:not(.mp-inert)) { cursor: crosshair; }
+
+    /* The book: the app's tokens drive the element's theme (the element's own
+     * scheme colours are the fallback). Its custom properties are set here, on
+     * the element, which wins over the element's :host rule. */
+    .mv :global(qud-mushaf.mv-book) {
+        flex: 1 1 auto;
+        align-self: stretch;
+        outline: none;
+        --qm-background: transparent;
+        --qm-page: var(--mushaf-paper);
+        --qm-text: var(--text-primary);
+        --qm-chrome: var(--text-muted);
+        --qm-marker: var(--text-secondary);
+        --qm-frame: var(--text-muted);
+        --qm-spine: var(--mushaf-spine);
+        --qm-highlight-text: var(--accent);
+        --qm-highlight-band: var(--accent-tint-soft);
+        --qm-highlight-underline: var(--accent);
+        --qm-band-radius: var(--r-2);
+        --qm-ui-font: var(--font-ui, inherit);
+    }
+    .mv :global(qud-mushaf.mv-book::part(word)) { transition: color var(--t-fast), opacity var(--t-fast); }
+    .mv :global(qud-mushaf.mv-book::part(word):hover) { color: var(--accent); }
+    /* Surahs the reciter lacks: no pointer, no hover. */
+    .mv :global(qud-mushaf.mv-book::part(hl-inert)) { cursor: default; }
+    .mv :global(qud-mushaf.mv-book::part(hl-inert):hover) { color: unset; }
+    .mv :global(qud-mushaf.mv-book::part(nav)) { color: var(--text-muted); transition: color var(--t-fast), background var(--t-fast); }
+    .mv :global(qud-mushaf.mv-book::part(nav):hover) { color: var(--text-primary); background: var(--panel-2); }
     /* Picking a verse: the page dims, the verse (or range) under the pointer lights up. */
-    .mv.picking .mv-stage :global(.mp-w) { opacity: 0.45; }
-    .mv.picking .mv-stage :global(.mp-w.is-pick) { opacity: 1; color: var(--accent); }
-    .mv.picking .mv-stage :global(.mp-band) { visibility: hidden; }
+    .mv.picking :global(qud-mushaf.mv-book::part(word)) { opacity: 0.45; cursor: crosshair; }
+    .mv.picking :global(qud-mushaf.mv-book::part(hl-inert)) { cursor: default; }
+    .mv.picking :global(qud-mushaf.mv-book::part(hl-pick)) { opacity: 1; color: var(--accent); }
+    .mv.picking :global(qud-mushaf.mv-book::part(band)) { visibility: hidden; }
 
     /* Full screen: only the book and the shell footer remain. */
     :global(html.mushaf-full .container > header) { display: none; }
@@ -714,30 +660,10 @@
     .mv-dock-handle:focus-visible .mv-dock-pill { outline: 2px solid var(--accent); outline-offset: 2px; }
 
     .mv-status {
-        margin: 0;
+        margin: 0 auto;
         color: var(--text-muted);
         font-size: var(--fs-meta);
     }
-
-    .mv-nav {
-        flex: 0 0 auto;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 32px;
-        height: 56px;
-        padding: 0;
-        color: var(--text-muted);
-        background: transparent;
-        border: 1px solid transparent;
-        border-radius: var(--r-2);
-        cursor: pointer;
-        z-index: 3;
-        transition: color var(--t-fast), background var(--t-fast);
-    }
-    .mv-nav:hover { color: var(--text-primary); background: var(--panel-2); }
-    .mv-nav:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-    .mv-nav svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 
     .mv-back {
         position: absolute;

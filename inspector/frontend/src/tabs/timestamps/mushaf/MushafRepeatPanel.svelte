@@ -9,11 +9,13 @@
 
     import { i18n } from '$lib/i18n/locale.svelte';
     import * as m from '$lib/paraglide/messages';
-    import { loadManifest, loadQpcVerseIndex } from '../../../lib/recitation-data/ts-source';
+    import type { QuranPack } from '@qud-technologies/quran-data';
+
+    import { loadQuranPack } from '../../../lib/quran-data/pack';
+    import { loadManifest } from '../../../lib/recitation-data/ts-source';
     import { recitationFocus } from '../../../lib/recitation-animation/recitation-settings';
     import { playerContext } from '../../../lib/stores/player-context';
     import { mushafYear } from '../stores/mushaf';
-    import { firstWordOfVerse, LINE_AYAH, loadLayout, loadWordIndex, pageOfWord } from './layout';
     import { mushafRepeat } from './repeat.svelte';
     import {
         compareRefs,
@@ -30,7 +32,9 @@
         ['rounds', m.ts_mushaf_repeat_rounds],
     ] as const;
 
-    let verseCounts = $state.raw(new Map<number, number>());
+    let pack = $state.raw<QuranPack | null>(null);
+    /** Ayah count of a surah (0 until the pack is in). */
+    const ayahCount = (s: number): number => pack?.counts(s).ayahs ?? 0;
     let fromText = $state(mushafRepeat.from ? refKey(mushafRepeat.from) : '');
     let toText = $state(mushafRepeat.to ? refKey(mushafRepeat.to) : '');
     let message = $state('');
@@ -54,9 +58,9 @@
     });
 
     onMount(() => {
-        void loadQpcVerseIndex()
-            .then((ix) => { verseCounts = new Map([...ix].map(([s, verses]) => [s, verses.size])); })
-            .catch((e: unknown) => console.error('Mushaf repeat: verse index load failed', e));
+        void loadQuranPack()
+            .then((p) => { pack = p; })
+            .catch((e: unknown) => console.error('Mushaf repeat: Quran data load failed', e));
         if (!fromText && focus) fromText = `${focus.surah}:${focus.ayah}`;
     });
 
@@ -73,21 +77,24 @@
     }
 
     function thisSurah(): void {
-        if (focus) setRange({ surah: focus.surah, ayah: 1 }, { surah: focus.surah, ayah: verseCounts.get(focus.surah) ?? 1 });
+        if (focus) setRange({ surah: focus.surah, ayah: 1 }, { surah: focus.surah, ayah: ayahCount(focus.surah) || 1 });
     }
 
-    async function thisPage(): Promise<void> {
-        if (!focus) return;
-        const [layout, words] = await Promise.all([loadLayout($mushafYear), loadWordIndex()]);
-        const page = pageOfWord(layout, firstWordOfVerse(words, focus.surah, focus.ayah));
-        const ayahLines = (layout.pages[page - 1] ?? []).filter((l) => l[0] === LINE_AYAH);
-        const first = ayahLines[0]?.[2];
-        const last = ayahLines.at(-1)?.[3];
+    /** `{surah, ayah}` of a word (`s:a:w`) or ayah-end (`s:a`) anchor. */
+    function verseOf(anchor: string): VerseRef {
+        const [surah, ayah] = anchor.split(':').map(Number);
+        return { surah: surah ?? 0, ayah: ayah ?? 0 };
+    }
+
+    function thisPage(): void {
+        if (!focus || !pack) return;
+        const layout = `madani-${$mushafYear}`;
+        const page = pack.page(layout, pack.pageOf(layout, `${focus.surah}:${focus.ayah}:1`));
+        const items = page.lines.filter((l) => l.kind === 'ayah').flatMap((l) => l.items);
+        const first = items[0];
+        const last = items.at(-1);
         if (!first || !last) return;
-        setRange(
-            { surah: words.surah[first]!, ayah: words.ayah[first]! },
-            { surah: words.surah[last]!, ayah: words.ayah[last]! },
-        );
+        setRange(verseOf(first), verseOf(last));
     }
 
     function pick(end: 'from' | 'to'): void {
@@ -131,7 +138,7 @@
         mushafRepeat.picking = null;
         const manifest = await loadManifest();
         const chapters = new Set(manifest.reciters?.[slug]?.ts_chapters ?? []);
-        const verses = expandRange(from, to, (s) => verseCounts.get(s) ?? 0, (s) => chapters.has(s));
+        const verses = expandRange(from, to, ayahCount, (s) => chapters.has(s));
         const ok = await mushafRepeat.start(slug, verses);
         message = ok ? '' : m.ts_mushaf_repeat_empty();
     }
@@ -191,7 +198,7 @@
 
     <div class="mr-chips">
         <button type="button" disabled={!focus || mushafRepeat.running} onclick={thisVerse}>{L(m.ts_mushaf_repeat_this_verse())}</button>
-        <button type="button" disabled={!focus || mushafRepeat.running} onclick={() => void thisPage()}>{L(m.ts_mushaf_repeat_this_page())}</button>
+        <button type="button" disabled={!focus || mushafRepeat.running} onclick={thisPage}>{L(m.ts_mushaf_repeat_this_page())}</button>
         <button type="button" disabled={!focus || mushafRepeat.running} onclick={thisSurah}>{L(m.ts_mushaf_repeat_this_surah())}</button>
     </div>
 

@@ -17,7 +17,7 @@ function recitation() {
     const shard = basmalaShard();
     const occasions = shardOccasions(shard).map((occ) => ({
         verseRef: occ.ref,
-        data: assembleOccasion('r', occ, {}, {}, BY_SURAH, 'chapter.mp3'),
+        data: assembleOccasion('r', occ, {}, BY_SURAH, 'chapter.mp3'),
         waslOutTo: occ.waslOutTo,
         special: occ.special,
     }));
@@ -42,12 +42,11 @@ describe('opener source words', () => {
         expect(openerSourceRef('0:2:5')).toBeNull();
     });
 
-    it("gives an opener word its source word's QPC and DigitalKhatt text", () => {
+    it("gives an opener word its source word's Digital Khatt text", () => {
         const [opener] = shardOccasions(basmalaShard());
-        const qpc = { '1:1:2': { text: 'qpc-allah' } };
         const dk = { '1:1:2': { text: 'dk-allah' } };
-        const data = assembleOccasion('r', opener!, qpc, dk, BY_SURAH, 'chapter.mp3');
-        expect(data.words[1]).toMatchObject({ location: '0:2:2', text: 'qpc-allah', display_text: 'dk-allah' });
+        const data = assembleOccasion('r', opener!, dk, BY_SURAH, 'chapter.mp3');
+        expect(data.words[1]).toMatchObject({ location: '0:2:2', text: 'dk-allah' });
     });
 });
 
@@ -68,7 +67,7 @@ describe('special occasions', () => {
 
     it('assembles an opener with the shard chapter, not the 0 of its ref', () => {
         const [opener, ayah1] = shardOccasions(basmalaShard());
-        const data = assembleOccasion('r', opener!, {}, {}, BY_SURAH, 'chapter.mp3');
+        const data = assembleOccasion('r', opener!, {}, BY_SURAH, 'chapter.mp3');
         expect(data.chapter).toBe(BASMALA_FIXTURE_CHAPTER);
         expect(data.verse_ref).toBe('0:2');
         expect(data.special).toBe('Basmala');
@@ -76,7 +75,7 @@ describe('special occasions', () => {
         // The opener is a full native reading: its own cells and letter timings.
         expect(data.native).toHaveLength(1);
         expect(data.words[0]!.letters).toHaveLength(1);
-        const verse = assembleOccasion('r', ayah1!, {}, {}, BY_SURAH, 'chapter.mp3');
+        const verse = assembleOccasion('r', ayah1!, {}, BY_SURAH, 'chapter.mp3');
         expect(verse.chapter).toBe(BASMALA_FIXTURE_CHAPTER);
         expect(verse.special).toBeNull();
     });
@@ -116,7 +115,7 @@ describe('special word-profile readings', () => {
         expect(shard.readings[1]!.special).toBeUndefined();
         const occasions = chapterOccasions(shard.readings, shard._meta.chapter);
         expect(occasions.map((one) => [one.ref, one.special])).toEqual([['0:2', 'Basmala'], ['112:1', null]]);
-        const data = assembleOccasion('r', occasions[0]!, {}, {}, BY_SURAH, 'chapter.mp3');
+        const data = assembleOccasion('r', occasions[0]!, {}, BY_SURAH, 'chapter.mp3');
         expect(data.chapter).toBe(112);
         expect(data.special).toBe('Basmala');
         // The opener's last boundary ends no verse, so it carries no verse marker.

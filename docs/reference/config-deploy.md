@@ -52,8 +52,9 @@ The image bakes the **dev** bucket as default (`INSPECTOR_BUCKET_REPO=QUD-Techno
 
 | Var | Default | Purpose |
 |---|---|---|
-| `INSPECTOR_DATA_DIR` | `/app/data` (image) / `<repo>/data` (local) | Root for bundled static data (surah_info + linguistic JSONs). |
-| `INSPECTOR_QUA_DATA_PATH` | mirrors `INSPECTOR_DATA_DIR` | Base for `qpc_hafs.json`, `digital_khatt_v2_script.json`, `phoneme_sub_costs.json`. |
+| `INSPECTOR_DATA_DIR` | `/app/data` (image) / `<repo>/data` (local) | Root for bundled static data (`phoneme_sub_costs.json`). |
+| `INSPECTOR_QUA_DATA_PATH` | mirrors `INSPECTOR_DATA_DIR` | Base for `phoneme_sub_costs.json`. |
+| `QUA_QURAN_PACK` | `<repo>/data/quran-core.qref` (`/app/data/…` in the image) | Talqeen Quran data pack read by `qua_shared.quran_text` (Hafs words, ayah ends, surah metadata) — see [quran-data.md](quran-data.md). |
 
 ### Server / proxy / process
 
@@ -120,8 +121,9 @@ Three-stage build, context is the **repo root** (so `qua_shared/` ships alongsid
 
 1. **frontend-build** (`node:20-alpine`) — `npm ci` + `npm run build` → `dist/`.
 1b. **qua-domain-build** (`python:3.11-alpine`) — sparse blobless fetch of `packages/quran-domain` at the pin in `qua_shared/qua_domain_pin.py`, then `pip wheel` → `/wheels`. Needs `--secret id=QUA_DOMAIN_DEPLOY_KEY` (a read-only SSH deploy key on `Hetchy/qua`, the same arrangement as `CELLS_DEPLOY_KEY`). `required=false`: **without the secret the stage produces an empty `/wheels` and the image still builds**, Hafs-only. The stage's `ARG QUA_COMMIT` default IS the pin on an HF Space (Spaces build with no build args) — `qua_shared/tests/test_qua_domain_pin.py` asserts it matches the Python constant.
+1c. **quran-data-build** (`python:3.11-alpine`) — runs `scripts/devenv/install_quran_data.py --wheel-dir /wheels --pack-dir /pack` (pin read from `qua_shared/quran_data_pin.py`, no second copy) with the **required** build secret `TALQEEN_DATA_READ_TOKEN`: the `talqeen-quran-data` wheel and `quran-core.qref`. No secret, no image. See [quran-data.md](quran-data.md).
 2. **ffmpeg-build** (`alpine:3.23`) — compiles a minimal *static* ffmpeg/ffprobe (mp3 decode + `pcm_s16le`/wav for peaks + `libmp3lame`/mp3 muxer for the `segment-clip` route). `libmp3lame 3.100` is built from source `--enable-static` because Alpine ships no static lame archive — without it `clip.py` returns 200/0-bytes and playback hangs. http/https protocols enabled so ffmpeg can decode remote chapters via HTTP Range.
-3. **runtime** (`python:3.11-alpine`) — installs `inspector/requirements.txt` **plus the optional `qua_domain` wheel from stage 1b** (11.7 MB of edition data: four scripts, four fonts, the Hafs→target projection; the install is glob-guarded so an absent wheel is a no-op; the wheel is kept at `/opt/wheels` for HF-Job staging), purges pip/setuptools/wheel, **selective COPY** (`app.py/config.py/constants.py`, `adapters/ domain/ routes/ services/ utils/`, `scripts/__init__.py + qua_shared/ + qua_jobs/`, `.github/config/`, `LICENSE`, the 4 bundled data JSONs, and `frontend/dist` from stage 1). `qua_jobs/` + `.github/config/` + `LICENSE` are read by the HF-Job entrypoints (`config_loader`, cut_release asset upload). Runs as non-root uid/gid 1000. `EXPOSE 7860`. **Adding a `COPY` here needs no staging edit** — the deploy stages the whole tracked tree (see Deploy).
+3. **runtime** (`python:3.11-alpine`) — installs `inspector/requirements.txt` **plus the optional `qua_domain` wheel from stage 1b** (11.7 MB of edition data: four scripts, four fonts, the Hafs→target projection; the install is glob-guarded so an absent wheel is a no-op; the wheel is kept at `/opt/wheels` for HF-Job staging), purges pip/setuptools/wheel, **selective COPY** (`app.py/config.py/constants.py`, `adapters/ domain/ routes/ services/ utils/`, `scripts/__init__.py + qua_shared/ + qua_jobs/`, `.github/config/`, `LICENSE`, `data/phoneme_sub_costs.json`, the stage-1c pack at `data/quran-core.qref` (and its installed wheel), and `frontend/dist` from stage 1). `qua_jobs/` + `.github/config/` + `LICENSE` are read by the HF-Job entrypoints (`config_loader`, cut_release asset upload). Runs as non-root uid/gid 1000. `EXPOSE 7860`. **Adding a `COPY` here needs no staging edit** — the deploy stages the whole tracked tree (see Deploy).
 
 `CMD`: `gunicorn -k gthread -w 1 --threads 16 --max-requests 5000 --max-requests-jitter 500 --timeout 60 --graceful-timeout 30 --bind 0.0.0.0:7860 --access-logfile - --error-logfile - --chdir /app/inspector app:app`. `-w 1` is load-bearing (asserted at import). `--threads 16` sizes the I/O-bound pool. `--max-requests` recycles the worker to bound slow leaks. The access log (one line per request → stdout) is de-noised by `app._AccessLogFilter`, attached to the `gunicorn.access` + `werkzeug` loggers: it drops static-asset (`/assets/*`), `/healthz`, and 304 lines while always keeping 4xx/5xx and real API/page hits.
 
@@ -129,7 +131,7 @@ Three-stage build, context is the **repo root** (so `qua_shared/` ships alongsid
 
 ## Deploy — `inspector-deploy.yml`
 
-Push to `dev` or `main` (paths under `inspector/**`, `qua_shared/**`, `scripts/deploy/upload_inspector.py`, the bundled data JSONs, `.dockerignore`) → workflow runs `inspector-checks.yml` (reused), then `deploy` runs `scripts/deploy/upload_inspector.py <env>`. Branch→env: `dev`→dev Space, `main`→prod Space; `workflow_dispatch` can force `dev`/`prod`. The Space then rebuilds the Docker image from the uploaded files.
+Push to `dev` or `main` (paths under `inspector/**`, `qua_shared/**`, `scripts/deploy/upload_inspector.py`, `scripts/devenv/install_quran_data.py`, `data/phoneme_sub_costs.json`, `.dockerignore`) → workflow runs `inspector-checks.yml` (reused), then `deploy` runs `scripts/deploy/upload_inspector.py <env>`. Branch→env: `dev`→dev Space, `main`→prod Space; `workflow_dispatch` can force `dev`/`prod`. The Space then rebuilds the Docker image from the uploaded files.
 
 **Fast-path dev dispatch.** A manual `workflow_dispatch` that resolves to the **dev** Space (`env=dev`, or `env=auto` off any non-`main` branch) **skips the `checks` job entirely** for a quick deploy — the dev Space is a verification target, not prod. Every push and any prod-targeting dispatch still runs the full check suite. The `deploy` gate accepts a skipped `checks` (`success` *or* `skipped`), so it never confuses "intentionally skipped" with "failed".
 
@@ -162,6 +164,12 @@ codegen'd FE types and committing the result — see `schema-codegen-check` in
 - `INSPECTOR_SESSION_SECRET` — replace the Space secret → restart. **All in-flight cookies invalidate** (everyone logged out).
 - `INSPECTOR_GITHUB_DISPATCH_TOKEN` — mint new PAT → update secret → restart.
 - `QUA_DOMAIN_DEPLOY_KEY` — read-only SSH deploy key on `Hetchy/qua` (**deploy key, not a PAT**: scoped to one repo, read-only, and unaffected by `gh auth refresh`). Lives as a GitHub Actions secret on this repo AND as a Space secret on both Spaces (`upload_inspector.py` pushes it on every deploy; it warns and leaves the Space secret alone when absent from the env, so a deploy from a machine without it can't blank a working Space). Rotate: add a new key on `Hetchy/qua` → update the three secrets → redeploy → delete the old key. Consumed **only at build time** — no key ever lands in the running container.
+
+- `TALQEEN_DATA_READ_TOKEN` — read access to `QUD-Technologies/talqeen-ai-data` (same name and use as `talqeen-ai-mizan`). A GitHub Actions secret here (CI installs, `boot-smoke` build secret) and a Space secret on both Spaces, set by `upload_inspector.py` on every deploy (which refuses to run without it). Build-time only.
+
+### Required dependency: `talqeen-quran-data`
+
+The Hafs reference data. One pin (`qua_shared/quran_data_pin.py`), one installer, no Dockerfile `ARG` copy — see [quran-data.md](quran-data.md).
 
 ### Optional dependency: `qua-domain`
 
