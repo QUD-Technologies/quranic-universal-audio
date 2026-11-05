@@ -127,7 +127,12 @@ RUN curl -fsSL "https://downloads.sourceforge.net/project/lame/lame/${LAME_VERSI
     cd / && rm -rf /tmp/lame-${LAME_VERSION}
 
 ARG FFMPEG_VERSION=7.1
-RUN curl -fsSL "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" | tar -xJ -C /tmp
+# ffmpeg.org resets connections from the HF builders; the GitHub mirror of the
+# release tag is the same source tree.
+RUN mkdir -p /tmp/ffmpeg-${FFMPEG_VERSION} && \
+    curl -fsSL --retry 5 --retry-all-errors \
+      "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz" \
+    | tar -xz -C /tmp/ffmpeg-${FFMPEG_VERSION} --strip-components=1
 WORKDIR /tmp/ffmpeg-${FFMPEG_VERSION}
 # --disable-everything then whitelist only what services/peaks.py +
 # routes/audio/clip.py use:
