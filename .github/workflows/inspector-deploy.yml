@@ -8,9 +8,7 @@ on:
       - "qua_shared/**"
       - "qua_jobs/**"
       - "scripts/deploy/upload_inspector.py"
-      - "data/surah_info.json"
-      - "data/qpc_hafs.json"
-      - "data/digital_khatt_v2_script.json"
+      - "scripts/devenv/install_quran_data.py"
       - "data/phoneme_sub_costs.json"
       - ".dockerignore"
       - "docs/templates/**"
@@ -101,8 +99,10 @@ jobs:
           # Quoted: docker/build-push-action splits the `secrets` input on
           # newlines, so an unquoted multi-line value delivers only its first
           # line and the container gets an unparseable key.
+          # talqeen-quran-data + its pack (stage 1c) are required: no secret, no image.
           secrets: |
             "PRIVATE_REPO_TOKEN=${{ secrets.PAT_TOKEN }}"
+            "TALQEEN_DATA_READ_TOKEN=${{ secrets.TALQEEN_DATA_READ_TOKEN }}"
 
       - name: Boot smoke test (/healthz)
         run: python scripts/deploy/smoke_boot.py --skip-build --tag inspector-smoke:latest
@@ -165,5 +165,7 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           PRIVATE_REPO_TOKEN: ${{ secrets.PAT_TOKEN }}
+          # Set as a Space secret: the Space's own image build fetches the Quran data.
+          TALQEEN_DATA_READ_TOKEN: ${{ secrets.TALQEEN_DATA_READ_TOKEN }}
         run: |
           python scripts/deploy/upload_inspector.py "${{ steps.env.outputs.env }}"

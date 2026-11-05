@@ -19,15 +19,18 @@ What it does:
 1. Builds the frontend (``inspector/frontend`` → ``dist/``) unless
    ``--skip-build``.
 2. Stages the Space-shaped tree (Dockerfile, ``inspector/`` code + built
-   ``dist/``, ``qua_shared/``, the four linguistic ``data/*.json`` files,
-   a ``README.md`` with the HF Space frontmatter).
+   ``dist/``, ``qua_shared/``, ``data/phoneme_sub_costs.json``, the
+   talqeen-quran-data installer the image build runs, a ``README.md`` with the HF
+   Space frontmatter).
 3. ``create_repo`` (idempotent) → ``upload_folder`` → factory ``restart_space``.
 
 The README frontmatter sets ``hf_oauth: true`` so Hugging Face auto-injects
 ``OAUTH_CLIENT_ID`` / ``OAUTH_CLIENT_SECRET`` — you never register an OAuth
 app yourself. The only secrets you set on the Space are your own ``HF_TOKEN``
 (bucket access) and an auto-generated ``INSPECTOR_SESSION_SECRET``; both are
-handled by ``bootstrap_dev_env.py``.
+handled by ``bootstrap_dev_env.py``. The image build also needs
+``TALQEEN_DATA_READ_TOKEN`` (read access to ``QUD-Technologies/talqeen-ai-data``) for
+the Quran data; when it is in the environment this script sets it as a Space secret.
 
 Auth: reads ``HF_TOKEN`` (or ``INSPECTOR_HF_TOKEN``) from the environment or
 the repo-root ``.env``.
@@ -124,17 +127,14 @@ def _stage(repo: Path, stage_root: Path, *, title: str) -> None:
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
         )
 
-    # The four linguistic JSON files — the entire on-disk data surface in a
-    # deployed Space (everything else lives in the bucket).
+    # phoneme_sub_costs.json is the only bundled data file; the Quran data pack is
+    # fetched by the image build with the installer staged here.
     data_dst = stage_root / "data"
     data_dst.mkdir()
-    for name in (
-        "surah_info.json",
-        "qpc_hafs.json",
-        "digital_khatt_v2_script.json",
-        "phoneme_sub_costs.json",
-    ):
-        shutil.copy2(repo / "data" / name, data_dst / name)
+    shutil.copy2(repo / "data" / "phoneme_sub_costs.json", data_dst / "phoneme_sub_costs.json")
+    installer = Path("scripts") / "devenv" / "install_quran_data.py"
+    (stage_root / installer).parent.mkdir(parents=True)
+    shutil.copy2(repo / installer, stage_root / installer)
 
 
 def _commit_sha(repo: Path) -> str:
@@ -232,6 +232,13 @@ def main(argv: list[str] | None = None) -> int:
             private=not args.public,
             exist_ok=True,
         )
+        talqeen_token = os.environ.get("TALQEEN_DATA_READ_TOKEN")
+        if talqeen_token:
+            api.add_space_secret(
+                repo_id=space_id, key="TALQEEN_DATA_READ_TOKEN", value=talqeen_token
+            )
+        else:
+            print("  TALQEEN_DATA_READ_TOKEN unset; the Space must already hold it as a secret")
         print(f"==> Uploading to {space_id}")
         api.upload_folder(
             folder_path=str(stage_root),

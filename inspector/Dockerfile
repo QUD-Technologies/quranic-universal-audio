@@ -81,6 +81,24 @@ RUN --mount=type=secret,id=PRIVATE_REPO_TOKEN,required=false \
     mkdir -p /wheels
 
 
+# --- Stage 1c: talqeen-quran-data SDK wheel + Quran data pack (required) ---
+# The Hafs words (Digital Khatt v2), ayah-end markers and surah metadata come from
+# the Talqeen data pack through its SDK, both fetched from the PRIVATE
+# QUD-Technologies/talqeen-ai-data repo at qua_shared/quran_data_pin.py's revision
+# (the installer reads the pin, so there is no second copy of it here). Unlike
+# qua-domain this is not optional: the Inspector has no Hafs text without it, so a
+# build without the TALQEEN_DATA_READ_TOKEN secret fails here.
+FROM python:3.11-alpine AS quran-data-build
+RUN apk add --no-cache git
+WORKDIR /build
+COPY qua_shared/__init__.py qua_shared/quran_data_pin.py ./qua_shared/
+COPY scripts/devenv/install_quran_data.py ./scripts/devenv/
+RUN --mount=type=secret,id=TALQEEN_DATA_READ_TOKEN,required=true \
+    TALQEEN_DATA_READ_TOKEN="$(cat /run/secrets/TALQEEN_DATA_READ_TOKEN)" \
+      python scripts/devenv/install_quran_data.py --wheel-dir /wheels --pack-dir /pack && \
+    rm -rf /root/.cache
+
+
 # --- Stage 2: compile minimal static ffmpeg (mp3 decode + s16le/wav output) ---
 # Alpine 3.23 is current stable (released Apr 2026, supported until 2028).
 # Note on libmp3lame: Alpine dropped the `lame-static` subpackage across all
@@ -182,7 +200,12 @@ COPY inspector/requirements.txt ./inspector/requirements.txt
 # and every job pip-installs it — a non-Hafs publish/cut needs the same
 # projection the Space uses. INSPECTOR_QUA_DOMAIN_WHEEL_DIR points there.
 COPY --from=qua-domain-build /wheels/ /opt/wheels/
+# talqeen-quran-data (stage 1c), installed with its dependencies (flatbuffers,
+# brotli) from PyPI; the built wheel needs no credentials.
+COPY --from=quran-data-build /wheels/ /opt/talqeen/
 RUN pip install --no-cache-dir -r ./inspector/requirements.txt && \
+    pip install --no-cache-dir /opt/talqeen/talqeen_quran_data-*.whl && \
+    rm -rf /opt/talqeen && \
     if ls /opt/wheels/qua_domain-*.whl >/dev/null 2>&1; then \
       pip install --no-cache-dir --no-deps /opt/wheels/qua_domain-*.whl; \
     else \
@@ -218,22 +241,14 @@ COPY qua_jobs/ ./qua_jobs/
 COPY .github/config/ ./.github/config/
 COPY docs/templates/ ./docs/templates/
 COPY LICENSE ./LICENSE
-# Linguistic data read by services/data_loader.py via config.py's _QUA_DATA,
-# plus surah_info.json read by services/data_loader.py at startup. These four
-# files are the entire on-disk data surface in deployed mode — everything else
-# (state, catalog, audit, per-reciter reciters/) lives in the bucket
-# mounted at /data/inspector-bucket. INSPECTOR_QUA_DATA_PATH=/app/data tells
-# config.py to look here instead of the default sibling-project path.
-# qpc_hafs.json (~12 MB) still serves the Inspector's internal Quran-data path
-# and ships gzipped because HF Spaces auto-LFS-promote
-# files >10 MB at push time and the Space build doesn't smudge LFS — the
-# uncompressed source would land as a 133-byte pointer. upload_inspector.py
-# pre-gzips at stage time; the runtime data loader gunzips it on read.
-COPY data/surah_info.json \
-     data/qpc_hafs.json.gz \
-     data/digital_khatt_v2_script.json \
-     data/phoneme_sub_costs.json \
-     ./data/
+# The on-disk data surface in deployed mode: phoneme_sub_costs.json (read via
+# config.py's _QUA_DATA; INSPECTOR_QUA_DATA_PATH=/app/data) and the Quran data
+# pack from stage 1c, which qua_shared.quran_text opens at /app/data. Everything
+# else (state, catalog, audit, per-reciter reciters/) lives in the bucket mounted
+# at /data/inspector-bucket. The pack comes from the build stage, not the build
+# context, so no binary has to survive the Space's LFS handling.
+COPY data/phoneme_sub_costs.json ./data/
+COPY --from=quran-data-build /pack/quran-core.qref ./data/quran-core.qref
 # The release jobs publish this exact font and stage_job_code validates the
 # source path before launch. Keep it alongside the built frontend asset.
 COPY --chmod=0644 inspector/frontend/public/fonts/DigitalKhattV2.otf.gz.b64 \
