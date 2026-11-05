@@ -99,7 +99,7 @@ jobs:
           # Quoted: docker/build-push-action splits the `secrets` input on
           # newlines, so an unquoted multi-line value delivers only its first
           # line and the container gets an unparseable key.
-          # talqeen-quran-data + its pack (stage 1c) are required: no secret, no image.
+          # talqeen-quran-data + its pack (stage 0) are required: no secret, no image.
           secrets: |
             "PRIVATE_REPO_TOKEN=${{ secrets.PAT_TOKEN }}"
             "TALQEEN_DATA_READ_TOKEN=${{ secrets.TALQEEN_DATA_READ_TOKEN }}"
@@ -135,6 +135,11 @@ jobs:
         run: |
           AUTH="$(printf 'x-access-token:%s' "$PRIVATE_REPO_TOKEN" | base64 -w0)"
           git config --global http.https://github.com/.extraheader "AUTHORIZATION: basic $AUTH"
+
+      - name: Fetch the TS data SDK (talqeen-ai-data release tarball, sha256-pinned)
+        env:
+          TALQEEN_DATA_READ_TOKEN: ${{ secrets.TALQEEN_DATA_READ_TOKEN }}
+        run: python3 scripts/devenv/install_quran_data.py --ts-only
 
       - name: Install frontend dependencies for Space staging
         working-directory: inspector/frontend

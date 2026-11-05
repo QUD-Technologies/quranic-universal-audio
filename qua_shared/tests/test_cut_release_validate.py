@@ -316,7 +316,7 @@ def test_digital_khatt_assets_validate_and_hash(tmp_path):
     (tmp_path / "surah_info.json").write_bytes(b'{"surahs": []}')
     script = b'{"1:1:1":{"id":1,"surah":"1","ayah":"1","word":"1","location":"1:1:1","text":"x"}}'
     script_dir = tmp_path / "data"
-    font_dir = tmp_path / "inspector" / "frontend" / "public" / "fonts"
+    font_dir = tmp_path / "data" / "fonts"
     script_dir.mkdir()
     font_dir.mkdir(parents=True)
     (script_dir / "digital_khatt_v2_script.json").write_bytes(script)

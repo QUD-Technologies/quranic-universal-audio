@@ -22,6 +22,7 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
+from qua_shared.digital_khatt import DIGITAL_KHATT_FONT_PATH
 from services.storage.hf_bucket import StorageNotFound, get_backend
 
 log = logging.getLogger("inspector")
@@ -434,7 +435,7 @@ REQUIRED_ENTRYPOINTS = (
     "qua_jobs/audio_io.py",
 )
 REQUIRED_STATIC_FILES = (
-    "inspector/frontend/public/fonts/DigitalKhattV2.otf",
+    DIGITAL_KHATT_FONT_PATH,
     ".github/config/repo.yml",
     "docs/templates/release_body.md",
     "docs/templates/hf_dataset_card.md",

@@ -637,6 +637,7 @@ def _sync_dataset_catalog_and_card(repo_id: str) -> None:
     from qua_shared.config_loader import template_path
     from qua_shared.digital_khatt import (
         DIGITAL_KHATT_FONT_FILENAME,
+        DIGITAL_KHATT_FONT_PATH,
         DIGITAL_KHATT_SCRIPT_FILENAME,
     )
     from qua_shared.hf_dataset_catalog import (
@@ -675,14 +676,7 @@ def _sync_dataset_catalog_and_card(repo_id: str) -> None:
             DIGITAL_KHATT_SCRIPT_FILENAME: (
                 code_root / "data" / DIGITAL_KHATT_SCRIPT_FILENAME
             ).read_bytes(),
-            DIGITAL_KHATT_FONT_FILENAME: (
-                code_root
-                / "inspector"
-                / "frontend"
-                / "public"
-                / "fonts"
-                / DIGITAL_KHATT_FONT_FILENAME
-            ).read_bytes(),
+            DIGITAL_KHATT_FONT_FILENAME: (code_root / DIGITAL_KHATT_FONT_PATH).read_bytes(),
         },
         remove=("letter_vocab_hafs_qpc.csv", "qpc_hafs.json"),
         token=token,

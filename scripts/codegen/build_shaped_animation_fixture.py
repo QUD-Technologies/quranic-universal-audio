@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from qua_shared import quran_text  # noqa: E402
 
-FONT = ROOT / "inspector/frontend/public/fonts/DigitalKhattV2.otf"
+FONT = ROOT / "data/fonts/DigitalKhattV2.otf"  # scripts/devenv/install_quran_data.py fetches it
 OUTPUT_DIR = ROOT / "inspector/frontend/public/generated/shaped-glyphs-v13"
 SPECIAL = {
     0x0654: ("hamzaabove",),

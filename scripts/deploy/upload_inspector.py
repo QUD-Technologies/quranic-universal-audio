@@ -46,7 +46,8 @@ from pathlib import Path
 
 # Files NOT pushed to the Space repo. Large or binary data never rides the staged
 # tree (HF would LFS it into a pointer the Docker build cannot read): the Quran
-# data pack is fetched by the image build itself (Dockerfile stage 1c).
+# data pack, its fonts and the TS SDK tarball are fetched by the image build itself
+# (Dockerfile stage 0).
 _SKIP_FROM_STAGE: tuple[str, ...] = ()
 _CELLS_PACKAGE = "@quranic-phonemizer/cells"
 _CELLS_VENDOR_PATH = "vendor/quran-cells"
@@ -350,7 +351,7 @@ def _upload(
         value=private_repo_token,
     )
     # Read access to QUD-Technologies/talqeen-ai-data for the image build's Quran
-    # data stage (Dockerfile stage 1c). A build credential; nothing at runtime reads it.
+    # data stage (Dockerfile stage 0). A build credential; nothing at runtime reads it.
     _retry_on_429(
         "add_space_secret",
         api.add_space_secret,

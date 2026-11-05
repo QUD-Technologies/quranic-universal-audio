@@ -51,10 +51,8 @@ def _write_minimal_tree(tmp_path):
     for ep in base.REQUIRED_ENTRYPOINTS:
         (tmp_path / ep).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / ep).write_text("# stub")
-    (tmp_path / "inspector" / "frontend" / "public" / "fonts").mkdir(parents=True)
-    (tmp_path / "inspector" / "frontend" / "public" / "fonts" / "DigitalKhattV2.otf").write_bytes(
-        b"font"
-    )
+    (tmp_path / "data" / "fonts").mkdir(parents=True)
+    (tmp_path / "data" / "fonts" / "DigitalKhattV2.otf").write_bytes(b"font")
     (tmp_path / ".github" / "config").mkdir(parents=True)
     (tmp_path / ".github" / "config" / "repo.yml").write_text("hf_dataset: foo/bar")
     (tmp_path / "docs" / "templates").mkdir(parents=True)
@@ -139,7 +137,7 @@ def test_runtime_image_copies_digital_khatt_release_assets():
     dockerfile = (base.REPO_ROOT / "inspector" / "Dockerfile").read_text()
     assert "data/digital_khatt_v2_script.json" not in dockerfile  # built from the pack
     assert "/pack/quran-core.qref ./data/quran-core.qref" in dockerfile
-    assert "COPY --chmod=0644 inspector/frontend/public/fonts/DigitalKhattV2.otf.gz" in dockerfile
+    assert "COPY --from=quran-data-build /pack/fonts/ ./data/fonts/" in dockerfile
 
 
 def test_stage_job_code_requires_digital_khatt_assets(stub_batch, monkeypatch, tmp_path):
@@ -165,17 +163,15 @@ def test_stage_job_code_requires_digital_khatt_assets(stub_batch, monkeypatch, t
     assert stub_batch == []
 
 
-def test_runtime_dockerfile_validates_release_font_bytes():
+def test_dockerfile_takes_fonts_and_ts_sdk_from_the_data_stage():
+    """Fonts and the TS SDK come sha256-checked from the release, never from the build context."""
     dockerfile = (base.REPO_ROOT / "inspector" / "Dockerfile").read_text(encoding="utf-8")
 
-    assert "public/fonts/DigitalKhattV2.otf.gz.b64" in dockerfile
-    assert "base64 -d | gzip -dc > public/fonts/DigitalKhattV2.otf" in dockerfile
-    assert (
-        "base64 -d | gzip -dc > ./inspector/frontend/public/fonts/DigitalKhattV2.otf" in dockerfile
-    )
-    assert '[ "$(head -c 4 public/fonts/DigitalKhattV2.otf)" = "OTTO" ]' in dockerfile
-    assert "test -s ./inspector/frontend/public/fonts/DigitalKhattV2.otf" in dockerfile
-    assert 'grep -q "version https://git-lfs"' in dockerfile
+    assert "public/fonts/DigitalKhattV2.otf" not in dockerfile
+    assert "--wheel-dir /wheels --pack-dir /pack --ts-dir /ts" in dockerfile
+    assert "COPY --from=quran-data-build /ts/ ./.quran-data/" in dockerfile
+    # The frontend stage copies from the data stage, so the data stage comes first.
+    assert dockerfile.index("AS quran-data-build") < dockerfile.index("AS frontend-build")
     assert "chmod -R a+rX ./inspector/frontend" in dockerfile
 
 

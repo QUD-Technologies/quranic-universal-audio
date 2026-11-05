@@ -51,7 +51,7 @@ def test_publish_hf_syncs_catalog_and_card_after_split(monkeypatch, tmp_path):
     code_root = tmp_path / "code"
     (code_root / "data").mkdir(parents=True)
     (code_root / "data/digital_khatt_v2_script.json").write_bytes(b'{"1:1:1": {}}')
-    font = code_root / "inspector/frontend/public/fonts/DigitalKhattV2.otf"
+    font = code_root / "data/fonts/DigitalKhattV2.otf"
     font.parent.mkdir(parents=True)
     font.write_bytes(b"OTTO font")
 

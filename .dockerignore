@@ -22,8 +22,11 @@ scripts/
 # --- Data: per-reciter data lives in the bucket (mounted at runtime),
 # not baked into the image. Only phoneme_sub_costs.json is pulled in via the
 # explicit COPY in the Dockerfile; the Quran data pack is fetched at the pin by
-# the quran-data-build stage, never taken from a local checkout.
+# the quran-data-build stage, never taken from a local checkout (nor are its fonts
+# and the frontend's TS SDK tarball).
 data/quran-core.qref
+data/fonts/
+inspector/frontend/.quran-data/
 data/audio/
 data/recitation_segments/
 data/timestamps/
