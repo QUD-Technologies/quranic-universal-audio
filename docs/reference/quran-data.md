@@ -32,6 +32,7 @@ Each rebuilds one retired bundled file from the pack, cached per process:
 | `surah_info()` / `surah_info_bytes()` | `data/surah_info.json` | byte-identical |
 | `digital_khatt_script()` / `_bytes()` | `data/digital_khatt_v2_script.json` | deep-equal; bytes now in reading order |
 | `hafs_word_script()` / `_bytes()` | `data/qpc_hafs.json(.gz)` | same keys, ids and fields; `text` is Digital Khatt |
+| `layout_stops()`, `digital_khatt_script(stops)` | (new) | a layout's own stop edition: same keys, ids, markers; waqf marks differ |
 
 Two legacy quirks are reproduced on purpose: QUL's DK ids give 37:130:3 and 37:130:4 one id
 (QPC ids gave :4 the next one), and surah `name_ar` keeps the old shadda-first, decomposed
@@ -39,7 +40,8 @@ alif-madda spelling (the pack stores NFC).
 
 Consumers: `services/storage/data_loader.py` (`load_dk`, `get_dk_words_flat`,
 `get_word_counts`, `load_surah_info_lite`, `word_has_stop`), the Timestamps resources
-(`/api/ts/resource/{digital_khatt,qpc_hafs}`, `services/reference/timestamps.py`), and HF-job
+(`/api/ts/resource/{digital_khatt,qpc_hafs,digital_khatt_<layout>}`,
+`services/reference/timestamps.py`), and HF-job
 staging: `services/admin/jobs/base.py::staged_reference_files()` builds
 `code/data/{surah_info,digital_khatt_v2_script}.json` from the pack, so `cut_release` and
 `publish_hf` read the same documents and need neither SDK nor pack. Endpoints are unchanged.
@@ -52,11 +54,21 @@ reads the Digital Khatt word (the pack's default, modern stops) against
 `constants.STOP_SIGNS`. Versus QPC: 67 words lose a stop, 54 gain one, 160 change sign
 (over every waqf mark U+06D6–U+06DB: 138 / 51 / 163). The full list is
 [`data/hafs-stop-changes-qpc-to-dk.json`](data/hafs-stop-changes-qpc-to-dk.json). The
-offline segment fixtures validate identically.
+offline segment fixtures validate identically. The Segments tab shows these default stops.
+
+The Timestamps Mushaf view shows the stops of the layout it displays. A layout printed with
+its own stop edition (`layout_stops()`: only `madani-1405`) gets its own resource,
+`/api/ts/resource/digital_khatt_madani-1405`, advertised in the manifest's `resources` and
+built on first request; `loadDk(layout)` / `loadWordIndex(year)` pick it, and 1421 + 1441
+share the default `digital_khatt`. Versus the default, 1405 changes 351 words, waqf marks
+only (51 lose, 137 gain, 163 change sign).
 
 ## Integrity gate
 
 `scripts/diagnostics/quran_data_integrity.py capture DIR` on the old and the new code, then
-`compare BEFORE AFTER`: `/api/surah-info`, word counts, `/api/static/quran-refs.json`, both
-TS resources, cut_release's staged refs and their digests, stop changes, fixture validation.
-Run it after any repin.
+`compare BEFORE AFTER`: `/api/surah-info`, word counts, `/api/static/quran-refs.json`, the
+TS resources (each layout stop-edition resource: waqf marks only), cut_release's staged refs
+and their digests, stop changes, fixture validation. It also lists the cut_release
+`static_refs` digests that change: `digital_khatt_v2_script.json` does (same content, reading
+order), so the first release cut after the swap reports `static_refs_changed` and bumps
+once. Run it after any repin.

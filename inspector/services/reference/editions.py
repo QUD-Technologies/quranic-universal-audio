@@ -9,13 +9,15 @@ the caching live in one place.
 ## Hafs is deliberately not routed here
 
 `qua_domain`'s Hafs index carries the same 77,433 word refs as the Inspector's
-`data/qpc_hafs.json`, but a *different* QPC glyph variant: 44,481 of those words
-spell differently (U+0652 vs U+06E1, tatweel dagger-alif vs combined). Swapping
-the Hafs display path onto it would silently change every rendered segment
-and every `qalqala_letter` derivation across the 37 published reciters.
+Hafs text, in a QPC glyph variant (it differed even from the retired QPC
+`qpc_hafs.json` in 44,481 words: U+0652 vs U+06E1, tatweel dagger-alif vs
+combined). Swapping the Hafs display path onto it would silently change every
+rendered segment and every `qalqala_letter` derivation across the published
+reciters.
 
-So Hafs keeps `qpc_hafs.json` + DigitalKhatt, exactly as the aligner app does,
-and only `warsh`/`qalun`/`shuba` take text and font from here.
+So Hafs text is Digital Khatt v2 from the `talqeen-quran-data` pack
+(`qua_shared.quran_text`), and only `warsh`/`qalun`/`shuba` take text and font
+from here.
 :func:`word_map` refuses Hafs outright rather than quietly returning the other
 spelling.
 
@@ -61,7 +63,7 @@ class RefNotInEdition(ValueError):
 class HafsNotRoutedHere(RuntimeError):
     """Hafs text was requested from the edition accessor.
 
-    Hafs display text is owned by ``qpc_hafs.json`` + DigitalKhatt (see the
+    Hafs display text is Digital Khatt from ``qua_shared.quran_text`` (see the
     module docstring). A caller that reaches here for Hafs has a branch missing.
     """
 
@@ -104,8 +106,8 @@ def _require(riwayah: str) -> Any:
 def _require_non_hafs(riwayah: str) -> Any:
     if riwayah == DEFAULT_SDK_RIWAYAH:
         raise HafsNotRoutedHere(
-            "Hafs text comes from qpc_hafs.json + DigitalKhatt, not qua_domain "
-            "(their glyph variants differ in 44,481 words)"
+            "Hafs text is Digital Khatt from qua_shared.quran_text, not qua_domain "
+            "(its QPC glyph variant differs)"
         )
     return _require(riwayah)
 
