@@ -15,8 +15,9 @@
  * for chapter 2 (the active-word shot seeks into it).
  *
  * Matrix: pages 1, 2, 50, 187, 582, 604 (reached by switching to surah 1, 2, 3, 9, 78, 112)
- * x layouts 1405 / 1421 / 1441 x a one-page and a two-page viewport, plus one active-word +
- * verse-band shot (word 2:5:3 clicked, then paused) per layout and viewport. The DOM is read
+ * x layouts 1405 / 1421 / 1441 x a one-page and a two-page viewport, each paused at the
+ * chapter's start (so the first verse carries its band), plus one active-word + verse-band
+ * shot (word 2:5:3 clicked, then paused) per layout and viewport. The DOM is read
  * through either renderer: the in-app pages (`.mp-page`) or `<qud-mushaf>`.
  */
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -36,6 +37,7 @@ const ACTIVE_WORD = '2:5:3';
 /** Larger than any viewport: a window the size of the screen enters the view's full screen. */
 const SCREEN = { width: 2560, height: 1440 };
 const SETTLE_MS = 1200;
+const REASK_MS = 5000;
 const WAIT_MS = 60_000;
 /** Channel difference (0-255, any of r/g/b/a) above which a pixel counts as changed. */
 const PIXEL_TOLERANCE = 8;
@@ -82,6 +84,21 @@ async function pause() {
     dashPort.pause();
 }
 
+/** Pause at the chapter's start; report whether playback is there. */
+async function rewind() {
+    const { dashPort } = await import('/src/lib/playback/dash-port.ts');
+    if (!dashPort.paused) dashPort.pause();
+    if (dashPort.currentTimeMs() > 0) dashPort.seek(0);
+    return dashPort.paused && dashPort.currentTimeMs() === 0;
+}
+
+/** Verse bands drawn on the pages in view, for either renderer. */
+function bandCount() {
+    const el = document.querySelector('qud-mushaf');
+    if (el) return el.shadowRoot.querySelectorAll('.qm-view[data-slot="current"] .qm-band').length;
+    return document.querySelectorAll('.mv-slot .mp-band').length;
+}
+
 /** Client rect centre of word `anchor` on the pages in view, for either renderer. */
 async function wordPoint({ anchor, year }) {
     const el = document.querySelector('qud-mushaf');
@@ -111,10 +128,16 @@ async function wordPoint({ anchor, year }) {
 
 // ---- capture -----------------------------------------------------------------------------------
 
-async function waitForView(page, want) {
+/** Wait for the view to hold pages `want`; `again` re-asks (the tab's own start-up may move it). */
+async function waitForView(page, want, again) {
     const deadline = Date.now() + WAIT_MS;
     let last = null;
+    let nextAsk = Date.now() + REASK_MS;
     while (Date.now() < deadline) {
+        if (again && Date.now() > nextAsk) {
+            await again();
+            nextAsk = Date.now() + REASK_MS;
+        }
         last = await page.evaluate(viewState);
         if (last.ready && !last.busy && want.every((p) => last.pages.includes(p))) {
             await page.waitForTimeout(SETTLE_MS);
@@ -124,6 +147,19 @@ async function waitForView(page, want) {
         await page.waitForTimeout(250);
     }
     throw new Error(`view never showed pages ${want} (last ${JSON.stringify(last)})`);
+}
+
+/** Hold playback paused at 0 until the chapter's timings draw the first verse's band. */
+async function settleAtStart(page) {
+    const deadline = Date.now() + WAIT_MS;
+    let stable = 0;
+    while (Date.now() < deadline) {
+        const atStart = await page.evaluate(rewind);
+        stable = atStart && (await page.evaluate(bandCount)) > 0 ? stable + 1 : 0;
+        if (stable >= 4) return;
+        await page.waitForTimeout(250);
+    }
+    throw new Error('playback never settled at the chapter start with its verse band drawn');
 }
 
 async function shoot(page, file) {
@@ -169,17 +205,21 @@ async function capture() {
                 if (values.only && !`${vpName}-${year}`.includes(values.only)) continue;
                 const { context, page } = await openApp(browser, viewport, year);
                 for (const [p, surah] of Object.entries(SURAH_OF_PAGE)) {
-                    await page.evaluate(setStores, { year, surah });
-                    const pages = await waitForView(page, [Number(p)]);
-                    await page.evaluate(pause);
+                    const ask = () => page.evaluate(setStores, { year, surah });
+                    await ask();
+                    await waitForView(page, [Number(p)], ask);
+                    await settleAtStart(page);
+                    const pages = await waitForView(page, [Number(p)], ask);
                     const name = `${year}-${vpName}-p${String(p).padStart(3, '0')}.png`;
                     await shoot(page, join(out, name));
                     meta.push({ name, pages });
                     console.log(name, pages.join(','));
                 }
                 // Active word + verse band: click a word of 2:5 (seek + play), pause on it.
-                await page.evaluate(setStores, { year, surah: 2 });
-                await waitForView(page, [2]);
+                const ask = () => page.evaluate(setStores, { year, surah: 2 });
+                await ask();
+                await waitForView(page, [2], ask);
+                await settleAtStart(page);
                 const pt = await page.evaluate(wordPoint, { anchor: ACTIVE_WORD, year });
                 if (!pt) throw new Error(`word ${ACTIVE_WORD} not found`);
                 await page.mouse.click(pt.x, pt.y);
