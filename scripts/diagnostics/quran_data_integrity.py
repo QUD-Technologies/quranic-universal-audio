@@ -18,6 +18,11 @@ on any unexpected difference. Expectations:
   only in key order: the new data is in reading order, the old file in its export order.
 * ``/api/ts/resource/qpc_hafs``: same keys and per-word fields; only ``text`` changes (it is
   Digital Khatt now), on exactly ``EXPECTED_QPC_TEXT_DIFFS`` words.
+* ``/api/ts/resource/digital_khatt_<layout>`` (new; a layout with its own stop edition, i.e.
+  1405): same keys, ids and markers as ``digital_khatt``; words differ only in waqf marks.
+* cut_release's ``static_refs`` digests: ``surah_info.json`` and the font identical. The
+  ``digital_khatt_v2_script.json`` digest is reported: its bytes change (reading order), so
+  the first cut_release after the swap reports ``static_refs_changed`` and bumps once.
 * Stop signs (``word_has_stop`` over every word) and validation of the offline segment
   fixtures are reported, not gated: stop changes are expected (QPC -> DK v2 stops).
 
@@ -40,6 +45,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 EXPECTED_QPC_TEXT_DIFFS = 23_638
+LAYOUT_DK_PREFIX = "digital_khatt_"
 FIXTURES = ("112-ikhlas", "113-falaq", "synthetic-classifier", "synthetic-structural")
 DK_FONT = "inspector/frontend/public/fonts/DigitalKhattV2.otf"
 #: Every Quranic waqf mark, U+06D6..U+06DB (STOP_SIGNS leaves out U+06D9 and U+06DB).
@@ -110,7 +116,14 @@ def _capture_cut_release(out: Path, scratch: Path) -> None:
     code_root = _job_code_root(scratch)
     script, font = cut_release._load_digital_khatt_assets(code_root)
     refs_dir = code_root / "data"
-    static = cut_release._hash_static_refs(refs_dir, {})
+    # The Hafs assets cut_release hashes alongside surah_info.json (its ``digital_khatt_assets``).
+    static = cut_release._hash_static_refs(
+        refs_dir,
+        {
+            cut_release.DIGITAL_KHATT_SCRIPT_FILENAME: script,
+            cut_release.DIGITAL_KHATT_FONT_FILENAME: font,
+        },
+    )
     target = out / "cut_release"
     target.mkdir(parents=True, exist_ok=True)
     (target / "surah_info.json").write_bytes((refs_dir / "surah_info.json").read_bytes())
@@ -118,7 +131,18 @@ def _capture_cut_release(out: Path, scratch: Path) -> None:
     (target / "static_refs.surah_info.json").write_bytes(
         json.dumps(static["surah_info.json"], sort_keys=True).encode()
     )
+    (target / "static_refs.json").write_text(json.dumps(static, sort_keys=True, indent=1))
     (target / "font.sha256").write_text(hashlib.sha256(font).hexdigest())
+
+
+def _capture_layout_resources(out: Path, client) -> None:
+    """Every ``digital_khatt_<layout>`` resource the manifest advertises (none before)."""
+    manifest = json.loads(gzip.decompress(_get(client, "/api/ts/manifest")))
+    keys = sorted(k for k in manifest.get("resources", {}) if k.startswith(LAYOUT_DK_PREFIX))
+    for key in keys:
+        body = gzip.decompress(_get(client, f"/api/ts/resource/{key}"))
+        (out / f"ts_resource_{key}.json").write_bytes(body)
+    (out / "layout_resources.json").write_text(json.dumps(keys))
 
 
 def _capture_stops(out: Path, client) -> None:
@@ -175,6 +199,7 @@ def capture(out: Path) -> None:
         for key in ("digital_khatt", "qpc_hafs"):
             body = gzip.decompress(_get(client, f"/api/ts/resource/{key}"))
             (out / f"ts_resource_{key}.json").write_bytes(body)
+        _capture_layout_resources(out, client)
         _capture_cut_release(out, scratch)
         _capture_stops(out, client)
         _capture_validation(out)
@@ -249,6 +274,58 @@ def _waqf_report(before: dict, after: dict) -> dict:
     return _sign_changes(signs(before), signs(after))
 
 
+def _strip_waqf(text: str) -> str:
+    return "".join(ch for ch in text if ch not in WAQF_MARKS)
+
+
+def _layout_check(default: dict, layout: dict) -> tuple[bool, str, dict]:
+    """A stop-edition script vs the default one: only waqf marks in words may differ."""
+    if list(default) != list(layout):
+        return False, "keys differ from digital_khatt", {}
+    other = [k for k in default if {**default[k], "text": ""} != {**layout[k], "text": ""}]
+    if other:
+        return False, f"{len(other)} entries differ outside text, e.g. {other[:3]}", {}
+    changed = [k for k in default if default[k]["text"] != layout[k]["text"]]
+    beyond = [
+        k for k in changed if _strip_waqf(default[k]["text"]) != _strip_waqf(layout[k]["text"])
+    ]
+    if beyond:
+        return False, f"{len(beyond)} words differ beyond waqf marks, e.g. {beyond[:3]}", {}
+    marks = _waqf_report(default, layout)
+    counts = ", ".join(f"{len(v)} {k.replace('_', ' ')}" for k, v in marks.items())
+    return True, f"{len(changed)} words differ, waqf marks only ({counts})", marks
+
+
+def _compare_layout_resources(after: Path, report: dict) -> int:
+    """Gate every ``digital_khatt_<layout>`` resource of the new capture."""
+    keys = json.loads((after / "layout_resources.json").read_text(encoding="utf-8"))
+    default = json.loads((after / "ts_resource_digital_khatt.json").read_text(encoding="utf-8"))
+    failures = 0
+    for key in keys:
+        name = f"ts_resource_{key}.json"
+        body = json.loads((after / name).read_text(encoding="utf-8"))
+        ok, detail, marks = _layout_check(default, body)
+        failures += not ok
+        report["gated"][name] = {"expect": "stop-edition", "ok": ok, "detail": detail}
+        report[f"stops_dk_default_to_{key.removeprefix(LAYOUT_DK_PREFIX)}"] = marks
+        print(f"{'PASS' if ok else 'FAIL'}  {name:<45} {detail}")
+    return failures
+
+
+def _report_static_refs(before: Path, after: Path, report: dict) -> None:
+    """cut_release's static_refs digests: which change and so bump the next release."""
+    old = json.loads((before / "cut_release" / "static_refs.json").read_text(encoding="utf-8"))
+    new = json.loads((after / "cut_release" / "static_refs.json").read_text(encoding="utf-8"))
+    changed = sorted(k for k in old.keys() | new.keys() if old.get(k) != new.get(k))
+    report["static_refs_changed"] = {
+        k: {"before": old.get(k), "after": new.get(k)} for k in changed
+    }
+    print(
+        f"INFO  cut_release static_refs digests changed: {changed or 'none'}"
+        + (" -> the next cut_release reports static_refs_changed and bumps once" if changed else "")
+    )
+
+
 def _ref_key(ref: str) -> tuple[int, ...]:
     return tuple(int(x) for x in ref.split(":"))
 
@@ -261,6 +338,8 @@ def compare(before: Path, after: Path, report_path: Path | None) -> int:
         failures += not ok
         report["gated"][name] = {"expect": kind, "ok": ok, "detail": detail}
         print(f"{'PASS' if ok else 'FAIL'}  {name:<45} {detail}")
+    failures += _compare_layout_resources(after, report)
+    _report_static_refs(before, after, report)
 
     stops = _stop_report(
         json.loads((before / "stops.json").read_text(encoding="utf-8")),
