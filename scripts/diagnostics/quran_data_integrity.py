@@ -42,6 +42,8 @@ ROOT = Path(__file__).resolve().parents[2]
 EXPECTED_QPC_TEXT_DIFFS = 23_638
 FIXTURES = ("112-ikhlas", "113-falaq", "synthetic-classifier", "synthetic-structural")
 DK_FONT = "inspector/frontend/public/fonts/DigitalKhattV2.otf"
+#: Every Quranic waqf mark, U+06D6..U+06DB (STOP_SIGNS leaves out U+06D9 and U+06DB).
+WAQF_MARKS = {chr(cp) for cp in range(0x06D6, 0x06DC)}
 
 BYTES = "bytes"
 DEEP = "deep"
@@ -204,29 +206,47 @@ def _compare_one(kind: str, before: bytes, after: bytes) -> tuple[bool, str]:
         return False, "bytes differ"
     old, new = json.loads(before), json.loads(after)
     if kind == DEEP:
-        return (True, "deep-equal (key order differs)") if old == new else (False, "content differs")
+        return (
+            (True, "deep-equal (key order differs)") if old == new else (False, "content differs")
+        )
     return _qpc_check(old, new)
 
 
+def _sign_changes(before: dict[str, str], after: dict[str, str]) -> dict[str, list[dict]]:
+    """Classify per-word sign strings (``""`` = none): lost, gained, or a different sign."""
+    out: dict[str, list[dict]] = {"lose": [], "gain": [], "change_sign": []}
+    for ref in sorted(before.keys() | after.keys(), key=_ref_key):
+        old, new = before.get(ref, ""), after.get(ref, "")
+        kind = (
+            "lose"
+            if old and not new
+            else "gain"
+            if new and not old
+            else "change_sign"
+            if old != new
+            else None
+        )
+        if kind:
+            out[kind].append({"ref": ref, "qpc": old, "dk": new})
+    return out
+
+
 def _stop_report(before: dict, after: dict) -> dict:
-    lose = sorted((r for r in before if before[r]["stop"] and not after.get(r, {}).get("stop")), key=_ref_key)
-    gain = sorted((r for r in after if after[r]["stop"] and not before.get(r, {}).get("stop")), key=_ref_key)
-    change = sorted(
-        (
-            r
-            for r in before
-            if before[r]["stop"] and after.get(r, {}).get("stop") and before[r]["signs"] != after[r]["signs"]
-        ),
-        key=_ref_key,
+    """``word_has_stop`` (``constants.STOP_SIGNS``) changes."""
+    return _sign_changes(
+        {r: e["signs"] for r, e in before.items() if e["stop"]},
+        {r: e["signs"] for r, e in after.items() if e["stop"]},
     )
 
-    def rows(refs: list[str]) -> list[dict]:
-        return [
-            {"ref": r, "qpc": before.get(r, {}).get("signs", ""), "dk": after.get(r, {}).get("signs", "")}
-            for r in refs
-        ]
 
-    return {"lose": rows(lose), "gain": rows(gain), "change_sign": rows(change)}
+def _waqf_report(before: dict, after: dict) -> dict:
+    """Changes over every waqf mark U+06D6..U+06DB in the word text (the doc's figure)."""
+
+    def signs(words: dict) -> dict[str, str]:
+        out = {r: "".join(sorted(WAQF_MARKS & set(e["text"]))) for r, e in words.items()}
+        return {r: v for r, v in out.items() if v}
+
+    return _sign_changes(signs(before), signs(after))
 
 
 def _ref_key(ref: str) -> tuple[int, ...]:
@@ -247,10 +267,14 @@ def compare(before: Path, after: Path, report_path: Path | None) -> int:
         json.loads((after / "stops.json").read_text(encoding="utf-8")),
     )
     report["stops"] = stops
-    print(
-        "INFO  word_has_stop QPC -> DK: "
-        + ", ".join(f"{len(v)} {k.replace('_', ' ')}" for k, v in stops.items())
+    waqf = _waqf_report(
+        json.loads((before / "ts_resource_qpc_hafs.json").read_text(encoding="utf-8")),
+        json.loads((after / "ts_resource_qpc_hafs.json").read_text(encoding="utf-8")),
     )
+    report["waqf_marks"] = waqf
+    for label, changes in (("word_has_stop", stops), ("all waqf marks U+06D6-06DB", waqf)):
+        counts = ", ".join(f"{len(v)} {k.replace('_', ' ')}" for k, v in changes.items())
+        print(f"INFO  {label} QPC -> DK: {counts}")
     vb = json.loads((before / "validation.json").read_text(encoding="utf-8"))
     va = json.loads((after / "validation.json").read_text(encoding="utf-8"))
     changed = {name: {"before": vb[name], "after": va[name]} for name in vb if vb[name] != va[name]}
@@ -268,7 +292,9 @@ def compare(before: Path, after: Path, report_path: Path | None) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
     cap = sub.add_parser("capture")
     cap.add_argument("out", type=Path)
