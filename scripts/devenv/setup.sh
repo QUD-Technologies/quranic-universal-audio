@@ -21,6 +21,9 @@ setup_frontend() {
     # repo's pinned scripts: `npm run test` / check / lint / build, NOT
     # `npx vitest` or `npm exec -- vitest` (those can resolve a mismatched global
     # vitest that fails to transform .svelte files).
+    # The Mushaf view's data SDK installs from its release tarball, fetched first
+    # (TALQEEN_DATA_READ_TOKEN, GH_TOKEN or a gh login).
+    python3 "$ROOT/scripts/devenv/install_quran_data.py" --ts-only
     npm --prefix "$ROOT/inspector/frontend" ci
 }
 
