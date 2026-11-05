@@ -10,7 +10,9 @@ are separate: `qua-domain` via `services/reference/editions.py` ([editions.md](e
 | What | Where |
 |---|---|
 | Pin (data repo revision, SDK version, pack sha256) | `qua_shared/quran_data_pin.py`, the only copy |
-| Installer (SDK + pack, or `--wheel-dir` for the image) | `scripts/devenv/install_quran_data.py` (run by `setup.sh backend`) |
+| Installer (SDK + pack + fonts + TS SDK tarball, or `--wheel-dir` for the image; `--ts-only` before `npm ci`) | `scripts/devenv/install_quran_data.py` (run by `setup.sh backend`) |
+| Fonts (the pack's `fonts()`) | `data/fonts/` (gitignored), served by `/api/static/quran-data/<file>`; sha256s in the pin |
+| TS SDK (`@qud-technologies/quran-data`) | release asset `qud-technologies-quran-data-<v>.tgz` → `inspector/frontend/.quran-data/` (gitignored), `file:` dependency |
 | Pack location | `data/quran-core.qref` (gitignored), or `QUA_QURAN_PACK` |
 | Credential | `TALQEEN_DATA_READ_TOKEN`, else `GH_TOKEN`, else the `gh` login |
 
@@ -20,8 +22,9 @@ installer, rerun the integrity gate below.
 
 Required, unlike `qua-domain`: without the pack the Inspector has no Hafs text. CI
 (`inspector-checks.yml`) installs it in the backend and pyright jobs. The image builds it in
-Dockerfile stage 1c (`quran-data-build`, build secret `TALQEEN_DATA_READ_TOKEN`), installs
-the wheel and copies the pack to `/app/data`. `upload_inspector.py` sets the Space secret of
+Dockerfile stage 0 (`quran-data-build`, build secret `TALQEEN_DATA_READ_TOKEN`), installs
+the wheel, copies the pack and its fonts to `/app/data`, and hands the TS SDK tarball to the
+frontend stage's `npm ci`. CI fetches the tarball (`--ts-only`) before every `npm ci`. `upload_inspector.py` sets the Space secret of
 the same name; the build fails without it. No binary rides the staged Space tree.
 
 ## Readers — `qua_shared/quran_text.py`
@@ -32,7 +35,6 @@ Each rebuilds one retired bundled file from the pack, cached per process:
 |---|---|---|
 | `surah_info()` / `surah_info_bytes()` | `data/surah_info.json` | byte-identical |
 | `digital_khatt_script()` / `_bytes()` | `data/digital_khatt_v2_script.json` | deep-equal; bytes now in reading order |
-| `hafs_word_script()` / `_bytes()` | `data/qpc_hafs.json(.gz)` | same keys, ids and fields; `text` is Digital Khatt |
 | `layout_stops()`, `digital_khatt_script(stops)` | (new) | a layout's own stop edition: same keys, ids, markers; waqf marks differ |
 
 Two legacy quirks are reproduced on purpose: QUL's DK ids give 37:130:3 and 37:130:4 one id
@@ -41,7 +43,7 @@ alif-madda spelling (the pack stores NFC).
 
 Consumers: `services/storage/data_loader.py` (`load_dk`, `get_dk_words_flat`,
 `get_word_counts`, `load_surah_info_lite`, `word_has_stop`), the Timestamps resources
-(`/api/ts/resource/{digital_khatt,qpc_hafs,digital_khatt_<layout>}`,
+(`/api/ts/resource/digital_khatt`,
 `services/reference/timestamps.py`), and HF-job
 staging: `services/admin/jobs/base.py::staged_reference_files()` builds
 `code/data/{surah_info,digital_khatt_v2_script}.json` from the pack, so `cut_release` and
@@ -49,20 +51,18 @@ staging: `services/admin/jobs/base.py::staged_reference_files()` builds
 
 ## Text and stops
 
-QPC Hafs text is retired: the `qpc_hafs` resource keeps its key and shape but carries the
-Digital Khatt text (23,638 words differ from QPC, encoding conventions). `word_has_stop`
+QPC Hafs text is retired, and with it the `qpc_hafs` resource: the frontend reads one Digital
+Khatt text (`TsWord.text`; 23,638 words differed from QPC, encoding conventions). `word_has_stop`
 reads the Digital Khatt word (the pack's default, modern stops) against
 `constants.STOP_SIGNS`. Versus QPC: 67 words lose a stop, 54 gain one, 160 change sign
 (over every waqf mark U+06D6–U+06DB: 138 / 51 / 163). The full list is
 [`data/hafs-stop-changes-qpc-to-dk.json`](data/hafs-stop-changes-qpc-to-dk.json). The
 offline segment fixtures validate identically. The Segments tab shows these default stops.
 
-The Timestamps Mushaf view shows the stops of the layout it displays. A layout printed with
-its own stop edition (`layout_stops()`: only `madani-1405`) gets its own resource,
-`/api/ts/resource/digital_khatt_madani-1405`, advertised in the manifest's `resources` and
-built on first request; `loadDk(layout)` / `loadWordIndex(year)` pick it, and 1421 + 1441
-share the default `digital_khatt`. Versus the default, 1405 changes 351 words, waqf marks
-only (51 lose, 137 gain, 163 change sign).
+The Timestamps Mushaf view shows the stops of the layout it displays: the mushaf package reads
+each layout's stop edition from the pack (`text(ref, layout.stops)`; only `madani-1405` has its
+own). Versus the default, 1405 changes 351 words, waqf marks only (51 lose, 137 gain, 163
+change sign).
 
 ## Integrity gate
 

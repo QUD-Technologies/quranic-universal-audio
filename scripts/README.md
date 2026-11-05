@@ -40,14 +40,13 @@ no-op-or-error by design. Idempotent `backfill_*`/`purge_*`/`convert_*` stay in
 - `bootstrap_dev_env.py` — provision a contributor's personal bucket + Space
 - `seed_fixtures.py` — download the public fixtures → `.fixtures` (offline tier-0)
 - `make_fixtures_dataset.py` — maintainer: (re)build the PII-free public fixtures dataset
-- `install_quran_data.py` — install the pinned `talqeen-quran-data` SDK and fetch its `quran-core.qref` pack into `data/` (gitignored) from `QUD-Technologies/talqeen-ai-data` (`qua_shared/quran_data_pin.py`), via `TALQEEN_DATA_READ_TOKEN` / `GH_TOKEN` / `gh` login; required (the Hafs reference data); `--wheel-dir` builds the wheel for the image
+- `install_quran_data.py` — install the pinned `talqeen-quran-data` SDK and fetch its `quran-core.qref` pack into `data/` (gitignored) from `QUD-Technologies/talqeen-ai-data` (`qua_shared/quran_data_pin.py`), via `TALQEEN_DATA_READ_TOKEN` / `GH_TOKEN` / `gh` login; required (the Hafs reference data); also the pack's fonts (`data/fonts/`) and the frontend's TS SDK tarball (`inspector/frontend/.quran-data/`, `--ts-only` before `npm ci`) from the data releases, sha256-pinned; `--wheel-dir` builds the wheel for the image
 - `install_qua_domain.py` — install the pinned `qua-domain` edition package from `QUD-Technologies/qua` via `PRIVATE_REPO_TOKEN` (with legacy SSH-key fallback); exits 0 having installed nothing when no credential exists (Hafs-only runtime)
 - `make_synthetic_delivery.py` — write a synthetic non-Hafs delivery (segs + optional word-profile shard, built from `qua_domain` itself) into a bucket, for multi-riwayah verification
 
 ### `codegen/`
 - `regen_fe_types.py` — regenerate the FE TypeScript types from `qua_shared/schemas/` (CI-checked)
 - `regen_tajweed_rules.py` — regenerate the 45-rule native catalogue from quranic-phonemizer 2.15.3
-- `build_mushaf_layouts.py` — build the compact 1405H/1421H/1441H mushaf page layouts (`tabs/timestamps/mushaf/data/`) from a `quranic-universal-mushaf` checkout (`--src`)
 - `regen_waqf_render.mjs` — regenerate the per-QPC-face waqf-mark render calibration (`lib/utils/waqf-render-table.ts`) by measuring each mark's painted ink in headless Chromium; run FROM `inspector/frontend`
 - `update_readme_badges.py` — regenerate the root README stats badges from the prod bucket (daily cron)
 
@@ -77,6 +76,7 @@ no-op-or-error by design. Idempotent `backfill_*`/`purge_*`/`convert_*` stay in
 - `bench_storage.py` — benchmark backend read/write hot paths
 - `check_eligibility_parity.py` — assert DB-backed eligibility == legacy git-tracked set
 - `quran_data_integrity.py` — `capture` / `compare` every output the Hafs reference data feeds (surah info, word counts, quran-refs, TS resources, cut_release refs, stop signs, fixture validation) across the bundled-JSON → `talqeen-quran-data` swap
+- `mushaf_look_parity.mjs` — `capture` the Timestamps Mushaf view (pages 1, 2, 50, 187, 582, 604 × 1405/1421/1441 × one and two pages, plus an active word + verse band) from a running stack, then `diff` two captures pixel by pixel; run FROM `inspector/frontend`
 
 ### `migrations/`
 Frozen one-shot schema moves — see [`../docs/reference/data-migrations.md`](../docs/reference/data-migrations.md).
