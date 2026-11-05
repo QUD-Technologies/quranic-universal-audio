@@ -52,6 +52,8 @@ inspector/frontend/design/prototypes/haraka-cells/
 id_ed25519*
 id_rsa*
 
-# Talqeen Quran data pack — fetched at the pinned revision by
-# scripts/devenv/install_quran_data.py (and the image build), never committed.
+# Talqeen Quran data pack, its fonts and the frontend's TS SDK tarball — fetched at the
+# pinned revision by scripts/devenv/install_quran_data.py (and the image build), never committed.
 data/quran-core.qref
+data/fonts/
+inspector/frontend/.quran-data/
