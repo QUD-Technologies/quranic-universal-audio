@@ -472,7 +472,6 @@
         page: L(m.ts_mushaf_page_aria({ n: '{n}' })),
         next: L(m.ts_mushaf_next()),
         prev: L(m.ts_mushaf_prev()),
-        surah: 'سورة {name}',
     });
 
     onMount(() => {

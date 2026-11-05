@@ -40,6 +40,8 @@ const WAIT_MS = 60_000;
 const SPREAD = { width: 1600, height: 1000 };
 const ONE_PAGE = { width: 760, height: 1000 };
 const SCREEN = { width: 2560, height: 1440 };
+/** Harakat, Quranic annotation marks and tatweel, stripped before matching a word. */
+const ARABIC_MARKS = /[\u0610-\u061A\u0640\u064B-\u065F\u0670\u06D6-\u06ED]/g;
 
 // ---- in-page helpers ---------------------------------------------------------------------------
 
@@ -387,9 +389,16 @@ async function main() {
                     textFont: root.style.getPropertyValue('--qm-text-font'),
                     plainFrame: surah?.classList.contains('qm-surah-plain') ?? null,
                     surahLabel: surah?.textContent?.trim() ?? null,
+                    headLabels: [...el.shadowRoot.querySelectorAll('.qm-view[data-slot="current"] .qm-head-surah')]
+                        .map((h) => h.textContent.trim()),
                 };
             });
             if (!info.textFont.includes('digital-khatt-v2')) throw new Error(`text font ${info.textFont}`);
+            // The pack's names already read "سُورَةُ …": a label template adding the word again doubles it.
+            const labels = [info.surahLabel, ...info.headLabels].filter(Boolean);
+            if (!labels.length) throw new Error('no surah label in view');
+            const doubled = labels.filter((t) => (t.replace(ARABIC_MARKS, '').match(/سورة/g) ?? []).length > 1);
+            if (doubled.length) throw new Error(`surah word doubled: ${doubled.join(' | ')}`);
             return info;
         });
         await ctx?.close();
