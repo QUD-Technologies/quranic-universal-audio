@@ -129,6 +129,25 @@ async function wordPoint({ anchor, year }) {
 
 // ---- capture -----------------------------------------------------------------------------------
 
+/** Vite may reload the page (a newly discovered dependency): re-open the tab, then retry. */
+async function ev(page, fn, arg) {
+    for (let attempt = 0; ; attempt++) {
+        try {
+            return await page.evaluate(fn, arg);
+        } catch (err) {
+            if (attempt >= 3 || !/context was destroyed|navigation/i.test(String(err))) throw err;
+            await page.waitForLoadState('domcontentloaded');
+            await showTab(page);
+        }
+    }
+}
+
+async function showTab(page) {
+    await page.waitForFunction(() => document.querySelector('.container'), null, { timeout: WAIT_MS });
+    await page.evaluate(async () => (await import('/src/lib/utils/active-tab.ts')).setActiveTab('timestamps'));
+    await page.waitForFunction(() => document.querySelector('.mv'), null, { timeout: WAIT_MS * 3 });
+}
+
 /** Wait for the view to hold pages `want`; `again` re-asks (the tab's own start-up may move it). */
 async function waitForView(page, want, again) {
     const deadline = Date.now() + WAIT_MS;
@@ -139,10 +158,10 @@ async function waitForView(page, want, again) {
             await again();
             nextAsk = Date.now() + REASK_MS;
         }
-        last = await page.evaluate(viewState);
+        last = await ev(page, viewState);
         if (last.ready && !last.busy && want.every((p) => last.pages.includes(p))) {
             await page.waitForTimeout(SETTLE_MS);
-            const again = await page.evaluate(viewState);
+            const again = await ev(page, viewState);
             if (!again.busy && want.every((p) => again.pages.includes(p))) return again.pages;
         }
         await page.waitForTimeout(250);
@@ -155,8 +174,8 @@ async function settleAtStart(page) {
     const deadline = Date.now() + WAIT_MS;
     let stable = 0;
     while (Date.now() < deadline) {
-        const atStart = await page.evaluate(rewind);
-        stable = atStart && (await page.evaluate(bandCount)) > 0 ? stable + 1 : 0;
+        const atStart = await ev(page, rewind);
+        stable = atStart && (await ev(page, bandCount)) > 0 ? stable + 1 : 0;
         if (stable >= 4) return;
         await page.waitForTimeout(250);
     }
@@ -165,8 +184,8 @@ async function settleAtStart(page) {
 
 async function shoot(page, file) {
     await page.mouse.move(2, 2);
-    await page.evaluate(() => document.fonts.ready);
-    const box = await page.evaluate(() => {
+    await ev(page, () => document.fonts.ready);
+    const box = await ev(page, () => {
         const r = document.querySelector('.mv').getBoundingClientRect();
         return { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
     });
@@ -186,12 +205,7 @@ async function openApp(browser, viewport, year) {
     const page = await context.newPage();
     page.on('pageerror', (e) => console.error('pageerror', e.message));
     await page.goto(values.url, { waitUntil: 'domcontentloaded' });
-    const { setActiveTab } = await page.evaluate(() => ({ setActiveTab: true }));
-    if (setActiveTab) {
-        await page.waitForFunction(() => document.querySelector('.container'), null, { timeout: WAIT_MS });
-        await page.evaluate(async () => (await import('/src/lib/utils/active-tab.ts')).setActiveTab('timestamps'));
-    }
-    await page.waitForFunction(() => document.querySelector('.mv'), null, { timeout: WAIT_MS * 3 });
+    await showTab(page);
     return { context, page };
 }
 
@@ -206,7 +220,7 @@ async function capture() {
                 if (values.only && !`${vpName}-${year}`.includes(values.only)) continue;
                 const { context, page } = await openApp(browser, viewport, year);
                 for (const [p, surah] of Object.entries(SURAH_OF_PAGE)) {
-                    const ask = () => page.evaluate(setStores, { year, surah });
+                    const ask = () => ev(page, setStores, { year, surah });
                     await ask();
                     await waitForView(page, [Number(p)], ask);
                     await settleAtStart(page);
@@ -217,19 +231,19 @@ async function capture() {
                     console.log(name, pages.join(','));
                 }
                 // Active word + verse band: click a word of 2:5 (seek + play), pause on it.
-                const ask = () => page.evaluate(setStores, { year, surah: 2 });
+                const ask = () => ev(page, setStores, { year, surah: 2 });
                 await ask();
                 await waitForView(page, [2], ask);
                 await settleAtStart(page);
-                const pt = await page.evaluate(wordPoint, { anchor: ACTIVE_WORD, year });
+                const pt = await ev(page, wordPoint, { anchor: ACTIVE_WORD, year });
                 if (!pt) throw new Error(`word ${ACTIVE_WORD} not found`);
                 await page.mouse.click(pt.x, pt.y);
                 await page.waitForTimeout(150);
-                await page.evaluate(pause);
+                await ev(page, pause);
                 await page.waitForTimeout(SETTLE_MS);
                 const name = `${year}-${vpName}-active-${ACTIVE_WORD.replaceAll(':', '-')}.png`;
                 await shoot(page, join(out, name));
-                meta.push({ name, pages: (await page.evaluate(viewState)).pages });
+                meta.push({ name, pages: (await ev(page, viewState)).pages });
                 console.log(name);
                 await context.close();
             }
