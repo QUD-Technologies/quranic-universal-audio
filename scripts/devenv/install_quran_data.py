@@ -47,6 +47,10 @@ from qua_shared.quran_data_pin import (  # noqa: E402
 )
 
 TOKEN_ENVS = ("TALQEEN_DATA_READ_TOKEN", "GH_TOKEN")
+FORBIDDEN_HINT = (
+    f"The token was refused: it needs read access (contents: read) to {TALQEEN_HTTPS_URL}. "
+    "In CI and the image build that is the TALQEEN_DATA_READ_TOKEN secret."
+)
 DEFAULT_PACK_DIR = ROOT / "data"
 
 
@@ -83,6 +87,8 @@ def _git(args: list[str], cwd: Path, env: dict[str, str]) -> None:
         # git echoes the remote URL on failure; strip the credential before reporting.
         token = env["GIT_CONFIG_KEY_0"].split("x-access-token:", 1)[1].split("@", 1)[0]
         message = (result.stderr or result.stdout).replace(token, "***").strip()
+        if "error: 403" in message:
+            message += f"\n{FORBIDDEN_HINT}"
         raise SystemExit(f"git {args[0]} failed: {message}")
 
 
