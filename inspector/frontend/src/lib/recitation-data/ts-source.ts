@@ -48,7 +48,8 @@ let _config: Promise<TsConfigResponse> | null = null;
 let _manifest: Promise<TsManifestResponse> | null = null;
 let _qpc: Promise<Record<string, { text?: string }>> | null = null;
 let _qpcVerseIndex: Promise<Map<number, Map<number, number>>> | null = null;
-let _dk: Promise<Record<string, { text?: string }>> | null = null;
+/** DK scripts by manifest resource key (`digital_khatt`, `digital_khatt_<layout>`). */
+const _dk: Map<string, Promise<Record<string, { text?: string }>>> = new Map();
 
 /** Bounded LRU for chapter shards — covers current + adjacent + two pre-rolls. */
 const SHARD_CACHE_SIZE = 4;
@@ -202,19 +203,34 @@ export async function loadQpcVerseIndex(): Promise<Map<number, Map<number, numbe
     return _qpcVerseIndex;
 }
 
+/** Manifest resource key of the DK script with `layout`'s own stop signs. */
+const DK_KEY = 'digital_khatt';
+const layoutDkKey = (layout: string): string => `${DK_KEY}_${layout}`;
+
 /**
  * Fetch & cache `digital_khatt_v2` (display text) keyed by `surah:ayah:word`.
  * Same resolution path as `loadQpc`.
+ *
+ * `layout` (e.g. `madani-1405`): the script with that layout's stop signs when
+ * the manifest advertises `digital_khatt_<layout>` — only layouts printed with
+ * their own stop edition do. Every other layout shows the default (modern)
+ * stops, so it shares the plain `digital_khatt` script. Keys, ids and markers
+ * are the same in both.
  */
-export async function loadDk(): Promise<Record<string, { text?: string }>> {
-    if (!_dk) {
-        _dk = (async () => {
-            const m = await loadManifest();
-            const url = _resourceUrl(m, 'digital_khatt');
+export async function loadDk(layout?: string): Promise<Record<string, { text?: string }>> {
+    const m = layout ? await loadManifest() : null;
+    const key = layout && m?.resources?.[layoutDkKey(layout)] ? layoutDkKey(layout) : DK_KEY;
+    let p = _dk.get(key);
+    if (!p) {
+        p = (async () => {
+            const url = _resourceUrl(m ?? (await loadManifest()), key);
             return _fetchGzipJson<Record<string, { text?: string }>>(url);
         })();
+        // If the fetch fails, drop the entry so the next call retries.
+        p.catch(() => _dk.delete(key));
+        _dk.set(key, p);
     }
-    return _dk;
+    return p;
 }
 
 function _resourceUrl(manifest: TsManifestResponse, key: string): string {
@@ -461,7 +477,7 @@ export function _resetForTests(): void {
     _manifest = null;
     _qpc = null;
     _qpcVerseIndex = null;
-    _dk = null;
+    _dk.clear();
     _shards.clear();
     _vbrChapters.clear();
 }

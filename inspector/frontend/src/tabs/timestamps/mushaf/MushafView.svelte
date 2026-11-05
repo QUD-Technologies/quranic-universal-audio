@@ -90,15 +90,14 @@
     const live = $derived(chapterIx !== null && ixKey === `${slug}:${chapter}`);
     const fontStack = $derived(textFontStack(textFace));
 
-    // Layout, its text face and the line measurements land together, so a
-    // year switch never renders the new layout against the old sizing.
+    // Layout, its text (with the layout's own stop signs), its text face and the
+    // line measurements land together, so a year switch never renders the new
+    // layout against the old text or sizing.
     $effect(() => {
         const year = $mushafYear;
-        const w = words;
-        if (!w) return;
         let cancelled = false;
-        void Promise.all([loadLayout(year), ensureMushafFont(textFamily(year))])
-            .then(([l, ok]) => {
+        void Promise.all([loadLayout(year), loadWordIndex(year), ensureMushafFont(textFamily(year))])
+            .then(([l, w, ok]) => {
                 if (cancelled) return;
                 const face = ok ? textFamily(year) : TEXT_FALLBACK_FAMILY;
                 measurer = new LineMeasurer(`"${face}"`);
@@ -106,6 +105,7 @@
                 fontCache.clear();
                 textFace = face;
                 refEm = em;
+                words = w;
                 layout = l;
             })
             .catch((e: unknown) => {
@@ -536,12 +536,6 @@
     const accentStyle = $derived(accentVarText($recitationConfigStore.highlightColor, theme));
 
     onMount(() => {
-        void loadWordIndex()
-            .then((w) => { words = w; })
-            .catch((e: unknown) => {
-                console.error('Mushaf: script load failed', e);
-                failed = true;
-            });
         void ensureMushafFont(SURAH_NAME_FAMILY).then((ok) => { headerFonts = { ...headerFonts, name: ok }; });
         void ensureMushafFont(SURAH_FRAME_FAMILY).then((ok) => { headerFonts = { ...headerFonts, frame: ok }; });
 

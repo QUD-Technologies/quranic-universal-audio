@@ -78,7 +78,7 @@
 
     async function thisPage(): Promise<void> {
         if (!focus) return;
-        const [layout, words] = await Promise.all([loadLayout($mushafYear), loadWordIndex()]);
+        const [layout, words] = await Promise.all([loadLayout($mushafYear), loadWordIndex($mushafYear)]);
         const page = pageOfWord(layout, firstWordOfVerse(words, focus.surah, focus.ayah));
         const ayahLines = (layout.pages[page - 1] ?? []).filter((l) => l[0] === LINE_AYAH);
         const first = ayahLines[0]?.[2];
