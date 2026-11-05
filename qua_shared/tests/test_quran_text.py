@@ -83,3 +83,30 @@ def test_missing_pack_raises(monkeypatch, tmp_path):
     finally:
         monkeypatch.delenv(quran_text.PACK_ENV)
         quran_text.clear_cache()
+
+
+#: Every Quranic waqf mark, U+06D6..U+06DB.
+WAQF_MARKS = {chr(cp) for cp in range(0x06D6, 0x06DC)}
+
+
+def _without_waqf(text: str) -> str:
+    return "".join(ch for ch in text if ch not in WAQF_MARKS)
+
+
+def test_layout_stops_names_the_1405_edition_only():
+    assert quran_text.layout_stops() == {"madani-1405": "madani-1405"}
+
+
+def test_stop_edition_script_differs_only_in_waqf_marks():
+    """1405's script: the same keys, ids and markers; its words differ only in stop signs."""
+    default = quran_text.digital_khatt_script()
+    s1405 = quran_text.digital_khatt_script("madani-1405")
+
+    assert list(s1405) == list(default)
+    assert all({**s1405[k], "text": ""} == {**default[k], "text": ""} for k in default)
+    changed = [k for k in default if s1405[k]["text"] != default[k]["text"]]
+    assert changed
+    assert all(
+        _without_waqf(s1405[k]["text"]) == _without_waqf(default[k]["text"]) for k in changed
+    )
+    assert json.loads(quran_text.digital_khatt_script_bytes("madani-1405")) == s1405

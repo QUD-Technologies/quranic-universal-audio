@@ -11,6 +11,9 @@ bundled copy; an absent SDK or pack raises :class:`QuranDataUnavailable`.
   plus one ayah-end marker entry per ayah (``s:a:<words+1>``), in reading order.
 * :func:`hafs_word_script` — the ``qpc_hafs.json`` shape (words only, its ids) carrying the
   Digital Khatt text. QPC Hafs text is retired; the key stays for the frontend.
+* :func:`layout_stops` — the layouts printed with their own stop signs (``madani-1405``) and
+  their stop edition. ``digital_khatt_script(stops=...)`` is the same script, ids and markers
+  with that edition's stop signs, for a view that displays such a layout.
 
 The pack is ``data/quran-core.qref`` next to this package (fetched by
 ``scripts/devenv/install_quran_data.py`` or the image build, never committed), or the path
@@ -140,14 +143,16 @@ def surah_info_bytes() -> bytes:
     )
 
 
-def _reading_order() -> Iterator[tuple[int, int, int, str]]:
-    """``(surah, ayah, word, text)`` for every word and ayah-end marker, in reading order."""
+def _reading_order(stops: str | None = None) -> Iterator[tuple[int, int, int, str]]:
+    """``(surah, ayah, word, text)`` for every word and ayah-end marker, in reading order.
+
+    ``stops`` names a stop edition (a layout's ``stops``); ``None`` is the pack's default."""
     p = pack()
     for surah in p.surahs():
         number = surah["number"]
         for ayah, count in enumerate(surah["ayahWordCounts"], 1):
             for word in range(1, count + 1):
-                yield number, ayah, word, p.text(f"{number}:{ayah}:{word}")
+                yield number, ayah, word, p.text(f"{number}:{ayah}:{word}", stops)
             yield number, ayah, count + 1, p.ayah_end(number, ayah)
 
 
@@ -162,12 +167,12 @@ def _entry(word_id: int, surah: int, ayah: int, word: int, text: str) -> dict[st
     }
 
 
-def _build_scripts() -> tuple[dict[str, dict], dict[str, dict]]:
+def _build_scripts(stops: str | None = None) -> tuple[dict[str, dict], dict[str, dict]]:
     """The Digital Khatt script (words + markers) and the QPC-shaped word script."""
     dk: dict[str, dict] = {}
     words: dict[str, dict] = {}
     dk_id = 0
-    for surah, ayah, word, text in _reading_order():
+    for surah, ayah, word, text in _reading_order(stops):
         shared = (surah, ayah, word) == _DK_SHARED_ID_WORD
         dk_id += 0 if shared else 1
         entry = _entry(dk_id, surah, ayah, word, text)
@@ -177,20 +182,39 @@ def _build_scripts() -> tuple[dict[str, dict], dict[str, dict]]:
     return dk, words
 
 
-def digital_khatt_script() -> dict[str, dict]:
-    """``{"s:a:w": {id, surah, ayah, word, location, text}}`` incl. one marker per ayah."""
-    return _once("scripts", _build_scripts)[0]
+def _scripts(stops: str | None) -> tuple[dict[str, dict], dict[str, dict]]:
+    key = "scripts" if stops is None else f"scripts:{stops}"
+    return _once(key, lambda: _build_scripts(stops))
+
+
+def layout_stops() -> dict[str, str]:
+    """``{layout id: stop edition}`` for the layouts printed with their own stop signs.
+
+    Every other layout shows the pack's default (modern) stops."""
+    return _once(
+        "layout_stops",
+        lambda: {layout["id"]: layout["stops"] for layout in pack().layouts() if layout["stops"]},
+    )
+
+
+def digital_khatt_script(stops: str | None = None) -> dict[str, dict]:
+    """``{"s:a:w": {id, surah, ayah, word, location, text}}`` incl. one marker per ayah.
+
+    ``stops`` (a value of :func:`layout_stops`) swaps in that edition's stop signs; keys,
+    ids, markers and every other character are the same."""
+    return _scripts(stops)[0]
 
 
 def hafs_word_script() -> dict[str, dict]:
     """The words only, in the ``qpc_hafs.json`` shape and ids, with Digital Khatt text."""
-    return _once("scripts", _build_scripts)[1]
+    return _scripts(None)[1]
 
 
-def digital_khatt_script_bytes() -> bytes:
+def digital_khatt_script_bytes(stops: str | None = None) -> bytes:
     """Serialised like the retired file: compact, unescaped, no trailing newline."""
     return _once(
-        "dk_bytes", lambda: json.dumps(digital_khatt_script(), ensure_ascii=False).encode()
+        "dk_bytes" if stops is None else f"dk_bytes:{stops}",
+        lambda: json.dumps(digital_khatt_script(stops), ensure_ascii=False).encode(),
     )
 
 
@@ -212,6 +236,7 @@ __all__ = [
     "digital_khatt_script_bytes",
     "hafs_word_script",
     "hafs_word_script_bytes",
+    "layout_stops",
     "pack",
     "pack_path",
     "surah_info",
