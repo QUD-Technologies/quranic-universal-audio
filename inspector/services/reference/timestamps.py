@@ -55,6 +55,10 @@ log = logging.getLogger("inspector")
 # Resource keys served at /api/ts/resource/<key>. The OTF font is bundled
 # with the SPA (frontend/public/fonts/) and intentionally absent here.
 _RESOURCE_KEYS = ("qpc_hafs", "digital_khatt")
+# A layout printed with its own stop signs (``madani-1405``) also gets
+# ``digital_khatt_<layout id>``: the same script with that layout's stop edition,
+# for the Mushaf view displaying it. Built on first request, not with the manifest.
+_LAYOUT_DK_PREFIX = "digital_khatt_"
 
 # Lazy-built caches. Single lock guards the build path; reads are dict
 # lookups so we don't need to hold the lock past `_ensure_built()`.
@@ -118,7 +122,7 @@ def _build_manifest_dict(reciters_block: dict[str, dict]) -> dict:
             "dataset_base_url": "",
             "shard_url_template": "/api/ts/shard/{reciter}/{chapter}",
             "verse_url_template": "/api/ts/verse/{reciter}/{chapter}",
-            "resources": {key: f"/api/ts/resource/{key}" for key in _RESOURCE_KEYS},
+            "resources": {key: f"/api/ts/resource/{key}" for key in _resource_keys()},
             "reciters": reciters_block,
             "editions": _edition_blocks(reciters_block),
         }
@@ -212,7 +216,41 @@ def _build_resource_bytes() -> dict[str, bytes]:
     except quran_text.QuranDataUnavailable as exc:
         log.error("timestamps resources unavailable: %s", exc)
         return {}
-    return {key: gzip.compress(body, compresslevel=6, mtime=0) for key, body in bodies.items()}
+    return {key: _gzip(body) for key, body in bodies.items()}
+
+
+def _gzip(body: bytes) -> bytes:
+    return gzip.compress(body, compresslevel=6, mtime=0)
+
+
+def _layout_stops() -> dict[str, str]:
+    """``{layout id: stop edition}``; empty (logged) when the pack is unavailable."""
+    try:
+        return quran_text.layout_stops()
+    except quran_text.QuranDataUnavailable as exc:
+        log.error("timestamps layout stop editions unavailable: %s", exc)
+        return {}
+
+
+def _resource_keys() -> list[str]:
+    """The manifest's resource keys: the two scripts plus one per stop-edition layout."""
+    return [*_RESOURCE_KEYS, *(f"{_LAYOUT_DK_PREFIX}{layout}" for layout in _layout_stops())]
+
+
+def _build_layout_resource(name: str) -> bytes | None:
+    """``digital_khatt_<layout id>``: the DK script with that layout's stop signs, gzipped.
+
+    ``None`` for any other name or an unavailable pack (the route answers 404)."""
+    if not name.startswith(_LAYOUT_DK_PREFIX):
+        return None
+    stops = _layout_stops().get(name.removeprefix(_LAYOUT_DK_PREFIX))
+    if stops is None:
+        return None
+    try:
+        return _gzip(quran_text.digital_khatt_script_bytes(stops))
+    except quran_text.QuranDataUnavailable as exc:
+        log.error("timestamps resource %s unavailable: %s", name, exc)
+        return None
 
 
 def _published_reciter_slugs(*, include_everyayah: bool = False) -> list[str]:
@@ -671,7 +709,16 @@ def is_viewable(
 
 def resource_bytes(name: str) -> bytes | None:
     _ensure_built()
-    return _resource_bytes.get(name)
+    body = _resource_bytes.get(name)
+    if body is not None or not name.startswith(_LAYOUT_DK_PREFIX):
+        return body
+    with _lock:
+        body = _resource_bytes.get(name)
+        if body is None:
+            body = _build_layout_resource(name)
+            if body is not None:
+                _resource_bytes[name] = body
+    return body
 
 
 def invalidate() -> None:
