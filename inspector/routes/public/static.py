@@ -10,8 +10,8 @@ picks its own cache discipline:
   app boot to learn the current hash and cache-bust the payload URL.
 - ``/edition/<riwayah>/font.<ext>`` — immutable + digest-ETagged; the paired
   font for a non-Hafs edition, served out of the packaged ``qua_domain`` asset.
-- ``/mushaf-font/<name>`` — immutable; the Mushaf view's header + 1405H fonts,
-  read from the bucket ``reference/mushaf-fonts/``.
+- ``/quran-data/<name>`` — digest-ETagged, revalidated; the Talqeen pack and its fonts
+  (``quran-core.qref``, ``DigitalKhattV2.otf``, ...), fetched at build time.
 
 The two ``quran-refs`` routes take an optional ``?riwayah=`` (an **Inspector**
 slug, the vocabulary the catalog stores on a delivery). Omitted, they serve
@@ -144,31 +144,32 @@ def edition_font(riwayah: str) -> Response:
     return response
 
 
-# Timestamps Mushaf-view fonts (surah-name ligatures, surah-header frame, the
-# 1405H Digital Khatt v1 text font). Bucket-only for the same LFS reason as
-# the guide clips below: a binary woff2 in the image is a pointer stub on the
-# Space, the Xet-backed bucket always carries the real bytes. Whitelisted —
-# the name is interpolated into a bucket path.
-_MUSHAF_FONT_BUCKET_DIR = "reference/mushaf-fonts"
-_MUSHAF_FONTS = frozenset(
-    {"surah-name-v2.woff2", "juz-font.woff2", "digital-khatt-madani-v1.woff2"}
-)
-_MUSHAF_FONT_CACHE_CONTROL = "public, max-age=31536000, immutable"
+# The Talqeen Quran data the browser reads: the pack the Mushaf view opens with the TS
+# SDK, and the fonts its ``fonts()`` names (Digital Khatt v1/v2 text, surah-name ligatures,
+# surah-header frame). Fetched next to each other at build time by
+# ``scripts/devenv/install_quran_data.py`` (sha256-pinned in ``qua_shared.quran_data_pin``),
+# so no binary rides the Space's LFS handling. Whitelisted by the pin; the ETag is the pinned
+# digest and the browser revalidates, so a pin bump reaches every viewer.
+_QURAN_DATA_MEDIA = {".qref": "application/octet-stream", ".otf": "font/otf", ".woff2": "font/woff2"}
+_QURAN_DATA_CACHE_CONTROL = "public, no-cache"
 
 
-@static_bp.route("/mushaf-font/<name>")
-def mushaf_font(name: str) -> Response:
-    """Serve one Mushaf-view webfont from the bucket (404 if unknown/absent)."""
-    if name not in _MUSHAF_FONTS:
+@static_bp.route("/quran-data/<name>")
+def quran_data_file(name: str) -> Response:
+    """Serve the pinned pack or one of its fonts (404 if unpinned or not fetched)."""
+    from qua_shared import quran_text
+    from qua_shared.quran_data_pin import FONT_SHA256, PACK_NAME, PACK_SHA256
+
+    if name == PACK_NAME:
+        path, digest = quran_text.pack_path(), PACK_SHA256
+    elif name in FONT_SHA256:
+        path, digest = quran_text.font_path(name), FONT_SHA256[name]
+    else:
         abort(404)
-    from services.storage.hf_bucket import get_backend
-
-    try:
-        body = get_backend().read_bytes(f"{_MUSHAF_FONT_BUCKET_DIR}/{name}")
-    except Exception:
+    if not path.is_file():
         abort(404)
-    resp = Response(body, mimetype="font/woff2")
-    resp.headers["Cache-Control"] = _MUSHAF_FONT_CACHE_CONTROL
+    resp = send_file(path, mimetype=_QURAN_DATA_MEDIA[path.suffix], etag=digest, conditional=True, max_age=None)
+    resp.headers["Cache-Control"] = _QURAN_DATA_CACHE_CONTROL
     return resp
 
 

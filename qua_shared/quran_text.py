@@ -31,7 +31,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, TypeVar
 
-from qua_shared.quran_data_pin import PACK_NAME
+from qua_shared.quran_data_pin import FONT_SHA256, FONTS_DIR_NAME, PACK_NAME
 
 PACK_ENV = "QUA_QURAN_PACK"
 #: U+06DD ARABIC END OF AYAH, the first character of every ayah-end marker.
@@ -59,6 +59,13 @@ class QuranDataUnavailable(RuntimeError):
 def pack_path() -> Path:
     override = os.environ.get(PACK_ENV, "").strip()
     return Path(override) if override else DEFAULT_PACK_PATH
+
+
+def font_path(name: str) -> Path:
+    """A pinned font fetched next to the pack (``<pack dir>/fonts/<name>``); ``KeyError`` if unpinned."""
+    if name not in FONT_SHA256:
+        raise KeyError(name)
+    return pack_path().parent / FONTS_DIR_NAME / name
 
 
 _lock = threading.RLock()
@@ -234,6 +241,7 @@ __all__ = [
     "clear_cache",
     "digital_khatt_script",
     "digital_khatt_script_bytes",
+    "font_path",
     "hafs_word_script",
     "hafs_word_script_bytes",
     "layout_stops",
