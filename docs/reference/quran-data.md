@@ -14,8 +14,9 @@ are separate: `qua-domain` via `services/reference/editions.py` ([editions.md](e
 | Pack location | `data/quran-core.qref` (gitignored), or `QUA_QURAN_PACK` |
 | Credential | `TALQEEN_DATA_READ_TOKEN`, else `GH_TOKEN`, else the `gh` login |
 
-The pin is a branch commit until the data release ships (`TODO(talqeen-ai-data#41)` in the
-pin module): repin to the release tag, rerun the installer, rerun the integrity gate below.
+The pin is a release tag (`sdk-v1.9.0`, same commit as `data-v1.5.0`), as
+`talqeen-ai-mizan` pins one. To bump: change the tag (and the pack sha256), rerun the
+installer, rerun the integrity gate below.
 
 Required, unlike `qua-domain`: without the pack the Inspector has no Hafs text. CI
 (`inspector-checks.yml`) installs it in the backend and pyright jobs. The image builds it in

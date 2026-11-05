@@ -6,9 +6,9 @@ nor the pack is on PyPI or in this repository: both are fetched from the private
 at this exact revision by ``scripts/devenv/install_quran_data.py`` (local setup, CI and the
 image build alike). This module is the single place the revision is written down.
 
-Bump it like a lockfile entry: change ``TALQEEN_DATA_REF`` (and ``PACK_SHA256`` when the
-pack changed), run ``python scripts/devenv/install_quran_data.py``, then
-``python scripts/diagnostics/quran_data_integrity.py check``, and commit.
+Bump it like a lockfile entry: change ``TALQEEN_DATA_REF`` to the new release tag (and
+``PACK_SHA256`` when the pack changed), run ``python scripts/devenv/install_quran_data.py``,
+then the ``scripts/diagnostics/quran_data_integrity.py`` capture/compare gate, and commit.
 
 Credentials never live here. CI and the image build use ``TALQEEN_DATA_READ_TOKEN`` (the
 same secret ``talqeen-ai-mizan`` uses); locally the installer falls back to ``GH_TOKEN`` or
@@ -20,10 +20,8 @@ from __future__ import annotations
 TALQEEN_REPO = "QUD-Technologies/talqeen-ai-data"
 TALQEEN_HTTPS_URL = f"https://github.com/{TALQEEN_REPO}.git"
 
-# TODO(talqeen-ai-data#41): repin to the release tag (SDK v1.9.0 / data-v1.5.0) once the
-# data PR is merged and released. Until then this is the reviewed head of its branch
-# ``feat/mushaf-text-fonts``.
-TALQEEN_DATA_REF = "cc6b704c5b7461af4c2b94698c6ccb538e97b38e"
+#: The release tag (``sdk-v1.9.0`` and ``data-v1.5.0`` name the same commit, cddf855).
+TALQEEN_DATA_REF = "sdk-v1.9.0"
 
 #: SDK distribution and the version the pinned revision builds.
 SDK_DIST_NAME = "talqeen-quran-data"
