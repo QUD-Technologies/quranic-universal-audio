@@ -27,7 +27,6 @@ import {
     loadChapterShard,
     loadDk,
     loadManifest,
-    loadQpc,
     reciterAudioFromManifest,
     shardOccasions,
 } from '../src/lib/recitation-data/ts-source';
@@ -60,9 +59,8 @@ async function render(): Promise<void> {
     const reciterAudio = reciterAudioFromManifest(manifest, reciter);
     if (!reciterAudio) throw new Error(`reciter not advertised by the TS manifest: ${reciter}`);
 
-    const [shard, qpc, dk] = await Promise.all([
+    const [shard, dk] = await Promise.all([
         loadChapterShard(reciter, chapter),
-        loadQpc(),
         loadDk(),
     ]);
 
@@ -101,10 +99,10 @@ async function render(): Promise<void> {
     if (p.get('wasl') === '1') {
         const g = waslGroupOf(occasions, focusIdx);
         const members = occasions.slice(g.fromIdx, g.toIdx + 1);
-        data = assembleWaslGroup(reciter, members, ref, qpc, dk, reciterAudio, '');
+        data = assembleWaslGroup(reciter, members, ref, dk, reciterAudio, '');
         group = { data, span: [g.startMs, g.endMs] as [number, number], refs: g.refs, focusRef: ref };
     } else {
-        data = assembleOccasion(reciter, occasions[focusIdx]!, qpc, dk, reciterAudio, '');
+        data = assembleOccasion(reciter, occasions[focusIdx]!, dk, reciterAudio, '');
     }
 
     // Both tiers ON by default (the phoneme row defaults OFF in the app) — the

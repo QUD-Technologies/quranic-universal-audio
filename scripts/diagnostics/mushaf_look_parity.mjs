@@ -117,9 +117,10 @@ async function wordPoint({ anchor, year }) {
             }
         }
     } else {
-        const { loadWordIndex } = await import('/src/tabs/timestamps/mushaf/layout.ts');
-        const words = await loadWordIndex(year);
-        node = document.querySelector(`.mv-slot [data-w="${words.idOfLoc.get(anchor)}"]`);
+        // The in-app pages tag each word with its Digital Khatt id.
+        const { loadDk } = await import('/src/lib/recitation-data/ts-source.ts');
+        const dk = await loadDk();
+        node = document.querySelector(`.mv-slot [data-w="${dk[anchor]?.id}"]`);
     }
     if (!node) return null;
     const r = node.getBoundingClientRect();

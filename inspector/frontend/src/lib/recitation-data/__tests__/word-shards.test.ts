@@ -10,16 +10,15 @@ const BY_SURAH: TsReciterAudio = { audio_category: 'by_surah' };
 function assemble() {
     const shard = decodeTimestampShard(WORD_SHARD) as TsWordShardResponse;
     const occasion = shardOccasions(shard)[0]!;
-    return assembleOccasion('r', occasion, {}, {}, BY_SURAH, 'chapter.mp3');
+    return assembleOccasion('r', occasion, {}, BY_SURAH, 'chapter.mp3');
 }
 
 describe('word-profile assembly', () => {
     it('takes each word text from the shard row, not the Hafs script files', () => {
-        // `qpc` and `dk` are passed empty on purpose: reaching for them would
+        // `dk` is passed empty on purpose: reaching for it would
         // render Qalun coordinates in the Hafs spelling.
         const data = assemble();
         expect(data.words.map((word) => word.text)).toEqual(WORD_TEXTS);
-        expect(data.words.map((word) => word.display_text)).toEqual(WORD_TEXTS);
         expect(data.words.map((word) => word.location)).toEqual([
             '112:1:1', '112:1:2', '112:1:3', '112:1:4',
         ]);
@@ -79,15 +78,15 @@ describe('word-profile assembly', () => {
             ...WORD_SHARD, readings: [{ ...marked, words }],
         }) as TsWordShardResponse;
         const data = assembleOccasion(
-            'r', shardOccasions(shard)[0]!, {}, {}, BY_SURAH, 'chapter.mp3',
+            'r', shardOccasions(shard)[0]!, {}, BY_SURAH, 'chapter.mp3',
         );
         const view = data.wordReadings[0]!.words;
         expect(view[0]!.text).toBe(WORD_TEXTS[0]);
         expect(view[0]!.boundary?.stopSign).toBe('ۚ');
         expect(view[1]!.text).toBe(WORD_TEXTS[1] + 'ۚ');
         expect(view[1]!.boundary?.stopSign).toBeNull();
-        // The teleprompter's `display_text` keeps the mark: it splits it itself.
-        expect(data.words[0]!.display_text).toBe(WORD_TEXTS[0] + 'ۚ');
+        // The teleprompter's word text keeps the mark: it splits it itself.
+        expect(data.words[0]!.text).toBe(WORD_TEXTS[0] + 'ۚ');
     });
 
     it('keeps the waqf mark inside the word at a verse end', () => {
@@ -106,7 +105,7 @@ describe('word-profile assembly', () => {
             readings: [{ ...WORD_SHARD.readings[0]!, parts: [['112:1', 800, 1500, 1, 2]] }],
         }) as TsWordShardResponse;
         const data = assembleOccasion(
-            'r', shardOccasions(shard)[0]!, {}, {}, BY_SURAH, 'chapter.mp3',
+            'r', shardOccasions(shard)[0]!, {}, BY_SURAH, 'chapter.mp3',
         );
         expect(data.words.map((word) => word.location)).toEqual(['112:1:2', '112:1:3']);
         expect(data.wordReadings[0]!.words.map((word) => word.id)).toEqual([1, 2]);

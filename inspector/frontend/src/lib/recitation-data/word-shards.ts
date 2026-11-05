@@ -8,7 +8,7 @@
  * `isWordShard` (or, in shared `lib/` components that must not know the tab's
  * edition, on the absence of letters) and hide those surfaces entirely.
  *
- * Word text comes from the shard row, never from `qpc_hafs` / `digital_khatt`:
+ * Word text comes from the shard row, never from `digital_khatt`:
  * those two files are the Hafs script, and rendering Warsh coordinates through
  * them would produce plausible-looking words with the wrong spelling.
  */
@@ -79,7 +79,6 @@ function buildWordRows(
             words.push({
                 location: row.ref,
                 text: row.text,
-                display_text: row.text,
                 start: row.start_ms / 1000 - offset,
                 end: row.end_ms / 1000 - offset,
                 phoneme_indices: [],

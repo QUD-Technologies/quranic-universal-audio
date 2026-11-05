@@ -36,7 +36,6 @@ describe('native v13 timestamp assembly', () => {
         const { result } = occasion('1:1');
         const data = assembleOccasion(
             'reciter', result,
-            { '1:1:1': { text: 'qpc' } },
             { '1:1:1': { text: 'dk' } },
             BY_SURAH, 'chapter.mp3',
         );
@@ -44,7 +43,7 @@ describe('native v13 timestamp assembly', () => {
         expect(data.audio_category).toBe('by_surah_audio');
         expect(data.time_start_ms).toBe(5_000);
         expect(data.words[0]).toMatchObject({
-            location: '1:1:1', text: 'qpc', display_text: 'dk', start: 0, end: 1,
+            location: '1:1:1', text: 'dk', start: 0, end: 1,
         });
         expect(data.intervals).toEqual([{ phone: 'p0', start: 0, end: 1 }]);
         expect(data.words[0]!.phoneme_indices).toEqual([0]);
@@ -54,7 +53,7 @@ describe('native v13 timestamp assembly', () => {
     it('keeps ayah audio absolute within its own file', () => {
         const reading = nativeReading('r1', [{ ref: '1:1', start: 0, end: 800 }]);
         const { result } = occasion('1:1', reading);
-        const data = assembleOccasion('r', result, {}, {}, BY_AYAH, 'ayah.mp3');
+        const data = assembleOccasion('r', result, {}, BY_AYAH, 'ayah.mp3');
         expect(data.time_start_ms).toBe(0);
         expect(data.time_end_ms).toBe(800);
         expect(data.words[0]!.end).toBe(0.8);
@@ -77,7 +76,7 @@ describe('native v13 timestamp assembly', () => {
         ]);
         const occasions = shardOccasions(nativeShard([reading]));
         const data = assembleWaslGroup(
-            'r', occasions, '1:3', {}, {}, BY_SURAH, 'chapter.mp3',
+            'r', occasions, '1:3', {}, BY_SURAH, 'chapter.mp3',
         );
         expect(data.words.map((word) => word.location)).toEqual(['1:3:1', '1:4:1']);
         expect(data.native).toEqual([reading]);

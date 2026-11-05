@@ -147,7 +147,6 @@
             pageUnits.map(
                 (u): AnimSourceWord => ({
                     text: u.text,
-                    display_text: u.text,
                     // Letter timings are anchored to the FIRST occurrence; a
                     // repeated word's `u.start/u.end` are expanded to span every
                     // occurrence (min..max), which would stretch the char

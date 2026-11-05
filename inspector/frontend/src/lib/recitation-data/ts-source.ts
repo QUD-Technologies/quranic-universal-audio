@@ -13,7 +13,7 @@
  * branch in this module is URL templating against `tsConfig`.
  *
  * Caching:
- *   - Config / manifest / qpc / dk: module-level singletons (load once).
+ *   - Config / manifest / dk / verse word counts: module-level singletons (load once).
  *   - Shards: small LRU keyed `${reciter}:${chapter}` so back-and-forth
  *     between two reciters keeps both currents resident.
  *
@@ -29,7 +29,6 @@ import type {
     TsShardResponse,
     TsVbrResponse,
     TsVerseData,
-    TsWord,
 } from '../types/ts-client';
 import type { ChapterOccasion } from './occasions';
 import { decodeTimestampShard } from './compact-shards';
@@ -46,10 +45,8 @@ import { assembleWord, isWordReading } from './word-shards';
 
 let _config: Promise<TsConfigResponse> | null = null;
 let _manifest: Promise<TsManifestResponse> | null = null;
-let _qpc: Promise<Record<string, { text?: string }>> | null = null;
-let _qpcVerseIndex: Promise<Map<number, Map<number, number>>> | null = null;
-/** DK scripts by manifest resource key (`digital_khatt`, `digital_khatt_<layout>`). */
-const _dk: Map<string, Promise<Record<string, { text?: string }>>> = new Map();
+let _dk: Promise<Record<string, { text?: string }>> | null = null;
+let _verseWordCounts: Promise<Map<number, Map<number, number>>> | null = null;
 
 /** Bounded LRU for chapter shards — covers current + adjacent + two pre-rolls. */
 const SHARD_CACHE_SIZE = 4;
@@ -153,84 +150,56 @@ export async function loadChapterShard(
     return promise;
 }
 
+/** Manifest resource key of the Hafs Digital Khatt v2 script. */
+const DK_KEY = 'digital_khatt';
+/** U+06DD ARABIC END OF AYAH: the first character of every ayah-end marker entry. */
+const AYAH_END = '\u06DD';
+
 /**
- * Fetch & cache `qpc_hafs` (Uthmani text) keyed by `surah:ayah:word`.
- * URL comes from the manifest's `resources.qpc_hafs`, joined with
- * `dataset_base_url`.
+ * Fetch & cache the Digital Khatt v2 script (the Hafs display text, words and
+ * ayah-end markers) keyed by `surah:ayah:word`, from the manifest's
+ * `resources.digital_khatt` joined with `dataset_base_url`.
  */
-export async function loadQpc(): Promise<Record<string, { text?: string }>> {
-    if (!_qpc) {
-        _qpc = (async () => {
-            const m = await loadManifest();
-            const url = _resourceUrl(m, 'qpc_hafs');
+export async function loadDk(): Promise<Record<string, { text?: string }>> {
+    if (!_dk) {
+        const p = (async () => {
+            const url = _resourceUrl(await loadManifest(), DK_KEY);
             return _fetchGzipJson<Record<string, { text?: string }>>(url);
         })();
+        // If the fetch fails, drop the entry so the next call retries.
+        p.catch(() => { if (_dk === p) _dk = null; });
+        _dk = p;
     }
-    return _qpc;
+    return _dk;
 }
 
 /**
- * Reference word counts per verse, derived once from the full `qpc_hafs`
- * singleton: `chapter → (ayah → wordCount)`. The mushaf reference for "does
- * this verse have every word" — the chapter's verse count is the max ayah key.
- * Memoized (one O(qpc) scan), so the filmstrip's coverage diff is free after the
- * qpc the animation already loads. Word count = max word index seen (robust to a
- * gap in qpc keys).
+ * Reference word counts per verse, derived once from the DK script:
+ * `chapter → (ayah → wordCount)`. The mushaf reference for "does this verse
+ * have every word"; the chapter's verse count is the max ayah key. Ayah-end
+ * markers are not words. Word count = max word index seen (robust to a gap).
  */
-export async function loadQpcVerseIndex(): Promise<Map<number, Map<number, number>>> {
-    if (!_qpcVerseIndex) {
-        _qpcVerseIndex = (async () => {
-            const qpc = await loadQpc();
+export async function loadVerseWordCounts(): Promise<Map<number, Map<number, number>>> {
+    if (!_verseWordCounts) {
+        _verseWordCounts = (async () => {
+            const dk = await loadDk();
             const index = new Map<number, Map<number, number>>();
-            for (const loc of Object.keys(qpc)) {
-                const parts = loc.split(':');
-                if (parts.length !== 3) continue;
-                const ch = parseInt(parts[0]!, 10);
-                const ayah = parseInt(parts[1]!, 10);
-                const word = parseInt(parts[2]!, 10);
+            for (const [loc, entry] of Object.entries(dk)) {
+                if (entry.text?.startsWith(AYAH_END)) continue;
+                const [ch, ayah, word] = loc.split(':').map((n) => parseInt(n, 10));
                 if (!ch || !ayah || !word) continue;
                 let byAyah = index.get(ch);
                 if (!byAyah) {
                     byAyah = new Map();
                     index.set(ch, byAyah);
                 }
-                const prev = byAyah.get(ayah) ?? 0;
-                if (word > prev) byAyah.set(ayah, word);
+                if (word > (byAyah.get(ayah) ?? 0)) byAyah.set(ayah, word);
             }
             return index;
         })();
+        _verseWordCounts.catch(() => { _verseWordCounts = null; });
     }
-    return _qpcVerseIndex;
-}
-
-/** Manifest resource key of the DK script with `layout`'s own stop signs. */
-const DK_KEY = 'digital_khatt';
-const layoutDkKey = (layout: string): string => `${DK_KEY}_${layout}`;
-
-/**
- * Fetch & cache `digital_khatt_v2` (display text) keyed by `surah:ayah:word`.
- * Same resolution path as `loadQpc`.
- *
- * `layout` (e.g. `madani-1405`): the script with that layout's stop signs when
- * the manifest advertises `digital_khatt_<layout>` — only layouts printed with
- * their own stop edition do. Every other layout shows the default (modern)
- * stops, so it shares the plain `digital_khatt` script. Keys, ids and markers
- * are the same in both.
- */
-export async function loadDk(layout?: string): Promise<Record<string, { text?: string }>> {
-    const m = layout ? await loadManifest() : null;
-    const key = layout && m?.resources?.[layoutDkKey(layout)] ? layoutDkKey(layout) : DK_KEY;
-    let p = _dk.get(key);
-    if (!p) {
-        p = (async () => {
-            const url = _resourceUrl(m ?? (await loadManifest()), key);
-            return _fetchGzipJson<Record<string, { text?: string }>>(url);
-        })();
-        // If the fetch fails, drop the entry so the next call retries.
-        p.catch(() => _dk.delete(key));
-        _dk.set(key, p);
-    }
-    return p;
+    return _verseWordCounts;
 }
 
 function _resourceUrl(manifest: TsManifestResponse, key: string): string {
@@ -364,7 +333,6 @@ const isWordOccasion = (members: ChapterOccasion[]): boolean =>
 export function assembleOccasion(
     reciter: string,
     occasion: ChapterOccasion,
-    qpc: Record<string, { text?: string }>,
     dk: Record<string, { text?: string }>,
     reciterAudio: TsReciterAudio,
     chapterAudioUrl: string,
@@ -381,14 +349,13 @@ export function assembleOccasion(
     };
     return isWordOccasion(members)
         ? assembleWord(shape)
-        : assembleNative({ ...shape, qpc, dk });
+        : assembleNative({ ...shape, dk });
 }
 
 export function assembleWaslGroup(
     reciter: string,
     members: ChapterOccasion[],
     verseRef: string,
-    qpc: Record<string, { text?: string }>,
     dk: Record<string, { text?: string }>,
     reciterAudio: TsReciterAudio,
     chapterAudioUrl: string,
@@ -405,7 +372,7 @@ export function assembleWaslGroup(
     };
     return isWordOccasion(members)
         ? assembleWord(shape)
-        : assembleNative({ ...shape, qpc, dk });
+        : assembleNative({ ...shape, dk });
 }
 
 // ---------------------------------------------------------------------------
@@ -475,9 +442,8 @@ export async function getRandomTarget(opts: { reciter?: string } = {}): Promise<
 export function _resetForTests(): void {
     _config = null;
     _manifest = null;
-    _qpc = null;
-    _qpcVerseIndex = null;
-    _dk.clear();
+    _dk = null;
+    _verseWordCounts = null;
     _shards.clear();
     _vbrChapters.clear();
 }

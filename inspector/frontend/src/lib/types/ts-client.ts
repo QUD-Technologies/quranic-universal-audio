@@ -49,8 +49,8 @@ export type AnimationPolicy = 'timed' | 'cohighlight_previous' | 'cohighlight_ne
 /** Single word with text + timing + letters + phoneme indices into the flat intervals list. */
 export interface TsWord {
     location: string; // "surah:ayah:word"
+    /** Digital Khatt v2 text (Hafs), or the shard row's text for a word-profile edition. */
     text: string;
-    display_text: string;
     start: number; // seconds (may be negative for by_surah mode after offset)
     end: number;
     phoneme_indices: number[];

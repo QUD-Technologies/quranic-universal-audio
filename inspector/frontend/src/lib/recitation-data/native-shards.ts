@@ -30,7 +30,6 @@ interface AssembleOptions {
     /** The shard's chapter — never parsed from `verseRef` (an opener's is `0:x`). */
     chapter: number;
     special: SpecialKind | null;
-    qpc: Record<string, { text?: string }>;
     dk: Record<string, { text?: string }>;
     audioCategory: 'by_surah' | 'by_ayah';
     audioUrl: string;
@@ -92,7 +91,6 @@ function lettersOf(reading: TsShardReading, wordId: number, offset: number): Let
 function buildTimedRows(
     readings: TsShardReading[],
     selected: Map<TsShardReading, Set<number>>,
-    qpc: AssembleOptions['qpc'],
     dk: AssembleOptions['dk'],
     offset: number,
 ): { intervals: PhonemeInterval[]; words: TsWord[] } {
@@ -121,8 +119,7 @@ function buildTimedRows(
             const textRef = openerSourceRef(word.ref) ?? word.ref;
             words.push({
                 location: word.ref,
-                text: qpc[textRef]?.text ?? word.text,
-                display_text: dk[textRef]?.text ?? qpc[textRef]?.text ?? word.text,
+                text: dk[textRef]?.text ?? word.text,
                 start: timed.start_ms / 1000 - offset,
                 end: timed.end_ms / 1000 - offset,
                 phoneme_indices: phonemeIndices,
@@ -142,7 +139,6 @@ export function assembleNative(options: AssembleOptions): TsVerseData {
     const timed = buildTimedRows(
         readings,
         selectedWords(options.members),
-        options.qpc,
         options.dk,
         offset,
     );

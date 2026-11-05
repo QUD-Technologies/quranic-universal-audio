@@ -2,18 +2,16 @@
 
 The single source of the Hafs words (Digital Khatt v2, the SDK's default stops), ayah-end
 markers and surah metadata. It replaces the bundled ``surah_info.json``,
-``digital_khatt_v2_script.json`` and ``qpc_hafs.json``: every reader here rebuilds one of
-those documents, field for field, from ``talqeen_quran_data``. Nothing falls back to a
+``digital_khatt_v2_script.json`` and the retired ``qpc_hafs.json``: every reader here rebuilds
+one of the first two documents, field for field, from ``talqeen_quran_data``. Nothing falls back to a
 bundled copy; an absent SDK or pack raises :class:`QuranDataUnavailable`.
 
 * :func:`surah_info` — the ``surah_info.json`` document (byte-identical serialisation).
 * :func:`digital_khatt_script` — the ``digital_khatt_v2_script.json`` document: every word
   plus one ayah-end marker entry per ayah (``s:a:<words+1>``), in reading order.
-* :func:`hafs_word_script` — the ``qpc_hafs.json`` shape (words only, its ids) carrying the
-  Digital Khatt text. QPC Hafs text is retired; the key stays for the frontend.
 * :func:`layout_stops` — the layouts printed with their own stop signs (``madani-1405``) and
   their stop edition. ``digital_khatt_script(stops=...)`` is the same script, ids and markers
-  with that edition's stop signs, for a view that displays such a layout.
+  with that edition's stop signs (the integrity gate compares them).
 
 The pack is ``data/quran-core.qref`` next to this package (fetched by
 ``scripts/devenv/install_quran_data.py`` or the image build, never committed), or the path
@@ -174,24 +172,20 @@ def _entry(word_id: int, surah: int, ayah: int, word: int, text: str) -> dict[st
     }
 
 
-def _build_scripts(stops: str | None = None) -> tuple[dict[str, dict], dict[str, dict]]:
-    """The Digital Khatt script (words + markers) and the QPC-shaped word script."""
+def _build_script(stops: str | None = None) -> dict[str, dict]:
+    """The Digital Khatt script: words + ayah-end markers, in reading order."""
     dk: dict[str, dict] = {}
-    words: dict[str, dict] = {}
     dk_id = 0
     for surah, ayah, word, text in _reading_order(stops):
-        shared = (surah, ayah, word) == _DK_SHARED_ID_WORD
-        dk_id += 0 if shared else 1
+        dk_id += 0 if (surah, ayah, word) == _DK_SHARED_ID_WORD else 1
         entry = _entry(dk_id, surah, ayah, word, text)
         dk[entry["location"]] = entry
-        if not text.startswith(AYAH_END):
-            words[entry["location"]] = _entry(dk_id + shared, surah, ayah, word, text)
-    return dk, words
+    return dk
 
 
-def _scripts(stops: str | None) -> tuple[dict[str, dict], dict[str, dict]]:
-    key = "scripts" if stops is None else f"scripts:{stops}"
-    return _once(key, lambda: _build_scripts(stops))
+def _script(stops: str | None) -> dict[str, dict]:
+    key = "dk" if stops is None else f"dk:{stops}"
+    return _once(key, lambda: _build_script(stops))
 
 
 def layout_stops() -> dict[str, str]:
@@ -209,12 +203,7 @@ def digital_khatt_script(stops: str | None = None) -> dict[str, dict]:
 
     ``stops`` (a value of :func:`layout_stops`) swaps in that edition's stop signs; keys,
     ids, markers and every other character are the same."""
-    return _scripts(stops)[0]
-
-
-def hafs_word_script() -> dict[str, dict]:
-    """The words only, in the ``qpc_hafs.json`` shape and ids, with Digital Khatt text."""
-    return _scripts(None)[1]
+    return _script(stops)
 
 
 def digital_khatt_script_bytes(stops: str | None = None) -> bytes:
@@ -222,14 +211,6 @@ def digital_khatt_script_bytes(stops: str | None = None) -> bytes:
     return _once(
         "dk_bytes" if stops is None else f"dk_bytes:{stops}",
         lambda: json.dumps(digital_khatt_script(stops), ensure_ascii=False).encode(),
-    )
-
-
-def hafs_word_script_bytes() -> bytes:
-    """Serialised like the retired ``qpc_hafs.json``: two-space indent, trailing newline."""
-    return _once(
-        "hafs_bytes",
-        lambda: (json.dumps(hafs_word_script(), ensure_ascii=False, indent=2) + "\n").encode(),
     )
 
 
@@ -242,8 +223,6 @@ __all__ = [
     "digital_khatt_script",
     "digital_khatt_script_bytes",
     "font_path",
-    "hafs_word_script",
-    "hafs_word_script_bytes",
     "layout_stops",
     "pack",
     "pack_path",

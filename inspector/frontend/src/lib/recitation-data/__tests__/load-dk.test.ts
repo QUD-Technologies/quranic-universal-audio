@@ -3,7 +3,7 @@ import { gzipSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { fetchArrayBuffer, fetchJson } from '../../api';
-import { _resetForTests, loadDk } from '../ts-source';
+import { _resetForTests, loadDk, loadVerseWordCounts } from '../ts-source';
 
 vi.mock('../../api', () => ({
     ApiError: class extends Error {},
@@ -11,15 +11,18 @@ vi.mock('../../api', () => ({
     fetchJson: vi.fn(),
 }));
 
+const DK = {
+    '1:1:1': { text: 'بِسْمِ' },
+    '1:1:2': { text: 'ٱللَّهِ' },
+    '1:1:3': { text: '۝١' },
+    '1:2:1': { text: 'ٱلْحَمْدُ' },
+    '1:2:2': { text: '۝٢' },
+    '2:1:1': { text: 'الٓمٓ' },
+};
+
 const BODIES: Record<string, unknown> = {
-    '/manifest': {
-        resources: {
-            digital_khatt: '/api/ts/resource/digital_khatt',
-            'digital_khatt_madani-1405': '/api/ts/resource/digital_khatt_madani-1405',
-        },
-    },
-    '/api/ts/resource/digital_khatt': { '1:1:1': { text: 'default' } },
-    '/api/ts/resource/digital_khatt_madani-1405': { '1:1:1': { text: '1405' } },
+    '/manifest': { resources: { digital_khatt: '/api/ts/resource/digital_khatt' } },
+    '/api/ts/resource/digital_khatt': DK,
 };
 
 function gz(body: unknown): ArrayBuffer {
@@ -35,17 +38,18 @@ describe('loadDk', () => {
     });
     afterEach(() => vi.clearAllMocks());
 
-    it('serves a layout with its own stop edition from its own resource', async () => {
-        expect((await loadDk('madani-1405'))['1:1:1']?.text).toBe('1405');
-    });
-
-    it('serves every other layout, and no layout, the default script once', async () => {
-        const plain = await loadDk();
-        expect(plain['1:1:1']?.text).toBe('default');
-        expect(await loadDk('madani-1421')).toBe(plain);
-        expect(await loadDk('madani-1441')).toBe(plain);
+    it('fetches the Digital Khatt script once', async () => {
+        const dk = await loadDk();
+        expect(dk['1:1:1']?.text).toBe('بِسْمِ');
+        expect(await loadDk()).toBe(dk);
         const scriptFetches = vi.mocked(fetchArrayBuffer).mock.calls
             .filter(([url]) => url.startsWith('/api/ts/resource/'));
         expect(scriptFetches).toEqual([['/api/ts/resource/digital_khatt']]);
+    });
+
+    it('counts each verse\'s words, not its ayah-end marker', async () => {
+        const counts = await loadVerseWordCounts();
+        expect([...counts.get(1)!]).toEqual([[1, 2], [2, 1]]);
+        expect(counts.get(2)?.get(1)).toBe(1);
     });
 });

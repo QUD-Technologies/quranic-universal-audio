@@ -16,7 +16,7 @@ describe('native occasion coverage', () => {
         ]);
         const occasions = shardOccasions(shard).map((occasion) => ({
             verseRef: occasion.ref,
-            data: assembleOccasion('r', occasion, {}, {}, AUDIO, 'chapter.mp3'),
+            data: assembleOccasion('r', occasion, {}, AUDIO, 'chapter.mp3'),
         }));
         const chapter = buildChapterRecitation('r', 101, occasions);
         const sorted = buildSortedIntervals(chapter.units);

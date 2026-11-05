@@ -98,8 +98,8 @@ def is_supported(inspector_slug: str | None) -> bool:
 def is_hafs(inspector_slug: str | None) -> bool:
     """True iff ``inspector_slug`` is Hafs.
 
-    The Hafs branch is the one that keeps the existing ``qpc_hafs`` +
-    DigitalKhatt display path and needs no ``qua_domain`` at all, so this
+    The Hafs branch is the one that keeps the Digital Khatt (talqeen-quran-data)
+    display path and needs no ``qua_domain`` at all, so this
     predicate gates far more than a cosmetic difference.
     """
     return inspector_slug == DEFAULT_RIWAYAH

@@ -52,13 +52,11 @@ from utils.formatting import slug_to_name
 
 log = logging.getLogger("inspector")
 
-# Resource keys served at /api/ts/resource/<key>. The OTF font is bundled
-# with the SPA (frontend/public/fonts/) and intentionally absent here.
-_RESOURCE_KEYS = ("qpc_hafs", "digital_khatt")
-# A layout printed with its own stop signs (``madani-1405``) also gets
-# ``digital_khatt_<layout id>``: the same script with that layout's stop edition,
-# for the Mushaf view displaying it. Built on first request, not with the manifest.
-_LAYOUT_DK_PREFIX = "digital_khatt_"
+# Resource keys served at /api/ts/resource/<key>. The fonts are served by
+# /api/static/quran-data/<file> and intentionally absent here.
+# (The Mushaf view reads layouts and each layout's stop edition from the data pack
+# itself, through the TS SDK; the QPC text resource is retired.)
+_RESOURCE_KEYS = ("digital_khatt",)
 
 # Lazy-built caches. Single lock guards the build path; reads are dict
 # lookups so we don't need to hold the lock past `_ensure_built()`.
@@ -122,7 +120,7 @@ def _build_manifest_dict(reciters_block: dict[str, dict]) -> dict:
             "dataset_base_url": "",
             "shard_url_template": "/api/ts/shard/{reciter}/{chapter}",
             "verse_url_template": "/api/ts/verse/{reciter}/{chapter}",
-            "resources": {key: f"/api/ts/resource/{key}" for key in _resource_keys()},
+            "resources": {key: f"/api/ts/resource/{key}" for key in _RESOURCE_KEYS},
             "reciters": reciters_block,
             "editions": _edition_blocks(reciters_block),
         }
@@ -202,17 +200,12 @@ def _edition_blocks(reciters_block: dict[str, dict]) -> dict[str, dict]:
 def _build_resource_bytes() -> dict[str, bytes]:
     """Gzip every advertised resource for ``/api/ts/resource/<key>``.
 
-    Both come from the talqeen-quran-data pack (``qua_shared.quran_text``):
-    ``digital_khatt`` is the Digital Khatt v2 script (words + ayah-end markers) and
-    ``qpc_hafs`` keeps its key and shape but carries the same Digital Khatt text
-    (QPC Hafs text is retired). An unavailable pack skips both, logged, never
-    raised — the manifest must not 500 on a degraded resource. The resources are
-    static, so a manifest rebuild reuses them; ``invalidate()`` drops them."""
+    ``digital_khatt`` is the Digital Khatt v2 script (words + ayah-end markers) from
+    the talqeen-quran-data pack (``qua_shared.quran_text``). An unavailable pack skips
+    it, logged, never raised — the manifest must not 500 on a degraded resource. The
+    resource is static, so a manifest rebuild reuses it; ``invalidate()`` drops it."""
     try:
-        bodies = {
-            "qpc_hafs": quran_text.hafs_word_script_bytes(),
-            "digital_khatt": quran_text.digital_khatt_script_bytes(),
-        }
+        bodies = {"digital_khatt": quran_text.digital_khatt_script_bytes()}
     except quran_text.QuranDataUnavailable as exc:
         log.error("timestamps resources unavailable: %s", exc)
         return {}
@@ -221,36 +214,6 @@ def _build_resource_bytes() -> dict[str, bytes]:
 
 def _gzip(body: bytes) -> bytes:
     return gzip.compress(body, compresslevel=6, mtime=0)
-
-
-def _layout_stops() -> dict[str, str]:
-    """``{layout id: stop edition}``; empty (logged) when the pack is unavailable."""
-    try:
-        return quran_text.layout_stops()
-    except quran_text.QuranDataUnavailable as exc:
-        log.error("timestamps layout stop editions unavailable: %s", exc)
-        return {}
-
-
-def _resource_keys() -> list[str]:
-    """The manifest's resource keys: the two scripts plus one per stop-edition layout."""
-    return [*_RESOURCE_KEYS, *(f"{_LAYOUT_DK_PREFIX}{layout}" for layout in _layout_stops())]
-
-
-def _build_layout_resource(name: str) -> bytes | None:
-    """``digital_khatt_<layout id>``: the DK script with that layout's stop signs, gzipped.
-
-    ``None`` for any other name or an unavailable pack (the route answers 404)."""
-    if not name.startswith(_LAYOUT_DK_PREFIX):
-        return None
-    stops = _layout_stops().get(name.removeprefix(_LAYOUT_DK_PREFIX))
-    if stops is None:
-        return None
-    try:
-        return _gzip(quran_text.digital_khatt_script_bytes(stops))
-    except quran_text.QuranDataUnavailable as exc:
-        log.error("timestamps resource %s unavailable: %s", name, exc)
-        return None
 
 
 def _published_reciter_slugs(*, include_everyayah: bool = False) -> list[str]:
@@ -709,16 +672,7 @@ def is_viewable(
 
 def resource_bytes(name: str) -> bytes | None:
     _ensure_built()
-    body = _resource_bytes.get(name)
-    if body is not None or not name.startswith(_LAYOUT_DK_PREFIX):
-        return body
-    with _lock:
-        body = _resource_bytes.get(name)
-        if body is None:
-            body = _build_layout_resource(name)
-            if body is not None:
-                _resource_bytes[name] = body
-    return body
+    return _resource_bytes.get(name)
 
 
 def invalidate() -> None:

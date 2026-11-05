@@ -5,7 +5,7 @@
  * Waqf marks are the small-high pause symbols (ۖ ۗ ۘ ۚ ۛ) that ride the Quranic
  * text as combining marks (Unicode category Mn) at the tail of a word's last
  * letter group. They are NOT pronounced, so they never appear in the MFA-aligned
- * `letters` array — only in the word's `display_text`. We surface one when the
+ * `letters` array — only in the word's `text`. We surface one when the
  * reciter actually pauses on it.
  *
  * Excluded by design: U+06D9 (ۙ, "لا") means "do NOT stop here", and U+06DC

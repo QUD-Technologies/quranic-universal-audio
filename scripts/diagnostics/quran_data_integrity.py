@@ -17,9 +17,11 @@ on any unexpected difference. Expectations:
   ``digital_khatt_v2_script.json``: deep-equal (same keys, values and ids). Bytes may differ
   only in key order: the new data is in reading order, the old file in its export order.
 * ``/api/ts/resource/qpc_hafs``: same keys and per-word fields; only ``text`` changes (it is
-  Digital Khatt now), on exactly ``EXPECTED_QPC_TEXT_DIFFS`` words.
-* ``/api/ts/resource/digital_khatt_<layout>`` (new; a layout with its own stop edition, i.e.
-  1405): same keys, ids and markers as ``digital_khatt``; words differ only in waqf marks.
+  Digital Khatt now), on exactly ``EXPECTED_QPC_TEXT_DIFFS`` words. Gated only when both
+  captures have it: the resource is retired once the frontend reads one Digital Khatt text.
+* ``/api/ts/resource/digital_khatt_<layout>`` (a layout with its own stop edition, i.e. 1405),
+  when advertised: same keys, ids and markers as ``digital_khatt``; words differ only in waqf
+  marks. (Retired with ``qpc_hafs``: the Mushaf view reads each layout's stops from the pack.)
 * cut_release's ``static_refs`` digests: ``surah_info.json`` and the font identical. The
   ``digital_khatt_v2_script.json`` digest is reported: its bytes change (reading order), so
   the first cut_release after the swap reports ``static_refs_changed`` and bumps once.
@@ -47,7 +49,7 @@ ROOT = Path(__file__).resolve().parents[2]
 EXPECTED_QPC_TEXT_DIFFS = 23_638
 LAYOUT_DK_PREFIX = "digital_khatt_"
 FIXTURES = ("112-ikhlas", "113-falaq", "synthetic-classifier", "synthetic-structural")
-DK_FONT = "inspector/frontend/public/fonts/DigitalKhattV2.otf"
+DK_FONT = "data/fonts/DigitalKhattV2.otf"
 #: Every Quranic waqf mark, U+06D6..U+06DB (STOP_SIGNS leaves out U+06D9 and U+06DB).
 WAQF_MARKS = {chr(cp) for cp in range(0x06D6, 0x06DC)}
 
@@ -135,6 +137,11 @@ def _capture_cut_release(out: Path, scratch: Path) -> None:
     (target / "font.sha256").write_text(hashlib.sha256(font).hexdigest())
 
 
+def _resources(client) -> dict:
+    """The TS manifest's advertised resources."""
+    return json.loads(gzip.decompress(_get(client, "/api/ts/manifest"))).get("resources", {})
+
+
 def _capture_layout_resources(out: Path, client) -> None:
     """Every ``digital_khatt_<layout>`` resource the manifest advertises (none before)."""
     manifest = json.loads(gzip.decompress(_get(client, "/api/ts/manifest")))
@@ -150,7 +157,8 @@ def _capture_stops(out: Path, client) -> None:
     from constants import STOP_SIGNS  # noqa: PLC0415
     from services.storage.data_loader import get_word_counts, word_has_stop  # noqa: PLC0415
 
-    qpc = json.loads(gzip.decompress(_get(client, "/api/ts/resource/qpc_hafs")))
+    key = "qpc_hafs" if "qpc_hafs" in _resources(client) else "digital_khatt"
+    qpc = json.loads(gzip.decompress(_get(client, f"/api/ts/resource/{key}")))
     stops: dict[str, dict] = {}
     for (surah, ayah), n in sorted(get_word_counts().items()):
         for word in range(1, n + 1):
@@ -196,7 +204,7 @@ def capture(out: Path) -> None:
         counts = {f"{s}:{a}": n for (s, a), n in get_word_counts().items()}
         (out / "word_counts.json").write_text(json.dumps(counts))
         (out / "quran_refs.json").write_bytes(_get(client, "/api/static/quran-refs.json"))
-        for key in ("digital_khatt", "qpc_hafs"):
+        for key in ("digital_khatt", *(["qpc_hafs"] if "qpc_hafs" in _resources(client) else [])):
             body = gzip.decompress(_get(client, f"/api/ts/resource/{key}"))
             (out / f"ts_resource_{key}.json").write_bytes(body)
         _capture_layout_resources(out, client)
@@ -334,6 +342,9 @@ def compare(before: Path, after: Path, report_path: Path | None) -> int:
     failures = 0
     report: dict = {"gated": {}}
     for name, kind in GATED.items():
+        if not ((before / name).is_file() and (after / name).is_file()):
+            print(f"SKIP  {name:<45} not in both captures (retired)")
+            continue
         ok, detail = _compare_one(kind, (before / name).read_bytes(), (after / name).read_bytes())
         failures += not ok
         report["gated"][name] = {"expect": kind, "ok": ok, "detail": detail}
@@ -346,10 +357,10 @@ def compare(before: Path, after: Path, report_path: Path | None) -> int:
         json.loads((after / "stops.json").read_text(encoding="utf-8")),
     )
     report["stops"] = stops
-    waqf = _waqf_report(
-        json.loads((before / "ts_resource_qpc_hafs.json").read_text(encoding="utf-8")),
-        json.loads((after / "ts_resource_qpc_hafs.json").read_text(encoding="utf-8")),
-    )
+    texts = [d / "ts_resource_qpc_hafs.json" for d in (before, after)]
+    if not all(t.is_file() for t in texts):
+        texts = [before / "ts_resource_qpc_hafs.json", after / "ts_resource_digital_khatt.json"]
+    waqf = _waqf_report(*(json.loads(t.read_text(encoding="utf-8")) for t in texts))
     report["waqf_marks"] = waqf
     for label, changes in (("word_has_stop", stops), ("all waqf marks U+06D6-06DB", waqf)):
         counts = ", ".join(f"{len(v)} {k.replace('_', ' ')}" for k, v in changes.items())

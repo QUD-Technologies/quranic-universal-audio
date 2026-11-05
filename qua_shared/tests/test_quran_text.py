@@ -61,18 +61,6 @@ def test_digital_khatt_script_words_markers_and_ids():
     assert max(e["id"] for e in script.values()) == HAFS_WORDS + HAFS_AYAHS - 1
 
 
-def test_hafs_word_script_is_words_only_with_qpc_ids():
-    words = quran_text.hafs_word_script()
-    script = quran_text.digital_khatt_script()
-
-    assert len(words) == HAFS_WORDS
-    assert all(not e["text"].startswith(quran_text.AYAH_END) for e in words.values())
-    assert all(script[ref]["text"] == e["text"] for ref, e in words.items())
-    assert words["37:130:4"]["id"] == 61959
-    assert words["37:131:1"]["id"] == script["37:131:1"]["id"]
-    assert quran_text.hafs_word_script_bytes().endswith(b"}\n")
-
-
 def test_missing_pack_raises(monkeypatch, tmp_path):
     monkeypatch.setenv(quran_text.PACK_ENV, str(tmp_path / "absent.qref"))
     quran_text.clear_cache()

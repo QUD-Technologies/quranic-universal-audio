@@ -30,7 +30,6 @@ function word(start: number, end: number, idx = 0): TsWord {
     return {
         location: `1:1:${idx + 1}`,
         text: `w${idx}`,
-        display_text: `w${idx}`,
         start,
         end,
         phoneme_indices: [],

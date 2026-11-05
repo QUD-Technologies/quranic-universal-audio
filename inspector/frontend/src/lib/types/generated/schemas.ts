@@ -2456,7 +2456,7 @@ export interface TsMaddRow {
  *
  * Built by ``_build_manifest_dict``. ``dataset_base_url`` is ``""`` in the
  * Inspector (resources resolve as absolute Flask paths); ``commit`` is ``""``.
- * ``resources`` maps a purpose key (``qpc_hafs`` / ``digital_khatt`` / …) to
+ * ``resources`` maps a purpose key (``digital_khatt`` / …) to
  * a ``/api/ts/resource/<key>`` URL. ``reciters`` is keyed by delivery slug.
  * ``editions`` carries the non-Hafs display assets, keyed by riwayah slug.
  */

@@ -74,7 +74,6 @@
         loadConfig,
         loadDk,
         loadManifest,
-        loadQpc,
         loadTsValidation,
         loadVbrChapters,
         reciterAudioFromManifest,
@@ -204,7 +203,6 @@
     // ---------------------------------------------------------------------
     async function init(): Promise<void> {
         loadConfig().then((c) => tsConfig.set(c as TsConfigResponse));
-        void loadQpc().catch(() => {});
         void loadDk().catch(() => {});
 
         // Display prefs (letters/phonemes) hydrate regardless of
@@ -393,9 +391,8 @@
             // Canonical per-chapter audio URL comes from /api/audio/surahs (the
             // audio-manifest sidecar) — same source playback uses, usually warm
             // from the player; fetched in parallel with the shard.
-            const [shard, qpc, dk, surahs] = await Promise.all([
+            const [shard, dk, surahs] = await Promise.all([
                 loadChapterShard(slug, chapter),
-                loadQpc(),
                 loadDk(),
                 fetchSurahsForDelivery(block.source ?? '', slug).catch(
                     (): Awaited<ReturnType<typeof fetchSurahsForDelivery>> => ({}),
@@ -414,7 +411,7 @@
             const chapterUrl = surahs[String(chapter)]?.url ?? '';
             const occasions: ChapOccasion[] = [];
             for (const occ of shardOccasions(shard)) {
-                const data = assembleOccasion(slug, occ, qpc, dk, reciterAudio, chapterUrl);
+                const data = assembleOccasion(slug, occ, dk, reciterAudio, chapterUrl);
                 occasions.push({
                     ref: occ.ref,
                     startMs: data.time_start_ms,
@@ -425,7 +422,7 @@
                 });
             }
             occasions.sort((a, b) => a.startMs - b.startMs);
-            attachWaslGroups(occasions, slug, qpc, dk, reciterAudio, chapterUrl);
+            attachWaslGroups(occasions, slug, dk, reciterAudio, chapterUrl);
             chapterOccasions = occasions;
             // New chapter's occasions just replaced the array — invalidate the
             // focus cursor so the focus pass below ALWAYS re-points `loadedVerse`.
@@ -507,7 +504,6 @@
     function attachWaslGroups(
         occasions: ChapOccasion[],
         reciter: string,
-        qpc: Record<string, { text?: string }>,
         dk: Record<string, { text?: string }>,
         reciterAudio: TsReciterAudio,
         chapterUrl: string,
@@ -521,7 +517,7 @@
             // waveform key off `span[0]` as the display offset.
             const data = assembleWaslGroup(
                 reciter, raw.slice(grp.fromIdx, grp.toIdx + 1),
-                occasions[i]!.ref, qpc, dk, reciterAudio, chapterUrl,
+                occasions[i]!.ref, dk, reciterAudio, chapterUrl,
             );
             occasions[i]!.waslGroup = {
                 data, span: [grp.startMs, grp.endMs], refs: grp.refs, focusRef: occasions[i]!.ref,
@@ -828,16 +824,16 @@
         // Verse start (chapter-absolute seconds) → warm-seek position.
         let seekSec = 0;
         try {
-            const [shard, qpc, dk, manifest] = await Promise.all([
+            const [shard, dk, manifest] = await Promise.all([
                 loadChapterShard(target.reciter, target.chapter),
-                loadQpc(), loadDk(), loadManifest(),
+                loadDk(), loadManifest(),
             ]);
             const ra = reciterAudioFromManifest(manifest, target.reciter);
             const occs = ra ? shardOccasions(shard) : [];
             const idx = occs.findIndex((o) => o.ref === target.verseRef);
             const occ = idx >= 0 ? occs[idx] : undefined;
             const data = ra && occ
-                ? assembleOccasion(target.reciter, occ, qpc, dk, ra, rawUrl)
+                ? assembleOccasion(target.reciter, occ, dk, ra, rawUrl)
                 : null;
             if (data && ra) {
                 seekSec = data.time_start_ms / 1000;
