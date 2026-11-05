@@ -51,9 +51,6 @@ def _write_minimal_tree(tmp_path):
     for ep in base.REQUIRED_ENTRYPOINTS:
         (tmp_path / ep).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / ep).write_text("# stub")
-    (tmp_path / "data").mkdir()
-    (tmp_path / "data" / "surah_info.json").write_text("{}")
-    (tmp_path / "data" / "digital_khatt_v2_script.json").write_text("{}")
     (tmp_path / "inspector" / "frontend" / "public" / "fonts").mkdir(parents=True)
     (tmp_path / "inspector" / "frontend" / "public" / "fonts" / "DigitalKhattV2.otf").write_bytes(
         b"font"
@@ -78,6 +75,8 @@ def test_stage_job_code_uploads_every_required_path(stub_batch, monkeypatch, tmp
     monkeypatch.setattr(base, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(base, "QUA_DOMAIN_WHEEL_DIR", tmp_path / "no-wheels")
 
+    monkeypatch.setattr(base, "staged_reference_files", _fake_references)
+
     base.stage_job_code()
     assert len(stub_batch) == 1
     targets = {target for _src, target in stub_batch[0]["add"]}
@@ -85,6 +84,35 @@ def test_stage_job_code_uploads_every_required_path(stub_batch, monkeypatch, tmp
         assert f"code/{rel}" in targets, f"missing entrypoint upload: {rel}"
     for rel in base.REQUIRED_STATIC_FILES:
         assert f"code/{rel}" in targets, f"missing static upload: {rel}"
+    staged = {target: src for src, target in stub_batch[0]["add"]}
+    for rel in base.STAGED_REFERENCE_FILES:
+        assert staged[f"code/{rel}"] == _fake_references()[rel]
+
+
+def _fake_references() -> dict[str, bytes]:
+    return {rel: rel.encode() for rel in base.STAGED_REFERENCE_FILES}
+
+
+def test_staged_reference_files_are_built_from_the_pack():
+    """Jobs read the retired bundled documents' bytes, rebuilt from the pack."""
+    from qua_shared import quran_text
+
+    refs = base.staged_reference_files()
+
+    assert set(refs) == set(base.STAGED_REFERENCE_FILES)
+    assert refs["data/surah_info.json"] == quran_text.surah_info_bytes()
+    assert refs["data/digital_khatt_v2_script.json"] == quran_text.digital_khatt_script_bytes()
+
+
+def test_staged_reference_files_raise_without_pack(monkeypatch):
+    from qua_shared import quran_text
+
+    def unavailable() -> bytes:
+        raise quran_text.QuranDataUnavailable("no pack")
+
+    monkeypatch.setattr(quran_text, "digital_khatt_script_bytes", unavailable)
+    with pytest.raises(base.JobStagingError, match="Hafs reference data unavailable"):
+        base.staged_reference_files()
 
 
 def test_stage_job_code_ships_qua_domain_wheel(stub_batch, monkeypatch, tmp_path):
@@ -93,6 +121,7 @@ def test_stage_job_code_ships_qua_domain_wheel(stub_batch, monkeypatch, tmp_path
     wheel the upload still goes (Hafs-only jobs)."""
     _write_minimal_tree(tmp_path)
     monkeypatch.setattr(base, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(base, "staged_reference_files", _fake_references)
     wheels = tmp_path / "wheels"
     monkeypatch.setattr(base, "QUA_DOMAIN_WHEEL_DIR", wheels)
 
@@ -108,7 +137,8 @@ def test_stage_job_code_ships_qua_domain_wheel(stub_batch, monkeypatch, tmp_path
 
 def test_runtime_image_copies_digital_khatt_release_assets():
     dockerfile = (base.REPO_ROOT / "inspector" / "Dockerfile").read_text()
-    assert "data/digital_khatt_v2_script.json" in dockerfile
+    assert "data/digital_khatt_v2_script.json" not in dockerfile  # built from the pack
+    assert "/pack/quran-core.qref ./data/quran-core.qref" in dockerfile
     assert "COPY --chmod=0644 inspector/frontend/public/fonts/DigitalKhattV2.otf.gz" in dockerfile
 
 
@@ -119,8 +149,6 @@ def test_stage_job_code_requires_digital_khatt_assets(stub_batch, monkeypatch, t
     for ep in base.REQUIRED_ENTRYPOINTS:
         (tmp_path / ep).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / ep).write_text("# stub")
-    (tmp_path / "data").mkdir()
-    (tmp_path / "data" / "surah_info.json").write_text("{}")
     (tmp_path / ".github" / "config").mkdir(parents=True)
     (tmp_path / ".github" / "config" / "repo.yml").write_text("hf_dataset: foo/bar")
     (tmp_path / "docs" / "templates").mkdir(parents=True)
@@ -133,7 +161,6 @@ def test_stage_job_code_requires_digital_khatt_assets(stub_batch, monkeypatch, t
         base.stage_job_code()
 
     message = str(exc.value)
-    assert "data/digital_khatt_v2_script.json" in message
     assert "DigitalKhattV2.otf" in message
     assert stub_batch == []
 

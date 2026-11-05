@@ -14,8 +14,8 @@ Shape (all ints, positional to keep the file small)::
          | [1, 1, surah, 0]                          # surah header
          | [2, 1, 0, 0]                              # basmallah
 
-Word ids index the Digital Khatt v2 script (``data/digital_khatt_v2_script.json``,
-verse-end markers included), the same ids the frontend's ``loadDk()`` carries,
+Word ids index the Digital Khatt v2 script (``qua_shared.quran_text``, built from
+the talqeen-quran-data pack, verse-end markers included), the same ids the frontend's ``loadDk()`` carries,
 so no text ships here. Deterministic: re-running on the same inputs is a no-op.
 
 Usage::
@@ -28,10 +28,13 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+import sys
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parents[2]
-_DK_SCRIPT = _REPO / "data" / "digital_khatt_v2_script.json"
+sys.path.insert(0, str(_REPO))
+from qua_shared import quran_text  # noqa: E402
+
 _OUT_DIR = _REPO / "inspector" / "frontend" / "src" / "tabs" / "timestamps" / "mushaf" / "data"
 
 YEARS = ("1405", "1421", "1441")
@@ -39,9 +42,9 @@ PAGE_COUNT = 604
 LINE_AYAH, LINE_SURAH, LINE_BASMALLAH = 0, 1, 2
 
 
-def _verse_of_word(dk_path: Path) -> dict[int, tuple[int, int]]:
+def _verse_of_word() -> dict[int, tuple[int, int]]:
     """Global DK word id -> (surah, ayah)."""
-    raw = json.loads(dk_path.read_text(encoding="utf-8"))
+    raw = quran_text.digital_khatt_script()
     return {int(w["id"]): (int(w["surah"]), int(w["ayah"])) for w in raw.values()}
 
 
@@ -106,7 +109,7 @@ def main() -> None:
     ap.add_argument("--src", type=Path, required=True, help="quranic-universal-mushaf checkout")
     args = ap.parse_args()
     data = args.src / "data"
-    verse_of = _verse_of_word(_DK_SCRIPT)
+    verse_of = _verse_of_word()
     juz = _section_starts(data / "quran-metadata" / "juz-metadata.json", "juz_number")
     hizb = _section_starts(data / "quran-metadata" / "hizb-metadata.json", "hizb_number")
     _OUT_DIR.mkdir(parents=True, exist_ok=True)

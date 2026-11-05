@@ -1,87 +1,44 @@
-"""qpc_hafs byte resolution must survive the deployed Space's LFS pointer.
+"""The Timestamps resources come from the talqeen-quran-data pack and degrade, never raise.
 
-HF auto-LFS-promotes ``*.gz`` by extension and the Space build can't smudge
-LFS, so the image's ``data/qpc_hafs.json.gz`` is a ``version https://...``
-pointer there — ``gzip.decompress`` on it raises and previously 500'd the TS
-manifest (blanking the text strip + Analysis tab). ``static_refs.load_qpc_bytes``
-must fall back to the bucket, and ``_build_resource_bytes`` must degrade (skip)
-rather than raise. These tests pin both so the regression can't return.
+``/api/ts/resource/{qpc_hafs,digital_khatt}`` are built from ``qua_shared.quran_text``.
+A missing SDK or pack must skip them (the manifest still builds), and both resources
+carry the same Digital Khatt word text — QPC Hafs text is retired.
 """
 
 from __future__ import annotations
 
 import gzip
+import json
 
+from qua_shared import quran_text
 from services.reference import timestamps as ts_manifest
-from services.storage import hf_bucket as _hf_bucket
-from services.storage import static_refs
 
 
-class _FakeBackend:
-    """Mirrors the FilesystemBackend / BucketBackend exception contract:
-    missing paths raise ``StorageNotFound``, not ``FileNotFoundError``."""
-
-    def __init__(self, files: dict[str, bytes]):
-        self._files = files
-
-    def read_bytes(self, path: str) -> bytes:
-        try:
-            return self._files[path]
-        except KeyError as e:
-            raise _hf_bucket.StorageNotFound(path) from e
+def _raise_unavailable() -> bytes:
+    raise quran_text.QuranDataUnavailable("no pack")
 
 
-def test_prefers_local_uncompressed(tmp_path, monkeypatch):
-    p = tmp_path / "qpc_hafs.json"
-    p.write_bytes(b'{"1:1:1": "x"}')
-    monkeypatch.setattr(static_refs, "QPC_HAFS_PATH", p)
+def test_build_resource_bytes_degrades_without_pack(monkeypatch):
+    """An unavailable pack is skipped, not raised — the manifest must build."""
+    monkeypatch.setattr(ts_manifest.quran_text, "hafs_word_script_bytes", _raise_unavailable)
 
-    assert static_refs.load_qpc_bytes() == b'{"1:1:1": "x"}'
-
-
-def test_local_gz_when_no_uncompressed(tmp_path, monkeypatch):
-    """CI / job staging ships a real ``.gz`` and no uncompressed source."""
-    raw = b'{"1:1:1": "gz"}'
-    (tmp_path / "qpc_hafs.json.gz").write_bytes(gzip.compress(raw, mtime=0))
-    monkeypatch.setattr(static_refs, "QPC_HAFS_PATH", tmp_path / "qpc_hafs.json")
-
-    assert static_refs.load_qpc_bytes() == raw
+    assert ts_manifest._build_resource_bytes() == {}
 
 
-def test_lfs_pointer_gz_falls_back_to_bucket(tmp_path, monkeypatch):
-    """The deployed-Space case: local ``.gz`` is an LFS pointer (not gzip), so
-    the real bytes must come from the bucket."""
-    raw = b'{"1:1:1": "bucket"}'
-    # Local .gz is a git-lfs pointer, not gzip — gzip.decompress would raise.
-    (tmp_path / "qpc_hafs.json.gz").write_bytes(
-        b"version https://git-lfs.github.com/spec/v1\noid sha256:deadbeef\nsize 1452433\n"
-    )
-    monkeypatch.setattr(static_refs, "QPC_HAFS_PATH", tmp_path / "qpc_hafs.json")
-    fake = _FakeBackend({static_refs.QPC_BUCKET_PATH: gzip.compress(raw, mtime=0)})
-    monkeypatch.setattr(static_refs.data_dir, "get_backend", lambda: fake)
-
-    assert static_refs.load_qpc_bytes() == raw
-
-
-def test_returns_empty_when_unavailable_everywhere(tmp_path, monkeypatch):
-    monkeypatch.setattr(static_refs, "QPC_HAFS_PATH", tmp_path / "qpc_hafs.json")
-    monkeypatch.setattr(static_refs.data_dir, "get_backend", lambda: _FakeBackend({}))
-
-    assert static_refs.load_qpc_bytes() == b""
-
-
-def test_build_resource_bytes_degrades_without_qpc(monkeypatch):
-    """A missing qpc resource is skipped, not raised — the manifest must build."""
-    monkeypatch.setattr(ts_manifest.static_refs, "load_qpc_bytes", lambda: b"")
+def test_build_resource_bytes_gzips_both(monkeypatch):
+    monkeypatch.setattr(ts_manifest.quran_text, "hafs_word_script_bytes", lambda: b'{"q": 1}')
+    monkeypatch.setattr(ts_manifest.quran_text, "digital_khatt_script_bytes", lambda: b'{"d": 1}')
 
     out = ts_manifest._build_resource_bytes()
 
-    assert "qpc_hafs" not in out  # skipped, no crash
+    assert gzip.decompress(out["qpc_hafs"]) == b'{"q": 1}'
+    assert gzip.decompress(out["digital_khatt"]) == b'{"d": 1}'
 
 
-def test_build_resource_bytes_gzips_qpc(monkeypatch):
-    monkeypatch.setattr(ts_manifest.static_refs, "load_qpc_bytes", lambda: b'{"1:1:1": "y"}')
-
+def test_qpc_hafs_resource_carries_digital_khatt_text():
     out = ts_manifest._build_resource_bytes()
+    words = json.loads(gzip.decompress(out["qpc_hafs"]))
+    script = json.loads(gzip.decompress(out["digital_khatt"]))
 
-    assert gzip.decompress(out["qpc_hafs"]) == b'{"1:1:1": "y"}'
+    assert len(words) == 77_433
+    assert all(script[ref]["text"] == entry["text"] for ref, entry in words.items())

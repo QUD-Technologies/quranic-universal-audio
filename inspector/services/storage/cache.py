@@ -606,29 +606,11 @@ def set_word_counts_cache(wc: dict[tuple[int, int], int]) -> None:
     _word_counts.set(wc)
 
 
-# QPC / DK data
-_qpc: _SingletonCache[dict[str, dict]] = _SingletonCache()
-_dk: _SingletonCache[dict[str, dict]] = _SingletonCache()
-# Flat ``"surah:ayah:word" -> text`` projection of _dk, served to the FE so
-# it can resolve ref → display text locally instead of round-tripping. Built
-# once on first request.
+# Digital Khatt word map. The full script is cached by ``qua_shared.quran_text``;
+# this is its flat ``"surah:ayah:word" -> text`` projection (markers dropped),
+# served to the FE so it can resolve ref → display text locally. Built once on
+# first request.
 _dk_words_flat: _SingletonCache[dict[str, str]] = _SingletonCache()
-
-
-def get_qpc_cache():
-    return _qpc.get()
-
-
-def set_qpc_cache(data: dict) -> None:
-    _qpc.set(data)
-
-
-def get_dk_cache():
-    return _dk.get()
-
-
-def set_dk_cache(data: dict) -> None:
-    _dk.set(data)
 
 
 def get_dk_words_flat_cache():

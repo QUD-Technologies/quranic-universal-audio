@@ -434,14 +434,37 @@ REQUIRED_ENTRYPOINTS = (
     "qua_jobs/audio_io.py",
 )
 REQUIRED_STATIC_FILES = (
-    "data/digital_khatt_v2_script.json",
-    "data/surah_info.json",
     "inspector/frontend/public/fonts/DigitalKhattV2.otf",
     ".github/config/repo.yml",
     "docs/templates/release_body.md",
     "docs/templates/hf_dataset_card.md",
     "LICENSE",
 )
+
+
+#: Hafs reference documents the release jobs read from ``code/data/``. They are not
+#: files in the repo: staging builds them from the talqeen-quran-data pack
+#: (``qua_shared.quran_text``), so a job needs neither the SDK nor the pack.
+STAGED_REFERENCE_FILES = (
+    "data/digital_khatt_v2_script.json",
+    "data/surah_info.json",
+)
+
+
+def staged_reference_files() -> dict[str, bytes]:
+    """``{repo-relative path: bytes}`` of the Hafs reference documents jobs read.
+
+    Raises :class:`JobStagingError` when the pack is unavailable.
+    """
+    from qua_shared import quran_text
+
+    try:
+        return {
+            "data/digital_khatt_v2_script.json": quran_text.digital_khatt_script_bytes(),
+            "data/surah_info.json": quran_text.surah_info_bytes(),
+        }
+    except quran_text.QuranDataUnavailable as exc:
+        raise JobStagingError(f"stage_job_code: Hafs reference data unavailable: {exc}") from exc
 
 
 class JobStagingError(RuntimeError):
@@ -477,7 +500,8 @@ def stage_job_code() -> None:
     ``aligner-bucket/code/`` so the HF Job container can import them.
 
     Walks ``qua_shared`` and ``qua_jobs`` for every ``.py`` then appends
-    the curated static files. Raises ``JobStagingError`` BEFORE the upload if
+    the curated static files and the Hafs reference documents built from the
+    pack (:func:`staged_reference_files`). Raises ``JobStagingError`` BEFORE the upload if
     any required entrypoint or static file can't be resolved on disk —
     catches the "Dockerfile missing a COPY" class of regression at launch.
 
@@ -524,6 +548,7 @@ def stage_job_code() -> None:
             f"{missing}. Likely cause: inspector/Dockerfile doesn't COPY one "
             "of these paths. Fix the Dockerfile, redeploy the Space, then retry."
         )
+    adds.extend((body, f"code/{rel}") for rel, body in staged_reference_files().items())
 
     batch_bucket_files(ALIGNER_BUCKET, add=adds)
     log.info("staged %d job-code files to %s/code/", len(adds), ALIGNER_BUCKET)

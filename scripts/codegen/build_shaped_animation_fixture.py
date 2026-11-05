@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -16,8 +17,10 @@ from quranic_phonemizer import Phonemizer
 hb: Any = _hb
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+from qua_shared import quran_text  # noqa: E402
+
 FONT = ROOT / "inspector/frontend/public/fonts/DigitalKhattV2.otf"
-DK = ROOT / "data/digital_khatt_v2_script.json"
 OUTPUT_DIR = ROOT / "inspector/frontend/public/generated/shaped-glyphs-v13"
 SPECIAL = {
     0x0654: ("hamzaabove",),
@@ -114,7 +117,7 @@ def _write_json(target: Path, payload: dict) -> int:
 
 
 def main() -> None:
-    dk = json.loads(DK.read_text(encoding="utf-8"))
+    dk = quran_text.digital_khatt_script()
     font_bytes = FONT.read_bytes()
     hb_font = hb.Font(hb.Face(font_bytes))
     tt = TTFont(FONT)
