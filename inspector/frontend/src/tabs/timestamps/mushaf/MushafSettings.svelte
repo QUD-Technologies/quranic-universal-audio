@@ -1,12 +1,16 @@
 <script lang="ts">
-    /** Mushaf display settings — print year and what stays visible. */
+    /** Mushaf display settings — print year, what stays visible, surah header and verse marker. */
     import { i18n } from '$lib/i18n/locale.svelte';
     import * as m from '$lib/paraglide/messages';
     import {
         MUSHAF_YEARS,
+        mushafFrame,
+        mushafMarker,
         mushafScope,
         mushafShowUpcoming,
         mushafYear,
+        type MushafFrame,
+        type MushafMarker,
         type MushafScope,
     } from '../stores/mushaf';
 
@@ -15,6 +19,23 @@
         (i18n.locale, [
             { value: 'spread', label: m.ts_mushaf_show_spread() },
             { value: 'verse', label: m.ts_mushaf_show_verse() },
+        ]),
+    );
+    const frames = $derived<{ value: MushafFrame; label: string }[]>(
+        (i18n.locale, [
+            { value: 'print', label: m.ts_mushaf_style_print() },
+            { value: 'cartouche', label: m.ts_mushaf_frame_cartouche() },
+            { value: 'ribbon', label: m.ts_mushaf_frame_ribbon() },
+            { value: 'panel', label: m.ts_mushaf_frame_panel() },
+            { value: 'none', label: m.ts_mushaf_style_none() },
+        ]),
+    );
+    const markers = $derived<{ value: MushafMarker; label: string }[]>(
+        (i18n.locale, [
+            { value: 'auto', label: m.ts_mushaf_style_print() },
+            { value: 'circle', label: m.ts_mushaf_marker_circle() },
+            { value: 'rosette', label: m.ts_mushaf_marker_rosette() },
+            { value: 'number', label: m.ts_mushaf_marker_number() },
         ]),
     );
     const memorizing = $derived($mushafScope === 'verse' && !$mushafShowUpcoming);
@@ -63,6 +84,30 @@
             >{L(m.ts_mushaf_upcoming_hide())}</button>
         </div>
     </div>
+    <div class="ms-row">
+        <span class="ms-label">{L(m.ts_mushaf_settings_frame())}</span>
+        <div class="ms-seg ms-wrap" role="radiogroup" aria-label={L(m.ts_mushaf_settings_frame())}>
+            {#each frames as f (f.value)}
+                <button
+                    type="button" role="radio" aria-checked={$mushafFrame === f.value}
+                    class:on={$mushafFrame === f.value}
+                    onclick={() => mushafFrame.set(f.value)}
+                >{f.label}</button>
+            {/each}
+        </div>
+    </div>
+    <div class="ms-row">
+        <span class="ms-label">{L(m.ts_mushaf_settings_marker())}</span>
+        <div class="ms-seg" role="radiogroup" aria-label={L(m.ts_mushaf_settings_marker())}>
+            {#each markers as k (k.value)}
+                <button
+                    type="button" role="radio" aria-checked={$mushafMarker === k.value}
+                    class:on={$mushafMarker === k.value}
+                    onclick={() => mushafMarker.set(k.value)}
+                >{k.label}</button>
+            {/each}
+        </div>
+    </div>
     <p class="ms-hint" class:active={memorizing}>{L(m.ts_mushaf_memorize_hint())}</p>
 </div>
 
@@ -70,8 +115,10 @@
     .ms {
         display: grid;
         gap: var(--s-2);
-        width: 340px;
+        width: 380px;
+        max-width: calc(100vw - 2 * var(--s-3));
     }
+    .ms-wrap { flex-wrap: wrap; }
     .ms-row {
         display: grid;
         grid-template-columns: 7.5em 1fr;

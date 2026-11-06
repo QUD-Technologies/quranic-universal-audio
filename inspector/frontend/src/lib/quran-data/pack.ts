@@ -26,7 +26,11 @@ export function loadQuranPack(): Promise<QuranPack> {
     return pending;
 }
 
-/** Where a font of `pack.fonts()` is served. */
+/** Where the Mushaf view's justified-line data is served (`<layout>.bin`, `outlines-<sha8>.bin`). */
+export const QURAN_JUSTIFY_BASE = `${QURAN_DATA_BASE}justify/`;
+
+/** Where a font of `pack.fonts()` is served: its woff2 when the pack lists one (a fraction of the OTF). */
 export function quranFontUrl(_id: string, font: Font): string {
-    return `${QURAN_DATA_BASE}${font.file}`;
+    const file = font.files?.find((f) => f.format === 'woff2')?.file ?? font.file;
+    return `${QURAN_DATA_BASE}${file}`;
 }

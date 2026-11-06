@@ -1,12 +1,13 @@
 <script lang="ts">
     /**
      * Footer controls for the Mushaf view: the view toggle, and — while the
-     * mushaf is open — Repeat and the display settings, each a drop-up.
+     * mushaf is open — tajweed colours, Repeat and the display settings (each a
+     * drop-up).
      */
     import { i18n } from '$lib/i18n/locale.svelte';
     import * as m from '$lib/paraglide/messages';
     import { clickOutside } from '../../../lib/actions/click-outside';
-    import { mushafActive, mushafAvailable, mushafMode } from '../stores/mushaf';
+    import { mushafActive, mushafAvailable, mushafMode, mushafTajweed } from '../stores/mushaf';
     import MushafRepeatPanel from './MushafRepeatPanel.svelte';
     import MushafSettings from './MushafSettings.svelte';
     import { mushafFullscreen } from './fullscreen.svelte';
@@ -33,6 +34,10 @@
         if (which === 'repeat' && mushafRepeat.picking) return;
         if (open === which) open = null;
     }
+
+    const tajweedTitle = $derived(
+        (i18n.locale, $mushafTajweed ? m.ts_mushaf_tajweed_off_title() : m.ts_mushaf_tajweed_on_title()),
+    );
 
     const fullTitle = $derived(
         (i18n.locale, mushafFullscreen.on ? m.ts_mushaf_fullscreen_exit() : m.ts_mushaf_fullscreen_enter()),
@@ -79,6 +84,18 @@
     </button>
 
     {#if $mushafActive}
+        <button
+            type="button" class="icon-btn" class:on={$mushafTajweed}
+            aria-pressed={$mushafTajweed}
+            title={tajweedTitle} aria-label={tajweedTitle}
+            onclick={() => mushafTajweed.update((v) => !v)}
+        >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M8 2.2c2.4 2.7 4 4.9 4 6.9a4 4 0 0 1-8 0c0-2 1.6-4.2 4-6.9Z" />
+                <path d="M6.2 9.6a1.9 1.9 0 0 0 1.9 1.7" />
+            </svg>
+        </button>
+
         <div class="pop-wrap" use:clickOutside={() => close('repeat')}>
             <button
                 type="button" class="icon-btn" class:on={mushafRepeat.running || open === 'repeat'}

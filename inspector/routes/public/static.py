@@ -173,6 +173,28 @@ def quran_data_file(name: str) -> Response:
     return resp
 
 
+@static_bp.route("/quran-data/justify/<name>")
+def quran_data_justify(name: str) -> Response:
+    """Serve a pinned justify file (``<layout>.bin``, ``outlines-<sha8>.bin``) brotli-encoded.
+
+    The Mushaf view asks for ``<name>.bin``; the pin holds ``<name>.bin.br``, sent as is with
+    ``Content-Encoding: br`` so the browser decodes it (404 if unpinned or not fetched).
+    """
+    from qua_shared import quran_text
+    from qua_shared.quran_data_pin import JUSTIFY_DIR_NAME, JUSTIFY_SHA256
+
+    stored = f"{name}.br"
+    if not name.endswith(".bin") or stored not in JUSTIFY_SHA256:
+        abort(404)
+    path = quran_text.pack_path().parent / JUSTIFY_DIR_NAME / stored
+    if not path.is_file():
+        abort(404)
+    resp = send_file(path, mimetype="application/octet-stream", etag=JUSTIFY_SHA256[stored], conditional=True, max_age=None)
+    resp.headers["Content-Encoding"] = "br"
+    resp.headers["Cache-Control"] = _QURAN_DATA_CACHE_CONTROL
+    return resp
+
+
 # Segments-guide example clips. Served here (not as a plain dist static asset)
 # because on the deployed Space HF auto-LFS promotes the larger ``.mp3`` (by
 # size, ~100 KB+), so the in-image ``dist/guide-audio/`` copy is a git-lfs

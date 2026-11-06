@@ -40,3 +40,17 @@ def test_unpinned_or_unfetched_names_are_404(flask_client, data_dir):
     assert flask_client.get("/api/static/quran-data/other.woff2").status_code == 404
     assert flask_client.get("/api/static/quran-data/..%2Fquran-core.qref").status_code == 404
     assert flask_client.get("/api/static/quran-data/SurahNameV2.woff2").status_code == 404
+
+
+def test_justify_files_are_served_brotli_encoded_by_their_bin_name(flask_client, data_dir):
+    from qua_shared.quran_data_pin import JUSTIFY_SHA256
+
+    (data_dir / "justify").mkdir()
+    (data_dir / "justify" / "madani-1421.bin.br").write_bytes(b"br-bytes")
+    resp = flask_client.get("/api/static/quran-data/justify/madani-1421.bin")
+    assert resp.status_code == 200
+    assert resp.headers["Content-Encoding"] == "br"
+    assert resp.headers["ETag"] == f'"{JUSTIFY_SHA256["madani-1421.bin.br"]}"'
+    assert flask_client.get("/api/static/quran-data/justify/madani-1405.bin").status_code == 404  # not fetched
+    assert flask_client.get("/api/static/quran-data/justify/madani-1421.bin.br").status_code == 404
+    assert flask_client.get("/api/static/quran-data/justify/other.bin").status_code == 404

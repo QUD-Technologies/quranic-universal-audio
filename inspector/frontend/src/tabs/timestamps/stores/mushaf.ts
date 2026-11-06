@@ -6,7 +6,8 @@
  * so the view is available only while the loaded shard is Hafs (`mushafAvailable`).
  *
  * Display prefs are deliberately few: the print year, whether other verses
- * stay visible, and whether not-yet-recited words are shown. Together the two
+ * stay visible, whether not-yet-recited words are shown, tajweed colours (on by
+ * default, classic palette), and the surah header and verse marker styles. Together the two
  * visibility prefs give a memorisation mode (current verse only + hide
  * upcoming = only the words already recited).
  *
@@ -28,6 +29,16 @@ const LS_MODE = 'ts_mushaf_mode';
 const LS_YEAR = 'ts_mushaf_year';
 const LS_SCOPE = 'ts_mushaf_scope';
 const LS_UPCOMING = 'ts_mushaf_show_upcoming';
+const LS_TAJWEED = 'ts_mushaf_tajweed';
+const LS_FRAME = 'ts_mushaf_frame';
+const LS_MARKER = 'ts_mushaf_marker';
+
+/** Surah header frames offered in the settings (`surahHeaderStyle.frame.style`). */
+export const MUSHAF_FRAMES = ['print', 'cartouche', 'ribbon', 'panel', 'none'] as const;
+export type MushafFrame = (typeof MUSHAF_FRAMES)[number];
+/** Verse markers offered in the settings (`ayahMarker.style`; `auto` is the print's own). */
+export const MUSHAF_MARKERS = ['auto', 'circle', 'rosette', 'number'] as const;
+export type MushafMarker = (typeof MUSHAF_MARKERS)[number];
 
 function read(key: string): string | null {
     try {
@@ -74,4 +85,19 @@ export const mushafAvailable = derived(playerContext, ($p) => isHafs($p.delivery
 export const mushafActive = derived(
     [mushafMode, mushafAvailable],
     ([$mode, $available]) => $mode && $available,
+);
+
+/** Tajweed colours (classic palette); on unless turned off. */
+export const mushafTajweed = persisted(LS_TAJWEED, (r) => r !== 'false', String);
+
+export const mushafFrame = persisted<MushafFrame>(
+    LS_FRAME,
+    (r) => (MUSHAF_FRAMES.includes(r as MushafFrame) ? (r as MushafFrame) : 'print'),
+    (v) => v,
+);
+
+export const mushafMarker = persisted<MushafMarker>(
+    LS_MARKER,
+    (r) => (MUSHAF_MARKERS.includes(r as MushafMarker) ? (r as MushafMarker) : 'auto'),
+    (v) => v,
 );
