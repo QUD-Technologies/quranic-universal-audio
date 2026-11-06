@@ -21,39 +21,56 @@ from __future__ import annotations
 TALQEEN_REPO = "QUD-Technologies/talqeen-ai-data"
 TALQEEN_HTTPS_URL = f"https://github.com/{TALQEEN_REPO}.git"
 
-#: The release tag (``sdk-v1.9.0`` and ``data-v1.5.0`` name the same commit, cddf855).
-TALQEEN_DATA_REF = "sdk-v1.9.0"
+#: The release tag the SDK and pack come from (``sdk-v1.13.0``; its pack is ``data-v1.8.0``'s).
+TALQEEN_DATA_REF = "sdk-v1.13.0"
 
 #: SDK distribution and the version the pinned revision builds.
 SDK_DIST_NAME = "talqeen-quran-data"
-SDK_VERSION = "1.9.0"
+SDK_VERSION = "1.13.0"
 #: Path of the Python SDK inside the data repo (a sparse checkout target).
 SDK_PATH = "sdk/python"
 
 #: The core pack: words, surahs, divisions and layouts, no recitation sounds.
 PACK_NAME = "quran-core.qref"
 PACK_PATH = f"data/{PACK_NAME}"
-PACK_SHA256 = "0a84227596677dbe4a262a4e656ec4b0d934f4a9150397241b45ef743c4474a6"
+PACK_SHA256 = "f4c236a2f3defcccfcf8c1f63b94b5bd7bbcc1619d68abb2e9f39aaed3f6dda1"
 
 #: The TypeScript SDK the frontend builds against: a release asset of ``TS_SDK_RELEASE``,
 #: fetched into ``inspector/frontend/.quran-data/`` (``package.json`` installs it from there).
-TS_SDK_RELEASE = "sdk-v1.9.0"
-TS_SDK_FILE = "qud-technologies-quran-data-1.9.0.tgz"
-TS_SDK_SHA256 = "b034d8e44b159df53a4a11da8c17a3d00dc641aa3c9338e9cceb0dbc7086d216"
+TS_SDK_RELEASE = "sdk-v1.13.0"
+TS_SDK_FILE = "qud-technologies-quran-data-1.13.0.tgz"
+TS_SDK_SHA256 = "a79a2bba1aaebea3beaa447e040f3f180f89964bad3a984e7c533ee0c2f5314c"
 
 #: The data release whose ``manifest.json`` says where each font asset lives.
-DATA_RELEASE = "data-v1.5.0"
+DATA_RELEASE = "data-v1.8.0"
 #: The fonts the pack's ``fonts()`` names (text, surah name, surah frame), fetched next to the
 #: pack under ``fonts/`` and served to the browser by ``/api/static/quran-data/<file>``.
 FONTS_DIR_NAME = "fonts"
 FONT_SHA256 = {
-    "DigitalKhattV2.otf": "0935c48269a57c9808e52dfae47864c189396452901c689977156036a72dd217",
-    "DigitalKhattV1.woff2": "ef97cc5e1a51b4f165b784c3614ca33190a3ab028e365453fb5825612f0b361c",
+    "DigitalKhattV2.otf": "b739d35562ea8bd28367a0cb069f993f025e6d7c8b6882eae01456fd82c0e9ef",
+    "DigitalKhattV2.woff2": "8b162f68e7e000e333fb235a37a5954bdc09dac018ae7aaf7b8b5b30a5fad67a",
+    "DigitalKhattV1.woff2": "e0a7ab558f4948fc70bb542e0f74628abc3feb47e0654dfcaed3dba1a6843c51",
     "SurahNameV2.woff2": "7d43fb3adddd53f754ae4d252db54650b14466de3f7692043631e3460a628857",
     "QuranCommon.woff2": "d5ce57bdf26de535bed7fed159764c10316d8d16404c20ceed52d83daa33211e",
+    "ornaments.json": "a0f2d9f1985e707de10315458daa107720d9467e41ab8815653207388e8efcbb",
+}
+
+#: Justified-line drawings per layout and the glyph outline tables of their fonts (brotli), read
+#: by the Mushaf view's justify (``justifyBase``: ``/api/static/quran-data/justify/<name>.bin``,
+#: served from ``<name>.bin.br`` with ``Content-Encoding: br``). Fetched through ``DATA_RELEASE``'s
+#: ``manifest.json`` into ``<pack dir>/justify/``.
+JUSTIFY_DIR_NAME = "justify"
+JUSTIFY_SHA256 = {
+    "madani-1405.bin.br": "1c065da87be58939f9e18c788ec83f67af5d96046385b64830a388bfe79bcf26",
+    "madani-1421.bin.br": "0f457c7b89e66bd5bfd0dc231461e906b3477287f3612c7ff104b41cd6b55b68",
+    "madani-1441.bin.br": "16cb4595241d0cca9a078858413a324b249278e1c2be8b56cd11623b925b7b5b",
+    "outlines-86fc18f6.bin.br": "6cea6738a7dfda7610651cf2604dcd3763ff1c8d7f25bfb1e334ce9f049ba068",
+    "outlines-b739d355.bin.br": "83a5ee513954b128e00a92893ae388b8b5b022107a2db641a7601fbde3380e4a",
 }
 
 __all__ = [
+    "JUSTIFY_DIR_NAME",
+    "JUSTIFY_SHA256",
     "DATA_RELEASE",
     "FONTS_DIR_NAME",
     "FONT_SHA256",

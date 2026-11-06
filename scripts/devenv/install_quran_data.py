@@ -48,6 +48,8 @@ from qua_shared.quran_data_pin import (  # noqa: E402
     DATA_RELEASE,
     FONT_SHA256,
     FONTS_DIR_NAME,
+    JUSTIFY_DIR_NAME,
+    JUSTIFY_SHA256,
     PACK_NAME,
     PACK_PATH,
     PACK_SHA256,
@@ -210,18 +212,23 @@ def _asset_location(url: str) -> tuple[str, str]:
     return tag, name
 
 
-def fetch_fonts(fonts_dir: Path, token: str) -> list[Path]:
-    """The pinned fonts, located through ``DATA_RELEASE``'s ``manifest.json``."""
+#: Browser assets fetched next to the pack: ``<pack dir>/<subdir>/<name>``, sha256-pinned.
+ASSET_DIRS = {FONTS_DIR_NAME: FONT_SHA256, JUSTIFY_DIR_NAME: JUSTIFY_SHA256}
+
+
+def fetch_assets(pack_dir: Path, token: str) -> list[Path]:
+    """The pinned fonts and justify files, located through ``DATA_RELEASE``'s ``manifest.json``."""
     manifest = json.loads(release_asset(DATA_RELEASE, "manifest.json", token))
     out = []
-    for name, sha in sorted(FONT_SHA256.items()):
+    pins = [(sub, name, sha) for sub, shas in ASSET_DIRS.items() for name, sha in sorted(shas.items())]
+    for sub, name, sha in pins:
         entry = manifest.get("files", {}).get(name)
         if not entry:
             raise SystemExit(f"{DATA_RELEASE} manifest.json does not list {name}")
         if entry.get("sha256") != sha:
             raise SystemExit(f"{name}: manifest sha256 {entry.get('sha256')} != pinned {sha}")
         tag, asset = _asset_location(entry["url"])
-        out.append(_write(fonts_dir / name, _checked(name, release_asset(tag, asset, token), sha)))
+        out.append(_write(pack_dir / sub / name, _checked(name, release_asset(tag, asset, token), sha)))
     return out
 
 
@@ -232,8 +239,9 @@ def ts_state(ts_dir: Path) -> str:
     return "ok" if sha256_file(tgz) == TS_SDK_SHA256 else "sha256 mismatch"
 
 
-def fonts_state(fonts_dir: Path) -> str:
-    bad = sorted(n for n, sha in FONT_SHA256.items() if not (fonts_dir / n).is_file() or sha256_file(fonts_dir / n) != sha)
+def assets_state(pack_dir: Path) -> str:
+    pins = [(pack_dir / sub / n, sha) for sub, shas in ASSET_DIRS.items() for n, sha in shas.items()]
+    bad = sorted(p.name for p, sha in pins if not p.is_file() or sha256_file(p) != sha)
     return "ok" if not bad else f"missing or wrong: {', '.join(bad)}"
 
 
@@ -261,7 +269,7 @@ def _report(pack_dir: Path, ts_dir: Path) -> None:
     print(f"pin           {TALQEEN_DATA_REF}")
     print(f"sdk           {SDK_DIST_NAME} {installed_version() or '(absent)'} (pin {SDK_VERSION})")
     print(f"pack          {pack_dir / PACK_NAME}: {pack_state(pack_dir)}")
-    print(f"fonts         {pack_dir / FONTS_DIR_NAME}: {fonts_state(pack_dir / FONTS_DIR_NAME)}")
+    print(f"fonts, justify {pack_dir}: {assets_state(pack_dir)}")
     print(f"ts sdk        {ts_dir / TS_SDK_FILE}: {ts_state(ts_dir)}")
 
 
@@ -289,14 +297,12 @@ def main() -> int:
     parser.add_argument("--ts-only", action="store_true", help="fetch only the TS SDK tarball")
     parser.add_argument("--force", action="store_true", help="reinstall even when up to date")
     args = parser.parse_args()
-    fonts_dir = args.pack_dir / FONTS_DIR_NAME
-
     if args.check:
         _report(args.pack_dir, args.ts_dir)
         return 0
     python_ok = installed_version() == SDK_VERSION and pack_state(args.pack_dir) == "ok"
     need_python = not args.ts_only and (args.force or bool(args.wheel_dir) or not python_ok)
-    need_fonts = not args.ts_only and (args.force or fonts_state(fonts_dir) != "ok")
+    need_fonts = not args.ts_only and (args.force or assets_state(args.pack_dir) != "ok")
     need_ts = args.force or ts_state(args.ts_dir) != "ok"
     if not (need_python or need_fonts or need_ts):
         print(f"talqeen-quran-data: {SDK_VERSION}, {PACK_NAME}, fonts and {TS_SDK_FILE} already at the pin")
@@ -307,8 +313,8 @@ def main() -> int:
     if need_ts:
         print(f"talqeen-quran-data: ts sdk -> {fetch_ts_sdk(args.ts_dir, token)}")
     if need_fonts:
-        for path in fetch_fonts(fonts_dir, token):
-            print(f"talqeen-quran-data: font -> {path}")
+        for path in fetch_assets(args.pack_dir, token):
+            print(f"talqeen-quran-data: asset -> {path}")
     if need_python:
         _install_python(args, token)
     return 0

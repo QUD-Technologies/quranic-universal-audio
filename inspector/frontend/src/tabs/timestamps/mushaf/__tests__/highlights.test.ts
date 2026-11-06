@@ -22,11 +22,11 @@ function state(over: Partial<ReadingState>): ReadingState {
 const byId = (st: ReadingState) => Object.fromEntries(readingHighlights(st).map((h) => [h.id, h]));
 
 describe('readingHighlights', () => {
-    it('lights the recited word above a band on its whole verse', () => {
+    it('bands the whole verse and fades the words not reached yet; the playhead draws the recited word', () => {
         const h = byId(state({}));
-        expect(h.active).toMatchObject({ target: '2:2:3', style: 'text', layer: 2 });
         expect(h.verse).toMatchObject({ target: '2:2', style: 'band' });
-        expect(Object.keys(h)).toEqual(['verse', 'active']);
+        expect(h.upcoming).toMatchObject({ target: { from: '2:2:4', to: '114:6' }, style: 'upcoming' });
+        expect(Object.keys(h)).toEqual(['upcoming', 'verse']);
     });
 
     it('hides every other verse in verse scope', () => {
@@ -56,7 +56,9 @@ describe('readingHighlights', () => {
 
     it('bands and isolates nothing during an opener reading, which is not printed', () => {
         const opener = { active: '', verseKey: '0:1', progress: '', anchor: '2:1:1' };
-        expect(byId(state({ scope: 'verse', pos: opener }))).toEqual({});
+        const shown = byId(state({ scope: 'verse', pos: opener }));
+        expect(Object.keys(shown)).toEqual(['upcoming']);
+        expect(shown.upcoming!.target).toEqual({ from: '2:1:1', to: '114:6' });
         const h = byId(state({ scope: 'verse', showUpcoming: false, pos: opener }));
         expect(Object.keys(h)).toEqual(['hidden-0']);
         expect(h['hidden-0']!.target).toEqual({ from: '2:1:1', to: '114:6' });

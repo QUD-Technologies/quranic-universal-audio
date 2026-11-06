@@ -4,8 +4,11 @@
      * (`@qud-technologies/mushaf-svelte`: two pages, or one when the window is
      * too narrow for two).
      *
-     * Follows playback: the recited word lights up, the current verse gets a
-     * faint band, and the book turns when the recitation reaches the next
+     * Follows playback: a pill glides from word to word and the recited word
+     * lights letter by letter over the tajweed colours (`reading.ts`; or the whole word
+     * at once, `mushafLetters` off), words not
+     * recited yet wait faded (or hidden), the current verse gets a faint band,
+     * and the book turns when the recitation reaches the next
      * spread. Paging by hand stops following until "Back to reciting" or any
      * seek. Clicking a word seeks to it; a verse marker seeks to its verse.
      * Pages of surahs the reciter never recited are skipped and inert.
@@ -14,7 +17,7 @@
      * holds the audio until the chapter's timings are in, so playback never
      * runs ahead of the page it's read along on.
      */
-    import type { HitPayload, PageChangePayload } from '@qud-technologies/mushaf-core';
+    import { DEFAULT_AYAH_MARKER, DEFAULT_SURAH_HEADER, type HitPayload, type PageChangePayload, type ReadingState } from '@qud-technologies/mushaf-core';
     import { QudMushaf } from '@qud-technologies/mushaf-svelte';
     import type { QudMushafElement } from '@qud-technologies/mushaf-web';
     import type { QuranPack } from '@qud-technologies/quran-data';
@@ -27,7 +30,7 @@
     import { signalDashSeekIntent } from '../../../lib/playback/dash-buffering';
     import { dashPort } from '../../../lib/playback/dash-port';
     import { exitLoop } from '../../../lib/playback/loop';
-    import { loadQuranPack, quranFontUrl } from '../../../lib/quran-data/pack';
+    import { loadQuranPack, QURAN_JUSTIFY_BASE, quranFontUrl } from '../../../lib/quran-data/pack';
     import { loadChapterRecitation } from '../../../lib/recitation-data/load-chapter';
     import { loadManifest } from '../../../lib/recitation-data/ts-source';
     import { recitationConfigStore } from '../../../lib/recitation-animation/recitation-settings';
@@ -37,10 +40,11 @@
     import { activeTab } from '../../../lib/utils/active-tab';
     import { TAB_NAMES } from '../../../lib/utils/constants';
     import { shouldHandleKey } from '../../../lib/utils/keyboard-guard';
-    import { mushafScope, mushafShowUpcoming, mushafYear } from '../stores/mushaf';
+    import { mushafLetters, mushafScope, mushafShowUpcoming, mushafTajweed, mushafYear } from '../stores/mushaf';
     import { mushafFullscreen } from './fullscreen.svelte';
     import { readingHighlights } from './highlights';
     import { indexChapter, positionAt, type ChapterIndex, type MushafPosition } from './position';
+    import { LEAD_S, playheadAt, takeEnd } from './reading';
     import { mushafRepeat } from './repeat.svelte';
     import { compareRefs, type VerseRef } from './repeat-plan';
 
@@ -198,11 +202,22 @@
         startOwnTurn(() => el.goTo(anchor));
     }
 
+    /** Pages holding a surah the reciter has, per layout: each surah's page range from the
+     * layout index alone. Building page views here instead (every page the navigation scans)
+     * froze a layout switch for about a second. */
+    const navigablePages = $derived.by(() => {
+        const out = new Set<number>();
+        if (!pack) return out;
+        for (const s of tsChapters) {
+            const [first, last] = pack.surahPages(layout, s);
+            for (let p = first; p <= last; p++) out.add(p);
+        }
+        return out;
+    });
+
     /** Pages of surahs the reciter has are the only ones navigation lands on. */
     function canNavigate(page: number): boolean {
-        const ctl = element?.controller;
-        if (!ctl) return true;
-        return ctl.pageView(page).chrome.surahs.some((s) => tsChapters.has(s));
+        return !pack || navigablePages.has(page);
     }
 
     function onPageChange(detail: PageChangePayload): void {
@@ -246,6 +261,26 @@
     let spot = $state.raw<[VerseRef, VerseRef] | null>(null);
     let raf: number | null = null;
     let highlightKey = '';
+    /** The take last recited, for bridging a short silence. */
+    let lastTake: { unit: number; end: number } | null = null;
+    let readingKey = '';
+
+    /** Move the element's read-along playhead; it redraws only on a change. By word
+     * (`mushafLetters` off) it gets the word alone, so the whole word lights. */
+    function showReading(full: ReadingState | null): void {
+        const el = element;
+        if (!el || !ready) return;
+        const state = full && !$mushafLetters ? { word: full.word } : full;
+        const key = state ? JSON.stringify(state) : '';
+        if (key === readingKey) return;
+        readingKey = key;
+        el.setReading(state);
+    }
+
+    // Leaving the chapter (or its timings) clears the playhead.
+    $effect(() => {
+        if (!live) untrack(() => { lastTake = null; showReading(null); });
+    });
 
     function samePosition(a: MushafPosition | null, b: MushafPosition): boolean {
         return !!a && a.active === b.active && a.verseKey === b.verseKey && a.progress === b.progress && a.anchor === b.anchor;
@@ -279,10 +314,14 @@
         const ms = dashPort.currentTimeMs();
         if (Math.abs(ms - lastMs) > SEEK_JUMP_MS) following = true;
         lastMs = ms;
-        const { pos, unit } = positionAt(ix, ms / 1000, lastUnit);
+        const t = ms / 1000 + LEAD_S;
+        const { pos, unit } = positionAt(ix, t, lastUnit);
         lastUnit = unit;
         if (pos.anchor) lastAnchor = pos.anchor;
         if (!samePosition(position, pos)) position = pos;
+        const head = playheadAt(ix, t, unit, lastTake);
+        if (head.unit >= 0) lastTake = { unit: head.unit, end: takeEnd(ix.units[head.unit]!, t) };
+        showReading(head.state);
         if (following && pos.anchor && ready) follow(pos.anchor);
     }
 
@@ -460,6 +499,12 @@
 
     // ---- theme-aware accent (the footer droplet colours the highlight) ----
     let theme = $state(themeStore.current);
+    /** The accent, resolved inside the element from the vars this view sets. */
+    const ACCENT = 'var(--accent)';
+    // Surah headers carry the ayah count and a Makki/Madani icon in the print frame; verse
+    // markers keep the print style, outlined in the accent.
+    const surahHeaderStyle = { ...DEFAULT_SURAH_HEADER, info: { ayahs: true, revelation: 'icon' as const } };
+    const ayahMarker = { ...DEFAULT_AYAH_MARKER, border: ACCENT };
     const accentStyle = $derived(accentVarText($recitationConfigStore.highlightColor, theme));
 
     /** Re-evaluate a message on locale switch (reads the locale rune). */
@@ -538,7 +583,13 @@
             class="mv-book"
             {pack}
             fontUrl={quranFontUrl}
+            justifyBase={QURAN_JUSTIFY_BASE}
             {layout}
+            justify={{ enabled: true }}
+            tajweed={{ enabled: $mushafTajweed, preset: 'classic' }}
+            reading={{ letters: true }}
+            {surahHeaderStyle}
+            {ayahMarker}
             mode="auto"
             theme={{ scheme: theme === 'light' ? 'light' : 'dark' }}
             locale={bookLocale}
@@ -595,7 +646,7 @@
         --qm-page: var(--mushaf-paper);
         --qm-text: var(--text-primary);
         --qm-chrome: var(--text-muted);
-        --qm-marker: var(--text-secondary);
+        --qm-marker: color-mix(in srgb, var(--accent) 65%, var(--text-secondary));
         --qm-frame: var(--text-muted);
         --qm-spine: var(--mushaf-spine);
         --qm-highlight-text: var(--accent);
@@ -603,7 +654,19 @@
         --qm-highlight-underline: var(--accent);
         --qm-band-radius: var(--r-2);
         --qm-ui-font: var(--font-ui, inherit);
+        /* Read-along (setReading): a pill glides between words; the sounding letter takes its
+         * tajweed colour (plain and silent letters the accent), the word's other letters wait
+         * at 45% and sung ones stay full. Tuned in the highlight lab. */
+        --qm-reading-pill: var(--accent-tint);
+        --qm-reading-glide: 300ms;
+        --qm-reading-radius: 12px;
+        --qm-reading-lit: var(--accent);
+        --qm-reading-pending: 0.45;
+        --qm-reading-sung: 1;
+        --qm-reading-fade: 0ms; /* letters switch instantly */
     }
+    /* Words not recited yet (shown): faded until reached. */
+    .mv :global(qud-mushaf.mv-book::part(hl-upcoming)) { opacity: 0.3; }
     .mv :global(qud-mushaf.mv-book::part(word)) { transition: color var(--t-fast), opacity var(--t-fast); }
     .mv :global(qud-mushaf.mv-book::part(word):hover) { color: var(--accent); }
     /* Surahs the reciter lacks: no pointer, no hover. */

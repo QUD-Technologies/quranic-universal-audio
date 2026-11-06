@@ -1,5 +1,5 @@
 <script lang="ts">
-    /** Mushaf display settings — print year and what stays visible. */
+    /** Mushaf display settings — print year, what stays visible, surah header and verse marker. */
     import { i18n } from '$lib/i18n/locale.svelte';
     import * as m from '$lib/paraglide/messages';
     import {
@@ -70,7 +70,8 @@
     .ms {
         display: grid;
         gap: var(--s-2);
-        width: 340px;
+        width: 380px;
+        max-width: calc(100vw - 2 * var(--s-3));
     }
     .ms-row {
         display: grid;
