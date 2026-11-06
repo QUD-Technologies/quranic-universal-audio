@@ -259,6 +259,9 @@ COPY --from=quran-data-build /pack/quran-core.qref ./data/quran-core.qref
 # DigitalKhattV2.otf is also the font the release jobs publish (stage_job_code
 # checks data/fonts/DigitalKhattV2.otf before a launch).
 COPY --from=quran-data-build /pack/fonts/ ./data/fonts/
+# The justified-line drawings and glyph outlines (stage 0): served brotli-encoded by
+# /api/static/quran-data/justify/; without them the Mushaf view falls back to plain lines.
+COPY --from=quran-data-build /pack/justify/ ./data/justify/
 COPY --from=frontend-build /app/dist ./inspector/frontend/dist
 # Cross-stage COPY preserves the source modes; cached Vite output can contain
 # owner-only directories on the HF builder. The runtime user must be able to
