@@ -56,4 +56,5 @@ id_rsa*
 # pinned revision by scripts/devenv/install_quran_data.py (and the image build), never committed.
 data/quran-core.qref
 data/fonts/
+data/justify/
 inspector/frontend/.quran-data/
