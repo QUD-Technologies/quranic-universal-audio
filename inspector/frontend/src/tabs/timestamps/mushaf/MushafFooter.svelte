@@ -7,7 +7,7 @@
     import { i18n } from '$lib/i18n/locale.svelte';
     import * as m from '$lib/paraglide/messages';
     import { clickOutside } from '../../../lib/actions/click-outside';
-    import { mushafActive, mushafAvailable, mushafMode, mushafTajweed } from '../stores/mushaf';
+    import { mushafActive, mushafAvailable, mushafLetters, mushafMode, mushafTajweed } from '../stores/mushaf';
     import MushafRepeatPanel from './MushafRepeatPanel.svelte';
     import MushafSettings from './MushafSettings.svelte';
     import { mushafFullscreen } from './fullscreen.svelte';
@@ -37,6 +37,11 @@
 
     const tajweedTitle = $derived(
         (i18n.locale, $mushafTajweed ? m.ts_mushaf_tajweed_off_title() : m.ts_mushaf_tajweed_on_title()),
+    );
+
+    // The button names what a click switches to.
+    const lettersTitle = $derived(
+        (i18n.locale, $mushafLetters ? m.ts_mushaf_reading_word_title() : m.ts_mushaf_reading_letter_title()),
     );
 
     const fullTitle = $derived(
@@ -94,6 +99,27 @@
                 <path d="M8 2.2c2.4 2.7 4 4.9 4 6.9a4 4 0 0 1-8 0c0-2 1.6-4.2 4-6.9Z" />
                 <path d="M6.2 9.6a1.9 1.9 0 0 0 1.9 1.7" />
             </svg>
+        </button>
+
+        <button
+            type="button" class="icon-btn" class:on={$mushafLetters}
+            aria-pressed={$mushafLetters}
+            title={lettersTitle} aria-label={lettersTitle}
+            onclick={() => mushafLetters.update((v) => !v)}
+        >
+            {#if $mushafLetters}
+                <!-- letter: one lit glyph in an outlined word -->
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <rect x="1.5" y="4" width="13" height="8" rx="2.5" />
+                    <path d="M9.5 6.5v3.2a1.5 1.5 0 0 1-3 0" />
+                </svg>
+            {:else}
+                <!-- word: the whole pill lit -->
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <rect x="1.5" y="4" width="13" height="8" rx="2.5" />
+                    <path d="M4.5 8h7" />
+                </svg>
+            {/if}
         </button>
 
         <div class="pop-wrap" use:clickOutside={() => close('repeat')}>

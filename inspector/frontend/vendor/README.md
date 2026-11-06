@@ -7,14 +7,13 @@ Private packages the frontend installs from tarballs (`package.json` `file:vendo
 
 The Timestamps Mushaf view (`src/tabs/timestamps/mushaf/`) draws with these. Built with
 `npm run build` then `npm pack` per package from
-[`QUD-Technologies/qud-mushaf`](https://github.com/QUD-Technologies/qud-mushaf) branch
-`feat/reading-highlight` (PR #8) at commit `0c2ddb80692b4e44d1523a84d1be9d5ae05615d2` (not yet released).
+[`QUD-Technologies/qud-mushaf`](https://github.com/QUD-Technologies/qud-mushaf) `main` at commit `ae730fc` (not yet released).
 
 | Tarball | sha256 |
 |---|---|
-| `qud-technologies-mushaf-core-0.1.0.tgz` | `d64381bd4ed00b20d05887517caef3ac7fa162eefc73791472ead1e281333fb2` |
-| `qud-technologies-mushaf-web-0.1.0.tgz` | `29d738a1e1e9175318924b12d13b0cc2566e7149fa5881e72480e9da5feb56d4` |
-| `qud-technologies-mushaf-svelte-0.1.0.tgz` | `9cbca28f6ee1d2f623b00e043ab4ed4a3feef7a5725efdb64e7ac528bc490ebe` |
+| `qud-technologies-mushaf-core-0.1.0.tgz` | `33ac711aa8c918cba88ac5a854a501929cd89c5d5bd08acd39637157a6980162` |
+| `qud-technologies-mushaf-web-0.1.0.tgz` | `38b57d6bbe57e629feeea9ca6b9b982ab0ed91f0f363c6841739685e04321161` |
+| `qud-technologies-mushaf-svelte-0.1.0.tgz` | `806fb642d68e391a23fa284ed8e1b4cdb864cfb6b8cd2cc119518bca593c52f5` |
 
 Repin: rebuild and `npm pack` the three packages at the new commit (or download a release's
 tarballs), replace the files here, update this table, then `npm install` to refresh the lock.

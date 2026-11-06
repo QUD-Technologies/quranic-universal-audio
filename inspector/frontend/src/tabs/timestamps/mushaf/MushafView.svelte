@@ -5,7 +5,8 @@
      * too narrow for two).
      *
      * Follows playback: a pill glides from word to word and the recited word
-     * lights letter by letter over the tajweed colours (`reading.ts`), words not
+     * lights letter by letter over the tajweed colours (`reading.ts`; or the whole word
+     * at once, `mushafLetters` off), words not
      * recited yet wait faded (or hidden), the current verse gets a faint band,
      * and the book turns when the recitation reaches the next
      * spread. Paging by hand stops following until "Back to reciting" or any
@@ -39,7 +40,7 @@
     import { activeTab } from '../../../lib/utils/active-tab';
     import { TAB_NAMES } from '../../../lib/utils/constants';
     import { shouldHandleKey } from '../../../lib/utils/keyboard-guard';
-    import { mushafFrame, mushafMarker, mushafScope, mushafShowUpcoming, mushafTajweed, mushafYear } from '../stores/mushaf';
+    import { mushafLetters, mushafScope, mushafShowUpcoming, mushafTajweed, mushafYear } from '../stores/mushaf';
     import { mushafFullscreen } from './fullscreen.svelte';
     import { readingHighlights } from './highlights';
     import { indexChapter, positionAt, type ChapterIndex, type MushafPosition } from './position';
@@ -201,11 +202,22 @@
         startOwnTurn(() => el.goTo(anchor));
     }
 
+    /** Pages holding a surah the reciter has, per layout: each surah's page range from the
+     * layout index alone. Building page views here instead (every page the navigation scans)
+     * froze a layout switch for about a second. */
+    const navigablePages = $derived.by(() => {
+        const out = new Set<number>();
+        if (!pack) return out;
+        for (const s of tsChapters) {
+            const [first, last] = pack.surahPages(layout, s);
+            for (let p = first; p <= last; p++) out.add(p);
+        }
+        return out;
+    });
+
     /** Pages of surahs the reciter has are the only ones navigation lands on. */
     function canNavigate(page: number): boolean {
-        const ctl = element?.controller;
-        if (!ctl) return true;
-        return ctl.pageView(page).chrome.surahs.some((s) => tsChapters.has(s));
+        return !pack || navigablePages.has(page);
     }
 
     function onPageChange(detail: PageChangePayload): void {
@@ -253,10 +265,12 @@
     let lastTake: { unit: number; end: number } | null = null;
     let readingKey = '';
 
-    /** Move the element's read-along playhead; it redraws only on a change. */
-    function showReading(state: ReadingState | null): void {
+    /** Move the element's read-along playhead; it redraws only on a change. By word
+     * (`mushafLetters` off) it gets the word alone, so the whole word lights. */
+    function showReading(full: ReadingState | null): void {
         const el = element;
         if (!el || !ready) return;
+        const state = full && !$mushafLetters ? { word: full.word } : full;
         const key = state ? JSON.stringify(state) : '';
         if (key === readingKey) return;
         readingKey = key;
@@ -487,13 +501,10 @@
     let theme = $state(themeStore.current);
     /** The accent, resolved inside the element from the vars this view sets. */
     const ACCENT = 'var(--accent)';
-    // Surah headers carry the ayah count and a Makki/Madani icon; frames and markers take the accent.
-    const surahHeaderStyle = $derived({
-        ...DEFAULT_SURAH_HEADER,
-        info: { ayahs: true, revelation: 'icon' as const },
-        frame: { style: $mushafFrame, fill: null, border: $mushafFrame === 'print' ? null : ACCENT },
-    });
-    const ayahMarker = $derived({ ...DEFAULT_AYAH_MARKER, style: $mushafMarker, border: ACCENT });
+    // Surah headers carry the ayah count and a Makki/Madani icon in the print frame; verse
+    // markers keep the print style, outlined in the accent.
+    const surahHeaderStyle = { ...DEFAULT_SURAH_HEADER, info: { ayahs: true, revelation: 'icon' as const } };
+    const ayahMarker = { ...DEFAULT_AYAH_MARKER, border: ACCENT };
     const accentStyle = $derived(accentVarText($recitationConfigStore.highlightColor, theme));
 
     /** Re-evaluate a message on locale switch (reads the locale rune). */
@@ -652,7 +663,7 @@
         --qm-reading-lit: var(--accent);
         --qm-reading-pending: 0.45;
         --qm-reading-sung: 1;
-        --qm-reading-fade: 50ms;
+        --qm-reading-fade: 0ms; /* letters switch instantly */
     }
     /* Words not recited yet (shown): faded until reached. */
     .mv :global(qud-mushaf.mv-book::part(hl-upcoming)) { opacity: 0.3; }

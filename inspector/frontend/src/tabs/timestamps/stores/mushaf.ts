@@ -30,15 +30,7 @@ const LS_YEAR = 'ts_mushaf_year';
 const LS_SCOPE = 'ts_mushaf_scope';
 const LS_UPCOMING = 'ts_mushaf_show_upcoming';
 const LS_TAJWEED = 'ts_mushaf_tajweed';
-const LS_FRAME = 'ts_mushaf_frame';
-const LS_MARKER = 'ts_mushaf_marker';
-
-/** Surah header frames offered in the settings (`surahHeaderStyle.frame.style`). */
-export const MUSHAF_FRAMES = ['print', 'cartouche', 'ribbon', 'panel', 'none'] as const;
-export type MushafFrame = (typeof MUSHAF_FRAMES)[number];
-/** Verse markers offered in the settings (`ayahMarker.style`; `auto` is the print's own). */
-export const MUSHAF_MARKERS = ['auto', 'circle', 'rosette', 'number'] as const;
-export type MushafMarker = (typeof MUSHAF_MARKERS)[number];
+const LS_LETTERS = 'ts_mushaf_reading_letters';
 
 function read(key: string): string | null {
     try {
@@ -90,14 +82,7 @@ export const mushafActive = derived(
 /** Tajweed colours (classic palette); on unless turned off. */
 export const mushafTajweed = persisted(LS_TAJWEED, (r) => r !== 'false', String);
 
-export const mushafFrame = persisted<MushafFrame>(
-    LS_FRAME,
-    (r) => (MUSHAF_FRAMES.includes(r as MushafFrame) ? (r as MushafFrame) : 'print'),
-    (v) => v,
-);
+/** Read-along by letter (the sounding letter lit, the word's others waiting) or by word (the
+ * whole recited word lit); letter unless turned off. */
+export const mushafLetters = persisted(LS_LETTERS, (r) => r !== 'false', String);
 
-export const mushafMarker = persisted<MushafMarker>(
-    LS_MARKER,
-    (r) => (MUSHAF_MARKERS.includes(r as MushafMarker) ? (r as MushafMarker) : 'auto'),
-    (v) => v,
-);

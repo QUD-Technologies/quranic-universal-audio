@@ -150,7 +150,12 @@ def edition_font(riwayah: str) -> Response:
 # ``scripts/devenv/install_quran_data.py`` (sha256-pinned in ``qua_shared.quran_data_pin``),
 # so no binary rides the Space's LFS handling. Whitelisted by the pin; the ETag is the pinned
 # digest and the browser revalidates, so a pin bump reaches every viewer.
-_QURAN_DATA_MEDIA = {".qref": "application/octet-stream", ".otf": "font/otf", ".woff2": "font/woff2"}
+_QURAN_DATA_MEDIA = {
+    ".qref": "application/octet-stream",
+    ".otf": "font/otf",
+    ".woff2": "font/woff2",
+    ".json": "application/json",  # ornaments.json: the ayah markers and page frames
+}
 _QURAN_DATA_CACHE_CONTROL = "public, no-cache"
 
 
