@@ -9,7 +9,12 @@ import type { PublicBucket } from '../../../types/public-bucket';
 import type { CombinationSelection } from '../combination-picker-types';
 import CombinationPicker from '../CombinationPicker.svelte';
 
-function makeDelivery(slug: string, bucket: PublicBucket, riwayah = 'hafs'): PublicDelivery {
+function makeDelivery(
+    slug: string,
+    bucket: PublicBucket,
+    riwayah = 'hafs',
+    marked_ready = false,
+): PublicDelivery {
     return {
         slug,
         riwayah,
@@ -28,6 +33,7 @@ function makeDelivery(slug: string, bucket: PublicBucket, riwayah = 'hafs'): Pub
         bitrate_mode: 'cbr',
         total_duration_sec: 3600,
         bucket,
+        marked_ready,
     };
 }
 
@@ -58,7 +64,7 @@ vi.mock('../../../api/public-reciters', () => ({
             reciters: [
                 makeReciter('Alpha', [makeDelivery('alpha-hafs', 'available_for_review')]),
                 makeReciter('Beta', [makeDelivery('beta-hafs', 'published')]),
-                makeReciter('Gamma', [makeDelivery('gamma-hafs', 'under_review')]),
+                makeReciter('Gamma', [makeDelivery('gamma-hafs', 'under_review', 'hafs', true)]),
             ],
             total: 3,
             next_cursor: null,
@@ -193,17 +199,23 @@ describe('CombinationPicker', () => {
         expect(baseElement.querySelectorAll('.review-status').length).toBe(1);
     });
 
-    it('omits review status and skips the admin fetch without reviews.view', async () => {
+    it('shows the ready badge but no claimer, and skips the admin fetch, without reviews.view', async () => {
         // currentUser stays anonymous (no capabilities) via afterEach reset.
         const { baseElement } = render(CombinationPicker, {
             props: { open: true, title: m.common_picker_switch_reciter_title() },
         });
 
-        await waitFor(() => {
-            expect(baseElement.querySelector('.combo-row')).not.toBeNull();
+        const status = await waitFor(() => {
+            const el = baseElement.querySelector<HTMLElement>('.review-status');
+            expect(el).not.toBeNull();
+            return el!;
         });
 
-        expect(baseElement.querySelector('.review-status')).toBeNull();
+        // READY is public (delivery.marked_ready); the claimer login is not.
+        expect(status.querySelector('.ready-badge')).not.toBeNull();
+        expect(status.querySelector('.reviewer')).toBeNull();
+        expect(status.textContent).not.toContain('reviewer-x');
+        expect(baseElement.querySelectorAll('.review-status').length).toBe(1);
         expect(fetchAdminReviews).not.toHaveBeenCalled();
     });
 });

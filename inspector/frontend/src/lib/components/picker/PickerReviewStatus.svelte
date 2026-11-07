@@ -1,12 +1,11 @@
 <script lang="ts">
     /**
-     * Review-status chip for a combination-picker row (admin-only).
+     * Review-status chip for a combination-picker row.
      *
-     * Surfaces the same two facts the Admin → Reviews tab shows for an
-     * ``under_review`` recitation: who holds the open claim (initials avatar +
-     * login) and whether they've marked it ready for review (amber badge).
-     * Only rendered for callers who hold ``reviews.view`` — the picker gates
-     * the fetch, this component just draws what it's handed.
+     * Two facts for an ``under_review`` recitation: whether it's marked ready
+     * for review (amber badge — public, shown to everyone) and who holds the
+     * open claim (initials avatar + login — only handed in for callers who hold
+     * ``reviews.view``; ``login`` is null for everyone else).
      *
      * Renders nothing when there's neither a claimer nor a ready flag.
      */

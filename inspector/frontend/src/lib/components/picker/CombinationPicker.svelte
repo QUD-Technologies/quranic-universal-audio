@@ -79,14 +79,24 @@
     let loading = true;
     let error: string | null = null;
 
-    // Per-slug claim/marked-ready overlay, populated only for callers who hold
-    // `reviews.view` — the same data the Admin → Reviews tab shows. Empty for
-    // everyone else; the picker renders nothing extra in that case.
+    // Per-slug claim overlay (claimer login + marked-ready), populated only for
+    // callers who hold `reviews.view` — the same data the Admin → Reviews tab
+    // shows. Empty for everyone else, who still get the READY badge via the
+    // public `delivery.marked_ready` flag but never the username.
     interface ReviewStatus {
         login: string | null;
         markedReady: boolean;
     }
     let reviewStatus = new Map<string, ReviewStatus>();
+
+    // READY comes from the public catalog flag (visible to everyone); the
+    // claimer's login only from the `reviews.view` overlay above.
+    $: statusFor = (c: Combo): ReviewStatus | null => {
+        const admin = reviewStatus.get(c.delivery.slug);
+        const markedReady = (admin?.markedReady ?? false) || c.delivery.marked_ready === true;
+        const login = admin?.login ?? null;
+        return markedReady || login ? { login, markedReady } : null;
+    };
 
     let search = initialFilter.search ?? '';
     let activeBucket: PublicBucket | null = initialFilter.bucket ?? null;
@@ -358,7 +368,7 @@
                         </div>
                         {#each mineRows as c (c.delivery.slug)}
                             {@const idx = orderedRows.indexOf(c)}
-                            {@const st = reviewStatus.get(c.delivery.slug)}
+                            {@const st = statusFor(c)}
                             <!-- svelte-ignore a11y-click-events-have-key-events -->
                             <div
                                 class="combo-row"
@@ -393,7 +403,7 @@
                         </div>
                         {#each group.rows as c (c.delivery.slug)}
                             {@const idx = orderedRows.indexOf(c)}
-                            {@const st = reviewStatus.get(c.delivery.slug)}
+                            {@const st = statusFor(c)}
                             <!-- svelte-ignore a11y-click-events-have-key-events -->
                             <div
                                 class="combo-row"

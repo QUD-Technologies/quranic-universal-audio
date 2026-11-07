@@ -89,6 +89,9 @@ class PublicDelivery(BaseModel):
     bitrate_kbps_nominal: int | None = None
     bitrate_mode: str  # cbr | vbr | mixed | unknown
     total_duration_sec: int | None = None
+    #: Claimer marked it ready for review. Public flag only — the claimer's
+    #: identity stays admin-gated (``reviews.view``).
+    marked_ready: bool = False
 
     # Modal-only (detail / admin-view) — absent on the list payload.
     bucket_dates: dict[str, list[str]] | None = None

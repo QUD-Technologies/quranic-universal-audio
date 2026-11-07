@@ -158,8 +158,9 @@ def bucket_for(row: ReciterRow | None) -> PublicBucket:
     if row is None:
         return "available_for_request"
     try:
-        # marked_ready stays internal-only; an under_review reciter reads as
-        # "under_review" publicly until its timestamps job publishes it RELEASED.
+        # marked_ready does not change the bucket; an under_review reciter reads
+        # as "under_review" until its timestamps job publishes it RELEASED. The
+        # flag itself rides separately as ``PublicDelivery.marked_ready``.
         return _STATE_TO_BUCKET[row.state]
     except KeyError:
         # Defensive — new ReciterState members must be added to _STATE_TO_BUCKET
@@ -199,6 +200,7 @@ def _to_public_delivery(
         if hasattr(d.bitrate_mode, "value")
         else str(d.bitrate_mode),
         total_duration_sec=d.total_duration_sec,
+        marked_ready=bool(row is not None and row.marked_ready),
     )
 
 

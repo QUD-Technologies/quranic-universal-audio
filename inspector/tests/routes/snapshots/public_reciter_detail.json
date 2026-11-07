@@ -19,6 +19,7 @@
       "channel_name": "MP3 Quran",
       "chapter_count": 114,
       "coverage_kind": "full",
+      "marked_ready": false,
       "recording_context": null,
       "recording_year": null,
       "riwayah": "hafs_an_asim",

@@ -134,6 +134,7 @@ export interface AdminDiscardedDelivery {
   bitrate_kbps_nominal?: number | null;
   bitrate_mode: string;
   total_duration_sec?: number | null;
+  marked_ready?: boolean;
   bucket_dates?: {
     [k: string]: string[];
   } | null;
@@ -641,6 +642,7 @@ export interface AdminDelivery {
   bitrate_kbps_nominal?: number | null;
   bitrate_mode: string;
   total_duration_sec?: number | null;
+  marked_ready?: boolean;
   bucket_dates?: {
     [k: string]: string[];
   } | null;
@@ -1555,6 +1557,7 @@ export interface PublicDelivery {
   bitrate_kbps_nominal?: number | null;
   bitrate_mode: string;
   total_duration_sec?: number | null;
+  marked_ready?: boolean;
   bucket_dates?: {
     [k: string]: string[];
   } | null;
