@@ -97,6 +97,7 @@ class PublicDelivery(TypedDict):
     bitrate_kbps_nominal: int | None
     bitrate_mode: str
     total_duration_sec: int | None
+    marked_ready: bool  # public READY flag; the claimer's identity stays admin-only.
     # Per-bucket entry timestamps: {bucket: [iso, ...]} chronological, one entry
     # per *distinct* visit to that bucket. Modal-only — attached by the detail /
     # admin-view paths (NOT the cached list), so it's absent on list payloads.
