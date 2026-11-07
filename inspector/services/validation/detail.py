@@ -406,7 +406,8 @@ def _build_detail_lists(
                         sequence_gaps.append(
                             {
                                 "verse_key": f"{surah}:{ayah}",
-                                "chapter": surah,
+                                # The audio the gap sits in, which ``seg_indices`` count in.
+                                "chapter": chapter,
                                 "missing_words": missing,
                                 "seg_indices": indices,
                             }
@@ -588,19 +589,20 @@ def _build_detail_lists(
                     }
                 )
 
-            # Accumulate verse coverage (3-tuple: word_from, word_to, seg_index)
+            # Accumulate verse coverage: (word_from, word_to, seg_index, chapter the
+            # segment's audio belongs to — not always the verse's surah).
             if s_ayah != e_ayah:
                 for ayah in range(s_ayah, e_ayah + 1):
                     if ayah == s_ayah:
                         wc = word_counts.get((surah, ayah), s_word)
-                        verse_segments[(surah, ayah)].append((s_word, wc, i))
+                        verse_segments[(surah, ayah)].append((s_word, wc, i, chapter))
                     elif ayah == e_ayah:
-                        verse_segments[(surah, ayah)].append((1, e_word, i))
+                        verse_segments[(surah, ayah)].append((1, e_word, i, chapter))
                     else:
                         wc = word_counts.get((surah, ayah), 1)
-                        verse_segments[(surah, ayah)].append((1, wc, i))
+                        verse_segments[(surah, ayah)].append((1, wc, i, chapter))
             else:
-                verse_segments[(surah, s_ayah)].append((s_word, e_word, i))
+                verse_segments[(surah, s_ayah)].append((s_word, e_word, i, chapter))
 
     return {
         "chapter_seg_idx": chapter_seg_idx,

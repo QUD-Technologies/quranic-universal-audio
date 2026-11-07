@@ -337,3 +337,54 @@ def test_missing_words_orders_sequence_gaps_by_quran_position():
         ("1:2", [1]),
         ("1:3", [1]),
     ]
+
+
+def test_missing_words_points_at_the_chapter_holding_a_spilled_segment():
+    """A chapter file that runs into the next surah's opening carries a segment of it.
+    The issue opens on that segment in its own chapter, and auto-fix never stretches it."""
+    entries = [
+        {
+            "ref": "90",
+            "segments": [
+                {"matched_ref": "90:1:1-90:1:2", "confidence": 1.0},
+                {"matched_ref": "91:1:1-91:1:1", "confidence": 0.9},
+            ],
+        },
+        {
+            "ref": "91",
+            "segments": [{"matched_ref": "91:2:1-91:2:3", "confidence": 1.0}],
+        },
+    ]
+
+    missing = _missing_words_for_entries(entries, {(90, 1): 2, (91, 1): 2, (91, 2): 3})
+
+    assert missing == [
+        {
+            "verse_key": "91:1",
+            "chapter": 90,
+            "segment_uid": None,
+            "msg": "missing words: [2]",
+            "missing_words": [2],
+            "seg_indices": [1],
+        }
+    ]
+
+
+def test_missing_words_sequence_gap_counts_in_the_audio_chapter():
+    """An order gap inside a spill is reported against the chapter whose audio holds it."""
+    entries = [
+        {
+            "ref": "44",
+            "segments": [
+                {"matched_ref": "44:1:1-44:1:2", "confidence": 1.0},
+                {"matched_ref": "11:70:1-11:70:2", "confidence": 1.0},
+                {"matched_ref": "11:70:5-11:70:6", "confidence": 1.0},
+            ],
+        }
+    ]
+
+    missing = _missing_words_for_entries(entries, {(44, 1): 2, (11, 70): 6})
+
+    assert [(m["verse_key"], m["chapter"], m["seg_indices"]) for m in missing] == [
+        ("11:70", 44, [1, 2])
+    ]
