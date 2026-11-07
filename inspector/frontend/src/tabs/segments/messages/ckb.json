@@ -550,5 +550,10 @@
   "segments_basmala_voice_change": "گۆڕین",
   "segments_basmala_voice_saving": "پاشەکەوت دەکرێت…",
   "segments_basmala_voice_load_error": "پشکنینی دەنگی بەسمەلە بار نەکرا.",
-  "segments_sections_aria_label": "بەشەکانی دەستکاریکەر"
+  "segments_sections_aria_label": "بەشەکانی دەستکاریکەر",
+  "segments_specials_label": "پەنابردن و بەسمەلەی تۆمارکراو",
+  "segments_specials_hint": "لە دەرەوەی بەشەکان هەڵگیراون، لێرە بۆ گوێگرتن و پشکنین پیشان دەدرێن.",
+  "segments_specials_play": "پەخشکردن",
+  "segments_specials_pause": "ڕاگرتن",
+  "segments_specials_load_error": "نەتوانرا پەنابردن و بەسمەلەی ئەم قورئانخوێنە باربکرێت."
 }

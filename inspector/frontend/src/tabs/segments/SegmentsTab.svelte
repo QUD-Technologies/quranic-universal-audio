@@ -29,6 +29,7 @@
     import EditOverlay from './components/edit/EditOverlay.svelte';
     import FiltersBar from './components/filters/FiltersBar.svelte';
     import BasmalaVoiceNotice from './components/specials/BasmalaVoiceNotice.svelte';
+    import ChapterSpecials from './components/specials/ChapterSpecials.svelte';
     import SegmentsFooter from './components/footer/SegmentsFooter.svelte';
     import HistoryPanel from './components/history/HistoryPanel.svelte';
     import MarkReadyReviewModal from './components/footer/MarkReadyReviewModal.svelte';
@@ -591,6 +592,7 @@
         {#if !$accordionViewActive}
             {#if !$isSampleMode}
                 <BasmalaVoiceNotice />
+                <ChapterSpecials />
             {/if}
             <SegmentsList onRestore={onNavigationRestore} />
         {/if}

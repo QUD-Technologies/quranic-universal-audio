@@ -550,5 +550,10 @@
   "segments_basmala_voice_change": "Change",
   "segments_basmala_voice_saving": "Saving…",
   "segments_basmala_voice_load_error": "Couldn't load the Basmala voice check.",
-  "segments_sections_aria_label": "Segments sections"
+  "segments_sections_aria_label": "Segments sections",
+  "segments_specials_label": "Recorded openers and closers",
+  "segments_specials_hint": "Kept outside the segments. Listed here to play and check.",
+  "segments_specials_play": "Play",
+  "segments_specials_pause": "Pause",
+  "segments_specials_load_error": "Couldn't load this reciter's openers."
 }
