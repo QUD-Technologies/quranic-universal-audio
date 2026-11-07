@@ -395,7 +395,9 @@ import type { Segment } from '../../../../lib/types/view-models';
     let wordHasChanges = false;
     $: wordHasChanges = wordDraft.some((word, index) =>
         word.start_ms !== reviewWordTimings[index]?.start_ms || word.end_ms !== reviewWordTimings[index]?.end_ms);
-    $: wordEditWidth = Math.min(8000, Math.max(900, reviewWordTimings.length * 150, (seg.time_end - seg.time_start) * 0.1));
+    // A missing time_start/time_end makes the span NaN, and Math.max/min propagate it —
+    // the canvas width would collapse to 0. Fall back to the 900px floor instead.
+    $: wordEditWidth = Math.min(8000, Math.max(900, reviewWordTimings.length * 150, ((seg.time_end - seg.time_start) * 0.1) || 0));
     function onWordPreviewTick(audibleTimeMs: number): void {
         // The preview follows the editable boundaries, not the saved row timings.
         audibleTimeMs = Math.max(seg.time_start, Math.min(audibleTimeMs, seg.time_end));
@@ -732,6 +734,14 @@ import type { Segment } from '../../../../lib/types/view-models';
 
     onDestroy(() => {
         if (wordEditing) stopWordTimingPreview(seg.segment_uid ?? '');
+        // Drop the per-canvas ImageData snapshots so a detached row's pixels are not
+        // kept alive by anything still holding the element (edit/play-range state).
+        if (canvasEl) {
+            const c = canvasEl as SegCanvas;
+            c._wfCache = null;
+            c._trimBaseCache = null;
+            c._splitBaseCache = null;
+        }
         // Use the stored prev values rather than the current (potentially
         // shifted) seg.index — otherwise a row that's been reindexed since
         // mount would deregister under the wrong key, leaving a ghost entry.

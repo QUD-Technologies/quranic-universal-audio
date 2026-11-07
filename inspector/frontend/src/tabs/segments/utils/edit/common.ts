@@ -38,6 +38,7 @@ import {
 import { ensureBoundedRange, startSegAnimation } from '../playback/playback';
 import { drawWaveformFromPeaksForSeg } from '../waveform/draw-seg';
 import { cancelSplitZoom } from './split-zoom';
+import { readback2d } from '../../../../lib/utils/canvas-2d';
 
 // ---------------------------------------------------------------------------
 // exitEditMode — shared cleanup for trim/split
@@ -61,7 +62,7 @@ export function exitEditMode(): void {
         // Unconditionally blank the canvas so the trim handles/dim are gone
         // even when peaks aren't cached — otherwise the canvas retained its
         // last trim draw and ESC appeared to do nothing.
-        const ctx = canvas.getContext('2d');
+        const ctx = readback2d(canvas);
         if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
         if (editRow) {
             const idx = parseInt(editRow.dataset.segIndex ?? '-1');

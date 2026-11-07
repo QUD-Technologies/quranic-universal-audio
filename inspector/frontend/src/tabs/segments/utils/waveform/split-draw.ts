@@ -6,13 +6,14 @@
 import { themeColor } from '../../../../lib/utils/canvas-theme';
 import type { SegCanvas } from '../../types/segments-waveform';
 import { drawEditPeakBase } from './draw-seg';
+import { readback2d } from '../../../../lib/utils/canvas-2d';
 
 // ---------------------------------------------------------------------------
 // _ensureSplitBaseCache
 // ---------------------------------------------------------------------------
 
 export function _ensureSplitBaseCache(canvas: SegCanvas): boolean {
-    const ctx = canvas.getContext('2d');
+    const ctx = readback2d(canvas);
     if (!ctx) return false;
     if (canvas._splitBaseCache) return true;
     const sd = canvas._splitData;
@@ -41,7 +42,7 @@ export function _ensureSplitBaseCache(canvas: SegCanvas): boolean {
 export function drawSplitWaveform(canvas: SegCanvas): void {
     const c = canvas;
     const hasCachedBase = _ensureSplitBaseCache(c);
-    const ctx = c.getContext('2d');
+    const ctx = readback2d(c);
     if (!ctx) return;
     const width = c.width;
     const height = c.height;

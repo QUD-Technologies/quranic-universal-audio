@@ -104,6 +104,7 @@ import type { Segment } from '../../../../lib/types/view-models';
         {startMs}
         {endMs}
         {totalDurationMs}
+        willReadFrequently
     />
 </div>
 
