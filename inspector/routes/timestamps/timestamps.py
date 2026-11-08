@@ -72,13 +72,15 @@ def ts_config():
 # in place at a stable URL (re-stamp / edit) and the FE already
 # holds the active chapter in an in-memory LRU (`ts-source._shards`), so verse
 # changes never refetch — the browser HTTP cache only adds staleness with no
-# benefit for a body this small. `no-store`: never cached, always fresh on a
-# real fetch (chapter switch / reload).
+# benefit for a body this small. `no-cache` + ETag: the browser may keep a
+# copy but must revalidate every use, so a re-stamp shows on the next fetch
+# while an unchanged shard costs a bodyless 304. `private` + `Vary: Cookie`
+# because owners get extra (unreleased / everyayah) content.
 _NO_STORE_HEADERS = {"Cache-Control": "no-store"}
 _SHARD_HEADERS = {
-    "Cache-Control": "no-store",
+    "Cache-Control": "private, no-cache",
     "Content-Encoding": "br",
-    "Vary": "Accept-Encoding",
+    "Vary": "Accept-Encoding, Cookie",
 }
 
 # The manifest changes whenever a reciter is published/unpublished. The server
@@ -87,6 +89,13 @@ _SHARD_HEADERS = {
 # a stale published-set lingers in the browser. 10 min trades a tiny re-fetch
 # (a few hundred gzipped bytes) for prompt propagation of publish changes.
 _MANIFEST_HEADERS = {"Cache-Control": "private, no-store", "Vary": "Cookie"}
+
+
+def _shard_response(body: bytes) -> Response:
+    """Shard body with a content ETag; answers a matching ``If-None-Match`` with 304."""
+    resp = Response(body, mimetype="application/json", headers=_SHARD_HEADERS)
+    resp.add_etag()
+    return resp.make_conditional(request)
 
 
 @ts_bp.route("/manifest")
@@ -115,7 +124,7 @@ def ts_shard(reciter, chapter):
     )
     if body is None:
         return jsonify(ErrorEnvelope(error="Shard not found").model_dump(exclude_none=True)), 404
-    return Response(body, mimetype="application/json", headers=_SHARD_HEADERS)
+    return _shard_response(body)
 
 
 @ts_bp.route("/verse/<reciter>/<int:chapter>")
@@ -151,7 +160,7 @@ def ts_verse(reciter, chapter):
     )
     if body is None:
         return jsonify(ErrorEnvelope(error="Verse not found").model_dump(exclude_none=True)), 404
-    return Response(body, mimetype="application/json", headers=_SHARD_HEADERS)
+    return _shard_response(body)
 
 
 @ts_bp.route("/validation/<reciter>")
