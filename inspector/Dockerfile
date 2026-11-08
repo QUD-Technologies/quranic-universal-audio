@@ -287,11 +287,13 @@ EXPOSE 7860
 #
 # --threads 16: thread pool sized for CPU-basic. The parsed-cache + bucket-
 #   read workload is mostly I/O-bound.
-# --max-requests + jitter: rolling worker recycle bounds slow memory leaks.
+# No --max-requests: a recycle kills the in-process background threads
+#   (timestamps runs, align pipeline), and one bulk client can trip it in
+#   minutes. Watch the Space's memory if a slow leak ever shows up.
 # --timeout 60: peaks computation can take ~30 s on cold cache.
 # --graceful-timeout 30: allows in-flight saves to finish on SIGTERM.
 CMD ["gunicorn", "-k", "gthread", "-w", "1", "--threads", "16", \
-     "--max-requests", "5000", "--max-requests-jitter", "500", \
+\
      "--timeout", "60", "--graceful-timeout", "30", \
      "--bind", "0.0.0.0:7860", \
      "--access-logfile", "-", "--error-logfile", "-", \

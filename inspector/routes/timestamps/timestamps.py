@@ -34,7 +34,16 @@ from services.reference import recitation_profile as profile_service
 from utils.decorators import require_capability
 from utils.json_response import orjson_response
 
+from . import access
+
 ts_bp = Blueprint("ts", __name__, url_prefix="/api/ts")
+access.guard(ts_bp)
+
+
+@ts_bp.route("/access-token")
+def ts_access_token():
+    """Short-lived token the page sends as ``X-QUA-Access`` on shard fetches."""
+    return access.issue_token_response()
 
 
 @ts_bp.route("/config")
@@ -72,13 +81,15 @@ def ts_config():
 # in place at a stable URL (re-stamp / edit) and the FE already
 # holds the active chapter in an in-memory LRU (`ts-source._shards`), so verse
 # changes never refetch — the browser HTTP cache only adds staleness with no
-# benefit for a body this small. `no-store`: never cached, always fresh on a
-# real fetch (chapter switch / reload).
+# benefit for a body this small. `no-cache` + ETag: the browser may keep a
+# copy but must revalidate every use, so a re-stamp shows on the next fetch
+# while an unchanged shard costs a bodyless 304. `private` + `Vary: Cookie`
+# because owners get extra (unreleased / everyayah) content.
 _NO_STORE_HEADERS = {"Cache-Control": "no-store"}
 _SHARD_HEADERS = {
-    "Cache-Control": "no-store",
+    "Cache-Control": "private, no-cache",
     "Content-Encoding": "br",
-    "Vary": "Accept-Encoding",
+    "Vary": "Accept-Encoding, Cookie",
 }
 
 # The manifest changes whenever a reciter is published/unpublished. The server
@@ -87,6 +98,14 @@ _SHARD_HEADERS = {
 # a stale published-set lingers in the browser. 10 min trades a tiny re-fetch
 # (a few hundred gzipped bytes) for prompt propagation of publish changes.
 _MANIFEST_HEADERS = {"Cache-Control": "private, no-store", "Vary": "Cookie"}
+
+
+def _shard_response(body: bytes) -> Response:
+    """Shard body with a content ETag; answers a matching ``If-None-Match`` with 304."""
+    resp = Response(body, mimetype="application/json", headers=_SHARD_HEADERS)
+    resp.add_etag()
+    resp.make_conditional(request)  # in place: 304 + empty body on a match
+    return resp
 
 
 @ts_bp.route("/manifest")
@@ -103,6 +122,9 @@ def ts_manifest():
 @ts_bp.route("/shard/<reciter>/<int:chapter>")
 def ts_shard(reciter, chapter):
     """Serve a per-chapter Brotli compact v13 shard (byte pass-through)."""
+    refused = access.require_token()
+    if refused is not None:
+        return refused
     # Owner preview: holders of ``timestamps.view_unreleased`` may read shards
     # for generated-but-unreleased reciters; everyone else stays released-only.
     user = auth_service.current_user()
@@ -115,7 +137,7 @@ def ts_shard(reciter, chapter):
     )
     if body is None:
         return jsonify(ErrorEnvelope(error="Shard not found").model_dump(exclude_none=True)), 404
-    return Response(body, mimetype="application/json", headers=_SHARD_HEADERS)
+    return _shard_response(body)
 
 
 @ts_bp.route("/verse/<reciter>/<int:chapter>")
@@ -151,7 +173,7 @@ def ts_verse(reciter, chapter):
     )
     if body is None:
         return jsonify(ErrorEnvelope(error="Verse not found").model_dump(exclude_none=True)), 404
-    return Response(body, mimetype="application/json", headers=_SHARD_HEADERS)
+    return _shard_response(body)
 
 
 @ts_bp.route("/validation/<reciter>")

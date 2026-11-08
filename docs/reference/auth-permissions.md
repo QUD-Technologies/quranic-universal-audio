@@ -205,6 +205,16 @@ Defense-in-depth on top of `SameSite` cookie. Stack `@require_same_origin` above
 
 ---
 
+## Browser-only timestamps API (`services/auth/ts_access.py`, `routes/timestamps/access.py`)
+
+`/api/ts/*` (both `ts_bp` and `ts_reports_bp`) serves the site's own pages only; bulk or programmatic access is unlicensed (the data ships through the HF dataset + GH releases). Added after a scripted client pulled every released shard on 2026-11-08.
+
+- **Browser check** (`before_request` via `access.guard`): `Sec-Fetch-Site` must be `same-origin` or `same-site` (the qud.dev demo reads `/api/ts/manifest` + `/api/ts/verse` from `audio.qud.dev`). No Fetch Metadata (old browsers) → `Origin`/`Referer` host must be the request host or `*.qud.dev`. Anything else → 403 `{"error":"unlicensed_access", reason, notice, releases}`, logged with IP + User-Agent.
+- **Shard token**: `/api/ts/shard/*` also needs `X-QUA-Access`, an HMAC(session secret) token with a 5-min TTL from `GET /api/ts/access-token` (browser-gated). Missing/expired → 401. FE: `lib/recitation-data/ts-access-token.ts` caches it, refreshes 30 s early, retries once on 401. `/verse` is not token-gated (qud.dev reads it without a token).
+- **Notice signals**: every `/api/ts` response carries `X-Robots-Tag: noindex, noai, noimageai`, `tdm-reservation: 1`, `Link: </llms.txt>; rel="terms-of-service"`. Static `robots.txt` (`Disallow: /api/`), `llms.txt` and `/.well-known/tdmrep.json` live in `frontend/public/`.
+- **Tests**: `flask_client` sends `Sec-Fetch-Site: same-origin` by default; `tests/routes/test_route_ts_access.py` strips it to act as a script.
+- Not a hard wall: a client that forges the headers and replays the token flow still gets through. Rate limiting is not implemented.
+
 ## Admin endpoints by tier
 
 `@require_role` requires signed-in + tier; mutating routes also stack `@require_same_origin`. Reason validated by `_admin_helpers.validate_reason` (≥`MIN_REASON_CHARS`=10 → else 400) unless noted.

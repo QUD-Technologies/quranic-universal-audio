@@ -52,9 +52,12 @@ from services.state import state as state_service
 from services.ts_reports import ts_target_snapshot
 from utils.decorators import require_same_origin
 
+from . import access
+
 logger = logging.getLogger(__name__)
 
 ts_reports_bp = Blueprint("ts_reports", __name__, url_prefix="/api/ts")
+access.guard(ts_reports_bp)
 
 
 def _validation_detail(e: ValidationError) -> list[dict]:

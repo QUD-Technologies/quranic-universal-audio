@@ -104,13 +104,24 @@ def load_expected():
     return _loader
 
 
+def _page_client(app):
+    """Test client that acts as the site's own page.
+
+    /api/ts/* refuses requests without browser Fetch Metadata
+    (services/auth/ts_access.py); access-gate tests strip the header.
+    """
+    client = app.test_client()
+    client.environ_base["HTTP_SEC_FETCH_SITE"] = "same-origin"
+    return client
+
+
 @pytest.fixture
 def flask_client():
     """Flask test client over the module-level app in ``inspector/app.py``."""
     from app import app
 
     app.config["TESTING"] = True
-    return app.test_client()
+    return _page_client(app)
 
 
 # ---------------------------------------------------------------------------
@@ -329,7 +340,7 @@ def signed_in_client(monkeypatch):
         # _substrate_db fixture handles teardown.
         _seed_role(hf_user_id, login=login, role=role)
 
-        client = app.test_client()
+        client = _page_client(app)
         cookie = auth_service.encode_session(login=login, hf_user_id=hf_user_id)
         client.set_cookie(
             auth_service.SESSION_COOKIE_NAME,

@@ -37,6 +37,7 @@ import {
     chapterVerseRefs,
     shardOccasions,
 } from './native-shards';
+import { _resetAccessTokenForTests, fetchWithAccess } from './ts-access-token';
 import { assembleWord, isWordReading } from './word-shards';
 
 // ---------------------------------------------------------------------------
@@ -142,7 +143,7 @@ export async function loadChapterShard(
         const url = cfg.shard_url_template
             .replace('{reciter}', encodeURIComponent(reciter))
             .replace('{chapter}', String(chapter));
-        return decodeTimestampShard(await fetchJson<unknown>(url));
+        return decodeTimestampShard(await (await fetchWithAccess(url)).json());
     })();
     _lruTouch(key, promise);
     // If the fetch fails, drop the entry so the next call retries.
@@ -446,4 +447,5 @@ export function _resetForTests(): void {
     _verseWordCounts = null;
     _shards.clear();
     _vbrChapters.clear();
+    _resetAccessTokenForTests();
 }
