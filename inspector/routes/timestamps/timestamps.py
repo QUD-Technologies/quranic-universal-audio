@@ -34,7 +34,16 @@ from services.reference import recitation_profile as profile_service
 from utils.decorators import require_capability
 from utils.json_response import orjson_response
 
+from . import access
+
 ts_bp = Blueprint("ts", __name__, url_prefix="/api/ts")
+access.guard(ts_bp)
+
+
+@ts_bp.route("/access-token")
+def ts_access_token():
+    """Short-lived token the page sends as ``X-QUA-Access`` on shard fetches."""
+    return access.issue_token_response()
 
 
 @ts_bp.route("/config")
@@ -112,6 +121,9 @@ def ts_manifest():
 @ts_bp.route("/shard/<reciter>/<int:chapter>")
 def ts_shard(reciter, chapter):
     """Serve a per-chapter Brotli compact v13 shard (byte pass-through)."""
+    refused = access.require_token()
+    if refused is not None:
+        return refused
     # Owner preview: holders of ``timestamps.view_unreleased`` may read shards
     # for generated-but-unreleased reciters; everyone else stays released-only.
     user = auth_service.current_user()

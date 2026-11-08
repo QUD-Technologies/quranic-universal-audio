@@ -2,6 +2,16 @@
 
 from __future__ import annotations
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _skip_token(monkeypatch):
+    """The access token has its own tests (test_route_ts_access.py)."""
+    from routes.timestamps import access
+
+    monkeypatch.setattr(access, "require_token", lambda: None)
+
 
 def test_ts_shard_passes_bytes_through_revalidated(flask_client, monkeypatch):
     """A shard mutates in place at a stable URL (re-stamp / edit), so the browser

@@ -110,7 +110,11 @@ def flask_client():
     from app import app
 
     app.config["TESTING"] = True
-    return app.test_client()
+    client = app.test_client()
+    # Act as the site's own page: /api/ts/* refuses requests without browser
+    # Fetch Metadata (services/auth/ts_access.py). Access-gate tests override it.
+    client.environ_base["HTTP_SEC_FETCH_SITE"] = "same-origin"
+    return client
 
 
 # ---------------------------------------------------------------------------
