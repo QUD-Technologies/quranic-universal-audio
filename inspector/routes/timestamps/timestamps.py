@@ -104,7 +104,8 @@ def _shard_response(body: bytes) -> Response:
     """Shard body with a content ETag; answers a matching ``If-None-Match`` with 304."""
     resp = Response(body, mimetype="application/json", headers=_SHARD_HEADERS)
     resp.add_etag()
-    return resp.make_conditional(request)
+    resp.make_conditional(request)  # in place: 304 + empty body on a match
+    return resp
 
 
 @ts_bp.route("/manifest")
