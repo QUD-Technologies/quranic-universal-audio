@@ -21,28 +21,28 @@ from __future__ import annotations
 TALQEEN_REPO = "QUD-Technologies/talqeen-ai-data"
 TALQEEN_HTTPS_URL = f"https://github.com/{TALQEEN_REPO}.git"
 
-#: The release tag the SDK and pack come from (``sdk-v1.13.0``; its pack is ``data-v1.8.0``'s).
-TALQEEN_DATA_REF = "sdk-v1.13.0"
+#: The release tag the SDK and pack come from (``sdk-v1.19.1``; its pack is ``data-v1.12.3``'s).
+TALQEEN_DATA_REF = "sdk-v1.19.1"
 
 #: SDK distribution and the version the pinned revision builds.
 SDK_DIST_NAME = "talqeen-quran-data"
-SDK_VERSION = "1.13.0"
+SDK_VERSION = "1.19.1"
 #: Path of the Python SDK inside the data repo (a sparse checkout target).
 SDK_PATH = "sdk/python"
 
 #: The core pack: words, surahs, divisions and layouts, no recitation sounds.
 PACK_NAME = "quran-core.qref"
 PACK_PATH = f"data/{PACK_NAME}"
-PACK_SHA256 = "f4c236a2f3defcccfcf8c1f63b94b5bd7bbcc1619d68abb2e9f39aaed3f6dda1"
+PACK_SHA256 = "75dcd7e8a46e118b7e642adae8bc6fd6b4e6afeae088d95ceb39bbf6db5d0e86"
 
 #: The TypeScript SDK the frontend builds against: a release asset of ``TS_SDK_RELEASE``,
 #: fetched into ``inspector/frontend/.quran-data/`` (``package.json`` installs it from there).
-TS_SDK_RELEASE = "sdk-v1.13.0"
-TS_SDK_FILE = "qud-technologies-quran-data-1.13.0.tgz"
-TS_SDK_SHA256 = "a79a2bba1aaebea3beaa447e040f3f180f89964bad3a984e7c533ee0c2f5314c"
+TS_SDK_RELEASE = "sdk-v1.19.1"
+TS_SDK_FILE = "qud-technologies-quran-data-1.19.1.tgz"
+TS_SDK_SHA256 = "dcda7cfda6026a6378cef5043a9d38f95fd9f62e66c3bf1c76bbfba5ce6d0f11"
 
 #: The data release whose ``manifest.json`` says where each font asset lives.
-DATA_RELEASE = "data-v1.8.0"
+DATA_RELEASE = "data-v1.12.3"
 #: The fonts the pack's ``fonts()`` names (text, surah name, surah frame), fetched next to the
 #: pack under ``fonts/`` and served to the browser by ``/api/static/quran-data/<file>``.
 FONTS_DIR_NAME = "fonts"
@@ -61,9 +61,9 @@ FONT_SHA256 = {
 #: ``manifest.json`` into ``<pack dir>/justify/``.
 JUSTIFY_DIR_NAME = "justify"
 JUSTIFY_SHA256 = {
-    "madani-1405.bin.br": "1c065da87be58939f9e18c788ec83f67af5d96046385b64830a388bfe79bcf26",
-    "madani-1421.bin.br": "0f457c7b89e66bd5bfd0dc231461e906b3477287f3612c7ff104b41cd6b55b68",
-    "madani-1441.bin.br": "16cb4595241d0cca9a078858413a324b249278e1c2be8b56cd11623b925b7b5b",
+    "madani-1405.bin.br": "3c9ea9cefe62119620e0d6a46e58968fd4c60e6869e209143f6540204a276589",
+    "madani-1421.bin.br": "205590e46ef617875de84ff1f50b10d28e6886ec9d72664a12e942d45c8f9e8d",
+    "madani-1441.bin.br": "f3dc1de88f34c7a1da64cce9e0c1a7b5f3a105e7cf51abcc423a5ab08ed47d07",
     "outlines-86fc18f6.bin.br": "6cea6738a7dfda7610651cf2604dcd3763ff1c8d7f25bfb1e334ce9f049ba068",
     "outlines-b739d355.bin.br": "83a5ee513954b128e00a92893ae388b8b5b022107a2db641a7601fbde3380e4a",
 }

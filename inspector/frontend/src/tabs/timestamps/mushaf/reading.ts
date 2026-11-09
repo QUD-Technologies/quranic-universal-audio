@@ -1,72 +1,99 @@
 /**
- * The read-along playhead for `<qud-mushaf>.setReading`: the word being recited, the letters
- * sounding now (`lit`) and the ones already sung in it (`sung`), as the data SDK's letter
- * anchors (`s:a:w:l`). A unit's letters are the word's written letters in order, so letter
- * `k` (0-based) is `s:a:w:k+1`. A repeated word lights with the take being recited.
+ * The read-along for `<qud-mushaf>.setReading`, as the Mushaf app draws it: the data SDK's
+ * `ReadingTrack` over this chapter's timings, read by the core's `readingAt` (the word, its
+ * letters' states, the cross-word merge sounding, a pause at a stop sign). The track's facts are
+ * the SDK's: the last recited letter stays lit between letters, a silent letter follows the
+ * pronounced one beside it, a tanween sounds as its own part where it merges.
  *
- * Feel (tuned with the reciter's timings in the highlight lab): light a little early, so the eye
- * meets the voice, and keep a word lit across a gap shorter than `BRIDGE_S`, so the pill does
- * not blink between words read in one breath.
+ * Every take of every word is a visit, so a passage read again lights again. A take's letters are
+ * the word's written letters in order (letter `k`, 0-based, is `s:a:w:k+1`); a letter the producer
+ * marks silent, or leaves untimed, is not a recited letter. The basmala the reciter opens a surah
+ * with (`0:2:w`) reads like 1:1, on the basmala line.
  */
 import type { ReadingState } from '@qud-technologies/mushaf-core';
+import { basmalaAt, type HighlightMode, readingAt } from '@qud-technologies/mushaf-core/app';
+import { EARLY_MS, type QuranPack, ReadingTrack, type TimingInterval } from '@qud-technologies/quran-data';
 
-import { findActiveAt } from '../../../lib/recitation-animation/recitation-active';
 import type { AnimLetter, AnimUnit } from '../../../lib/recitation-animation/types';
-import type { ChapterIndex } from './position';
 
-/** Light this much ahead of the timestamp (s). */
-export const LEAD_S = 0.1;
-/** A word stays lit across a silence shorter than this (s). */
-export const BRIDGE_S = 0.1;
+/** A word anchor in the mushaf: opener readings (`0:…`) are recited but never printed. */
+const WORD_ANCHOR = /^[1-9]\d*:[1-9]\d*:[1-9]\d*$/;
+/** The opener reading of the basmala: `0:2:w`, word w of 1:1. */
+const BASMALA_OPENER = /^0:2:(\d+)$/;
 
-/** The letters of the take of `unit` that starts at `ivStart`. */
-function takeLetters(unit: AnimUnit, ivStart: number): AnimLetter[] {
-    const take = unit.intervals.findIndex((iv) => iv.start === ivStart);
-    return (take >= 0 ? unit.occurrenceLetters?.[take] : undefined) ?? unit.letters;
+export interface ChapterReading {
+    surah: number;
+    /** The printed words' read-along. */
+    words: ReadingTrack;
+    /** The opening basmala's (as 1:1), or null when the recording has none. */
+    basmala: ReadingTrack | null;
+    /** Where the basmala opener ends (ms); the surah's own words start after it. */
+    basmalaEndMs: number;
 }
 
-/** Lit and sung letter anchors of `anchor`'s word at `t`; a letter without timing (silent) is sung once a later one starts. */
-function letterStates(anchor: string, letters: AnimLetter[], t: number): Pick<ReadingState, 'lit' | 'sung'> {
-    const lit: string[] = [];
-    const sung: string[] = [];
-    let started = false;
-    for (let k = letters.length - 1; k >= 0; k--) {
-        const { start, end } = letters[k]!;
-        const at = `${anchor}:${k + 1}`;
-        if (start === null || end === null) {
-            if (started) sung.push(at);
-            continue;
-        }
-        if (t >= start) started = true;
-        if (t >= start && t < end) lit.push(at);
-        else if (t >= end) sung.push(at);
+const ms = (s: number): number => Math.round(s * 1000);
+
+/** The letters of a take, when the take has its own (take 0 falls back to the unit's). */
+function takeLetters(unit: AnimUnit, take: number): AnimLetter[] | null {
+    return unit.occurrenceLetters?.[take] ?? (take === 0 ? unit.letters : null);
+}
+
+/** Word visits and recited letters of `units`, under `anchorOf` (null: left out). */
+function visits(units: readonly AnimUnit[], anchorOf: (u: AnimUnit) => string | null): { words: TimingInterval[]; letters: TimingInterval[] } {
+    const words: TimingInterval[] = [];
+    const letters: TimingInterval[] = [];
+    for (const unit of units) {
+        const anchor = anchorOf(unit);
+        if (!anchor) continue;
+        unit.intervals.forEach((iv, take) => {
+            words.push({ anchor, startMs: ms(iv.start), endMs: ms(iv.end) });
+            takeLetters(unit, take)?.forEach((l, k) => {
+                if (l.silent || l.start === null || l.end === null || l.end <= l.start) return;
+                letters.push({ anchor: `${anchor}:${k + 1}`, startMs: ms(l.start), endMs: ms(l.end) });
+            });
+        });
     }
-    return { lit, sung };
+    return { words, letters };
 }
 
-export interface Playhead {
-    /** The state to draw, or null in silence. */
-    state: ReadingState | null;
-    /** Unit index found (fast-path hint for the next frame). */
-    unit: number;
+/** The chapter's read-along tracks. */
+export function chapterReading(pack: QuranPack, surah: number, units: readonly AnimUnit[]): ChapterReading {
+    const printed = visits(units, (u) => (WORD_ANCHOR.test(u.location) ? u.location : null));
+    const opener = visits(units, (u) => {
+        const m = BASMALA_OPENER.exec(u.location);
+        return m ? `1:1:${m[1]}` : null;
+    });
+    return {
+        surah,
+        words: new ReadingTrack(pack, printed.words, printed.letters),
+        basmala: opener.words.length ? new ReadingTrack(pack, opener.words, opener.letters) : null,
+        basmalaEndMs: opener.words.reduce((end, w) => Math.max(end, w.endMs), 0),
+    };
 }
 
-/** The playhead at `t` seconds (lead applied by the caller); `prev` bridges short silences. */
-export function playheadAt(ix: ChapterIndex, t: number, hint: number, prev: { unit: number; end: number } | null): Playhead {
-    const hit = findActiveAt(ix.units, ix.sorted, t, hint);
-    const unitIdx = hit?.unitIdx ?? (prev && t - prev.end < BRIDGE_S ? prev.unit : -1);
-    const anchor = unitIdx >= 0 ? ix.anchorOfUnit[unitIdx] : '';
-    if (!anchor) return { state: null, unit: hit?.unitIdx ?? -1 };
-    const unit = ix.units[unitIdx]!;
-    const letters = hit ? takeLetters(unit, hit.ivStart) : unit.letters;
-    // Bridged: the word stays lit with every letter sung.
-    const at = hit ? t : Number.POSITIVE_INFINITY;
-    return { state: { word: anchor, ...letterStates(anchor, letters, at) }, unit: hit?.unitIdx ?? -1 };
+/** What the page draws at `t` ms: the basmala line while the opener sounds, else the surah's words. */
+export function readingStateAt(reading: ChapterReading, t: number, mode: HighlightMode): ReadingState | null {
+    if (reading.basmala && t < reading.basmalaEndMs && reading.basmala.wordAt(t)) {
+        return basmalaAt(reading.surah, reading.basmala, t, mode);
+    }
+    return readingAt(reading.words, t, mode);
 }
 
-/** End (s) of the take of unit `u` containing or last before `t`. */
-export function takeEnd(unit: AnimUnit, t: number): number {
-    let end = unit.end;
-    for (const iv of unit.intervals) if (iv.start <= t) end = iv.end;
-    return end;
+/**
+ * Where the recitation stops among the chapter's words with a stop sign (the core's
+ * `tajweed.stopsAt`): a visit the next one starts more than `EARLY_MS` after (the SDK's stop) is a
+ * stop, so the rules of stopping follow the reciter, not the second sign of a mu'anaqah pair.
+ */
+export function recitationStops(units: readonly AnimUnit[], signed: (anchor: string) => boolean): Record<string, boolean> {
+    const list = units
+        .filter((u) => WORD_ANCHOR.test(u.location))
+        .flatMap((u) => u.intervals.map((iv) => ({ anchor: u.location, start: ms(iv.start), end: ms(iv.end) })))
+        .sort((a, b) => a.start - b.start || a.end - b.end);
+    const out: Record<string, boolean> = {};
+    list.forEach((v, i) => {
+        if (!signed(v.anchor)) return;
+        const next = list[i + 1];
+        out[v.anchor] = (out[v.anchor] ?? false) || !next || next.start > v.end + EARLY_MS;
+    });
+    return out;
 }

@@ -16,7 +16,7 @@ are separate: `qua-domain` via `services/reference/editions.py` ([editions.md](e
 | Pack location | `data/quran-core.qref` (gitignored), or `QUA_QURAN_PACK` |
 | Credential | `TALQEEN_DATA_READ_TOKEN`, else `GH_TOKEN`, else the `gh` login |
 
-The pin is a release tag (`sdk-v1.9.0`, same commit as `data-v1.5.0`), as
+The pin is a release tag (`sdk-v1.19.1`, same commit as `data-v1.12.3`), as
 `talqeen-ai-mizan` pins one. To bump: change the tag (and the pack sha256), rerun the
 installer, rerun the integrity gate below.
 
