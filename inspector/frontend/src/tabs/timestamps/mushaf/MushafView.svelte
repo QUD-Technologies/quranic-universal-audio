@@ -18,7 +18,7 @@
      * runs ahead of the page it's read along on.
      */
     import { DEFAULT_AYAH_MARKER, DEFAULT_SURAH_HEADER, type HitPayload, type PageChangePayload, type ReadingState } from '@qud-technologies/mushaf-core';
-    import { sameReading } from '@qud-technologies/mushaf-core/app';
+    import { DEFAULT_TAJWEED_OFF, sameReading, shownColours } from '@qud-technologies/mushaf-core/app';
     import { QudMushaf } from '@qud-technologies/mushaf-svelte';
     import type { QudMushafElement } from '@qud-technologies/mushaf-web';
     import type { QuranPack } from '@qud-technologies/quran-data';
@@ -47,7 +47,6 @@
     import { indexChapter, positionAt, type ChapterIndex, type MushafPosition } from './position';
     import { chapterReading, readingStateAt } from './reading';
     import { mushafRepeat } from './repeat.svelte';
-    import { compareRefs, type VerseRef } from './repeat-plan';
 
     const DEFAULT_PLAYER_H = 72;
     /** Room kept under the book for the docked-footer handle in full screen. */
@@ -227,7 +226,17 @@
         return !pack || navigablePages.has(page);
     }
 
+    /** Repeat's "this page": the first and last verse of the pages on show. */
+    function keepSpread(pages: readonly number[]): void {
+        if (!pack || !pages.length) return;
+        const refs = pages
+            .flatMap((n) => pack!.page(layout, n).lines.filter((l) => l.kind === 'ayah').flatMap((l) => l.items))
+            .map((a) => a.split(':').slice(0, 2).join(':'));
+        if (refs.length) mushafRepeat.spread = [refs[0]!, refs.at(-1)!];
+    }
+
     function onPageChange(detail: PageChangePayload): void {
+        keepSpread(detail.pages);
         if (ownTurn) {
             settleTurn();
             return;
@@ -265,7 +274,6 @@
     /** Word the recitation is at (or last was), for "am I on the recited page?". */
     let lastAnchor = '';
     let position = $state.raw<MushafPosition | null>(null);
-    let spot = $state.raw<[VerseRef, VerseRef] | null>(null);
     let raf: number | null = null;
     let highlightKey = '';
     let shownReading: ReadingState | null = null;
@@ -297,7 +305,6 @@
             firstAnchor: chapterIx?.firstAnchor ?? '',
             scope: $mushafScope,
             showUpcoming: $mushafShowUpcoming,
-            spot: mushafRepeat.picking !== null ? spot : null,
             playable: tsChapters,
             ayahs: (s) => p.counts(s).ayahs,
         });
@@ -371,96 +378,25 @@
         playerContext.update((s) => ({ ...s, surahNum: surah, positionMs: 0, isPlaying: play }));
     }
 
-    /** `{surah, ayah}` of a word (`s:a:w`) or ayah-end (`s:a`) anchor. */
-    function verseOf(anchor: string): VerseRef {
-        const [surah, ayah] = anchor.split(':').map(Number);
-        return { surah: surah ?? 0, ayah: ayah ?? 0 };
-    }
+    /** The surah of a word (`s:a:w`) or ayah-end (`s:a`) anchor. */
+    const surahOf = (anchor: string): number => Number(anchor.split(':')[0]) || 0;
 
     /** A tap on a word (`loc`) or a verse marker (`verse`). */
     function onTap(detail: HitPayload, kind: 'loc' | 'verse'): void {
-        const v = verseOf(detail.anchor);
-        if (!tsChapters.has(v.surah)) return;
-        if (mushafRepeat.picking) {
-            pickVerse(v);
-            return;
-        }
+        const surah = surahOf(detail.anchor);
+        if (!tsChapters.has(surah)) return;
         mushafRepeat.stop();
         exitLoop();
         const target: SeekTarget = kind === 'verse' ? { verse: detail.ayah } : { loc: detail.anchor };
         following = true;
-        if (v.surah === chapter && chapterIx?.chapter === chapter) {
+        if (surah === chapter && chapterIx?.chapter === chapter) {
             const ms = targetMs(chapterIx, target);
             if (ms !== null) seekTo(ms);
         } else {
-            pendingSeek = { chapter: v.surah, target };
-            switchChapter(v.surah, true);
+            pendingSeek = { chapter: surah, target };
+            switchChapter(surah, true);
         }
     }
-
-    /** "To" can't come before "From": such a verse isn't pickable as the end. */
-    function pickable(v: VerseRef): boolean {
-        const from = mushafRepeat.from;
-        return mushafRepeat.picking !== 'to' || !from || compareRefs(v, from) >= 0;
-    }
-
-    function pickVerse(v: VerseRef): void {
-        if (!pickable(v)) return;
-        const to = mushafRepeat.to;
-        // A new start past the old end leaves just that verse.
-        if (mushafRepeat.picking === 'from' && to && compareRefs(v, to) > 0) mushafRepeat.to = v;
-        mushafRepeat[mushafRepeat.picking!] = v;
-        mushafRepeat.picking = null;
-    }
-
-    /** The anchor of the word under a pointer event, read off the element's page DOM. */
-    function anchorAt(e: Event): string {
-        const ctl = element?.controller;
-        if (!ctl) return '';
-        const path = e.composedPath() as HTMLElement[];
-        const word = path.find((n) => n.classList?.contains('qm-w'));
-        const line = word?.closest<HTMLElement>('.qm-line');
-        const page = word?.closest<HTMLElement>('.qm-page');
-        if (!word || !line || !page) return '';
-        const lines = ctl.pageView(Number(page.dataset.page)).lines;
-        return lines.find((l) => l.index === Number(line.dataset.line))?.words[Number(word.dataset.i)]?.anchor ?? '';
-    }
-
-    /** Repeat pick: light up the verse under the pointer, or the range it would make. */
-    function onPageHover(e: Event): void {
-        const end = mushafRepeat.picking;
-        if (!end) return;
-        const anchor = anchorAt(e);
-        const here = anchor ? verseOf(anchor) : null;
-        if (!here || !tsChapters.has(here.surah) || !pickable(here)) {
-            spot = null;
-            return;
-        }
-        const to = mushafRepeat.to;
-        const other = end === 'to'
-            ? mushafRepeat.from
-            : to && compareRefs(here, to) <= 0 ? to : null;
-        spot = [other ?? here, here];
-    }
-
-    $effect(() => {
-        if (mushafRepeat.picking === null) spot = null;
-    });
-
-    $effect(() => {
-        const el = element;
-        if (!el) return;
-        const clear = (): void => { spot = null; };
-        // On the shadow root: moving between words inside it never reaches the host as a
-        // pointerover (target and relatedTarget both retarget to the host).
-        const root = el.shadowRoot ?? el;
-        root.addEventListener('pointerover', onPageHover);
-        el.addEventListener('pointerleave', clear);
-        return () => {
-            root.removeEventListener('pointerover', onPageHover);
-            el.removeEventListener('pointerleave', clear);
-        };
-    });
 
     function onKeydown(e: KeyboardEvent): void {
         if (!shouldHandleKey(e, TAB_NAMES.TIMESTAMPS)) return;
@@ -500,9 +436,11 @@
     let theme = $state(themeStore.current);
     /** The accent, resolved inside the element from the vars this view sets. */
     const ACCENT = 'var(--accent)';
-    // Surah headers carry the ayah count and a Makki/Madani icon in the print frame; verse
-    // markers keep the print style, outlined in the accent.
-    const surahHeaderStyle = { ...DEFAULT_SURAH_HEADER, info: { ayahs: true, revelation: 'icon' as const } };
+    // As the Mushaf app: a large surah name, a small basmala, the ayah count and a Makki/Madani
+    // icon in the print frame's medallions; verse markers keep the print style, outlined in the accent.
+    const surahHeaderStyle = { ...DEFAULT_SURAH_HEADER, nameScale: 0.86, basmala: { show: true, scale: 0.78 }, info: { ayahs: true, revelation: 'icon' as const } };
+    /** The Mushaf app's tajweed: the classic preset, its default-off rows (madd tabi'i) left plain. */
+    const tajweedColours = $derived(shownColours({}, DEFAULT_TAJWEED_OFF, theme === 'light' ? 'light' : 'dark'));
     const ayahMarker = { ...DEFAULT_AYAH_MARKER, border: ACCENT };
     const accentStyle = $derived(accentVarText($recitationConfigStore.highlightColor, theme));
 
@@ -568,7 +506,7 @@
 
 <div
     class="mv"
-    class:picking={mushafRepeat.picking !== null}
+    class:mv-letters={$mushafLetters}
     bind:this={root}
     style="{accentStyle}; height: {boxHeight}px"
 >
@@ -585,7 +523,7 @@
             justifyBase={QURAN_JUSTIFY_BASE}
             {layout}
             justify={{ enabled: true }}
-            tajweed={{ enabled: $mushafTajweed, preset: 'classic', stopsAt }}
+            tajweed={{ enabled: $mushafTajweed, preset: 'classic', colours: tajweedColours, stopsAt }}
             reading={{ letters: $mushafLetters }}
             {surahHeaderStyle}
             {ayahMarker}
@@ -595,7 +533,7 @@
             {labels}
             navButtons
             {canNavigate}
-            onReady={() => { ready = true; }}
+            onReady={() => { ready = true; keepSpread(element?.state?.current ?? []); }}
             onPageChange={onPageChange}
             onWordTap={(d) => onTap(d, 'loc')}
             onAyahTap={(d) => onTap(d, 'verse')}
@@ -653,19 +591,25 @@
         --qm-highlight-underline: var(--accent);
         --qm-band-radius: var(--r-2);
         --qm-ui-font: var(--font-ui, inherit);
-        /* Read-along (setReading): a pill glides between words; the sounding letter takes its
-         * tajweed colour (plain and silent letters the accent), the word's other letters wait
-         * at 45% and sung ones stay full. Tuned in the highlight lab. */
-        --qm-reading-pill: var(--accent-tint);
-        --qm-reading-glide: 300ms;
-        --qm-reading-radius: 12px;
+        /* Read-along (setReading), as the Mushaf app: by word, the recited word takes the accent
+         * (no box behind it); by letter, the letters still to come wait dimmed and brighten as they
+         * are recited (light, not colour, so it reads the same over tajweed) while an accent
+         * underline slides from word to word along the line, across a merge into the next word. */
         --qm-reading-lit: var(--accent);
-        --qm-reading-pending: 0.45;
+        --qm-reading-word: var(--text-primary);
+        --qm-reading-pill: transparent;
+        --qm-reading-pill-inset: 6%;
+        --qm-reading-radius: 7px;
+        --qm-reading-glide: 170ms;
+        --qm-reading-pending: 0.18;
         --qm-reading-sung: 1;
-        --qm-reading-fade: 0ms; /* letters switch instantly */
     }
-    /* Words not recited yet (shown): faded until reached. */
-    .mv :global(qud-mushaf.mv-book::part(hl-upcoming)) { opacity: 0.3; }
+    .mv.mv-letters :global(qud-mushaf.mv-book) {
+        --qm-reading-pill: linear-gradient(to top, var(--accent) 0 2.5px, transparent 2.5px);
+        --qm-reading-pill-inset: 3%;
+        --qm-reading-radius: 0;
+        --qm-reading-glide: 200ms;
+    }
     .mv :global(qud-mushaf.mv-book::part(word)) { transition: color var(--t-fast), opacity var(--t-fast); }
     .mv :global(qud-mushaf.mv-book::part(word):hover) { color: var(--accent); }
     /* Surahs the reciter lacks: no pointer, no hover. */
@@ -673,11 +617,6 @@
     .mv :global(qud-mushaf.mv-book::part(hl-inert):hover) { color: unset; }
     .mv :global(qud-mushaf.mv-book::part(nav)) { color: var(--text-muted); transition: color var(--t-fast), background var(--t-fast); }
     .mv :global(qud-mushaf.mv-book::part(nav):hover) { color: var(--text-primary); background: var(--panel-2); }
-    /* Picking a verse: the page dims, the verse (or range) under the pointer lights up. */
-    .mv.picking :global(qud-mushaf.mv-book::part(word)) { opacity: 0.45; cursor: crosshair; }
-    .mv.picking :global(qud-mushaf.mv-book::part(hl-inert)) { cursor: default; }
-    .mv.picking :global(qud-mushaf.mv-book::part(hl-pick)) { opacity: 1; color: var(--accent); }
-    .mv.picking :global(qud-mushaf.mv-book::part(band)) { visibility: hidden; }
 
     /* Full screen: only the book and the shell footer remain. */
     :global(html.mushaf-full .container > header) { display: none; }

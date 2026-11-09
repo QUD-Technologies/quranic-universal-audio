@@ -1,16 +1,15 @@
 /**
- * The Mushaf view's reading state as `<qud-mushaf>` highlights: a band behind the
- * visible part of the current verse, words not recited yet (`upcoming`, faded, or
- * `hidden` by the visibility prefs), the Repeat pick spotlight (`pick`) and the
- * surahs the reciter lacks (`inert`). The recited word and its letters are the
- * element's read-along playhead (`setReading`, see `reading.ts`), not a highlight. The package resolves them per line; the
- * view's CSS styles the consumer tokens through `::part(hl-<token>)`.
+ * The Mushaf view's reading state as `<qud-mushaf>` highlights: what the visibility prefs hide
+ * (`hidden`: every verse but the current one, the words not recited yet) and the surahs the
+ * reciter lacks (`inert`). As in the Mushaf app, the page carries no verse band and no faded
+ * words: the read-along playhead (`setReading`, see `reading.ts`) is the only mark of where the
+ * recitation is. The package resolves them per line; the view's CSS styles the consumer tokens
+ * through `::part(hl-<token>)`.
  */
 import type { Highlight, HighlightTarget } from '@qud-technologies/mushaf-core';
 
 import type { MushafScope } from '../stores/mushaf';
 import type { MushafPosition } from './position';
-import { refKey, type VerseRef } from './repeat-plan';
 
 const SURAH_COUNT = 114;
 
@@ -20,8 +19,6 @@ export interface ReadingState {
     firstAnchor: string;
     scope: MushafScope;
     showUpcoming: boolean;
-    /** Verse range lit while picking a Repeat end (either order), or null. */
-    spot: [VerseRef, VerseRef] | null;
     /** Surahs the reciter has (the others are inert). */
     playable: ReadonlySet<number>;
     /** Ayah count of a surah. */
@@ -68,38 +65,17 @@ function inertRanges(st: ReadingState): HighlightTarget[] {
     return out;
 }
 
-/** The visible part of the current verse, for its band. */
-function band(verseKey: string, progress: string, showUpcoming: boolean): HighlightTarget | null {
-    if (showUpcoming) return verseKey;
-    if (!progress || !progress.startsWith(`${verseKey}:`)) return null;
-    return { from: verseKey, to: progress };
-}
-
 export function readingHighlights(st: ReadingState): Highlight[] {
     const out: Highlight[] = inertRanges(st).map((target, i) => ({ id: `inert-${i}`, target, style: 'inert' }));
-    const picking = st.spot !== null;
     const pos = st.pos;
-    // Picking a verse needs every verse visible and clickable.
-    const scope = picking ? 'spread' : st.scope;
-    const showUpcoming = picking || st.showUpcoming;
-    if (pos?.verseKey) {
-        const [s, a] = pos.verseKey.split(':').map(Number) as [number, number];
-        // An opener reading (surah 0) is recited but not printed: no verse to band or isolate.
-        const printed = s > 0;
-        const ahead = upcoming(st, pos.progress);
-        const hidden = [
-            ...(printed && scope === 'verse' ? [before(st, s, a), after(st, s, a)] : []),
-            showUpcoming ? null : ahead,
-        ].filter((t): t is HighlightTarget => t !== null);
-        hidden.forEach((target, i) => out.push({ id: `hidden-${i}`, target, style: 'hidden', layer: 1 }));
-        // Shown upcoming words wait faded; picking a verse needs them at full ink.
-        if (showUpcoming && !picking && ahead) out.push({ id: 'upcoming', target: ahead, style: 'upcoming' });
-        const b = printed ? band(pos.verseKey, pos.progress, showUpcoming) : null;
-        if (b) out.push({ id: 'verse', target: b, style: 'band' });
-    }
-    if (st.spot) {
-        const [x, y] = st.spot;
-        out.push({ id: 'pick', target: { from: refKey(x), to: refKey(y) }, style: 'pick', layer: 3 });
-    }
+    if (!pos?.verseKey) return out;
+    const [s, a] = pos.verseKey.split(':').map(Number) as [number, number];
+    // An opener reading (surah 0) is recited but not printed: no verse to isolate.
+    const printed = s > 0;
+    const hidden = [
+        ...(printed && st.scope === 'verse' ? [before(st, s, a), after(st, s, a)] : []),
+        st.showUpcoming ? null : upcoming(st, pos.progress),
+    ].filter((t): t is HighlightTarget => t !== null);
+    hidden.forEach((target, i) => out.push({ id: `hidden-${i}`, target, style: 'hidden', layer: 1 }));
     return out;
 }

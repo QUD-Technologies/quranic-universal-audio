@@ -31,7 +31,6 @@
     function close(which: 'repeat' | 'settings'): void {
         // A verse being picked on the page is a click outside the drop-up —
         // keep the panel open for it.
-        if (which === 'repeat' && mushafRepeat.picking) return;
         if (open === which) open = null;
     }
 
@@ -132,8 +131,8 @@
                 <svg viewBox="0 0 16 16" aria-hidden="true">
                     <path d="M3 7V6a2 2 0 0 1 2-2h7.5M10.5 2 12.5 4l-2 2M13 9v1a2 2 0 0 1-2 2H3.5M5.5 14l-2-2 2-2" />
                 </svg>
-                {#if mushafRepeat.running && mushafRepeat.cursor}
-                    <span class="badge">{mushafRepeat.cursor.rep}</span>
+                {#if mushafRepeat.at}
+                    <span class="badge">{mushafRepeat.at.n + 1}</span>
                 {/if}
             </button>
             {#if open === 'repeat'}
