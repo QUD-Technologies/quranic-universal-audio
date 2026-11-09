@@ -1,14 +1,6 @@
 /* Ensure [hidden] always hides even when CSS sets explicit display values */
 [hidden] { display: none !important; }
 
-@font-face {
-    font-family: 'DigitalKhatt';
-    /* Digital Khatt v2, a release asset of the Talqeen data (sha256-pinned in
-     * qua_shared/quran_data_pin.py), fetched at build time and served by the
-     * backend: no binary rides the Space's LFS handling. See docs/reference/quran-data.md. */
-    src: url('/api/static/quran-data/DigitalKhattV2.otf') format('opentype');
-}
-
 /* Silence-mark-only subset of DigitalKhatt (the two Quranic silence zeros,
  * U+06DF / U+06E0). The Timestamps analysis cells render in 'Traditional Arabic';
  * that font draws these marks too faintly to read at cell size, so we override

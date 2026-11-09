@@ -45,7 +45,7 @@ The package's (`@qud-technologies/mushaf-core` `fit`, ported from QUA's `fit.ts`
 ## Data + assets
 
 - **Data:** the Talqeen pack (`quran-core.qref`) through the TS SDK (`@qud-technologies/quran-data`, installed from its release tarball): page layouts of 1405/1421/1441, Digital Khatt v2 words, ayah-end markers, the basmala, and each layout's stop edition (1405 has its own; 1421 + 1441 the default). `lib/quran-data/pack.ts` opens it once from `/api/static/quran-data/quran-core.qref`.
-- **Fonts:** the pack's `fonts()` (DK v2 for 1421/1441, DK v1 for 1405, surah-name v2, the QuranCommon surah frame), served by `/api/static/quran-data/<file>` (`fontUrl`). The package falls back to another text font when a layout's own one fails, measuring and drawing in the same face, and to plain text / a ruled box for the header fonts. App-wide, `styles/base.css`'s `DigitalKhatt` face is the same DK v2 file from the same route.
+- **Fonts:** the pack's `fonts()` (DK v2 for 1421/1441, DK v1 for 1405, surah-name v2, the QuranCommon surah frame), served by `/api/static/quran-data/<file>` (`fontUrl`). The package falls back to another text font when a layout's own one fails, measuring and drawing in the same face, and to plain text / a ruled box for the header fonts. App-wide, `styles/quran-fonts.css`'s `DigitalKhatt` face is the same DK v2 file from the same route, declared after `cells.css` (whose own face points at an unserved `/fonts/` path).
 
 ## Footer + shell in Mushaf view
 

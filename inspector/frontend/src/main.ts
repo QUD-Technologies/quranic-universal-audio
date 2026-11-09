@@ -11,6 +11,8 @@
 import './styles/tokens.css';
 import './styles/base.css';
 import '@quranic-phonemizer/cells/cells.css';
+// After cells.css: its 'DigitalKhatt' face points at a path this app does not serve.
+import './styles/quran-fonts.css';
 import './styles/components.css';
 import './styles/editing-guide.css';
 import './styles/filters.css';
