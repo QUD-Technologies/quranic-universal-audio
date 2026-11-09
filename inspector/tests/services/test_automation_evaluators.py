@@ -438,3 +438,44 @@ def test_auto_release_inactive_keeps_recently_claimed_real_row(seed_state, monke
     claimed_row = state_service.get_row(slug)
     assert claimed_row is not None
     assert claimed_row.state.value == "under_review"
+
+
+# --- timestamps automations: infra-failure auto-retry -------------------------
+
+
+def test_stale_ts_regen_retries_an_infra_failure_past_its_watermark(monkeypatch):
+    """A regen that died on the aligner (restart / 5xx) is relaunched even though
+    its start sits after the edit watermark."""
+    launched: list[str] = []
+    _seed_stale_slug(
+        monkeypatch,
+        last_edit="2026-06-09T10:00:00Z",
+        watermark={"rec_a": datetime(2026, 6, 9, 11, 0, tzinfo=UTC)},
+    )
+    monkeypatch.setattr(evaluators.timestamps_jobs, "latest_terminal_failed_slugs", lambda: {"rec_a"})
+    monkeypatch.setattr(evaluators.timestamps_jobs, "auto_retryable_slugs", lambda slugs, now: {"rec_a"})
+    monkeypatch.setattr(
+        evaluators.timestamps_jobs, "launch", lambda slug, **k: launched.append(slug)
+    )
+
+    evaluators.eval_stale_ts_regen(
+        AutomationConfig(stale_ts_regen=StaleTsRegenConfig(enabled=True)), _now()
+    )
+
+    assert launched == ["rec_a"]
+
+
+def test_stale_ts_regen_leaves_a_non_retryable_failure(monkeypatch):
+    launched: list[str] = []
+    _seed_stale_slug(monkeypatch, last_edit="2026-06-09T10:00:00Z", watermark={})
+    monkeypatch.setattr(evaluators.timestamps_jobs, "latest_terminal_failed_slugs", lambda: {"rec_a"})
+    monkeypatch.setattr(evaluators.timestamps_jobs, "auto_retryable_slugs", lambda slugs, now: set())
+    monkeypatch.setattr(
+        evaluators.timestamps_jobs, "launch", lambda slug, **k: launched.append(slug)
+    )
+
+    evaluators.eval_stale_ts_regen(
+        AutomationConfig(stale_ts_regen=StaleTsRegenConfig(enabled=True)), _now()
+    )
+
+    assert launched == []

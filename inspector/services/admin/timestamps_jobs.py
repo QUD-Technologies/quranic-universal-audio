@@ -33,6 +33,7 @@ import datetime
 import json
 import logging
 import os
+import re
 from datetime import UTC
 
 from qua_shared.schemas import StaleReason, TsJobRecord, TsJobSettings
@@ -192,6 +193,54 @@ def latest_terminal_failed_slugs() -> set[str]:
         status = (rec or {}).get("status")
         if status in _TERMINAL and status not in _TERMINAL_SUCCESS:
             out.add(row.slug)
+    return out
+
+
+#: Failures the aligner infrastructure caused, not the reciter's data: the
+#: Inspector restarted mid-run, or the aligner Space answered 5xx. Automation
+#: retries these on its own; any other failure waits for a manual retry.
+_INFRA_FAILURE = re.compile(r"^interrupted: the Inspector restarted|\baligner 5\d\d\b")
+#: Wait this long after an infra failure before automation retries it.
+AUTO_RETRY_BACKOFF = datetime.timedelta(minutes=15)
+#: Consecutive infra failures after which automation stops retrying a slug.
+AUTO_RETRY_MAX = 3
+
+
+def _is_infra_failure(rec: dict | None) -> bool:
+    if not rec or rec.get("status") not in _TERMINAL or rec.get("status") in _TERMINAL_SUCCESS:
+        return False
+    return bool(_INFRA_FAILURE.search(str(rec.get("error") or "")))
+
+
+def _infra_failure_streak(slug: str) -> tuple[int, datetime.datetime | None]:
+    """Trailing run of infra failures (newest first) and the newest one's end."""
+    row = state_service.get_row(slug)
+    ids = list(getattr(row, "timestamps_job_ids", []) or []) if row else []
+    streak, newest_end = 0, None
+    for job_id in reversed(ids):
+        rec = read_job_record(slug, job_id)
+        if rec is None or not _is_infra_failure(rec):
+            break
+        if streak == 0:
+            newest_end = _parse_iso(rec.get("ended_at") or rec.get("started_at"))
+        streak += 1
+        if streak >= AUTO_RETRY_MAX:
+            break
+    return streak, newest_end
+
+
+def auto_retryable_slugs(slugs: set[str], now: datetime.datetime) -> set[str]:
+    """The subset of ``slugs`` (latest run failed) that automation may relaunch:
+    the newest run failed on infrastructure, ended at least
+    ``AUTO_RETRY_BACKOFF`` ago, and fewer than ``AUTO_RETRY_MAX`` infra
+    failures have come in a row."""
+    out: set[str] = set()
+    for slug in slugs:
+        streak, ended = _infra_failure_streak(slug)
+        if streak == 0 or streak >= AUTO_RETRY_MAX or ended is None:
+            continue
+        if now - ended >= AUTO_RETRY_BACKOFF:
+            out.add(slug)
     return out
 
 
