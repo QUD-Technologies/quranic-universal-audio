@@ -89,8 +89,12 @@ def _boot(scratch: Path):
     return app.test_client()
 
 
+#: The /api/ts routes serve the website only (browser Fetch Metadata): ask as the page does.
+_BROWSER_HEADERS = {"Sec-Fetch-Site": "same-origin", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Dest": "empty"}
+
+
 def _get(client, url: str) -> bytes:
-    res = client.get(url)
+    res = client.get(url, headers=_BROWSER_HEADERS)
     if res.status_code != 200:
         raise SystemExit(f"GET {url} -> {res.status_code}: {res.data[:200]!r}")
     return res.data
@@ -359,7 +363,9 @@ def compare(before: Path, after: Path, report_path: Path | None) -> int:
     report["stops"] = stops
     texts = [d / "ts_resource_qpc_hafs.json" for d in (before, after)]
     if not all(t.is_file() for t in texts):
-        texts = [before / "ts_resource_qpc_hafs.json", after / "ts_resource_digital_khatt.json"]
+        # qpc_hafs retired: both captures read Digital Khatt, so compare those.
+        dk = [d / "ts_resource_digital_khatt.json" for d in (before, after)]
+        texts = dk if not texts[0].is_file() else [texts[0], dk[1]]
     waqf = _waqf_report(*(json.loads(t.read_text(encoding="utf-8")) for t in texts))
     report["waqf_marks"] = waqf
     for label, changes in (("word_has_stop", stops), ("all waqf marks U+06D6-06DB", waqf)):

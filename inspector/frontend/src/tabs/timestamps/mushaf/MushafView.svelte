@@ -17,7 +17,8 @@
      * holds the audio until the chapter's timings are in, so playback never
      * runs ahead of the page it's read along on.
      */
-    import { DEFAULT_AYAH_MARKER, DEFAULT_SURAH_HEADER, type HitPayload, type PageChangePayload, type ReadingState } from '@qud-technologies/mushaf-core';
+    import { DEFAULT_AYAH_MARKER, DEFAULT_SURAH_HEADER, type HitPayload, type PageChangePayload, type ReadingState, stopSign } from '@qud-technologies/mushaf-core';
+    import { sameReading } from '@qud-technologies/mushaf-core/app';
     import { QudMushaf } from '@qud-technologies/mushaf-svelte';
     import type { QudMushafElement } from '@qud-technologies/mushaf-web';
     import type { QuranPack } from '@qud-technologies/quran-data';
@@ -44,7 +45,7 @@
     import { mushafFullscreen } from './fullscreen.svelte';
     import { readingHighlights } from './highlights';
     import { indexChapter, positionAt, type ChapterIndex, type MushafPosition } from './position';
-    import { LEAD_S, playheadAt, takeEnd } from './reading';
+    import { chapterReading, readingStateAt, recitationStops } from './reading';
     import { mushafRepeat } from './repeat.svelte';
     import { compareRefs, type VerseRef } from './repeat-plan';
 
@@ -58,6 +59,8 @@
     const TURN_TIMEOUT_MS = 2000;
     /** A playhead jump larger than this between frames is a seek → follow again. */
     const SEEK_JUMP_MS = 1500;
+    /** The position (page turns, words reached) runs this far ahead of the audio (s). */
+    const LEAD_S = 0.1;
 
     let root: HTMLDivElement | undefined = $state();
     let element: QudMushafElement | undefined = $state();
@@ -78,6 +81,10 @@
     const chapter = $derived($playerContext.surahNum ?? 0);
     const live = $derived(chapterIx !== null && ixKey === `${slug}:${chapter}`);
     const layout = $derived(`madani-${$mushafYear}`);
+    /** The chapter's read-along tracks (the data SDK's), once the pack and its timings are in. */
+    const reading = $derived(pack && chapterIx ? chapterReading(pack, chapterIx.chapter, chapterIx.units) : null);
+    /** Where this recitation stops on a stop sign: the rules of stopping follow it (`tajweed.stopsAt`). */
+    const stopsAt = $derived(pack && chapterIx ? recitationStops(chapterIx.units, (a) => stopSign({ text: pack!.text(a) }) !== null) : null);
 
     $effect(() => {
         const s = slug;
@@ -261,25 +268,19 @@
     let spot = $state.raw<[VerseRef, VerseRef] | null>(null);
     let raf: number | null = null;
     let highlightKey = '';
-    /** The take last recited, for bridging a short silence. */
-    let lastTake: { unit: number; end: number } | null = null;
-    let readingKey = '';
+    let shownReading: ReadingState | null = null;
 
-    /** Move the element's read-along playhead; it redraws only on a change. By word
-     * (`mushafLetters` off) it gets the word alone, so the whole word lights. */
-    function showReading(full: ReadingState | null): void {
+    /** Move the element's read-along playhead; it redraws only on a change. */
+    function showReading(state: ReadingState | null): void {
         const el = element;
-        if (!el || !ready) return;
-        const state = full && !$mushafLetters ? { word: full.word } : full;
-        const key = state ? JSON.stringify(state) : '';
-        if (key === readingKey) return;
-        readingKey = key;
+        if (!el || !ready || sameReading(state, shownReading)) return;
+        shownReading = state;
         el.setReading(state);
     }
 
     // Leaving the chapter (or its timings) clears the playhead.
     $effect(() => {
-        if (!live) untrack(() => { lastTake = null; showReading(null); });
+        if (!live) untrack(() => showReading(null));
     });
 
     function samePosition(a: MushafPosition | null, b: MushafPosition): boolean {
@@ -319,9 +320,7 @@
         lastUnit = unit;
         if (pos.anchor) lastAnchor = pos.anchor;
         if (!samePosition(position, pos)) position = pos;
-        const head = playheadAt(ix, t, unit, lastTake);
-        if (head.unit >= 0) lastTake = { unit: head.unit, end: takeEnd(ix.units[head.unit]!, t) };
-        showReading(head.state);
+        if (reading) showReading(readingStateAt(reading, ms, $mushafLetters ? 'letters' : 'word'));
         if (following && pos.anchor && ready) follow(pos.anchor);
     }
 
@@ -586,8 +585,8 @@
             justifyBase={QURAN_JUSTIFY_BASE}
             {layout}
             justify={{ enabled: true }}
-            tajweed={{ enabled: $mushafTajweed, preset: 'classic' }}
-            reading={{ letters: true }}
+            tajweed={{ enabled: $mushafTajweed, preset: 'classic', stopsAt }}
+            reading={{ letters: $mushafLetters }}
             {surahHeaderStyle}
             {ayahMarker}
             mode="auto"
