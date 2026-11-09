@@ -126,10 +126,18 @@ owner-only under `ReleasesSummaryCard`); API in `lib/api/admin-releases.ts`.
   on) picks it up at its next window and the cut sees it at its window. The
   interval cadence (not instant) is the buffer; pause auto-publish to stop a
   manual regen propagating.
-- **Failed jobs are not retried.** `auto_gen_ts` + `stale_ts_regen` skip any slug
-  whose most-recent timestamps job ended non-success
+- **Only infrastructure failures are retried.** `auto_gen_ts` + `stale_ts_regen`
+  skip any slug whose most-recent timestamps job ended non-success
   (`timestamps_jobs.latest_terminal_failed_slugs`) — it stays in
-  `ready_to_generate` / `behind_edits` for a manual retry, exactly as today.
+  `ready_to_generate` / `behind_edits` for a manual retry — **unless**
+  `timestamps_jobs.auto_retryable_slugs` admits it: the failure is
+  infrastructure (`INTERRUPTED_ERROR` from a restart, or `aligner 5xx`), it
+  ended ≥ `AUTO_RETRY_BACKOFF` (15 min) ago, and fewer than `AUTO_RETRY_MAX` (3)
+  infra failures came in a row. An admitted slug also bypasses the relaunch
+  watermark below (its failed job started after the mark). Retries still go one
+  at a time through the single-flight launch, so a batch of restart casualties
+  drains sequentially instead of hammering the aligner. A data failure (any other
+  error, e.g. `aligner 422`) or a third infra failure in a row waits for a human.
 - **Single-flight.** Every launch already enforces per-slug + global single-flight
   (`running_job_for`); evaluators also pre-skip in-flight slugs and the
   cut/batch/refresh globals.

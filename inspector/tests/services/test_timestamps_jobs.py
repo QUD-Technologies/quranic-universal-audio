@@ -6,6 +6,7 @@ idempotent completion / failure fallbacks on a terminal record.
 
 from __future__ import annotations
 
+import datetime
 from datetime import UTC
 
 from services.admin import timestamps_jobs
@@ -419,3 +420,58 @@ def test_stale_ceiling_is_env_overridable(monkeypatch):
     _stub_newest(monkeypatch, _running_record(old))
     monkeypatch.setenv("INSPECTOR_TS_STALE_RUN_HOURS", "24")
     assert timestamps_jobs.running_job_for("r") == "j9"
+
+
+# ---------------------------------------------------------------------------
+# auto_retryable_slugs — automation retries infra failures only
+# ---------------------------------------------------------------------------
+
+_RETRY_NOW = datetime.datetime(2026, 11, 9, 12, 0, tzinfo=UTC)
+
+
+def _stub_history(monkeypatch, records: list[dict]) -> None:
+    """One slug ``r`` whose run log is ``records`` (oldest first)."""
+
+    class Row:
+        slug = "r"
+        timestamps_job_ids = [f"j{i}" for i in range(len(records))]
+
+    by_id = {f"j{i}": rec for i, rec in enumerate(records)}
+    monkeypatch.setattr(timestamps_jobs.state_service, "get_row", lambda slug: Row())
+    monkeypatch.setattr(timestamps_jobs, "read_job_record", lambda slug, jid: dict(by_id[jid]))
+
+
+def _failed(error: str, ended: str = "2026-11-09T11:00:00Z") -> dict:
+    return {"status": "failed", "error": error, "ended_at": ended}
+
+
+def test_auto_retry_takes_an_interrupted_run_after_the_backoff(monkeypatch):
+    _stub_history(monkeypatch, [_failed(timestamps_jobs.INTERRUPTED_ERROR)])
+    assert timestamps_jobs.auto_retryable_slugs({"r"}, _RETRY_NOW) == {"r"}
+
+
+def test_auto_retry_takes_an_aligner_5xx(monkeypatch):
+    _stub_history(monkeypatch, [_failed("chapter 2: aligner 500: <!DOCTYPE html>")])
+    assert timestamps_jobs.auto_retryable_slugs({"r"}, _RETRY_NOW) == {"r"}
+
+
+def test_auto_retry_waits_out_the_backoff(monkeypatch):
+    _stub_history(monkeypatch, [_failed(timestamps_jobs.INTERRUPTED_ERROR, "2026-11-09T11:50:00Z")])
+    assert timestamps_jobs.auto_retryable_slugs({"r"}, _RETRY_NOW) == set()
+
+
+def test_auto_retry_leaves_data_failures_for_a_manual_retry(monkeypatch):
+    _stub_history(monkeypatch, [_failed("chapter 2: aligner 422: no speech")])
+    assert timestamps_jobs.auto_retryable_slugs({"r"}, _RETRY_NOW) == set()
+
+
+def test_auto_retry_stops_after_the_cap(monkeypatch):
+    streak = [_failed("aligner 503: down")] * timestamps_jobs.AUTO_RETRY_MAX
+    _stub_history(monkeypatch, streak)
+    assert timestamps_jobs.auto_retryable_slugs({"r"}, _RETRY_NOW) == set()
+
+
+def test_auto_retry_counts_only_the_trailing_streak(monkeypatch):
+    history = [_failed("aligner 503: down")] * 2 + [{"status": "succeeded"}] + [_failed("aligner 500: x")]
+    _stub_history(monkeypatch, history)
+    assert timestamps_jobs.auto_retryable_slugs({"r"}, _RETRY_NOW) == {"r"}

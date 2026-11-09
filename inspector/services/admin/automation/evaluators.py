@@ -1,7 +1,8 @@
 """The automation evaluators — one per automation, each idempotent.
 
 Every evaluator: (1) returns early if disabled; (2) derives candidates from live
-release state; (3) skips in-flight + failed-bucket rows (no auto-retry); (4)
+release state; (3) skips in-flight + failed-bucket rows (the timestamps evaluators retry
+infra failures only, see ``timestamps_jobs.auto_retryable_slugs``); (4)
 launches via the existing job entrypoints; (5) records the run. The two
 timestamps evaluators launch nothing while any timestamps run is in flight and
 otherwise only the longest-waiting candidate, so the aligner times one run at
@@ -163,14 +164,15 @@ def eval_auto_gen_ts(cfg: AutomationConfig, now: datetime) -> None:
     if not rows or _ts_run_in_flight():
         return
     failed = timestamps_jobs.latest_terminal_failed_slugs()
+    retry = timestamps_jobs.auto_retryable_slugs(failed, now)
     watermarks = timestamps_jobs.latest_job_started_by_slug()
     candidates: list[tuple[str, str, list[int] | None]] = []
     for r in rows:
         slug = r[0]
         if repo_releases.current_release("ts", slug) is not None:
             continue  # already timestamped
-        if slug in failed:
-            continue  # last gen failed — manual retry
+        if slug in failed and slug not in retry:
+            continue  # last gen failed on the data — manual retry
         claim = repo_claims.get_open_claim(slug)
         if claim is None or _auto_gen_gated(c, slug, claim):
             continue
@@ -178,7 +180,9 @@ def eval_auto_gen_ts(cfg: AutomationConfig, now: datetime) -> None:
         # (which stops this loop) lands only when completion settles, lagging the
         # tick. Without this, a succeeded-but-not-completed job re-fires every tick.
         marked = _claim_val(claim, "marked_ready_at")
-        if _already_launched_since(watermarks, slug, _serde.from_iso(marked)):
+        if slug not in retry and _already_launched_since(
+            watermarks, slug, _serde.from_iso(marked)
+        ):
             continue
         candidates.append((str(marked or ""), slug, None))
     _launch_first_ts(AUTO_GEN_TS, candidates, now, "generated")
@@ -343,10 +347,11 @@ def eval_stale_ts_regen(cfg: AutomationConfig, now: datetime) -> None:
         return
     guard = timedelta(minutes=c.guard_minutes)
     failed = timestamps_jobs.latest_terminal_failed_slugs()
+    retry = timestamps_jobs.auto_retryable_slugs(failed, now)
     watermarks = timestamps_jobs.latest_job_started_by_slug()
     candidates: list[tuple[str, str, list[int] | None]] = []
     for slug in _delivery_slugs():
-        if slug in failed:
+        if slug in failed and slug not in retry:
             continue
         ts = repo_releases.current_release("ts", slug)
         if ts is None or not ts.get("produced_at"):
@@ -361,7 +366,7 @@ def eval_stale_ts_regen(cfg: AutomationConfig, now: datetime) -> None:
         # staleness only once its async completion lands (webhook / 120 s poll),
         # which lags the tick. Without this we re-fire every tick in that window —
         # and forever if completion never clears it. One job per edit-burst.
-        if _already_launched_since(watermarks, slug, last_edit):
+        if slug not in retry and _already_launched_since(watermarks, slug, last_edit):
             continue
         chapters = info.get("affected_chapters") if c.scope == "affected" else None
         candidates.append((str(info.get("stale_since") or ""), slug, chapters or None))
