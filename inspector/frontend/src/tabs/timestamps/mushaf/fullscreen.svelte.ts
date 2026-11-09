@@ -18,7 +18,6 @@
  * any other way the window goes full screen enters the mode without asking
  * the Fullscreen API; the window leaving full screen leaves it.
  */
-import { mushafRepeat } from './repeat.svelte';
 
 const FULL_CLASS = 'mushaf-full';
 const DOCK_CLASS = 'mushaf-dock';
@@ -123,8 +122,7 @@ class MushafFullscreen {
         const active = document.activeElement;
         return p.matches(':hover')
             || (!!active && active !== document.body && p.contains(active))
-            || !!p.querySelector('[aria-expanded="true"]')
-            || mushafRepeat.picking !== null;
+            || !!p.querySelector('[aria-expanded="true"]');
     }
 
     private readonly onEnter = (): void => this.reveal();

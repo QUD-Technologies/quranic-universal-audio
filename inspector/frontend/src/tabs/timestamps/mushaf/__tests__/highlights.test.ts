@@ -12,7 +12,6 @@ function state(over: Partial<ReadingState>): ReadingState {
         firstAnchor: '2:1:1',
         scope: 'spread',
         showUpcoming: true,
-        spot: null,
         playable: all,
         ayahs,
         ...over,
@@ -22,11 +21,8 @@ function state(over: Partial<ReadingState>): ReadingState {
 const byId = (st: ReadingState) => Object.fromEntries(readingHighlights(st).map((h) => [h.id, h]));
 
 describe('readingHighlights', () => {
-    it('bands the whole verse and fades the words not reached yet; the playhead draws the recited word', () => {
-        const h = byId(state({}));
-        expect(h.verse).toMatchObject({ target: '2:2', style: 'band' });
-        expect(h.upcoming).toMatchObject({ target: { from: '2:2:4', to: '114:6' }, style: 'upcoming' });
-        expect(Object.keys(h)).toEqual(['upcoming', 'verse']);
+    it('marks nothing with every verse shown: the playhead alone draws the recitation', () => {
+        expect(readingHighlights(state({}))).toEqual([]);
     });
 
     it('hides every other verse in verse scope', () => {
@@ -42,32 +38,23 @@ describe('readingHighlights', () => {
         expect(last['hidden-1']!.target).toEqual({ from: '4:1', to: '114:6' });
     });
 
-    it('hides what is not reached yet and bands only the reached part of the verse', () => {
+    it('hides what is not reached yet', () => {
         const h = byId(state({ showUpcoming: false }));
         expect(h['hidden-0']!.target).toEqual({ from: '2:2:4', to: '114:6' });
-        expect(h.verse!.target).toEqual({ from: '2:2', to: '2:2:3' });
+        expect(Object.keys(h)).toEqual(['hidden-0']);
     });
 
-    it('hides from the first recited word before anything is reached, with no band', () => {
+    it('hides from the first recited word before anything is reached', () => {
         const h = byId(state({ showUpcoming: false, pos: { active: '', verseKey: '2:1', progress: '', anchor: '2:1:1' } }));
         expect(h['hidden-0']!.target).toEqual({ from: '2:1:1', to: '114:6' });
-        expect(h.verse).toBeUndefined();
     });
 
-    it('bands and isolates nothing during an opener reading, which is not printed', () => {
+    it('isolates nothing during an opener reading, which is not printed', () => {
         const opener = { active: '', verseKey: '0:1', progress: '', anchor: '2:1:1' };
-        const shown = byId(state({ scope: 'verse', pos: opener }));
-        expect(Object.keys(shown)).toEqual(['upcoming']);
-        expect(shown.upcoming!.target).toEqual({ from: '2:1:1', to: '114:6' });
+        expect(readingHighlights(state({ scope: 'verse', pos: opener }))).toEqual([]);
         const h = byId(state({ scope: 'verse', showUpcoming: false, pos: opener }));
         expect(Object.keys(h)).toEqual(['hidden-0']);
         expect(h['hidden-0']!.target).toEqual({ from: '2:1:1', to: '114:6' });
-    });
-
-    it('shows everything and lights the spotlight while picking', () => {
-        const h = byId(state({ scope: 'verse', showUpcoming: false, spot: [{ surah: 2, ayah: 3 }, { surah: 2, ayah: 1 }] }));
-        expect(Object.keys(h).filter((k) => k.startsWith('hidden'))).toEqual([]);
-        expect(h.pick).toMatchObject({ target: { from: '2:3', to: '2:1' }, style: 'pick' });
     });
 
     it('marks runs of surahs the reciter lacks inert', () => {

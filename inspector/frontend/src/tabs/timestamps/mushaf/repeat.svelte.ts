@@ -1,19 +1,18 @@
 /**
- * Mushaf Repeat — the runtime driver + its UI state.
+ * Mushaf Repeat: the Mushaf app's repeat, driven on this app's player.
  *
- * Plays a verse range as clean canonical takes (see `canonical.ts`): each
- * verse × `each`, the whole range × `rounds`. With no pause (the default) the
- * recitation runs on: consecutive verses whose takes are adjacent in the
- * recording flow straight through, replays and other jumps seek at once. A
- * pause puts that much silence between every two plays — replays of a verse
- * and the step from one verse to the next alike.
+ * A plan (`RepeatPlan`: verses `from`..`to`, each `verseTimes`, the whole range `rangeTimes`,
+ * `Infinity` looping, `pauseMs` of silence between steps) plays the steps of the core's
+ * `repeatSteps` over this reciter's chapters, each verse its canonical take (`repeat-source.ts`).
+ * A step ends at the core's `stepEnded`; with no pause, a next step that starts where the audio is
+ * plays straight on, any other seeks at once.
  *
- * The Mushaf view calls `tick()` every frame (and on `timeupdate`, so a hidden
- * tab still honours boundaries). A seek the driver didn't make — a footer
- * skip, a scrub — ends the repeat: the listener has gone somewhere else.
- * Ranges may span surahs; the driver asks its host to switch chapter and
- * resumes once that chapter's audio + data are live.
+ * The Mushaf view calls `tick()` every frame (and on `timeupdate`, so a hidden tab still honours
+ * step ends). A seek the driver didn't make (a footer skip, a scrub, a word click) ends the repeat.
+ * A plan may span surahs: the driver asks its host to switch chapter and resumes once that
+ * chapter's audio and data are live.
  */
+import { type RepeatAt, type RepeatPlan, repeatSteps, stepEnded, type SurahStep, type SurahTiming } from '@qud-technologies/mushaf-core/app';
 import { get } from 'svelte/store';
 
 import { ensureDashCovering } from '../../../lib/playback/dash-covering';
@@ -21,23 +20,14 @@ import { signalDashSeekIntent } from '../../../lib/playback/dash-buffering';
 import { dashPort } from '../../../lib/playback/dash-port';
 import { loadChapterRecitation } from '../../../lib/recitation-data/load-chapter';
 import { playerContext } from '../../../lib/stores/player-context';
-import { canonicalTakes, type VerseTake } from './canonical';
-import {
-    firstCursor,
-    nextCursor,
-    type RepeatCursor,
-    type RepeatRequest,
-    type VerseRef,
-} from './repeat-plan';
+import { chapterTiming, planSurahs, playSource } from './repeat-source';
 
-/** Next take starting within this of the current end plays on without a pause. */
+/** A next step starting within this of where the audio is plays on without a seek (ms). */
 const ADJACENT_MS = 400;
-/** Ignore playhead drift this long after the driver's own seek. */
+/** Ignore playhead drift this long after the driver's own seek (ms). */
 const SEEK_GRACE_MS = 600;
-/** Playhead this far outside the step (not our seek) = the listener navigated away. */
+/** Playhead this far outside the step (not our seek) = the listener went somewhere else (ms). */
 const DRIFT_MS = 1500;
-
-export interface RepeatStep extends VerseRef, VerseTake {}
 
 interface Host {
     /** Surah whose audio + recitation data are loaded and playable now. */
@@ -47,28 +37,23 @@ interface Host {
 }
 
 class MushafRepeat {
-    running = $state(false);
+    /** The plan playing, or null. */
+    plan = $state<RepeatPlan | null>(null);
+    /** Where the plan is (round, surah, verse, repetition). */
+    at = $state<RepeatAt | null>(null);
     loading = $state(false);
-    steps = $state<RepeatStep[]>([]);
-    each = $state(1);
-    rounds = $state(1);
-    /** Silence between plays (ms), one of `REPEAT_PAUSES_MS`. */
-    pauseMs = $state(0);
-    cursor = $state<RepeatCursor | null>(null);
-    /** Range being edited in the popover. `to` null = just `from`. */
-    from = $state<VerseRef | null>(null);
-    to = $state<VerseRef | null>(null);
-    /** Popover end waiting for a verse picked on the page. */
-    picking = $state<'from' | 'to' | null>(null);
-    error = $state('');
+    /** First and last `s:a` of the spread on show (the view keeps it), for "this page". */
+    spread = $state<[string, string] | null>(null);
+
+    readonly running = $derived(this.plan !== null);
 
     private host: Host | null = null;
+    private steps: Iterator<SurahStep> | null = null;
+    private step: SurahStep | null = null;
     private waiting = false;
     private pendingChapter = 0;
     private gapTimer: ReturnType<typeof setTimeout> | null = null;
     private seekedAt = 0;
-
-    current = $derived(this.cursor ? (this.steps[this.cursor.verse] ?? null) : null);
 
     attach(host: Host): () => void {
         this.host = host;
@@ -78,32 +63,24 @@ class MushafRepeat {
         };
     }
 
-    /** Resolve canonical takes for `verses` (loading each surah once) and start. */
-    async start(slug: string, verses: VerseRef[]): Promise<boolean> {
+    /** Load the plan's chapters (`surahs`: the reciter's) and start; false when nothing of it is recited. */
+    async start(slug: string, plan: RepeatPlan, surahs: readonly number[]): Promise<boolean> {
         this.stop();
         this.loading = true;
-        this.error = '';
         try {
-            const takes = new Map<number, Map<string, VerseTake>>();
-            for (const s of new Set(verses.map((v) => v.surah))) {
+            const chapters = new Map<number, SurahTiming>();
+            for (const s of planSurahs(plan.from, plan.to).filter((n) => surahs.includes(n))) {
                 const data = await loadChapterRecitation(slug, s);
-                takes.set(s, data ? canonicalTakes(data.units) : new Map());
+                if (data) chapters.set(s, chapterTiming(s, data.units));
             }
-            const steps: RepeatStep[] = [];
-            for (const v of verses) {
-                const t = takes.get(v.surah)?.get(`${v.surah}:${v.ayah}`);
-                if (t) steps.push({ ...v, ...t });
-            }
-            const req: RepeatRequest = { verses: steps, each: this.each, rounds: this.rounds };
-            const c = firstCursor(req);
-            if (!c) return false;
-            this.steps = steps;
-            this.cursor = c;
-            this.running = true;
-            this.go(steps[0]!);
+            this.steps = repeatSteps(playSource(surahs, chapters), plan)[Symbol.iterator]();
+            const first = this.steps.next();
+            if (first.done) return false;
+            this.plan = plan;
+            this.play(first.value);
             return true;
         } catch (e) {
-            console.error('Mushaf repeat: failed to resolve verse takes', e);
+            console.error('Mushaf repeat: failed to load the plan', e);
             return false;
         } finally {
             this.loading = false;
@@ -115,62 +92,70 @@ class MushafRepeat {
         this.gapTimer = null;
         this.waiting = false;
         this.pendingChapter = 0;
-        this.running = false;
-        this.cursor = null;
+        this.steps = null;
+        this.step = null;
+        this.plan = null;
+        this.at = null;
     }
 
-    /** Per-frame boundary check. */
+    /** Per-frame step check. */
     tick(): void {
-        const step = this.current;
-        if (!this.running || !step || this.waiting) return;
+        const step = this.step;
+        if (!this.plan || !step || this.waiting) return;
         if (this.pendingChapter) {
             if (this.host?.readyChapter() !== this.pendingChapter) return;
             this.pendingChapter = 0;
-            this.seekPlay(step.startMs);
+            this.seekPlay(step.from);
             return;
         }
         if (dashPort.paused) return;
         const ms = dashPort.currentTimeMs();
         const settled = performance.now() - this.seekedAt > SEEK_GRACE_MS;
-        if (settled && (ms < step.startMs - DRIFT_MS || ms > step.endMs + DRIFT_MS)) {
+        if (settled && (ms < step.from - DRIFT_MS || (step.to !== null && ms > step.to + DRIFT_MS))) {
             this.stop();
             return;
         }
-        if (ms >= step.endMs) this.advance(step);
+        if (stepEnded(step, ms)) this.advance(step, ms);
     }
 
-    private advance(step: RepeatStep): void {
-        const req: RepeatRequest = { verses: this.steps, each: this.each, rounds: this.rounds };
-        const next = this.cursor ? nextCursor(req, this.cursor) : null;
-        if (!next) {
+    private advance(done: SurahStep, ms: number): void {
+        const next = this.steps?.next();
+        if (!next || next.done) {
             dashPort.pauseAndFlush();
             this.stop();
             return;
         }
-        const nextStep = this.steps[next.verse]!;
-        this.cursor = next;
-        if (this.pauseMs > 0) {
+        const step = next.value;
+        if (this.plan!.pauseMs > 0) {
+            this.step = step;
+            this.at = step.repeatAt ?? null;
             dashPort.pauseAndFlush();
             this.waiting = true;
             this.gapTimer = setTimeout(() => {
                 this.gapTimer = null;
                 this.waiting = false;
-                if (this.running) this.go(nextStep);
-            }, this.pauseMs);
+                if (this.plan) this.play(step);
+            }, this.plan!.pauseMs);
             return;
         }
-        const gap = nextStep.startMs - step.endMs;
-        const adjacent = nextStep !== step && nextStep.surah === step.surah && Math.abs(gap) <= ADJACENT_MS;
-        if (!adjacent) this.go(nextStep);
+        // Read on: the next verse starts where the audio already is.
+        if (step.surah === done.surah && Math.abs(step.from - ms) <= ADJACENT_MS) {
+            this.step = step;
+            this.at = step.repeatAt ?? null;
+            return;
+        }
+        this.play(step);
     }
 
-    private go(step: RepeatStep): void {
+    private play(step: SurahStep): void {
+        this.step = step;
+        this.at = step.repeatAt ?? null;
         if (get(playerContext).surahNum !== step.surah || this.host?.readyChapter() !== step.surah) {
             this.pendingChapter = step.surah;
             this.host?.switchChapter(step.surah);
             return;
         }
-        this.seekPlay(step.startMs);
+        this.seekPlay(step.from);
     }
 
     private seekPlay(ms: number): void {
