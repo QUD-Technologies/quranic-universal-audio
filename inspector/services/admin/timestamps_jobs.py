@@ -219,7 +219,7 @@ def _infra_failure_streak(slug: str) -> tuple[int, datetime.datetime | None]:
     streak, newest_end = 0, None
     for job_id in reversed(ids):
         rec = read_job_record(slug, job_id)
-        if not _is_infra_failure(rec):
+        if rec is None or not _is_infra_failure(rec):
             break
         if streak == 0:
             newest_end = _parse_iso(rec.get("ended_at") or rec.get("started_at"))
