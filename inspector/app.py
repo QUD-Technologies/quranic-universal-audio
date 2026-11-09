@@ -188,9 +188,12 @@ def _configure_logging() -> None:
     # Silence chatty third-party libraries:
     # - httpx logs every HTTP request at INFO (one line per bucket read);
     #   bumping to WARNING keeps real failures, drops the per-request noise.
+    #   huggingface_hub 2.x ships its fork as ``httpx2`` (own logger name), so
+    #   both are silenced.
     # - huggingface_hub._login prints a benign HF_TOKEN-already-set warning
     #   on every fresh login() call when the env var is present.
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpx2").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("huggingface_hub._login").setLevel(logging.ERROR)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
