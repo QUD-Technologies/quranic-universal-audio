@@ -147,7 +147,7 @@ export const DEFAULT_RECITATION_CONFIG: RecitationAnimConfig = {
 
     // Matches the timestamps-tab animation: the dataset's display text is
     // DigitalKhatt-encoded, so it must render in the DigitalKhatt webfont
-    // (@font-face in styles/base.css → /api/static/quran-data/DigitalKhattV2.otf). Fallbacks
+    // (@font-face in styles/quran-fonts.css → /api/static/quran-data/DigitalKhattV2.woff2). Fallbacks
     // are other naskh faces for when the font hasn't loaded.
     fontFamily: "'DigitalKhatt', 'Traditional Arabic', 'Scheherazade New', 'Amiri', serif",
     fontSizePx: 26,
