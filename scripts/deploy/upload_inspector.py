@@ -255,6 +255,14 @@ def _stage(repo: Path, stage_root: Path, env: str, branch: str) -> None:
 
     _stage_cells_package(repo, stage_root)
 
+    # The Hub keeps binaries over about 100 KB as LFS pointers, which the Space build gets
+    # instead of their bytes: vendor/restore.mjs fetches them from GitHub at this commit.
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    deploy_commit = stage_root / "inspector" / "frontend" / "vendor" / "DEPLOY_COMMIT"
+    deploy_commit.write_text(commit + "\n", encoding="utf-8")
+
     _link_or_copy(repo / "inspector" / "Dockerfile", stage_root / "Dockerfile")
 
     suffix = " (dev)" if env == "dev" else ""

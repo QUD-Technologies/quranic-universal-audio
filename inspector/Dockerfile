@@ -53,6 +53,7 @@ RUN --mount=type=secret,id=PRIVATE_REPO_TOKEN,required=false \
       AUTH="$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)" && \
       git config --global http.https://github.com/.extraheader "AUTHORIZATION: basic $AUTH"; \
     fi && \
+    node vendor/restore.mjs && \
     npm ci && \
     rm -f /root/.gitconfig
 RUN npm run build
