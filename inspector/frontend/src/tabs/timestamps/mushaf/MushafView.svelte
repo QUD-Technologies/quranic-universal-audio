@@ -17,7 +17,7 @@
      * holds the audio until the chapter's timings are in, so playback never
      * runs ahead of the page it's read along on.
      */
-    import { DEFAULT_AYAH_MARKER, DEFAULT_SURAH_HEADER, type HitPayload, type PageChangePayload, type ReadingState, stopSign } from '@qud-technologies/mushaf-core';
+    import { DEFAULT_AYAH_MARKER, DEFAULT_SURAH_HEADER, type HitPayload, type PageChangePayload, type ReadingState } from '@qud-technologies/mushaf-core';
     import { sameReading } from '@qud-technologies/mushaf-core/app';
     import { QudMushaf } from '@qud-technologies/mushaf-svelte';
     import type { QudMushafElement } from '@qud-technologies/mushaf-web';
@@ -45,7 +45,7 @@
     import { mushafFullscreen } from './fullscreen.svelte';
     import { readingHighlights } from './highlights';
     import { indexChapter, positionAt, type ChapterIndex, type MushafPosition } from './position';
-    import { chapterReading, readingStateAt, recitationStops } from './reading';
+    import { chapterReading, readingStateAt } from './reading';
     import { mushafRepeat } from './repeat.svelte';
     import { compareRefs, type VerseRef } from './repeat-plan';
 
@@ -84,7 +84,7 @@
     /** The chapter's read-along tracks (the data SDK's), once the pack and its timings are in. */
     const reading = $derived(pack && chapterIx ? chapterReading(pack, chapterIx.chapter, chapterIx.units) : null);
     /** Where this recitation stops on a stop sign: the rules of stopping follow it (`tajweed.stopsAt`). */
-    const stopsAt = $derived(pack && chapterIx ? recitationStops(chapterIx.units, (a) => stopSign({ text: pack!.text(a) }) !== null) : null);
+    const stopsAt = $derived(reading?.words.stops() ?? null);
 
     $effect(() => {
         const s = slug;

@@ -21,12 +21,12 @@ from __future__ import annotations
 TALQEEN_REPO = "QUD-Technologies/talqeen-ai-data"
 TALQEEN_HTTPS_URL = f"https://github.com/{TALQEEN_REPO}.git"
 
-#: The release tag the SDK and pack come from (``sdk-v1.19.1``; its pack is ``data-v1.12.3``'s).
-TALQEEN_DATA_REF = "sdk-v1.19.1"
+#: The release tag the SDK and pack come from (``sdk-v1.20.0``; its pack is ``data-v1.12.3``'s).
+TALQEEN_DATA_REF = "sdk-v1.20.0"
 
 #: SDK distribution and the version the pinned revision builds.
 SDK_DIST_NAME = "talqeen-quran-data"
-SDK_VERSION = "1.19.1"
+SDK_VERSION = "1.20.0"
 #: Path of the Python SDK inside the data repo (a sparse checkout target).
 SDK_PATH = "sdk/python"
 
@@ -37,9 +37,9 @@ PACK_SHA256 = "75dcd7e8a46e118b7e642adae8bc6fd6b4e6afeae088d95ceb39bbf6db5d0e86"
 
 #: The TypeScript SDK the frontend builds against: a release asset of ``TS_SDK_RELEASE``,
 #: fetched into ``inspector/frontend/.quran-data/`` (``package.json`` installs it from there).
-TS_SDK_RELEASE = "sdk-v1.19.1"
-TS_SDK_FILE = "qud-technologies-quran-data-1.19.1.tgz"
-TS_SDK_SHA256 = "dcda7cfda6026a6378cef5043a9d38f95fd9f62e66c3bf1c76bbfba5ce6d0f11"
+TS_SDK_RELEASE = "sdk-v1.20.0"
+TS_SDK_FILE = "qud-technologies-quran-data-1.20.0.tgz"
+TS_SDK_SHA256 = "d6a856ff287f124ffc56a60a50ef3d01bd6e6c8984dc604ae863619cbc653ee6"
 
 #: The data release whose ``manifest.json`` says where each font asset lives.
 DATA_RELEASE = "data-v1.12.3"

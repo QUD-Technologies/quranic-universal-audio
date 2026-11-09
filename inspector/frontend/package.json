@@ -22,10 +22,10 @@
   },
   "dependencies": {
     "@huggingface/space-header": "^1.0.4",
-    "@qud-technologies/mushaf-core": "file:vendor/qud-technologies-mushaf-core-0.2.21.tgz",
-    "@qud-technologies/mushaf-svelte": "file:vendor/qud-technologies-mushaf-svelte-0.2.21.tgz",
-    "@qud-technologies/mushaf-web": "file:vendor/qud-technologies-mushaf-web-0.2.21.tgz",
-    "@qud-technologies/quran-data": "file:.quran-data/qud-technologies-quran-data-1.19.1.tgz",
+    "@qud-technologies/mushaf-core": "file:vendor/qud-technologies-mushaf-core-0.2.22.tgz",
+    "@qud-technologies/mushaf-svelte": "file:vendor/qud-technologies-mushaf-svelte-0.2.22.tgz",
+    "@qud-technologies/mushaf-web": "file:vendor/qud-technologies-mushaf-web-0.2.22.tgz",
+    "@qud-technologies/quran-data": "file:.quran-data/qud-technologies-quran-data-1.20.0.tgz",
     "@quranic-phonemizer/cells": "file:vendor/quranic-phonemizer-cells-4.1.0.tgz",
     "chart.js": "^4.4.0",
     "chartjs-plugin-annotation": "^3.0.1"

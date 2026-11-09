@@ -8,11 +8,12 @@
  * Every take of every word is a visit, so a passage read again lights again. A take's letters are
  * the word's written letters in order (letter `k`, 0-based, is `s:a:w:k+1`); a letter the producer
  * marks silent, or leaves untimed, is not a recited letter. The basmala the reciter opens a surah
- * with (`0:2:w`) reads like 1:1, on the basmala line.
+ * with (`0:2:w`) reads like 1:1, on the basmala line. Where the recitation stops on a stop sign
+ * (`tajweed.stopsAt`) is the track's own `stops()`.
  */
 import type { ReadingState } from '@qud-technologies/mushaf-core';
 import { basmalaAt, type HighlightMode, readingAt } from '@qud-technologies/mushaf-core/app';
-import { EARLY_MS, type QuranPack, ReadingTrack, type TimingInterval } from '@qud-technologies/quran-data';
+import { type QuranPack, ReadingTrack, type TimingInterval } from '@qud-technologies/quran-data';
 
 import type { AnimLetter, AnimUnit } from '../../../lib/recitation-animation/types';
 
@@ -79,21 +80,3 @@ export function readingStateAt(reading: ChapterReading, t: number, mode: Highlig
     return readingAt(reading.words, t, mode);
 }
 
-/**
- * Where the recitation stops among the chapter's words with a stop sign (the core's
- * `tajweed.stopsAt`): a visit the next one starts more than `EARLY_MS` after (the SDK's stop) is a
- * stop, so the rules of stopping follow the reciter, not the second sign of a mu'anaqah pair.
- */
-export function recitationStops(units: readonly AnimUnit[], signed: (anchor: string) => boolean): Record<string, boolean> {
-    const list = units
-        .filter((u) => WORD_ANCHOR.test(u.location))
-        .flatMap((u) => u.intervals.map((iv) => ({ anchor: u.location, start: ms(iv.start), end: ms(iv.end) })))
-        .sort((a, b) => a.start - b.start || a.end - b.end);
-    const out: Record<string, boolean> = {};
-    list.forEach((v, i) => {
-        if (!signed(v.anchor)) return;
-        const next = list[i + 1];
-        out[v.anchor] = (out[v.anchor] ?? false) || !next || next.start > v.end + EARLY_MS;
-    });
-    return out;
-}
