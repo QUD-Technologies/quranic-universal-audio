@@ -24,6 +24,7 @@
     // wins and others share the cached snapshot.
     import { catalogData, loadCatalog } from '../../../tabs/dashboard/stores/catalog-data';
     import { fetchAdminReviews } from '../../api/admin-reviews';
+    import { fetchReviewSignals } from '../../api/review-signals';
     import {
         type Axis,
         buildSchemaDescriptor,
@@ -31,15 +32,17 @@
     } from '../../catalog/schema-descriptor';
     import { hasCapability } from '../../stores/capabilities';
     import { currentUser } from '../../stores/current-user';
-    import type { BucketCounts, PublicDelivery, PublicReciter } from '../../types/generated/schemas';
+    import type { BucketCounts, PublicDelivery, PublicReciter, SegReviewSignal } from '../../types/generated/schemas';
     import type { PublicBucket } from '../../types/public-bucket';
     import { tagLabel } from '../../utils/axis-labels';
     import { compactCoverageLabel, compactHoursLabel } from '../../utils/delivery-label';
     import { type FacetSpec, recomputeFacets } from '../../utils/facets';
     import { QUALITY_ORDER, QUALITY_UNRATED, qualityTag } from '../../utils/quality-status';
+    import { REVIEW_TAGS, reviewTags } from '../../utils/review-signals';
     import { filterByFields } from '../../utils/fuzzy-match';
     import Modal from '../Modal.svelte';
     import QualityPill from '../QualityPill.svelte';
+    import ReviewSignalPills from '../ReviewSignalPills.svelte';
     import ReciterChip from '../ReciterChip.svelte';
     import SearchInput from '../SearchInput.svelte';
     import StatePill from '../StatePill.svelte';
@@ -92,6 +95,13 @@
     }
     let reviewStatus = new Map<string, ReviewStatus>();
 
+    // Open Low Confidence / Low Confidence v2 counts per slug
+    // (/api/seg/review-signals). The server counts in the background, so while
+    // it reports `pending` deliveries the picker refetches until done or closed.
+    let reviewSignals = new Map<string, SegReviewSignal>();
+    const REVIEW_SIGNALS_POLL_MS = 4000;
+    const REVIEW_SIGNALS_MAX_POLLS = 60;
+
     // READY comes from the public catalog flag (visible to everyone); the
     // claimer's login only from the `reviews.view` overlay above.
     $: statusFor = (c: Combo): ReviewStatus | null => {
@@ -138,6 +148,7 @@
                 activeFilters[axis.key] = new Set();
             }
             activeFilters[QUALITY_AXIS.key] = new Set();
+            activeFilters[REVIEW_AXIS_KEY] = new Set();
             activeFilters = activeFilters;
             await tick();
             searchInputEl?.focus();
@@ -147,6 +158,21 @@
             loading = false;
         }
         void loadReviewStatus();
+        void loadReviewSignals();
+    }
+
+    // Best-effort like the claim overlay: a failure leaves rows without pills.
+    async function loadReviewSignals(): Promise<void> {
+        for (let poll = 0; poll < REVIEW_SIGNALS_MAX_POLLS && open; poll++) {
+            try {
+                const resp = await fetchReviewSignals();
+                reviewSignals = new Map(Object.entries(resp.signals ?? {}));
+                if (!resp.pending) return;
+            } catch {
+                return;
+            }
+            await new Promise((resolve) => setTimeout(resolve, REVIEW_SIGNALS_POLL_MS));
+        }
     }
 
     // Lazy claim/marked-ready overlay — fired only when the caller holds
@@ -181,12 +207,25 @@
         options: [...QUALITY_ORDER, QUALITY_UNRATED].map((key) => ({ key, label: key })),
     };
 
+    // Picker-only axis: deliveries with open Low Confidence / Low Confidence
+    // v2 items. Reactive on `reviewSignals` (it fills in after open), so the
+    // facets recompute as counts arrive. Labels resolve in PickerFilterRail.
+    const REVIEW_AXIS_KEY = 'review';
+    $: REVIEW_AXIS = {
+        key: REVIEW_AXIS_KEY,
+        label: m.common_review_label(),
+        tagsOf: (d: PublicDelivery) => reviewTags(reviewSignals.get(d.slug)),
+        options: REVIEW_TAGS.map((key) => ({ key, label: key })),
+    } satisfies Axis;
+
     // Rail axes for combinations, in this order: full/partial coverage, then
-    // quality, riwayah, style, channel (no status — the state tabs cover
-    // bucket; no recording context).
-    const RAIL_ORDER = ['coverage', 'quality', 'riwayah', 'style', 'channel'];
+    // quality, review, riwayah, style, channel (no status — the state tabs
+    // cover bucket; no recording context).
+    const RAIL_ORDER = ['coverage', 'quality', 'review', 'riwayah', 'style', 'channel'];
     $: railAxes = RAIL_ORDER.flatMap((key) =>
-        [...(descriptor?.axes ?? []), ...(descriptor ? [QUALITY_AXIS] : [])].filter((a) => a.key === key),
+        [...(descriptor?.axes ?? []), ...(descriptor ? [QUALITY_AXIS, REVIEW_AXIS] : [])].filter(
+            (a) => a.key === key,
+        ),
     );
 
     // Flatten reciters into combos, keeping only deliveries whose own
@@ -425,6 +464,7 @@
                                     <PickerReviewStatus login={st.login} markedReady={st.markedReady} />
                                 {/if}
                                 <QualityPill status={c.delivery.quality_status} />
+                                <ReviewSignalPills signal={reviewSignals.get(c.delivery.slug)} />
                                 <div class="row-figures">
                                     <span class="coverage">{compactCoverageLabel(c.delivery)}</span>
                                     <span class="dur">{compactHoursLabel(c.delivery)}</span>
@@ -467,6 +507,7 @@
                                     <PickerReviewStatus login={st.login} markedReady={st.markedReady} />
                                 {/if}
                                 <QualityPill status={c.delivery.quality_status} />
+                                <ReviewSignalPills signal={reviewSignals.get(c.delivery.slug)} />
                                 <div class="row-figures">
                                     <span class="coverage">{compactCoverageLabel(c.delivery)}</span>
                                     <span class="dur">{compactHoursLabel(c.delivery)}</span>

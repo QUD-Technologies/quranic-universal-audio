@@ -130,6 +130,29 @@ class SegRecitersResponse(RootModel[list[SegReciter]]):
     """``GET /api/seg/reciters`` — a bare JSON array of reciter rows."""
 
 
+class SegReviewSignal(BaseModel):
+    """One delivery's open review items for the reciter picker's pill + filter.
+
+    ``low_confidence`` counts segments under the delivery's riwayah threshold (the
+    accordion's default slider position); ``low_confidence_v2`` the open neural sidecar
+    items."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    low_confidence: int = 0
+    low_confidence_v2: int = 0
+
+
+class SegReviewSignalsResponse(BaseModel):
+    """``GET /api/seg/review-signals`` — counts by slug for the deliveries computed so far;
+    ``pending`` deliveries are still being counted in the background (refetch)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    signals: dict[str, SegReviewSignal] = Field(default_factory=dict)
+    pending: int = 0
+
+
 # ===========================================================================
 # Segment rows + flag view (shared by /data and /all)
 # ===========================================================================

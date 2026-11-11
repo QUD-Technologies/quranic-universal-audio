@@ -385,5 +385,13 @@
   "common_special_tahmeed": "تەحمید",
   "common_special_tasleem": "تەسلیم",
   "common_locale_select_label": "زمان",
-  "common_locale_auto_option": "خۆکار · {language}"
+  "common_locale_auto_option": "خۆکار · {language}",
+  "common_review_label": "پێداچوونەوە",
+  "common_review_low_confidence": "دڵنیایی نزم",
+  "common_review_low_confidence_v2": "دڵنیایی نزم v2",
+  "common_review_none": "هیچ بۆ پشکنین نییە",
+  "common_review_pill_low": "دڵنیایی نزم {count}",
+  "common_review_pill_low_hint": "{count} پارچە لە خوار سنووری دڵنیایی بنەڕەت",
+  "common_review_pill_low_v2": "دڵنیایی نزم v2 {count}",
+  "common_review_pill_low_v2_hint": "{count} بڕگەی کراوەی دڵنیایی نزم v2"
 }

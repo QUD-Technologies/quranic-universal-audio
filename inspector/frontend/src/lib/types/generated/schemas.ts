@@ -1892,6 +1892,27 @@ export interface SegReciter {
   visibility: "public" | "discarded";
 }
 /**
+ * One delivery's open review items for the reciter picker's pill + filter.
+ *
+ * ``low_confidence`` counts segments under the delivery's riwayah threshold (the
+ * accordion's default slider position); ``low_confidence_v2`` the open neural sidecar
+ * items.
+ */
+export interface SegReviewSignal {
+  low_confidence?: number;
+  low_confidence_v2?: number;
+}
+/**
+ * ``GET /api/seg/review-signals`` — counts by slug for the deliveries computed so far;
+ * ``pending`` deliveries are still being counted in the background (refetch).
+ */
+export interface SegReviewSignalsResponse {
+  signals?: {
+    [k: string]: SegReviewSignal;
+  };
+  pending?: number;
+}
+/**
  * ``POST /api/seg/save/<reciter>/<chapter>`` request body.
  *
  * ``full_replace`` flags a structural save (segments are

@@ -410,6 +410,7 @@ _SEG_CACHE_NAMES = (
     "_seg_history_peaks_response",
     "_seg_validate_result",
     "_seg_stats_result",
+    "_review_signals",
 )
 
 

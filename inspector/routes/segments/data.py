@@ -27,6 +27,7 @@ from qua_shared.schemas.wire.seg import (
     SegConfigResponse,
     SegDataResponse,
     SegRecitersResponse,
+    SegReviewSignalsResponse,
     SegWordTimesResponse,
 )
 from services import cache
@@ -45,6 +46,7 @@ from services.segments.flags import flag_view
 from services.segments_query import get_chapter_data
 from services.state import catalog as catalog_service
 from services.timing import word_times
+from services.validation import review_signals
 from services.validation.registry import ALL_CATEGORIES
 from utils.formatting import slug_to_name
 from utils.json_response import orjson_cached_response, orjson_response
@@ -133,6 +135,23 @@ def seg_reciters():
     # no-store: this list carries live lifecycle state (state/visibility per
     # row) that changes on claim/release/transition; a client max-age made the
     # Segments reciter list + picker stale for up to 30s after an action.
+    return orjson_response(model.model_dump(**_DUMP), headers={"Cache-Control": "no-store"})
+
+
+@seg_data_bp.route("/review-signals")
+def seg_review_signals():
+    """Open Low Confidence / Low Confidence v2 counts per delivery, for the reciter picker.
+
+    Serves what is cached and starts the background sweep for the rest (``pending``);
+    the picker refetches while anything is pending. Rows follow ``/reciters``' access rule.
+    """
+    slugs = [
+        row.slug for row in state_service.all_rows() if state_service.has_content_access(row.slug)
+    ]
+    signals, pending = review_signals.snapshot(slugs)
+    if pending:
+        review_signals.warm(slugs)
+    model = SegReviewSignalsResponse.model_validate({"signals": signals, "pending": pending})
     return orjson_response(model.model_dump(**_DUMP), headers={"Cache-Control": "no-store"})
 
 
