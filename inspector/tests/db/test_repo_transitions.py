@@ -151,6 +151,10 @@ def test_aligned_at_by_slug_counts_only_alignment_events(fresh_db):
 
     got = repo_transitions.aligned_at_by_slug()
 
+    assert first.request_id is not None and forced.request_id is not None
+    first_rec = repo_transitions.get(first.request_id)
+    forced_rec = repo_transitions.get(forced.request_id)
+    assert first_rec is not None and forced_rec is not None
     assert set(got) == {"s1", "s2"}
-    assert got["s1"] == repo_transitions.get(first.request_id)["ts"]
-    assert got["s2"] == repo_transitions.get(forced.request_id)["ts"]
+    assert got["s1"] == first_rec["ts"]
+    assert got["s2"] == forced_rec["ts"]
