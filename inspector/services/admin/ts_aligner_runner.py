@@ -51,6 +51,10 @@ log = logging.getLogger("inspector")
 
 _MAX_LOG_LINES = 400
 
+#: Run id -> the thread working it, for the runs started by this process.
+_threads: dict[str, threading.Thread] = {}
+_threads_guard = threading.Lock()
+
 
 def _now() -> str:
     return datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -74,10 +78,22 @@ def start_run(
         started_at=_now(),
     )
     _write(record)
-    threading.Thread(
+    thread = threading.Thread(
         target=_run, args=(record, riwayah, full), name=f"ts-{slug}", daemon=True
-    ).start()
+    )
+    with _threads_guard:
+        for done in [rid for rid, t in _threads.items() if not t.is_alive()]:
+            del _threads[done]
+        _threads[run_id] = thread
+    thread.start()
     return run_id
+
+
+def is_live(run_id: str) -> bool:
+    """Whether this process is still working ``run_id`` (its thread is alive)."""
+    with _threads_guard:
+        thread = _threads.get(run_id)
+    return thread is not None and thread.is_alive()
 
 
 def _write(record: TsJobRecord) -> None:

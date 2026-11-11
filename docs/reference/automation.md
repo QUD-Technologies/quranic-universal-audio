@@ -126,18 +126,34 @@ owner-only under `ReleasesSummaryCard`); API in `lib/api/admin-releases.ts`.
   on) picks it up at its next window and the cut sees it at its window. The
   interval cadence (not instant) is the buffer; pause auto-publish to stop a
   manual regen propagating.
-- **Only infrastructure failures are retried.** `auto_gen_ts` + `stale_ts_regen`
-  skip any slug whose most-recent timestamps job ended non-success
-  (`timestamps_jobs.latest_terminal_failed_slugs`) — it stays in
+- **Only infrastructure failures are retried — and never given up on.**
+  `auto_gen_ts` + `stale_ts_regen` skip any slug whose most-recent timestamps job
+  ended non-success (`timestamps_jobs.latest_terminal_failed_slugs`) — it stays in
   `ready_to_generate` / `behind_edits` for a manual retry — **unless**
-  `timestamps_jobs.auto_retryable_slugs` admits it: the failure is
-  infrastructure (`INTERRUPTED_ERROR` from a restart, or `aligner 5xx`), it
-  ended ≥ `AUTO_RETRY_BACKOFF` (15 min) ago, and fewer than `AUTO_RETRY_MAX` (3)
-  infra failures came in a row. An admitted slug also bypasses the relaunch
-  watermark below (its failed job started after the mark). Retries still go one
-  at a time through the single-flight launch, so a batch of restart casualties
-  drains sequentially instead of hammering the aligner. A data failure (any other
-  error, e.g. `aligner 422`) or a third infra failure in a row waits for a human.
+  `timestamps_jobs.auto_retryable_slugs` admits it: the failure is infrastructure
+  (`INTERRUPTED_ERROR` from a restart, `aligner 5xx`, or an aligner call that never
+  got an answer — `aligner unreachable`, or the raw `Read timed out` /
+  `Max retries exceeded` of older records) and its backoff has passed. The backoff is
+  `AUTO_RETRY_BACKOFF` (15 min), doubled for each further aligner failure in a row,
+  capped at `AUTO_RETRY_BACKOFF_MAX` (6 h). **Restart interruptions never count**
+  toward that streak: prod restarts several times a day (deploys, inspector-admin
+  pause windows), a restart says nothing about the reciter, and the times an
+  interrupted run stored are kept by the next one. There is **no retry cap** — the
+  November 2026 stall was nine reciters stranded by a 3-strike cap (restart victims)
+  and by read timeouts classed as data failures. An admitted slug also bypasses the
+  relaunch watermark below (its failed job started after the mark). Retries still go
+  one at a time through the single-flight launch. A data failure (any other error,
+  e.g. `aligner 422`, failed segments, untimed words) waits for a human.
+- **A slug's align run comes first.** Both TS evaluators skip a slug with a pending
+  or running align run (`repo_align_runs.active_slugs`): a Katana-seeded delivery can
+  reach `under_review` while its assemble stage is still storing segment times, and a
+  timestamps run then would read half-stored times and compete with it for the aligner.
+- **Aligner calls queue in-process.** Every timing call (timestamps runs, the
+  assemble stage, post-save re-times) holds one of `INSPECTOR_ALIGNER_CALL_SLOTS`
+  (default 2 = the aligner's CPU-pool workers) while it is open
+  (`services/timing/aligner_timing.py`). Without it, ~34 resumed assemble runs each
+  had a call queued on the aligner at once, and a timestamps run's chapter waited
+  past the 1 h read timeout there.
 - **Single-flight.** Every launch already enforces per-slug + global single-flight
   (`running_job_for`); evaluators also pre-skip in-flight slugs and the
   cut/batch/refresh globals.
