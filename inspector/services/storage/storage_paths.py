@@ -73,6 +73,11 @@ def catalog_path() -> str:
     return "catalog/reciter_catalog.json"
 
 
+def review_signals_path() -> str:
+    """Fleet-wide reciter-picker review counts (``ReviewSignalsDoc``)."""
+    return "catalog/review_signals.json"
+
+
 def audio_durations_path() -> str:
     return "catalog/audio_durations.json"
 

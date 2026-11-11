@@ -95,12 +95,9 @@
     }
     let reviewStatus = new Map<string, ReviewStatus>();
 
-    // Open Low Confidence / Low Confidence v2 counts per slug
-    // (/api/seg/review-signals). The server counts in the background, so while
-    // it reports `pending` deliveries the picker refetches until done or closed.
+    // Open Low Confidence / Low Confidence v2 counts per slug, from one small
+    // file the server keeps (/api/seg/review-signals; only slugs with items).
     let reviewSignals = new Map<string, SegReviewSignal>();
-    const REVIEW_SIGNALS_POLL_MS = 4000;
-    const REVIEW_SIGNALS_MAX_POLLS = 60;
 
     // READY comes from the public catalog flag (visible to everyone); the
     // claimer's login only from the `reviews.view` overlay above.
@@ -163,15 +160,11 @@
 
     // Best-effort like the claim overlay: a failure leaves rows without pills.
     async function loadReviewSignals(): Promise<void> {
-        for (let poll = 0; poll < REVIEW_SIGNALS_MAX_POLLS && open; poll++) {
-            try {
-                const resp = await fetchReviewSignals();
-                reviewSignals = new Map(Object.entries(resp.signals ?? {}));
-                if (!resp.pending) return;
-            } catch {
-                return;
-            }
-            await new Promise((resolve) => setTimeout(resolve, REVIEW_SIGNALS_POLL_MS));
+        try {
+            const resp = await fetchReviewSignals();
+            reviewSignals = new Map(Object.entries(resp.signals ?? {}));
+        } catch {
+            /* review overlay is best-effort — picker works without it */
         }
     }
 
@@ -209,8 +202,8 @@
 
     // Picker-only axis: deliveries with open Low Confidence items (one
     // combined signal: under the default threshold or Low Confidence v2).
-    // Reactive on `reviewSignals` (it fills in after open), so the facets
-    // recompute as counts arrive. Labels resolve in PickerFilterRail.
+    // Reactive on `reviewSignals` (it arrives after open), so the facets
+    // recompute when it lands. Labels resolve in PickerFilterRail.
     const REVIEW_AXIS_KEY = 'review';
     $: REVIEW_AXIS = {
         key: REVIEW_AXIS_KEY,

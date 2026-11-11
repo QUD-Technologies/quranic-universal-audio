@@ -253,6 +253,18 @@ def read_timestamps_chapter(slug: str, chapter: int) -> bytes | None:
     return brotli.decompress(compressed) if compressed is not None else None
 
 
+def read_review_signals_doc() -> dict | None:
+    """Return the parsed ``catalog/review_signals.json``, or ``None`` if absent."""
+    try:
+        return get_backend().read_json(storage_paths.review_signals_path())  # type: ignore[return-value]
+    except StorageNotFound:
+        return None
+
+
+def write_review_signals_doc(doc: dict) -> None:
+    get_backend().write_json_atomic(storage_paths.review_signals_path(), doc)
+
+
 def read_specials_doc(slug: str) -> dict | None:
     """Return the parsed ``specials.json`` doc, or ``None`` if the reciter has none."""
     try:

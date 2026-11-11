@@ -11,7 +11,7 @@ from services.auth.auth import current_user
 from services.history_query import load_edit_history
 from services.segments.history_tiers import generation_timeline
 from services.stats import compute_stats
-from services.validation import strip_boundary_review, validate_reciter_segments
+from services.validation import review_signals, strip_boundary_review, validate_reciter_segments
 from utils.json_response import orjson_cached_response
 
 seg_val_bp = Blueprint("seg_val", __name__, url_prefix="/api/seg")
@@ -64,6 +64,7 @@ def seg_validate(reciter):
         return jsonify(ErrorEnvelope(error="Reciter not found").model_dump(exclude_none=True)), 404
     payload = _serialize_validate(result)
     cache.set_seg_validate_cache(reciter, payload)
+    review_signals.record(reciter, payload)
     return orjson_cached_response(_viewer_payload(payload))
 
 

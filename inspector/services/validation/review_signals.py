@@ -4,16 +4,18 @@ How many open **Low Confidence** items (confidence under the delivery's riwayah 
 the accordion's default slider position and the mark-ready gate) and **Low Confidence v2**
 items (neural sidecar failures) each delivery has, so the picker can badge and filter rows.
 
-Cheap by design: a reciter the editor already validated answers from the cached validate
-payload; any other is a transient scan of ``detailed.json``, the sidecar and the edit history's
-resolved-by-edit index that never enters the segment caches (a fleet sweep through ``validate_reciter_segments`` would evict every
-active editor's LRU entries and hold the single worker for minutes). The scan applies the
-classifier's own gates (``is_ignored_for`` / ``is_suppressed_for``), and
-``tests/validation/test_review_signals.py`` holds it to the validator's counts.
+The counts live in one small bucket file, ``catalog/review_signals.json``
+(``ReviewSignalsDoc``). The Space never scans reciters for them:
 
-Counts are cached per slug (``cache.get/set_review_signals``) and dropped by
-``invalidate_seg_caches`` on every save, undo or discard. A single daemon thread, started by the
-first request, fills the slugs that are missing.
+- **Read:** ``current()`` loads the file on first use and re-reads it at most every
+  ``REFRESH_S``, so an offline update shows up without a restart.
+- **Write:** the validate route calls ``record()`` after computing a fresh payload; the file
+  is rewritten only when that reciter's counts changed, read-modify-write under a lock so an
+  offline update is never overwritten. Deliveries with nothing open are left out.
+- **Fill:** ``scripts/backfills/review_signals.py`` runs ``compute()`` offline — the cached
+  validate payload when there is one, else a transient scan of ``detailed.json``, the
+  sidecar and the edit history's resolved-by-edit index that never enters the segment
+  caches. ``tests/services/test_review_signals.py`` holds the scan to the validator.
 """
 
 from __future__ import annotations
@@ -21,10 +23,12 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from datetime import UTC, datetime
 
 from adapters.detailed_json import load_entries_from_bytes
 from config import LOW_CONFIDENCE_THRESHOLDS
 from qua_shared.riwayat import resolve_sdk_slug
+from qua_shared.schemas.bucket.review_signals import ReviewSignalsDoc
 from services.activity.history_query import build_resolved_by_edit_index
 from services.reference.delivery_edition import inspector_riwayah_for
 from services.storage import cache, data_dir
@@ -32,11 +36,11 @@ from services.validation.classifier import is_ignored_for, is_suppressed_for
 
 log = logging.getLogger(__name__)
 
-#: Pause between reciters in the warm sweep, so editor requests keep the GIL.
-WARM_PAUSE_S = 0.2
+#: Longest a loaded copy of the file is served before it is read again.
+REFRESH_S = 600.0
+_ZERO = {"low_confidence": 0, "low_confidence_v2": 0}
 
-_warm_lock = threading.Lock()
-_warm_running = False
+_lock = threading.Lock()
 
 
 def counts_from_validate(payload: dict, threshold: float) -> dict[str, int]:
@@ -96,60 +100,93 @@ def _resolved_entries(slug: str, entries: list[dict]) -> list[dict]:
     return entries
 
 
-def compute(slug: str) -> dict[str, int] | None:
-    """Fresh counts for ``slug``; ``None`` when it has no segments or an unknown riwayah."""
-    threshold = _threshold(slug)
-    if threshold is None:
-        return None
-    cached = cache.get_seg_validate_cache(slug)
-    if cached is not None:
-        return counts_from_validate(cached, threshold)
+def compute(slug: str, *, offline: bool = False) -> dict[str, int] | None:
+    """Fresh counts for ``slug``; ``None`` when it has no segments or an unknown riwayah.
+
+    ``offline`` (the backfill, which has no catalog or editor caches) takes the riwayah from
+    ``detailed.json``'s ``_meta`` (absent = Hafs, as promote writes it) and always scans."""
+    threshold = None if offline else _threshold(slug)
+    if not offline:
+        if threshold is None:
+            return None
+        cached = cache.get_seg_validate_cache(slug)
+        if cached is not None:
+            return counts_from_validate(cached, threshold)
     raw = data_dir.read_detailed_bytes(slug)
     if raw is None:
         return None
-    _, entries = load_entries_from_bytes(raw)
+    meta, entries = load_entries_from_bytes(raw)
+    if threshold is None:
+        try:
+            threshold = LOW_CONFIDENCE_THRESHOLDS[resolve_sdk_slug(meta.get("riwayah") or "hafs")]
+        except (KeyError, ValueError):
+            return None
     doc = data_dir.read_low_confidence_doc(slug) or {}
     failed = {u for u in doc.get("failures") or [] if isinstance(u, str)}
     return scan_counts(_resolved_entries(slug, entries), threshold, failed)
 
 
-def snapshot(slugs: list[str]) -> tuple[dict[str, dict[str, int]], int]:
-    """``(counts by slug, slugs not computed yet)`` from the cache, without computing."""
+def _read_file() -> dict[str, dict[str, int]]:
+    doc = data_dir.read_review_signals_doc() or {}
     out: dict[str, dict[str, int]] = {}
-    pending = 0
-    for slug in slugs:
-        hit = cache.get_review_signals(slug)
-        if hit is None:
-            pending += 1
-        elif hit:
-            out[slug] = hit
-    return out, pending
+    for slug, counts in (doc.get("signals") or {}).items():
+        if isinstance(counts, dict):
+            out[slug] = {k: int(counts.get(k) or 0) for k in _ZERO}
+    return out
 
 
-def warm(slugs: list[str]) -> None:
-    """Fill missing slugs in a background daemon thread (one sweep at a time)."""
-    global _warm_running
-    with _warm_lock:
-        if _warm_running:
-            return
-        _warm_running = True
-    threading.Thread(target=_sweep, args=(list(slugs),), name="review-signals", daemon=True).start()
+def current() -> dict[str, dict[str, int]]:
+    """Counts by slug from the file, re-read at most every ``REFRESH_S``."""
+    signals, read_at = cache.get_review_signals_snapshot()
+    if read_at is not None and time.monotonic() - read_at < REFRESH_S:
+        return signals
+    with _lock:
+        signals, read_at = cache.get_review_signals_snapshot()
+        if read_at is not None and time.monotonic() - read_at < REFRESH_S:
+            return signals
+        try:
+            signals = _read_file()
+        except Exception:
+            # Keep what we had; try again after REFRESH_S rather than on every request.
+            log.exception("review signals: reading %s failed", "catalog/review_signals.json")
+        cache.set_review_signals_snapshot(signals, time.monotonic())
+        return signals
 
 
-def _sweep(slugs: list[str]) -> None:
-    global _warm_running
+def signals_for(slugs: list[str]) -> dict[str, dict[str, int]]:
+    """Counts for the ``slugs`` that have something open."""
+    signals = current()
+    return {s: signals[s] for s in slugs if s in signals and any(signals[s].values())}
+
+
+def write_counts(updates: dict[str, dict[str, int]]) -> dict[str, dict[str, int]]:
+    """Merge ``updates`` into the file (read-modify-write) and the cache; all-zero counts
+    drop the slug. Returns the merged counts."""
+    with _lock:
+        merged = _read_file()
+        for slug, counts in updates.items():
+            if any(counts.values()):
+                merged[slug] = dict(counts)
+            else:
+                merged.pop(slug, None)
+        doc = ReviewSignalsDoc.model_validate(
+            {"updated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), "signals": merged}
+        )
+        data_dir.write_review_signals_doc(doc.model_dump(mode="json"))
+        cache.set_review_signals_snapshot(merged, time.monotonic())
+        return merged
+
+
+def record(slug: str, payload: dict) -> None:
+    """Keep the file current from a fresh validate payload; writes only on a change and
+    never raises (the validate response must not depend on it)."""
     try:
-        for slug in slugs:
-            if cache.get_review_signals(slug) is not None:
-                continue
-            try:
-                counts = compute(slug)
-            except Exception:
-                log.exception("review signals: %s failed", slug)
-                counts = None
-            # An empty dict caches "nothing to show" so the sweep does not retry it.
-            cache.set_review_signals(slug, counts or {})
-            time.sleep(WARM_PAUSE_S)
-    finally:
-        with _warm_lock:
-            _warm_running = False
+        threshold = _threshold(slug)
+        if threshold is None:
+            return
+        counts = counts_from_validate(payload, threshold)
+        if current().get(slug, _ZERO) == counts:
+            return
+        write_counts({slug: counts})
+    except Exception:
+        log.exception("review signals: recording %s failed", slug)

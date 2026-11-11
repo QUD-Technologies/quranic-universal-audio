@@ -1903,14 +1903,13 @@ export interface SegReviewSignal {
   low_confidence_v2?: number;
 }
 /**
- * ``GET /api/seg/review-signals`` — counts by slug for the deliveries computed so far;
- * ``pending`` deliveries are still being counted in the background (refetch).
+ * ``GET /api/seg/review-signals`` — counts by slug for the deliveries with open items
+ * (from ``catalog/review_signals.json``).
  */
 export interface SegReviewSignalsResponse {
   signals?: {
     [k: string]: SegReviewSignal;
   };
-  pending?: number;
 }
 /**
  * ``POST /api/seg/save/<reciter>/<chapter>`` request body.

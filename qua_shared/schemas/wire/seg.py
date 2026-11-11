@@ -144,13 +144,12 @@ class SegReviewSignal(BaseModel):
 
 
 class SegReviewSignalsResponse(BaseModel):
-    """``GET /api/seg/review-signals`` — counts by slug for the deliveries computed so far;
-    ``pending`` deliveries are still being counted in the background (refetch)."""
+    """``GET /api/seg/review-signals`` — counts by slug for the deliveries with open items
+    (from ``catalog/review_signals.json``)."""
 
     model_config = ConfigDict(extra="forbid")
 
     signals: dict[str, SegReviewSignal] = Field(default_factory=dict)
-    pending: int = 0
 
 
 # ===========================================================================

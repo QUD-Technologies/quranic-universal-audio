@@ -12,6 +12,7 @@ Layers, slug convention, schema, audio-metadata split, naming guide, and add/pro
 | Read model (`ReciterCatalog`) | `repo_catalog.snapshot()` → cached on `db_seq` by `services/state/catalog.py::snapshot()` | — |
 | Pydantic shapes (runtime authority) | `qua_shared/schemas/bucket/catalog.py` | — |
 | Per-delivery audio sidecar | `catalog/audio_manifest/<slug>.json` (bucket JSON) | offline probe `scripts/audio/probe_audio_meta.py` |
+| Reciter-picker review counts | `catalog/review_signals.json` (bucket JSON, `ReviewSignalsDoc`) | validate route on a count change + offline `scripts/backfills/review_signals.py` — see validation.md |
 | Public read endpoint | `/api/static/catalog.json` (`routes/public/static.py`) — serializes the viewer projection of `snapshot()` | — |
 
 `repo_catalog.snapshot()` reassembles the full `ReciterCatalog` so the public JSON stays byte-identical to the pre-migration file (migration parity gate diffs `model_dump(by_alias=True)`). Sidecars are 5–20 KB each for `by_surah` (114 chapters), larger for `by_ayah` (6236 ayahs).

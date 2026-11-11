@@ -337,19 +337,30 @@ def set_seg_validate_cache(reciter: str, value: dict) -> None:
     _seg_validate_result.set(reciter, value)
 
 
-# Reciter-picker review signals ({"low_confidence": n, "low_confidence_v2": n}; ``{}`` =
-# nothing to show), one tiny dict per delivery — a plain dict, not the LRU, because the
-# picker lists every delivery. Popped by ``invalidate_seg_caches``. See
+# Reciter-picker review signals: the loaded copy of ``catalog/review_signals.json``
+# (counts by slug) and when it was read. Fleet-wide and tiny, so not an LRU. Not popped
+# on save: the validate route rewrites the file when a reciter's counts change. See
 # ``services/validation/review_signals.py``.
-_review_signals: dict[str, dict[str, int]] = {}
+class _ReviewSignalsCache:
+    def __init__(self) -> None:
+        self.signals: dict[str, dict[str, int]] = {}
+        self.read_at: float | None = None
+
+    def clear(self) -> None:
+        self.signals = {}
+        self.read_at = None
 
 
-def get_review_signals(reciter: str) -> dict[str, int] | None:
-    return _review_signals.get(reciter)
+_review_signals = _ReviewSignalsCache()
 
 
-def set_review_signals(reciter: str, counts: dict[str, int]) -> None:
-    _review_signals[reciter] = counts
+def get_review_signals_snapshot() -> tuple[dict[str, dict[str, int]], float | None]:
+    return _review_signals.signals, _review_signals.read_at
+
+
+def set_review_signals_snapshot(signals: dict[str, dict[str, int]], read_at: float) -> None:
+    _review_signals.signals = signals
+    _review_signals.read_at = read_at
 
 
 def get_seg_stats_cache(reciter: str) -> dict | None:
@@ -391,7 +402,6 @@ def invalidate_seg_caches(reciter: str) -> None:
     _seg_history_peaks_response.pop(reciter)
     _seg_validate_result.pop(reciter)
     _seg_stats_result.pop(reciter)
-    _review_signals.pop(reciter, None)
     # _seg_history_batches and _seg_split_group_index are NOT popped here —
     # callers that mean it (save / undo) use the surgical helpers below so
     # the parsed list survives autosave warm paths.
@@ -425,7 +435,6 @@ def pop_seg_caches_affected_by_segment_edit(reciter: str) -> None:
     _seg_history_peaks_response.pop(reciter)
     _seg_validate_result.pop(reciter)
     _seg_stats_result.pop(reciter)
-    _review_signals.pop(reciter, None)
 
 
 def batch_changes_segment_set(batch: dict) -> bool:

@@ -142,16 +142,13 @@ def seg_reciters():
 def seg_review_signals():
     """Open Low Confidence / Low Confidence v2 counts per delivery, for the reciter picker.
 
-    Serves what is cached and starts the background sweep for the rest (``pending``);
-    the picker refetches while anything is pending. Rows follow ``/reciters``' access rule.
+    Served from the small ``catalog/review_signals.json`` file (no per-reciter reads); only
+    deliveries with something open are listed. Rows follow ``/reciters``' access rule.
     """
     slugs = [
         row.slug for row in state_service.all_rows() if state_service.has_content_access(row.slug)
     ]
-    signals, pending = review_signals.snapshot(slugs)
-    if pending:
-        review_signals.warm(slugs)
-    model = SegReviewSignalsResponse.model_validate({"signals": signals, "pending": pending})
+    model = SegReviewSignalsResponse.model_validate({"signals": review_signals.signals_for(slugs)})
     return orjson_response(model.model_dump(**_DUMP), headers={"Cache-Control": "no-store"})
 
 

@@ -81,6 +81,7 @@ quranic-inspector-bucket/
 │   └── inspector.db             
 ├── catalog/
 │   ├── reciter_catalog.json     # READ-ONLY legacy backup
+│   ├── review_signals.json      # Reciter-picker open Low Confidence counts
 │   └── audio_manifest/
 │       └── <slug>.json          # Per-reciter audio manifests
 ├── reciters/
