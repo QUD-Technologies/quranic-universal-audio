@@ -310,6 +310,12 @@ TS_LIMIT_TOKENS_PER_HOUR = int(os.environ.get("INSPECTOR_TS_LIMIT_TOKENS_PER_HOU
 # issued only for a passed challenge; the site key is handed to the page.
 TS_TURNSTILE_SITE_KEY = os.environ.get("INSPECTOR_TS_TURNSTILE_SITE_KEY", "").strip()
 TS_TURNSTILE_SECRET = os.environ.get("INSPECTOR_TS_TURNSTILE_SECRET", "").strip()
+# Where a pass is verified. Not Cloudflare's siteverify itself: a Hugging Face
+# Space cannot connect to challenges.cloudflare.com, so the qud.dev Pages
+# Function relays the form to it (qud-website functions/api/turnstile-verify.js).
+TS_TURNSTILE_VERIFY_URL = os.environ.get(
+    "INSPECTOR_TS_TURNSTILE_VERIFY_URL", "https://qud.dev/api/turnstile-verify"
+).strip()
 # Shared secret the Cloudflare zone adds as `X-QUA-Edge` on /api/ts requests.
 # Set: anonymous requests without it (the direct *.hf.space origin) are refused.
 # Unset: no check.

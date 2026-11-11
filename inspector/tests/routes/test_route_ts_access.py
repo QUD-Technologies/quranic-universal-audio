@@ -257,6 +257,7 @@ def challenge(monkeypatch):
             return {"success": self._response == "good", "hostname": seen["hostname"]}
 
     def _post(url, data, timeout):
+        seen["url"] = url
         return _Reply(data["response"])
 
     monkeypatch.setattr(turnstile.requests, "post", _post)
@@ -279,6 +280,7 @@ def test_token_is_issued_for_a_passed_challenge(flask_client, challenge):
     res = flask_client.post(TOKEN_URL, json={"turnstile": "good"})
 
     assert res.status_code == 200
+    assert challenge["url"] == access.config.TS_TURNSTILE_VERIFY_URL
     assert ts_access.token_valid(
         str(flask_client.application.secret_key), res.get_json()["token"], CLIENT
     )
