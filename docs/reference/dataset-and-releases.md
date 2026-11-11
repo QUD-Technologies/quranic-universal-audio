@@ -448,8 +448,8 @@ kept runs stitched gaplessly (the no-match audio excised) — see
 Two licences, never mixed: the **timing data** (GH release assets, the HF dataset, any future API)
 ships under the custom **QUA Dataset License 1.0** (`LICENSE-DATA`, id `qua-dataset-1.0`, © QUD
 Technologies); the **code** is Apache-2.0 (`LICENSE`). Recitation audio is under neither (see
-`NOTICE.md`). GH releases **≤ v3.0.0** and HF revisions whose card declares CC BY 4.0 stay CC BY 4.0 —
-irrevocable for those copies (LICENSE-DATA §18 puts the burden of proof on anyone claiming CC-BY-only provenance).
+`NOTICE.md`). The licence also binds data taken from the site's own `/api/ts/*` routes
+(LICENSE-DATA §2A, authorised channels) and bans public redistribution of the data (§6).
 
 - **Single source:** [`qua_shared/dataset_license.py`](../../qua_shared/dataset_license.py) owns the id,
   display name, repo filename and URL. The manifest `license` field (`ReleaseManifest.license`), the

@@ -5,8 +5,10 @@ Copyright (c) 2026 QUD Technologies (https://qud.dev)
 
 The timing data of Qur'anic Universal Audio ("QUA") is made available so that
 every listener can follow a recitation word by word and letter by letter, free
-of charge. This License keeps it that way. A product may be commercial; the
-part of it that this data touches may not be sold and may not be gated.
+of charge. This License keeps it that way. A product may be commercial and may
+sell other features, but it must be free to obtain, and the part of it that
+this data touches may not be sold, gated or interrupted. The data itself is
+obtained only from QUA and is not republished.
 
 By downloading, accessing, copying, using, training on, evaluating against, or
 distributing the Work or any Derivative, You agree to be bound by this License
@@ -25,10 +27,10 @@ agree, You may not do any of those things.
    services, such as the Qur'anic Universal Aligner and its API, for any
    recording submitted to them, in any format and through any channel, now or
    in the future, including GitHub releases, the Hugging Face dataset, and any
-   API. It includes verse, word, letter and animation timestamps; segment, pause and
-   silence data; alignment and segmentation data; and the catalogs, manifests
-   and metadata distributed with them. It does not include the material listed
-   in Section 12.
+   API. It includes verse, word, letter and animation timestamps; segment,
+   pause and silence data; alignment and segmentation data; and the catalogs,
+   manifests and metadata distributed with them. It does not include the
+   material listed in Section 12.
 
    "Derivative" means any of the following, however many steps, tools,
    formats or parties lie between it and the Work:
@@ -42,6 +44,7 @@ agree, You may not do any of those things.
      (d) any timing, alignment or segmentation data, and any other output,
          produced by a Model; and
      (e) any artifact produced from another Derivative.
+   "Derivative data" means any Derivative other than a Model.
    The following are not Derivatives, and Section 6 does not apply to them,
    although Sections 3, 4 and 8 continue to apply to any Covered Feature they
    provide: (i) the software code of an Application, other than any Work,
@@ -108,12 +111,24 @@ agree, You may not do any of those things.
 
    Subject to Your continued compliance with this License, the Licensor grants
    You a worldwide, royalty-free, non-exclusive, non-transferable license to
-   use, copy, study, modify, create Derivatives of, train Models on, evaluate
-   and benchmark against, and distribute the Work and Derivatives. Every right
-   not expressly granted is reserved. Each recipient of the Work or a
-   Derivative receives a license directly from the Licensor under this
-   License. A person who obtains a Derivative from anyone acting in breach of
-   this License acquires no rights in it.
+   use, copy, study, modify, create Derivatives of, train Models on, and
+   evaluate and benchmark against the Work, and to share and distribute the
+   Work, Derivative data and Models as permitted by Section 6. Every right not
+   expressly granted is reserved. Each recipient of the Work or a Derivative
+   receives a license directly from the Licensor under this License. A person
+   who obtains a Derivative from anyone acting in breach of this License
+   acquires no rights in it.
+
+
+2A. AUTHORISED CHANNELS
+
+   The Work may be obtained only through the Licensor's published channels:
+   the GitHub releases, the Hugging Face dataset, the Licensor's alignment
+   services, and any documented public API. Obtaining timing data from the
+   Licensor's websites or their internal interfaces by automated means, or by
+   circumventing any access control, rate limit or challenge, is not permitted
+   and grants no rights. Data obtained in that way is nonetheless subject to
+   every obligation of this License as if it were the Work.
 
 
 3. FREE ACCESS CONDITIONS
@@ -124,21 +139,29 @@ agree, You may not do any of those things.
    distributor's rights does not terminate the rights of end users who
    themselves comply with this License.
 
-   (a) Free feature. No Charge may be required for any Covered Feature beyond
-       any Charge required to obtain the Application itself. A Covered Feature
-       may not be reserved for, restricted to, enhanced in, or made available
-       earlier in any paid edition, tier, plan or add-on. It may be included
-       in a paid tier only if it is identical to, and no earlier than, the
-       version available to every other user of the Application. Other
-       features that are not Covered Features may be offered for a Charge.
+   (a) Free Application. The Application must be obtainable, installable and
+       usable by end users without Charge. Additional, separate features that
+       are not Covered Features may be offered for a Charge.
 
-   (b) Complete, ungated access. Every Covered Feature must be available in
+   (b) Free feature. No Charge may be required for any Covered Feature. A
+       Covered Feature may not be reserved for, restricted to, enhanced in, or
+       made available earlier in any paid edition, tier, plan or add-on. It
+       may be included in a paid tier only if it is identical to, and no
+       earlier than, the version available without Charge. No edition,
+       version, build or store listing of the Application that requires a
+       Charge to obtain, install or unlock may contain a Covered Feature.
+
+   (c) Complete, ungated access. Every Covered Feature must be available in
        full to every end user of the Application. It may not be limited,
        reduced or rationed by reciter, surah, verse, timing level, precision,
        quantity, period of use or any other measure, and it may not be
        conditioned on any Charge.
 
-   (c) No sale of the data. You may not Charge for the Work or any
+   (d) No interruption. No advertising or other promotional content may
+       interrupt, pause, cover or block playback of a recitation, or the
+       display of a Covered Feature, while it is in use.
+
+   (e) No sale of the data. You may not Charge for the Work or any
        Derivative, for access to either, or for any service whose output is
        the Work or a Derivative. This includes selling, renting or licensing
        it for a fee, providing it through a paid API, and supplying it to
@@ -164,9 +187,9 @@ agree, You may not do any of those things.
        training, fine-tuning, distilling, evaluating or benchmarking a Model
        on the Work or any Derivative, and using that Model, or any timing data
        or other output it produces, to provide a feature that is subject to
-       Charge beyond any Charge required to obtain the Application itself, or
-       that is reserved for, restricted to or enhanced in a paid edition or
-       tier, whether or not the output is presented as the
+       Charge, that is reserved for, restricted to or enhanced in a paid
+       edition or tier, or that is offered in an Application that requires a
+       Charge to obtain, whether or not the output is presented as the
        distributor's own data, and whether or not it covers recitations that
        are absent from the Work.
 
@@ -179,15 +202,29 @@ agree, You may not do any of those things.
    License, and any feature it later powers is subject to Sections 3 and 4.
 
 
-6. SHARE-ALIKE
+6. DISTRIBUTION AND SHARE-ALIKE
 
-   You may distribute the Work or any Derivative, including any Model, only
-   under this License, either this version or a later version published by
-   the Licensor, with no additional or different terms. You may not
-   sublicense the Work or a Derivative under any other license, and You may
-   not relicense a Derivative so as to remove or weaken any term of this
-   License. You must include a copy of, or a link to, this License with every
-   copy You distribute.
+   (a) No public redistribution. You may not make the Work or any Derivative
+       data available to the public, whether in its original form or
+       converted into any other format, as a dataset, file, archive, mirror,
+       feed or API. An Application may use the Work and Derivative data to
+       provide its Covered Features, provided it does not offer them for
+       download or bulk retrieval.
+
+   (b) Permitted sharing. You may share the Work and Derivative data within
+       Your organisation, and privately with named collaborators who are
+       bound by this License.
+
+   (c) Models. You may publish and distribute Models, but only under this
+       License.
+
+   (d) Share-alike. Anything You share or distribute under this Section must
+       be under this License, either this version or a later version
+       published by the Licensor, with no additional or different terms. You
+       may not sublicense the Work or a Derivative under any other license, or
+       relicense a Derivative so as to remove or weaken any term of this
+       License, and You must include a copy of, or a link to, this License
+       with every copy.
 
 
 7. DECLARATION AND DISCLOSURE
@@ -243,21 +280,11 @@ agree, You may not do any of those things.
 
 11. NO SALE OF EXCEPTIONS
 
-   Except as provided in Section 11A, the right to Charge for a Covered
-   Feature, to reserve, restrict or enhance it in a paid edition or tier, or
-   to sell the Work or a Derivative, is not available for any fee, revenue
-   share or other consideration, and will not be granted. Waivers under
-   Section 10 are given free of charge or not at all.
-
-
-11A. ALIGNER COMMERCIAL LICENSES
-
-   Notwithstanding Section 11, the Licensor may, in a signed written agreement
-   and for a fee, waive Sections 3 and 4 for timing data produced by its
-   alignment services, but only for recordings the licensee owns or is
-   licensed to exploit commercially, and never for any recording published in
-   or by QUA or by the third-party sources listed in the NOTICE file. Such an
-   agreement grants no rights in the Work otherwise.
+   The right to Charge for a Covered Feature, to reserve, restrict or enhance
+   it in a paid edition or tier, or to sell or republish the Work or a
+   Derivative, is not available for any fee, revenue share or other
+   consideration, and will not be granted. Waivers under Section 10 are given
+   free of charge or not at all.
 
 
 12. MATERIAL NOT COVERED
@@ -298,11 +325,11 @@ agree, You may not do any of those things.
    from the Licensor, Your rights are reinstated, unless within that period
    the Licensor has notified You in writing that they are not. Reinstatement
    is not available for a second or subsequent breach, or for a breach of
-   Section 3(c), 4(b) or 7(b). Cure does not relieve You of liability for
-   revenue obtained during the breach. On termination You must stop using the
-   Work and every Derivative, stop providing every Covered Feature, and delete
-   every copy of the Work and every Derivative, including Models, in Your
-   possession or control.
+   Section 2A, 3(e), 4(b), 6(a) or 7(b). Cure does not relieve You of
+   liability for revenue obtained during the breach. On termination You must
+   stop using the Work and every Derivative, stop providing every Covered
+   Feature, and delete every copy of the Work and every Derivative, including
+   Models, in Your possession or control.
 
 
 15. NO WARRANTY
@@ -326,54 +353,41 @@ agree, You may not do any of those things.
    The Licensor may publish revised versions of this License. A Derivative may
    be distributed under the version under which the Work was received or, at
    the distributor's option, under any later version. Any later version will
-   preserve the free-access, no-sale and no-sale-of-exceptions
-   principles of this version.
+   preserve the free-access, no-sale, no-redistribution and
+   no-sale-of-exceptions principles of this version.
 
 
-18. EARLIER RELEASES
-
-   GitHub releases tagged v3.0.0 and earlier, and Hugging Face dataset
-   revisions whose dataset card declares the Creative Commons Attribution 4.0
-   International License (together, the "CC BY Releases"), were distributed
-   under that license, and copies obtained from them remain under it. Every
-   other release, dataset revision, API response and distribution of the Work
-   is under this License only. Any Derivative or Model produced in whole or in
-   part from data that is not solely from CC BY Releases is subject to this
-   License. A person claiming that a Derivative or Model derives solely from
-   CC BY Releases bears the burden of proving it.
-
-
-19. INTERPRETATION
+18. INTERPRETATION
 
    Headings are for convenience only. Where a term is ambiguous, it is to be
    read in the way that best keeps Covered Features free of Charge for end
-   users. If any provision is held unenforceable, the
-   remainder stays in force, and that provision is to be applied to the
-   fullest extent permitted by law.
+   users. If any provision is held unenforceable, the remainder stays in
+   force, and that provision is to be applied to the fullest extent permitted
+   by law.
 
 
-20. NOTICES
+19. NOTICES
 
    Notices to the Licensor must be sent through the contact details published
    at https://qud.dev, or by opening an issue in the QUA GitHub repository,
-   and are effective on receipt. The Licensor may give notice to You at any contact address You
-   have provided, or that You publish on Your Application, model card or
-   repository.
+   and are effective on receipt. The Licensor may give notice to You at any
+   contact address You have provided, or that You publish on Your
+   Application, model card or repository.
 
 
-21. REMEDIES
+20. REMEDIES
 
-   You acknowledge that a breach of Section 3, 4 or 6 causes
-   harm that damages alone cannot remedy, and that the Licensor is entitled to
-   seek injunctive relief in any competent court, in addition to damages and
-   an account of all revenue attributable to the breach.
+   You acknowledge that a breach of Section 2A, 3, 4 or 6 causes harm that
+   damages alone cannot remedy, and that the Licensor is entitled to seek
+   injunctive relief in any competent court, in addition to damages and an
+   account of all revenue attributable to the breach.
 
 
-22. GENERAL
+21. GENERAL
 
    The Licensor may assign this License and its rights under it to any
    successor to the QUA product. You may not assign this License. Sections 7,
-   14 (as to obligations on termination), 15, 16, 19, 21 and this Section
+   14 (as to obligations on termination), 15, 16, 18, 20 and this Section
    survive termination. This License is the entire agreement between You and
    the Licensor concerning the Work, except for any waiver granted under
    Section 10.

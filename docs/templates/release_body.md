@@ -1,6 +1,6 @@
 {{ release_title }}
 
-> **License.** This release is distributed under the [QUA Dataset License 1.0](https://github.com/QUD-Technologies/quranic-universal-audio/blob/main/LICENSE-DATA). By downloading it you agree to its terms: any app or feature using this data, or a model trained, fine-tuned, distilled, evaluated or benchmarked on it (or on such a model's output), must be available in full to every user at no extra charge - not behind, restricted to, or enhanced in a paid tier - even if the app itself is paid; other, unrelated features may be paid; the data may not be sold; derivatives share the same license; credit QUD Technologies - Qur'anic Universal Audio (https://qud.dev).
+> **License.** This release is distributed under the [QUA Dataset License 1.0](https://github.com/QUD-Technologies/quranic-universal-audio/blob/main/LICENSE-DATA). By downloading it you agree to its terms: any feature built on this data, directly or through a model trained, fine-tuned, distilled, evaluated or benchmarked on it, must be available in full to every user at no extra charge (no paywall, paid tier or rationing), in an app that is itself free to get; other, unrelated features may be paid, and ads may not interrupt or block the recitation. Obtain the data only from QUA's release channels, and don't sell or republish it, raw or converted. Models may be published under the same license. Published models and datasets must declare they used QUA. Credit QUD Technologies - Qur'anic Universal Audio.
 
 ## What to download
 

@@ -13,7 +13,7 @@ QUA combines original work created by this project with third-party material fro
 
 ## Timing data
 
-The QUA Dataset License is a custom license. In short: the data may be used freely, including in commercial products. Any app or feature using this data, or a model trained, fine-tuned, distilled, evaluated or benchmarked on it (or on such a model's output), must be available in full to every user at no extra charge - not behind, restricted to, or enhanced in a paid tier - even if the app itself is paid; other, unrelated features may be paid. The data may not be sold. Published models and datasets must declare they used QUA. Derivatives, including models, are distributed under the same license. Credit QUD Technologies - Qur'anic Universal Audio. The [full license text](LICENSE-DATA) governs.
+The QUA Dataset License is a custom license. In short: the data may be used freely, including in commercial products, but any feature built on this data, directly or through a model trained, fine-tuned, distilled, evaluated or benchmarked on it, must be available in full to every user at no extra charge (no paywall, paid tier or rationing), in an app that is itself free to get; other, unrelated features may be paid, and ads may not interrupt or block the recitation. Obtain the data only from QUA's release channels, and don't sell or republish it, raw or converted. Models may be published under the same license. Published models and datasets must declare they used QUA. Credit QUD Technologies - Qur'anic Universal Audio. The [full license text](LICENSE-DATA) governs.
 
 ## Recitation audio
 

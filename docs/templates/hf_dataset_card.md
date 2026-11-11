@@ -2,17 +2,15 @@
 license: other
 license_name: qua-dataset-1.0
 license_link: https://github.com/QUD-Technologies/quranic-universal-audio/blob/main/LICENSE-DATA
-extra_gated_heading: Accept the QUA Dataset License 1.0 to access this dataset
+extra_gated_heading: Agree to the QUA Dataset License 1.0 to access this dataset
 extra_gated_prompt: |
-  This dataset is distributed under the **QUA Dataset License 1.0** by QUD Technologies. By requesting access you agree to its terms, including:
+  Access requires agreeing to the **QUA Dataset License 1.0** (QUD Technologies). In short:
 
-  - **Free access.** Any app or feature that uses this data, or a model trained, fine-tuned, distilled, evaluated or benchmarked on it (or on such a model's output), must be available in full to every user at no extra charge: not behind, restricted to, or enhanced in a paid tier, no partial or gated access. The app itself may be paid, and other, unrelated features may be paid.
-  - **No selling** the data or access to it, including through a paid API or to another business.
-  - **Share-alike.** Derivatives, including models, may only be distributed under this license.
-  - **Declaration and disclosure.** Published models and datasets must state they used QUA, and you must answer truthfully if QUD Technologies asks whether a model or feature used it.
-  - **Attribution** to QUD Technologies - Qur'anic Universal Audio (https://qud.dev).
+  - **Free feature, free app.** Anything built on this data, directly or through a model trained, tuned or benchmarked on it, must be fully available to every user at no charge: no paywall, paid tier or rationing, in an app that is free to get. Other features may be paid. Ads may not interrupt or block the recitation.
+  - **Get it only from QUA; don't sell or republish it**, raw or converted. Models may be published, under this license only.
+  - **Declare and credit.** Published models and datasets state they used QUA, and you answer truthfully if QUD asks. Credit QUD Technologies - Qur'anic Universal Audio (https://qud.dev).
 
-  Recitation audio, Qur'an text editions and fonts are not covered by this license and remain under their own terms. Read the full license before accepting.
+  Audio, Qur'an text and fonts are not covered. The full license governs.
 extra_gated_fields:
   Name: text
   Organisation (or "individual"): text
@@ -25,7 +23,7 @@ extra_gated_fields:
       - Personal study
       - label: Other
         value: other
-  I have read and agree to the QUA Dataset License 1.0, including its free-access conditions: checkbox
+  I agree to the QUA Dataset License 1.0: checkbox
 extra_gated_button_content: Accept and access
 task_categories:
 - automatic-speech-recognition
@@ -155,4 +153,4 @@ print(catalog[0]["name_en"], catalog[0]["riwayah"])
 
 [QUA Dataset License 1.0](https://github.com/QUD-Technologies/quranic-universal-audio/blob/main/LICENSE-DATA) (`qua-dataset-1.0`), by [QUD Technologies](https://qud.dev).
 
-In short: use it freely, including in commercial products. Any app or feature using this data, or a model trained, fine-tuned, distilled, evaluated or benchmarked on it (or on such a model's output), must be available in full to every user at no extra charge - not behind, restricted to, or enhanced in a paid tier - even if the app itself is paid; other, unrelated features may be paid. Don't sell the data. Share derivatives under the same license. Credit QUD Technologies - Qur'anic Universal Audio. The full license text governs.
+In short: use it freely, including in commercial products, but any feature built on this data, directly or through a model trained, fine-tuned, distilled, evaluated or benchmarked on it, must be available in full to every user at no extra charge (no paywall, paid tier or rationing), in an app that is itself free to get; other, unrelated features may be paid, and ads may not interrupt or block the recitation. Obtain the data only from QUA's release channels, and don't sell or republish it, raw or converted. Models may be published under the same license. Published models and datasets must declare they used QUA. Credit QUD Technologies - Qur'anic Universal Audio. The full license text governs.
