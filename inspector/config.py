@@ -122,7 +122,7 @@ PEAKS_BUCKETS_PER_SEC = 30  # target peak density for segment-level peaks
 # slider default + form's blocking-counts panel derive from the
 # percentage form below (shipped via /api/seg/data as
 # ``low_conf_default_threshold``). Bump this and both layers agree.
-LOW_CONFIDENCE_THRESHOLD = 0.80
+LOW_CONFIDENCE_THRESHOLD = 0.85
 # Percentage scale (0–99 int) the FE slider works in. Derived — never
 # edit this independently; the assertion below guards against drift.
 LOW_CONF_DEFAULT_THRESHOLD = int(round(LOW_CONFIDENCE_THRESHOLD * 100))

@@ -10,8 +10,8 @@
     "repetitions": "hidden",
     "unmarked_wasl": "next_only"
   },
-  "low_conf_default_threshold": 80,
-  "low_confidence_threshold": 0.8,
+  "low_conf_default_threshold": 85,
+  "low_confidence_threshold": 0.85,
   "muqattaat_words": [
     [
       2,

@@ -5,7 +5,7 @@ Low confidence are calculations and algorithms that mark segments where the mode
 
 When something is off, the cause varies and so does the fix — it can be any edit.
 
-> By the end this should be zero (for <80%): each one either corrected or ignored.
+> By the end this should be zero (for <85%): each one either corrected or ignored.
 
 ::example{id="lowconf_wrong_word"}
 `;

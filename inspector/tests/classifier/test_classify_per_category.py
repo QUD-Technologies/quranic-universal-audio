@@ -39,14 +39,14 @@ def test_each_category_classified_in_expected_segments(fixture_name, load_fixtur
             )
 
 
-def test_low_confidence_threshold_is_0_80():
-    """Segments with confidence ∈ [0.79, 0.81] flip on/off correctly around 0.80."""
+def test_low_confidence_threshold_is_0_85():
+    """Segments with confidence ∈ [0.84, 0.86] flip on/off correctly around 0.85."""
     base = {
         "matched_ref": "1:1:1-1:1:1",
     }
-    below = _classify({**base, "confidence": 0.79}, entry_ref="1", is_by_ayah=False)
-    on_threshold = _classify({**base, "confidence": 0.80}, entry_ref="1", is_by_ayah=False)
-    above = _classify({**base, "confidence": 0.81}, entry_ref="1", is_by_ayah=False)
+    below = _classify({**base, "confidence": 0.84}, entry_ref="1", is_by_ayah=False)
+    on_threshold = _classify({**base, "confidence": 0.85}, entry_ref="1", is_by_ayah=False)
+    above = _classify({**base, "confidence": 0.86}, entry_ref="1", is_by_ayah=False)
 
     assert "low_confidence" in below
     assert "low_confidence" not in on_threshold

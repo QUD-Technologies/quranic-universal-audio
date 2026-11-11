@@ -23,7 +23,7 @@ const _defaults: SegConfig = {
     validationCategories: null,
     muqattaatWords: null,
     qalqalaLetters: null,
-    lcDefaultThreshold: 80,
+    lcDefaultThreshold: 85,
     accordionContext: null,
     trimPadLeft: 500,
     trimPadRight: 500,

@@ -58,7 +58,7 @@ export async function loadSegConfig(
             validationCategories: cfg.validation_categories ?? null,
             muqattaatWords: cfg.muqattaat_words ? new Set(cfg.muqattaat_words.map(([s, a, w]) => `${s}:${a}:${w}`)) : null,
             qalqalaLetters: cfg.qalqala_letters ? new Set(cfg.qalqala_letters) : null,
-            lcDefaultThreshold: cfg.low_conf_default_threshold ?? 80,
+            lcDefaultThreshold: cfg.low_conf_default_threshold ?? 85,
             accordionContext: cfg.accordion_context ?? null,
             trimPadLeft: cfg.trim_pad_left ?? 500,
             trimPadRight: cfg.trim_pad_right ?? 500,
