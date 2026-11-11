@@ -138,9 +138,13 @@ def test_token_expires_and_rejects_tampering():
 
 @pytest.fixture
 def tight_limits(monkeypatch):
-    """Enforced limits small enough to break: three chapters an hour, two tokens an hour."""
+    """Enforced limits small enough to break: three chapters a minute, two tokens an hour."""
     limits = ts_rate_limit.Limits(
-        chapters_per_hour=3, chapters_per_day=100, requests_per_minute=100, tokens_per_hour=2
+        chapters_per_minute=3,
+        chapters_per_hour=100,
+        chapters_per_day=100,
+        requests_per_minute=100,
+        tokens_per_hour=2,
     )
     monkeypatch.setattr(access, "limiter", ts_rate_limit.TsRateLimiter(limits))
     monkeypatch.setattr(access.config, "TS_RATE_LIMIT_MODE", "enforce")
@@ -173,7 +177,7 @@ def test_a_ban_is_persisted_and_survives_a_restart(flask_client, shard_body, tig
 
     rows = repo_ts_bans.remembered(now=0, struck_after=0)
     assert [(r["client"], r["strikes"], r["reason"]) for r in rows] == [
-        (CLIENT, 1, "chapters_per_hour")
+        (CLIENT, 1, "chapters_per_minute")
     ]
 
     access.limiter.reset()  # what a restart does to the in-memory state

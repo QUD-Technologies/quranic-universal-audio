@@ -6,9 +6,9 @@ number of *distinct* chapters an hour and a day, and mint a bounded number of
 access tokens; going over bans the client for a week, and for good the second
 time.
 
-There is no per-minute chapter limit on purpose: the site's own Repeat loads
-every chapter of the chosen range at once (a whole juz is ~40 in a few
-seconds). Volume over the hour and the day is what tells a pull from a reader.
+The site itself opens one chapter at a time (the Mushaf Repeat reads a surah's
+timing when the plan reaches it), so a handful of distinct chapters in one
+minute is already a script.
 
 Counters live in memory: the app is single-worker, and a SQLite write per
 request would sync the whole database to the bucket. Bans are handed to the
@@ -45,6 +45,7 @@ _IPV6_CLIENT_PREFIX = 64
 
 @dataclass(frozen=True)
 class Limits:
+    chapters_per_minute: int
     chapters_per_hour: int
     chapters_per_day: int
     requests_per_minute: int
@@ -144,10 +145,13 @@ class TsRateLimiter:
             for key in [k for k, t in state.chapters.items() if t <= now - DAY_S]:
                 del state.chapters[key]
             state.chapters.setdefault(chapter_key, now)
+            in_minute = sum(1 for t in state.chapters.values() if t > now - MINUTE_S)
             in_hour = sum(1 for t in state.chapters.values() if t > now - HOUR_S)
             broken = None
             if len(state.requests) > self._limits.requests_per_minute:
                 broken = "requests_per_minute"
+            elif in_minute > self._limits.chapters_per_minute:
+                broken = "chapters_per_minute"
             elif in_hour > self._limits.chapters_per_hour:
                 broken = "chapters_per_hour"
             elif len(state.chapters) > self._limits.chapters_per_day:

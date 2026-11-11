@@ -9,6 +9,7 @@ from services.auth.ts_rate_limit import (
     BAN_STEPS_S,
     DAY_S,
     HOUR_S,
+    MINUTE_S,
     PERMANENT_BAN_S,
     STRIKE_MEMORY_S,
     BanState,
@@ -34,7 +35,11 @@ def clock():
 @pytest.fixture
 def limiter(clock):
     limits = ts_rate_limit.Limits(
-        chapters_per_hour=3, chapters_per_day=5, requests_per_minute=10, tokens_per_hour=2
+        chapters_per_minute=3,
+        chapters_per_hour=4,
+        chapters_per_day=6,
+        requests_per_minute=10,
+        tokens_per_hour=2,
     )
     return ts_rate_limit.TsRateLimiter(limits, clock=clock)
 
@@ -43,27 +48,36 @@ def _open(limiter, count: int, *, start: int = 1) -> list[str | None]:
     return [limiter.record_chapter(CLIENT, f"r/{ch}") for ch in range(start, start + count)]
 
 
-def test_distinct_chapters_in_an_hour_break_the_limit(limiter):
-    assert _open(limiter, 4) == [None, None, None, "chapters_per_hour"]
+def test_distinct_chapters_in_a_minute_break_the_limit(limiter):
+    assert _open(limiter, 4) == [None, None, None, "chapters_per_minute"]
     assert limiter.ban_remaining(CLIENT) == BAN_STEPS_S[0]
+
+
+def test_a_chapter_every_few_minutes_breaks_the_hourly_limit(limiter, clock):
+    broken = []
+    for ch in range(1, 6):
+        broken.append(limiter.record_chapter(CLIENT, f"r/{ch}"))
+        clock.now += 5 * MINUTE_S
+
+    assert broken == [None] * 4 + ["chapters_per_hour"]
 
 
 def test_a_slow_sweep_breaks_the_daily_limit(limiter, clock):
     broken = []
-    for ch in range(1, 7):
+    for ch in range(1, 8):
         broken.append(limiter.record_chapter(CLIENT, f"r/{ch}"))
         clock.now += HOUR_S
 
-    assert broken == [None] * 5 + ["chapters_per_day"]
+    assert broken == [None] * 6 + ["chapters_per_day"]
 
 
 def test_chapters_older_than_a_day_no_longer_count(limiter, clock):
-    for ch in range(1, 6):
+    for ch in range(1, 7):
         limiter.record_chapter(CLIENT, f"r/{ch}")
         clock.now += HOUR_S
     clock.now += DAY_S
 
-    assert limiter.record_chapter(CLIENT, "r/6") is None
+    assert limiter.record_chapter(CLIENT, "r/7") is None
 
 
 def test_one_chapter_read_again_and_again_only_hits_the_request_limit(limiter):

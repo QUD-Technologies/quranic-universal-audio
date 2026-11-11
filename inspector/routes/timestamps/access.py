@@ -28,6 +28,7 @@ MODE_OFF = "off"
 
 limiter = ts_rate_limit.TsRateLimiter(
     ts_rate_limit.Limits(
+        chapters_per_minute=config.TS_LIMIT_CHAPTERS_PER_MINUTE,
         chapters_per_hour=config.TS_LIMIT_CHAPTERS_PER_HOUR,
         chapters_per_day=config.TS_LIMIT_CHAPTERS_PER_DAY,
         requests_per_minute=config.TS_LIMIT_REQUESTS_PER_MINUTE,

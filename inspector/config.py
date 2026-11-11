@@ -296,11 +296,12 @@ MULTI_RIWAYAH_ENABLED = os.getenv("INSPECTOR_MULTI_RIWAYAH", "1") not in ("0", "
 # `enforce` bans a client that goes over, `log` only logs what would have been
 # banned (to calibrate), `off` skips the counting.
 TS_RATE_LIMIT_MODE = os.environ.get("INSPECTOR_TS_RATE_LIMIT", "enforce").strip().lower()
-# Distinct chapters one client may open. The hour allows one whole recitation
-# (the Mushaf Repeat loads its range at once); the day allows two and a bit.
-# A bulk pull of the catalog needs tens of thousands.
-TS_LIMIT_CHAPTERS_PER_HOUR = int(os.environ.get("INSPECTOR_TS_LIMIT_CHAPTERS_PER_HOUR", "120"))
-TS_LIMIT_CHAPTERS_PER_DAY = int(os.environ.get("INSPECTOR_TS_LIMIT_CHAPTERS_PER_DAY", "300"))
+# Distinct chapters one client may open. The site opens one at a time (short
+# surahs played back to back are 3-4 a minute, the Random button one a click);
+# a bulk pull of the catalog needs tens of thousands.
+TS_LIMIT_CHAPTERS_PER_MINUTE = int(os.environ.get("INSPECTOR_TS_LIMIT_CHAPTERS_PER_MINUTE", "12"))
+TS_LIMIT_CHAPTERS_PER_HOUR = int(os.environ.get("INSPECTOR_TS_LIMIT_CHAPTERS_PER_HOUR", "80"))
+TS_LIMIT_CHAPTERS_PER_DAY = int(os.environ.get("INSPECTOR_TS_LIMIT_CHAPTERS_PER_DAY", "200"))
 # Chapter + verse reads in total (stepping through verses re-reads one chapter).
 TS_LIMIT_REQUESTS_PER_MINUTE = int(os.environ.get("INSPECTOR_TS_LIMIT_REQUESTS_PER_MINUTE", "150"))
 # Access-token mints; a page mints one every ~5 minutes.
