@@ -6,7 +6,7 @@
 |---|---|
 | `manifest.json` | Release-level index: reciter zips, download URLs, checksums, sizes, coverage, and change type. |
 | `catalog.json` | Release-level catalog: reciter names, riwayah, style, coverage, audio metadata, and the audio URLs paired with the timestamp data. |
-| `<recitation>.zip` | One recitation's verse, word, and letter timestamp files, its own `catalog.json`, and `specials.json` (its Isti'adha / Basmala) when it has any. |
+| `<recitation>.zip` | One recitation's verse and word timestamp files, its own `catalog.json`, and `specials.json` (its Isti'adha / Basmala) when it has any. |
 | `shard.py` | Optional helper that splits a large timestamp file into one JSON file per surah. |
 | `check_updates.py` | Optional helper that checks the latest release for updates to the reciters you use; add `--sync` to re-download them. |
 | `download_audio.py` | Optional helper that fetches a reciter's source audio (YouTube/Drive/CDN) re-encoded so the timestamps line up. |
@@ -51,12 +51,11 @@ The `ayah` layout needs the verse tier file; run it from the unzipped reciter zi
 | File | Use it when you need | Why it is separate |
 |---|---|---|
 | `verse_timestamps.json.gz` | verse playback or verse clips | smallest download |
-| `word_timestamps.json.gz` | word highlighting | faster than loading letters when you only need words |
-| `letter_timestamps.json.gz` | letter animation | exact DigitalKhatt text plus timed Unicode-scalar paint ranges |
+| `word_timestamps.json.gz` | word highlighting | adds per-word timings to the verse rows |
 
 The files are split and gzipped for storage, speed, and network efficiency. Download only the level you need.
 
-Not every recitation ships all three. `manifest.json` lists each recitation's `tiers`.
+`manifest.json` lists each recitation's `tiers`.
 
 Use `shard.py` when your app prefers per-surah files locally:
 
@@ -96,21 +95,12 @@ Use `catalog.json` when you need display names, coverage, audio metadata, or the
 
 <details><summary>Reciter zip schemas</summary>
 
-Each reciter zip contains `catalog.json` and three timestamp files.
+Each reciter zip contains `catalog.json` and two timestamp files.
 
 ```ts
 type VerseKey = "surah:ayah";
 type Ms = number;
 type Word = [word_idx: number, start_ms: Ms, end_ms: Ms];
-type ScalarRange = [from: number, to: number]; // half-open [from,to)
-type AnimationToken = [
-  word_occurrence: number,
-  start_ms: Ms,
-  end_ms: Ms,
-  owns_sound: boolean,
-  paint: ScalarRange[],
-];
-
 type VerseOccurrence = [
   ref: VerseKey, start_ms: Ms, end_ms: Ms, canonical: boolean, silence_after_ms: Ms
 ];
@@ -118,21 +108,12 @@ type WordOccurrence = [
   ...verse: VerseOccurrence,
   words: Word[]
 ];
-type LetterOccurrence = [
-  ...word: WordOccurrence,
-  text: string,
-  tokens: AnimationToken[],
-];
 
 type VerseTimestamps = { _meta: Meta & { tier: "verse" }, rows: VerseOccurrence[] };
 type WordTimestamps = { _meta: Meta & { tier: "word" }, rows: WordOccurrence[] };
-type LetterTimestamps = {
-  _meta: Meta & { tier: "letter", script: "digital_khatt_v2", unicode_indexing: "scalar" },
-  rows: LetterOccurrence[]
-};
 ```
 
-The three tiers describe the same ordered occurrences at increasing detail. `WordOccurrence` is exactly `VerseOccurrence + [words]`; `LetterOccurrence` is exactly `WordOccurrence + [text, tokens]`. Every number is milliseconds from the start of the source audio.
+The two tiers describe the same ordered occurrences at increasing detail. `WordOccurrence` is exactly `VerseOccurrence + [words]`. Every number is milliseconds from the start of the source audio.
 
 Rows are a playback timeline: one row per contiguous recited span, in audio order. A reciter who repeats a verse, restarts it, or recites only part of it produces one row per span; exactly one row per verse is `canonical` — the earliest complete, continuous take. `rows.filter(r => r[3])` yields a clean one-take-per-verse dataset. Within-take lookbacks (a jump back mid-verse) stay inside their row, where `word_idx` repeats or steps backwards. `silence_after_ms` is the gap to the next row in the same chapter timeline, `0` for the chapter's last row; after filtering rows, recompute it from the kept set (`next.start_ms - end_ms`).
 
@@ -168,29 +149,6 @@ Rows are a playback timeline: one row per contiguous recited span, in audio orde
 ```
 
 `word_idx` is 1-based within the verse. When a reciter loops back or re-recites part of a verse, `word_idx` can repeat or step backwards.
-
-**Letter tier** — the complete word row followed by exact DigitalKhatt text and a flat list of timed paint units. `word_occurrence` is a zero-based position in the adjacent `words` array, so repeated `word_idx` values stay unambiguous. `paint` contains half-open Unicode-scalar ranges into that occurrence's `text`:
-
-```jsonc
-{
-  "_meta": { "schema_version": 3, "slug": "example_reciter", "riwayah": "hafs", "units": "ms", "tier": "letter", "verse_count": 6236, "occurrence_count": 6301, "script": "digital_khatt_v2", "script_sha256": "…", "unicode_indexing": "scalar" },
-  "rows": [[
-    "1:1", 70, 2790, true, 41,
-    [ [1, 70, 770], [2, 770, 1280], [3, 1280, 2050], [4, 2050, 2790] ],
-    "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ",
-    [
-      [0,  70, 300, true, [[0, 2]]],
-      [0, 300, 560, true, [[2, 4]]],
-      [0, 560, 770, true, [[4, 6]]]
-      // ... remaining timed paint units
-    ]
-  ]]
-}
-```
-
-The text itself is the vocabulary: there is no separate letter-vocabulary file. A token is a producer-attributed animation unit, not one Unicode character. Its paint ranges can cover a base with combining marks or only an independently sounded mark. Presentation-only signs remain in `text` without a timed paint owner.
-
-Ranges use Unicode scalar indexes, not UTF-16 code units. In JavaScript, index `Array.from(text)` rather than indexing the string directly.
 
 </details>
 
