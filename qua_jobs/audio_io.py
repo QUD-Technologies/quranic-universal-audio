@@ -220,7 +220,7 @@ def probe_duration_ms(src: Path) -> int | None:
 
 
 def _ffprobe(src: Path, entries: str, *, stream: str | None = None) -> str:
-    cmd = ["ffprobe", "-v", "error"]
+    cmd = ["ffprobe", "-v", "error", *_format_hint(src)]
     if stream:
         cmd += ["-select_streams", stream]
     cmd += ["-show_entries", entries, "-of", "csv=p=0", str(src)]
@@ -229,9 +229,25 @@ def _ffprobe(src: Path, entries: str, *, stream: str | None = None) -> str:
     ).stdout.strip()
 
 
+def _format_hint(src: Path) -> list[str]:
+    """``["-f", "mp3"]`` when ffmpeg's own sniffing finds no audio in ``src``.
+
+    ffmpeg 8 reads some plain mp3s (mp3quran ``abdulmohsen-obaikan/r1/036.mp3``)
+    as a raw VVC video stream, ID3 tag or not, and every audio step then fails.
+    A source with no detectable audio stream is read as mp3 instead."""
+    cmd = ["ffprobe", "-v", "error", "-select_streams", "a:0"]
+    cmd += ["-show_entries", "stream=index", "-of", "csv=p=0", str(src)]
+    found = subprocess.run(cmd, capture_output=True, text=True, timeout=60).stdout.strip()
+    return [] if found else ["-f", "mp3"]
+
+
+def _input(src: Path) -> list[str]:
+    return [*_format_hint(src), "-i", str(src)]
+
+
 def is_antiphase(src: Path) -> bool:
     """Whether ``src`` is stereo with one channel polarity-inverted."""
-    cmd = ["ffmpeg", "-v", "error", "-t", str(ANTIPHASE_PROBE_S), "-i", str(src), "-af"]
+    cmd = ["ffmpeg", "-v", "error", "-t", str(ANTIPHASE_PROBE_S), *_input(src), "-af"]
     cmd += ["aphasemeter=video=0,ametadata=mode=print:key=lavfi.aphasemeter.phase:file=-"]
     cmd += ["-f", "null", "-"]
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=600, check=True).stdout
@@ -261,7 +277,7 @@ def encode(
     cmd = ["ffmpeg", "-y", "-v", "error"]
     if start_ms is not None:
         cmd += ["-ss", f"{start_ms / _MS:.3f}"]
-    cmd += ["-i", str(src)]
+    cmd += _input(src)
     if end_ms is not None:
         cmd += ["-t", f"{(end_ms - (start_ms or 0)) / _MS:.3f}"]
     cmd += ["-vn"]
@@ -285,7 +301,7 @@ def encode_pieces(pieces: list[tuple[Path, int, int]], dest: Path, channels: int
     cmd = ["ffmpeg", "-y", "-v", "error"]
     labels = []
     for i, (src, start, end) in enumerate(pieces):
-        cmd += ["-ss", f"{start / _MS:.3f}", "-t", f"{(end - start) / _MS:.3f}", "-i", str(src)]
+        cmd += ["-ss", f"{start / _MS:.3f}", "-t", f"{(end - start) / _MS:.3f}", *_input(src)]
         labels.append(f"[a{i}]")
     fmt = f"aformat=sample_fmts=fltp:sample_rates={CANONICAL_SAMPLE_RATE}:channel_layouts={layout}"
     graph = ";".join(f"[{i}:a]{fmt}[a{i}]" for i in range(len(pieces)))
