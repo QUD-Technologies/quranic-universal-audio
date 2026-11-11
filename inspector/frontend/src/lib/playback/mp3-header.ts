@@ -21,6 +21,12 @@
  * tag on what is otherwise CBR audio; those chapters must stay proxied, and
  * so must an untagged file whose sniffed frames do not run at the nominal
  * byte rate (`runsAtNominalRate`).
+ *
+ * An ID3v2 `iTunSMPB` (iTunes gapless) comment also disqualifies a file:
+ * Chrome takes `duration` from its total-sample count and scales every seek
+ * by it. mp3quran stamped one template value (65,535,867 samples = 1486 s)
+ * on every reciter's Surah 24, so a 1924 s chapter reported 1486 s and a
+ * seek to 1000 s played 1295 s. The bucket copy carries no such tag.
  */
 
 /** Bytes to request when sniffing — covers a ~9 KB ID3v2 tag plus the first
@@ -57,6 +63,8 @@ const MIN_WALK_FRAMES = 8;
 const MAX_RATE_ERROR = 0.2 / 7200;
 const XING = 'Xing';
 const INFO = 'Info';
+/** iTunes gapless comment key — Latin-1 in TXXX/COMM descriptions, UTF-16LE in some taggers. */
+const ITUNSMPB = 'iTunSMPB';
 
 export type Mp3VbrTag = typeof XING | typeof INFO | null;
 
@@ -69,6 +77,25 @@ function skipId3v2(b: Uint8Array): number {
     if (b.length < ID3_HEADER_BYTES || b[0] !== 0x49 || b[1] !== 0x44 || b[2] !== 0x33) return 0;
     const footer = (b[5]! & 0x10) ? ID3_HEADER_BYTES : 0;
     return ID3_HEADER_BYTES + syncsafe(b, 6) + footer;
+}
+
+function matchesAt(b: Uint8Array, at: number, key: string, stride: number): boolean {
+    for (let k = 0; k < key.length; k += 1) {
+        if (b[at + k * stride] !== key.charCodeAt(k)) return false;
+        if (stride === 2 && b[at + k * 2 + 1] !== 0) return false;
+    }
+    return true;
+}
+
+/** True when the ID3v2 tag (inside `bytes`) carries an `iTunSMPB` comment —
+ *  whose sample count Chrome trusts over the stream for `duration`. */
+export function hasGaplessSampleCount(bytes: Uint8Array): boolean {
+    const end = Math.min(skipId3v2(bytes), bytes.length);
+    for (let i = ID3_HEADER_BYTES; i < end; i += 1) {
+        if (bytes[i] !== ITUNSMPB.charCodeAt(0)) continue;
+        if (matchesAt(bytes, i, ITUNSMPB, 1) || matchesAt(bytes, i, ITUNSMPB, 2)) return true;
+    }
+    return false;
 }
 
 function isFrameHeader(b: Uint8Array, i: number): boolean {
@@ -142,9 +169,10 @@ export function runsAtNominalRate(bytes: Uint8Array, start: number): boolean {
 
 /** True when the browser can seek this file accurately without the proxy:
  *  the first frame is found and carries an `Info` tag, or carries no tag and
- *  its frames run at the header's nominal rate. A `Xing` (TOC-seek) tag never
- *  qualifies. */
+ *  its frames run at the header's nominal rate. A `Xing` (TOC-seek) tag or an
+ *  ID3 `iTunSMPB` sample count never qualifies. */
 export function isNativelySeekable(bytes: Uint8Array): boolean {
+    if (hasGaplessSampleCount(bytes)) return false;
     const tag = firstFrameVbrTag(bytes);
     if (tag === INFO) return true;
     if (tag !== null) return false;
