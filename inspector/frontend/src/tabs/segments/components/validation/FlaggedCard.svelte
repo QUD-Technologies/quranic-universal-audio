@@ -6,7 +6,8 @@
      * NOT readOnly) followed by the flag's comment thread: the root comment,
      * any append-only follow-up replies, and an "add reply" affordance open to
      * any editor. The flagger (root, `mine`) also gets an edit/clear affordance
-     * mirroring the SegmentRow inline editor.
+     * mirroring the SegmentRow inline editor. Holders of `segments.delete_flag`
+     * (owner by default) can delete any thread, after a confirm step.
      *
      * Identity is server-redacted: every comment always shows the author's
      * role ("a contributor"); the login is appended only when `canSeeFlagger`
@@ -14,6 +15,7 @@
      * identity — decides whose comment carries the edit affordance.
      */
     import { i18n } from '../../../../lib/i18n/locale.svelte';
+    import { can } from '../../../../lib/stores/capabilities';
     import * as m from '../../../../lib/paraglide/messages';
     import { currentUser } from '../../../../lib/stores/current-user';
     import type { FlagAuthor, FlagComment, SegmentFlagView } from '../../../../lib/types/generated/schemas';
@@ -53,6 +55,9 @@ import type { Segment } from '../../../../lib/types/view-models';
             editLink: m.segments_row_flag_edit_link(),
             replyPlaceholder: m.segments_row_flag_reply_placeholder(),
             reply: m.segments_row_flag_reply_button(),
+            deleteFlag: m.segments_flag_delete_button(),
+            deleteConfirm: m.segments_flag_delete_confirm_button(),
+            deletePrompt: m.segments_flag_delete_prompt(),
             ctxPrev: m.segments_validation_context_label_previous(),
             ctxNext: m.segments_validation_context_label_next(),
             ctxToggle: showContext
@@ -110,6 +115,14 @@ import type { Segment } from '../../../../lib/types/view-models';
     }
     function applyRootEditor(): void {
         if (flagSegment(seg, rootDraft, 'edit', author)) cancelRootEditor();
+    }
+
+    // ---- Delete the whole thread (segments.delete_flag holders) ----
+    const canDeleteFlag = can('segments.delete_flag');
+    let confirmingDelete = $state(false);
+
+    function deleteFlag(): void {
+        if (flagSegment(seg, '', 'delete', author)) confirmingDelete = false;
     }
 
     // ---- Add follow-up (any editor) ----
@@ -201,9 +214,22 @@ import type { Segment } from '../../../../lib/types/view-models';
                     </div>
                 {:else}
                     <blockquote class="flag-body">{flag.comment}</blockquote>
-                    {#if flag.mine}
+                    {#if flag.mine || $canDeleteFlag}
                         <div class="flag-root-actions">
-                            <button class="flag-link" onclick={openRootEditor}>{L.editLink}</button>
+                            {#if flag.mine}
+                                <button class="flag-link" onclick={openRootEditor}>{L.editLink}</button>
+                            {/if}
+                            {#if $canDeleteFlag}
+                                {#if confirmingDelete}
+                                    <span class="flag-delete-confirm">
+                                        <span class="flag-hint">{L.deletePrompt}</span>
+                                        <button class="flag-btn flag-btn-ghost" onclick={() => (confirmingDelete = false)}>{L.cancel}</button>
+                                        <button class="flag-btn flag-btn-danger" onclick={deleteFlag}>{L.deleteConfirm}</button>
+                                    </span>
+                                {:else}
+                                    <button class="flag-link flag-link-danger" onclick={() => (confirmingDelete = true)}>{L.deleteFlag}</button>
+                                {/if}
+                            {/if}
                         </div>
                     {/if}
                 {/if}
@@ -327,6 +353,24 @@ import type { Segment } from '../../../../lib/types/view-models';
 
     .flag-root-actions {
         display: flex;
+        align-items: center;
+        gap: var(--s-3);
+        flex-wrap: wrap;
+    }
+    .flag-link-danger:hover {
+        color: var(--state-error-fg);
+    }
+    .flag-delete-confirm {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--s-2);
+        flex-wrap: wrap;
+    }
+    .flag-btn-danger {
+        color: var(--accent-fg);
+        background: var(--state-error-fg);
+        border-color: var(--state-error-fg);
+        font-weight: 600;
     }
     .flag-link {
         font-size: var(--fs-meta);

@@ -655,6 +655,8 @@ function _reduceFlagSegment(
     const next = _cloneSeg(target);
     if (cmd.intent === 'set') {
         next.flag = { comment, at: now, author, mine: true, follow_ups: [] };
+    } else if (cmd.intent === 'delete') {
+        next.flag = null;
     } else if (cmd.intent === 'edit') {
         if (!comment) {
             next.flag = null; // clearing the comment removes the flag

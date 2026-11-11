@@ -579,5 +579,8 @@
   "segments_specials_hint": "محفوظة خارج المقاطع، ومعروضة هنا للاستماع والتحقق.",
   "segments_specials_play": "تشغيل",
   "segments_specials_pause": "إيقاف مؤقت",
-  "segments_specials_load_error": "تعذّر تحميل الاستعاذة والبسملة لهذا القارئ."
+  "segments_specials_load_error": "تعذّر تحميل الاستعاذة والبسملة لهذا القارئ.",
+  "segments_flag_delete_button": "احذف الإشارة",
+  "segments_flag_delete_confirm_button": "احذف",
+  "segments_flag_delete_prompt": "أتحذف هذه الإشارة وكل ردودها؟"
 }

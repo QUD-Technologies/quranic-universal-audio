@@ -124,3 +124,29 @@ def test_non_flagger_cannot_edit_comment(load_fixture, tmp_reciter_dir, signed_i
     other, _ = signed_in_client(hf_user_id="test-user-2", login="bob")
     res = _save(other, reciter, 112, uid, "bob's overwrite", "edit")
     assert res.status_code == 403
+
+
+def test_owner_can_delete_any_flag(load_fixture, tmp_reciter_dir, signed_in_client):
+    """``delete`` removes someone else's whole flag thread for a ``segments.delete_flag``
+    holder (the owner by default)."""
+    reciter = "fixture_reciter"
+    tmp_reciter_dir.install(reciter, "112-ikhlas", under_review_for="test-user-1")
+    client, _ = signed_in_client(hf_user_id="test-user-1", login="alice")
+    uid = load_fixture("112-ikhlas")["entries"][0]["segments"][0]["segment_uid"]
+    assert _save(client, reciter, 112, uid, "alice's note", "set").status_code == 200
+
+    owner, _ = signed_in_client(hf_user_id="owner-1", login="owen", role="owner")
+    assert _save(owner, reciter, 112, uid, "", "delete").status_code == 200
+    assert "flag" not in _first_seg_on_disk(tmp_reciter_dir, reciter)
+
+
+def test_maintainer_cannot_delete_flag_by_default(load_fixture, tmp_reciter_dir, signed_in_client):
+    """``segments.delete_flag`` is owner-only by default — a maintainer gets 403."""
+    reciter = "fixture_reciter"
+    tmp_reciter_dir.install(reciter, "112-ikhlas", under_review_for="maint-1")
+    client, _ = signed_in_client(hf_user_id="maint-1", login="mia", role="maintainer")
+    uid = load_fixture("112-ikhlas")["entries"][0]["segments"][0]["segment_uid"]
+    assert _save(client, reciter, 112, uid, "a note", "set").status_code == 200
+
+    assert _save(client, reciter, 112, uid, "", "delete").status_code == 403
+    assert "flag" in _first_seg_on_disk(tmp_reciter_dir, reciter)

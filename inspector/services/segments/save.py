@@ -564,6 +564,9 @@ def _utc_now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+DELETE_FLAG_CAP = "segments.delete_flag"
+
+
 def _mutate_seg_flag(seg: dict, intent: str, comment: str, actor: Actor, now: str):
     """Apply one flag intent to ``seg`` in place. Returns ``None`` or ``(err, status)``.
 
@@ -572,6 +575,8 @@ def _mutate_seg_flag(seg: dict, intent: str, comment: str, actor: Actor, now: st
       - ``edit`` — replace the root comment (flagger-only); an empty comment
         removes the whole flag (the unflag mechanism).
       - ``followup`` — append a reply (any editor; comment required).
+      - ``delete`` — remove the whole flag thread, whoever raised it
+        (``segments.delete_flag`` holders only; owner by default).
 
     The flag is always rebuilt through ``SegmentFlag`` so ``actor`` and the
     timestamps stay server-authoritative — the client never supplies identity.
@@ -607,6 +612,16 @@ def _mutate_seg_flag(seg: dict, intent: str, comment: str, actor: Actor, now: st
         seg["flag"] = flag.model_copy(update={"follow_ups": [*flag.follow_ups, reply]}).model_dump(
             mode="json"
         )
+        return None
+
+    if intent == "delete":
+        from services.auth.capabilities import can
+
+        if not existing:
+            return {"error": "No flag to delete on this segment."}, 404
+        if not can(actor, DELETE_FLAG_CAP):
+            return {"error": "You don't have permission to delete flags."}, 403
+        seg.pop("flag", None)
         return None
 
     return {"error": f"unknown flag intent: {intent!r}"}, 400

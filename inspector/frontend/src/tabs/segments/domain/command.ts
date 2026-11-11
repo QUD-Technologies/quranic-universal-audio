@@ -146,19 +146,22 @@ export interface SetIsWaslCommand extends CommandBase {
     is_wasl: boolean;
 }
 
+export type FlagIntent = 'set' | 'edit' | 'followup' | 'delete';
+
 /** Flag a segment with a comment thread. The actor + timestamps are stamped
  *  server-side (never trusted from the client). ``intent`` distinguishes:
  *  - ``set``      — create a flag (comment required).
  *  - ``edit``     — replace the root comment (flagger only); an EMPTY comment
  *                   removes the whole flag (the unflag mechanism).
  *  - ``followup`` — append a reply (any editor; comment required).
+ *  - ``delete``   — remove the whole thread (``segments.delete_flag`` only).
  *  ``author`` is the optimistic FE-shape author used for immediate display
  *  (the next /all refetch carries the authoritative redacted shape). */
 export interface FlagSegmentCommand extends CommandBase {
     type: 'flagSegment';
     segmentUid: string;
     comment: string;
-    intent: 'set' | 'edit' | 'followup';
+    intent: FlagIntent;
     /** Optimistic author for the new root/follow-up comment (current user). */
     author?: FlagAuthor;
 }

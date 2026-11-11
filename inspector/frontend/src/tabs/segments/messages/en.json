@@ -555,5 +555,8 @@
   "segments_specials_hint": "Kept outside the segments. Listed here to play and check.",
   "segments_specials_play": "Play",
   "segments_specials_pause": "Pause",
-  "segments_specials_load_error": "Couldn't load this reciter's openers."
+  "segments_specials_load_error": "Couldn't load this reciter's openers.",
+  "segments_flag_delete_button": "Delete flag",
+  "segments_flag_delete_confirm_button": "Delete",
+  "segments_flag_delete_prompt": "Delete this flag and all its replies?"
 }
