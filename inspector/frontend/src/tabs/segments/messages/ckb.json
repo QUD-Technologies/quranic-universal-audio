@@ -555,5 +555,8 @@
   "segments_specials_hint": "لە دەرەوەی بەشەکان هەڵگیراون، لێرە بۆ گوێگرتن و پشکنین پیشان دەدرێن.",
   "segments_specials_play": "پەخشکردن",
   "segments_specials_pause": "ڕاگرتن",
-  "segments_specials_load_error": "نەتوانرا پەنابردن و بەسمەلەی ئەم قورئانخوێنە باربکرێت."
+  "segments_specials_load_error": "نەتوانرا پەنابردن و بەسمەلەی ئەم قورئانخوێنە باربکرێت.",
+  "segments_flag_delete_button": "سڕینەوەی نیشانە",
+  "segments_flag_delete_confirm_button": "سڕینەوە",
+  "segments_flag_delete_prompt": "ئەم نیشانەیە و هەموو وەڵامەکانی بسڕیتەوە؟"
 }
