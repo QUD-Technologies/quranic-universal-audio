@@ -124,7 +124,7 @@ The dataset is gated: accept the license on this page, then authenticate (`hf au
 from datasets import load_dataset
 
 ds = load_dataset(
-    "hetchyy/quranic-universal-ayahs",
+    "QUD-Technologies/quranic-universal-ayahs",
     "khalifa_al_tunaiji_tarteel",
     split="train",
 )
@@ -137,7 +137,7 @@ print(row["segments"])
 
 ```python
 catalog = load_dataset(
-    "hetchyy/quranic-universal-ayahs",
+    "QUD-Technologies/quranic-universal-ayahs",
     "mushafs",
     split="all",
 )

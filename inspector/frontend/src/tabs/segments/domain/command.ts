@@ -16,7 +16,7 @@
  * dispatcher's convenience and never leaks into the operation log.
  */
 
-import type { FlagAuthor } from '../../../lib/types/generated/schemas';
+import type { FlagAuthor, JoinVerdict } from '../../../lib/types/generated/schemas';
 import type { EditOp, Segment } from '../../../lib/types/view-models';
 import type { SegSnapshot } from '../stores/dirty';
 
@@ -79,7 +79,8 @@ export interface SplitCommand extends CommandBase {
      *  (the left side of that boundary). When absent, all children default
      *  is_wasl=false except the LAST child which inherits the parent's
      *  is_wasl (which represented the parent-to-next-seg right edge). */
-    wasls?: boolean[];
+    wasls?: (boolean | undefined)[];
+    joinVerdicts?: JoinVerdict[];
     // ---- Legacy single-cursor convenience fields (still accepted) --------
     firstRef?: string;
     secondRef?: string;
@@ -90,6 +91,7 @@ export interface SplitCommand extends CommandBase {
 
 export interface MergeCommand extends CommandBase {
     type: 'merge';
+    joinVerdicts?: JoinVerdict[];
     /** Adjacent pair. The reducer determines the kept side by chapter order
      *  (the earlier seg's UID is preserved on the merged result). Either UID
      *  may be passed as `fromUid` or `toUid` — order isn't load-bearing. */
@@ -122,6 +124,7 @@ export interface IgnoreIssueCommand extends CommandBase {
     type: 'ignoreIssue';
     segmentUid: string;
     category: string;
+    joinVerdicts?: JoinVerdict[];
 }
 
 export interface AutoFixMissingWordCommand extends CommandBase {
@@ -143,19 +146,22 @@ export interface SetIsWaslCommand extends CommandBase {
     is_wasl: boolean;
 }
 
+export type FlagIntent = 'set' | 'edit' | 'followup' | 'delete';
+
 /** Flag a segment with a comment thread. The actor + timestamps are stamped
  *  server-side (never trusted from the client). ``intent`` distinguishes:
  *  - ``set``      — create a flag (comment required).
  *  - ``edit``     — replace the root comment (flagger only); an EMPTY comment
  *                   removes the whole flag (the unflag mechanism).
  *  - ``followup`` — append a reply (any editor; comment required).
+ *  - ``delete``   — remove the whole thread (``segments.delete_flag`` only).
  *  ``author`` is the optimistic FE-shape author used for immediate display
  *  (the next /all refetch carries the authoritative redacted shape). */
 export interface FlagSegmentCommand extends CommandBase {
     type: 'flagSegment';
     segmentUid: string;
     comment: string;
-    intent: 'set' | 'edit' | 'followup';
+    intent: FlagIntent;
     /** Optimistic author for the new root/follow-up comment (current user). */
     author?: FlagAuthor;
 }

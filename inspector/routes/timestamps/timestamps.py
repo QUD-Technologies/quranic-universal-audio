@@ -2,7 +2,9 @@
 
 ``/manifest`` and ``/shard/<reciter>/<int:chapter>`` read from
 ``<INSPECTOR_BUCKET_MOUNT>/reciters/<slug>/timestamps/...`` (composed in
-``services/timestamps.py``). ``/config`` advertises manifest + shard URL
+``services/timestamps.py``). ``/readings/<reciter>`` serves the readings summary
+(``services/reference/readings.py``), ``/profile/<reciter>`` the recitation profile
+(``services/reference/recitation_profile.py``). ``/config`` advertises manifest + shard URL
 templates so the frontend doesn't need its own env knob.
 """
 
@@ -20,17 +22,51 @@ from config import (
     ANIM_WORD_TRANSITION_DURATION,
     UNIFIED_DISPLAY_MAX_HEIGHT,
 )
-from qua_shared.schemas import ErrorEnvelope, TsConfigResponse, TsVbrResponse
+from qua_shared.schemas import ErrorEnvelope, OkAck, TsConfigResponse, TsVbrResponse
 from services import auth as auth_service
 from services import permissions
 from services import state as state_service
 from services import timestamps as ts_serve
 from services.audio_meta import vbr_chapters_for_reciter
 from services.auth import capabilities as _capabilities
-from utils.decorators import require_capability
+from services.reference import readings as readings_service
+from services.reference import recitation_profile as profile_service
+from utils.decorators import require_capability, require_same_origin
 from utils.json_response import orjson_response
 
+from . import access
+
 ts_bp = Blueprint("ts", __name__, url_prefix="/api/ts")
+access.guard(ts_bp)
+
+
+@ts_bp.route("/access-token", methods=["GET", "POST"])
+def ts_access_token():
+    """Short-lived token the page sends as ``X-QUA-Access`` on chapter and verse reads."""
+    return access.issue_token_response()
+
+
+@ts_bp.route("/bans")
+@require_capability(access.UNLIMITED_CAPABILITY)
+def ts_bans_list(user):
+    """Clients currently banned (or with strikes) for pulling timestamps in bulk."""
+    return orjson_response({"bans": access.bans_listing()}, headers=_NO_STORE_HEADERS)
+
+
+@ts_bp.route("/bans/lift", methods=["POST"])
+@require_same_origin
+@require_capability(access.UNLIMITED_CAPABILITY)
+def ts_bans_lift(user):
+    """Unban one client (``{"client": "<ip or ipv6 /64>"}``) and forget its strikes."""
+    body = request.get_json(silent=True)
+    client = body.get("client") if isinstance(body, dict) else None
+    if not isinstance(client, str) or not client:
+        return jsonify(ErrorEnvelope(error="client is required").model_dump(exclude_none=True)), 400
+    if not access.lift_ban(client):
+        return jsonify(
+            ErrorEnvelope(error="No ban for that client").model_dump(exclude_none=True)
+        ), 404
+    return jsonify(OkAck().model_dump(exclude_none=True))
 
 
 @ts_bp.route("/config")
@@ -68,13 +104,15 @@ def ts_config():
 # in place at a stable URL (re-stamp / edit) and the FE already
 # holds the active chapter in an in-memory LRU (`ts-source._shards`), so verse
 # changes never refetch — the browser HTTP cache only adds staleness with no
-# benefit for a body this small. `no-store`: never cached, always fresh on a
-# real fetch (chapter switch / reload).
+# benefit for a body this small. `no-cache` + ETag: the browser may keep a
+# copy but must revalidate every use, so a re-stamp shows on the next fetch
+# while an unchanged shard costs a bodyless 304. `private` + `Vary: Cookie`
+# because owners get extra (unreleased / everyayah) content.
 _NO_STORE_HEADERS = {"Cache-Control": "no-store"}
 _SHARD_HEADERS = {
-    "Cache-Control": "no-store",
+    "Cache-Control": "private, no-cache",
     "Content-Encoding": "br",
-    "Vary": "Accept-Encoding",
+    "Vary": "Accept-Encoding, Cookie",
 }
 
 # The manifest changes whenever a reciter is published/unpublished. The server
@@ -83,6 +121,14 @@ _SHARD_HEADERS = {
 # a stale published-set lingers in the browser. 10 min trades a tiny re-fetch
 # (a few hundred gzipped bytes) for prompt propagation of publish changes.
 _MANIFEST_HEADERS = {"Cache-Control": "private, no-store", "Vary": "Cookie"}
+
+
+def _shard_response(body: bytes) -> Response:
+    """Shard body with a content ETag; answers a matching ``If-None-Match`` with 304."""
+    resp = Response(body, mimetype="application/json", headers=_SHARD_HEADERS)
+    resp.add_etag()
+    resp.make_conditional(request)  # in place: 304 + empty body on a match
+    return resp
 
 
 @ts_bp.route("/manifest")
@@ -99,6 +145,9 @@ def ts_manifest():
 @ts_bp.route("/shard/<reciter>/<int:chapter>")
 def ts_shard(reciter, chapter):
     """Serve a per-chapter Brotli compact v13 shard (byte pass-through)."""
+    refused = access.admit(reciter, chapter)
+    if refused is not None:
+        return refused
     # Owner preview: holders of ``timestamps.view_unreleased`` may read shards
     # for generated-but-unreleased reciters; everyone else stays released-only.
     user = auth_service.current_user()
@@ -111,7 +160,7 @@ def ts_shard(reciter, chapter):
     )
     if body is None:
         return jsonify(ErrorEnvelope(error="Shard not found").model_dump(exclude_none=True)), 404
-    return Response(body, mimetype="application/json", headers=_SHARD_HEADERS)
+    return _shard_response(body)
 
 
 @ts_bp.route("/verse/<reciter>/<int:chapter>")
@@ -137,6 +186,9 @@ def ts_verse(reciter, chapter):
         return jsonify(
             ErrorEnvelope(error="ayah must be a positive integer").model_dump(exclude_none=True)
         ), 400
+    refused = access.admit(reciter, chapter)
+    if refused is not None:
+        return refused
     user = auth_service.current_user()
     body = ts_serve.verse_bytes(
         reciter,
@@ -147,7 +199,7 @@ def ts_verse(reciter, chapter):
     )
     if body is None:
         return jsonify(ErrorEnvelope(error="Verse not found").model_dump(exclude_none=True)), 404
-    return Response(body, mimetype="application/json", headers=_SHARD_HEADERS)
+    return _shard_response(body)
 
 
 @ts_bp.route("/validation/<reciter>")
@@ -174,6 +226,46 @@ def ts_validation(user, reciter):
     if doc is None:
         return jsonify(ErrorEnvelope(error="Not found").model_dump(exclude_none=True)), 404
     return orjson_response(doc)
+
+
+def _viewable(reciter: str) -> bool:
+    """Same visibility as ``/shard``."""
+    user = auth_service.current_user()
+    return ts_serve.is_viewable(
+        reciter,
+        allow_unreleased=_capabilities.can(user, "timestamps.view_unreleased"),
+        include_everyayah=user is not None and permissions.is_owner(user),
+    )
+
+
+@ts_bp.route("/readings/<reciter>")
+def ts_readings(reciter):
+    """What a Hafs recitation reads wherever the riwayah allows a choice (``TsReadingsDoc``).
+
+    Read from ``reciters/<slug>/readings.json``, built from the shards on first request
+    when missing. A non-Hafs delivery gets empty ``rows``.
+    """
+    if not _viewable(reciter):
+        return jsonify(ErrorEnvelope(error="Reciter not found").model_dump(exclude_none=True)), 404
+    return orjson_response(
+        readings_service.doc(reciter).model_dump(mode="json"),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@ts_bp.route("/profile/<reciter>")
+def ts_profile(reciter):
+    """A Hafs recitation's madd lengths, ghunnah and pauses (``TsRecitationProfile``).
+
+    ``null`` when the delivery has no ``recitation_profile.json`` (not re-timed, not Hafs).
+    """
+    if not _viewable(reciter):
+        return jsonify(ErrorEnvelope(error="Reciter not found").model_dump(exclude_none=True)), 404
+    profile = profile_service.doc(reciter)
+    return orjson_response(
+        profile.model_dump(mode="json") if profile else None,
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @ts_bp.route("/resource/<name>")

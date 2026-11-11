@@ -32,7 +32,7 @@ from pathlib import Path
 import brotli
 import orjson
 
-from config import DK_SCRIPT_PATH
+from qua_shared import quran_text
 from qua_shared.catalog_visibility import is_everyayah_channel
 from qua_shared.riwayat import (
     DEFAULT_RIWAYAH,
@@ -47,14 +47,16 @@ from services.audio.audio_meta import chapter_numbers, vbr_chapters_for_reciter
 from services.reference.editions import EditionsUnavailable
 from services.state import catalog as catalog_service
 from services.state import state as state_service
-from services.storage import data_dir, static_refs
+from services.storage import data_dir
 from utils.formatting import slug_to_name
 
 log = logging.getLogger("inspector")
 
-# Resource keys served at /api/ts/resource/<key>. The OTF font is bundled
-# with the SPA (frontend/public/fonts/) and intentionally absent here.
-_RESOURCE_KEYS = ("qpc_hafs", "digital_khatt")
+# Resource keys served at /api/ts/resource/<key>. The fonts are served by
+# /api/static/quran-data/<file> and intentionally absent here.
+# (The Mushaf view reads layouts and each layout's stop edition from the data pack
+# itself, through the TS SDK; the QPC text resource is retired.)
+_RESOURCE_KEYS = ("digital_khatt",)
 
 # Lazy-built caches. Single lock guards the build path; reads are dict
 # lookups so we don't need to hold the lock past `_ensure_built()`.
@@ -198,19 +200,20 @@ def _edition_blocks(reciters_block: dict[str, dict]) -> dict[str, dict]:
 def _build_resource_bytes() -> dict[str, bytes]:
     """Gzip every advertised resource for ``/api/ts/resource/<key>``.
 
-    ``qpc_hafs`` resolves via ``static_refs.load_qpc_bytes`` (local image →
-    bucket — the deployed Space's image ``.gz`` is an LFS pointer, so real
-    bytes come from the bucket). ``digital_khatt`` ships uncompressed in the
-    image and reads directly (HF auto-LFS is keyed on extension, so the
-    ~10 MB ``*.json`` is exempt). A missing/unavailable resource is skipped,
-    never raised — the manifest must not 500 on a degraded resource."""
-    out: dict[str, bytes] = {}
-    qpc = static_refs.load_qpc_bytes()
-    if qpc:
-        out["qpc_hafs"] = gzip.compress(qpc, compresslevel=6, mtime=0)
-    if DK_SCRIPT_PATH.exists():
-        out["digital_khatt"] = gzip.compress(DK_SCRIPT_PATH.read_bytes(), compresslevel=6, mtime=0)
-    return out
+    ``digital_khatt`` is the Digital Khatt v2 script (words + ayah-end markers) from
+    the talqeen-quran-data pack (``qua_shared.quran_text``). An unavailable pack skips
+    it, logged, never raised — the manifest must not 500 on a degraded resource. The
+    resource is static, so a manifest rebuild reuses it; ``invalidate()`` drops it."""
+    try:
+        bodies = {"digital_khatt": quran_text.digital_khatt_script_bytes()}
+    except quran_text.QuranDataUnavailable as exc:
+        log.error("timestamps resources unavailable: %s", exc)
+        return {}
+    return {key: _gzip(body) for key, body in bodies.items()}
+
+
+def _gzip(body: bytes) -> bytes:
+    return gzip.compress(body, compresslevel=6, mtime=0)
 
 
 def _published_reciter_slugs(*, include_everyayah: bool = False) -> list[str]:
@@ -367,8 +370,8 @@ def _ensure_built(*, include_everyayah: bool = False) -> None:
         _served_slugs_by_visibility[include_everyayah] = served
         _manifest_bytes_by_visibility[include_everyayah] = body
         _shard_lru.clear()
-        _resource_bytes.clear()
-        _resource_bytes.update(_build_resource_bytes())
+        if not _resource_bytes:
+            _resource_bytes.update(_build_resource_bytes())
         _built_seq_by_visibility[include_everyayah] = seq
         if not include_everyayah:
             # Preserve these names for existing diagnostics/tests and callers.
@@ -463,8 +466,10 @@ def _ayah_of(ref: str) -> int | None:
     chapter, say). Those belong to no ayah and are skipped rather than guessed
     at, so a malformed ref can never be filed under verse 0.
     """
-    _, _, tail = ref.partition(":")
-    return int(tail) if tail.isdigit() else None
+    head, _, tail = ref.partition(":")
+    if not (head.isdigit() and int(head) >= 1 and tail.isdigit() and int(tail) >= 1):
+        return None
+    return int(tail)
 
 
 def _ayah_ranges(ayahs: list[int], readings: list[dict]) -> list[list[int]]:
@@ -639,18 +644,30 @@ def ts_validation_doc(
     owner-preview-only traffic, and the file is re-written whenever a job
     re-runs — reading the small doc directly avoids a stale cache.
     """
-    _ensure_built(include_everyayah=include_everyayah)
-    row = state_service.get_row(reciter)
-    if row is None or row.visibility.value != "public":
-        return None
-    delivery = catalog_service.find_delivery(reciter)
-    if delivery is not None and is_everyayah_channel(delivery.channel) and not include_everyayah:
-        return None
-    if reciter not in _served_slugs_by_visibility[include_everyayah] and not allow_unreleased:
+    if not is_viewable(
+        reciter, allow_unreleased=allow_unreleased, include_everyayah=include_everyayah
+    ):
         return None  # not viewable → route returns 404
     # Viewable but never run with probe beams → empty doc (not a 404) so the
     # FE can render an empty panel.
     return data_dir.read_ts_validation_doc(reciter) or {"_meta": {}, "verses": {}}
+
+
+def is_viewable(
+    reciter: str,
+    allow_unreleased: bool = False,
+    include_everyayah: bool = False,
+) -> bool:
+    """Whether a reciter's timestamps artefacts may be served: public, its channel
+    visible to the caller, and released or under owner preview (``allow_unreleased``)."""
+    _ensure_built(include_everyayah=include_everyayah)
+    row = state_service.get_row(reciter)
+    if row is None or row.visibility.value != "public":
+        return False
+    delivery = catalog_service.find_delivery(reciter)
+    if delivery is not None and is_everyayah_channel(delivery.channel) and not include_everyayah:
+        return False
+    return reciter in _served_slugs_by_visibility[include_everyayah] or allow_unreleased
 
 
 def resource_bytes(name: str) -> bytes | None:

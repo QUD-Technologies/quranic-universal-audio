@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -16,8 +17,10 @@ from quranic_phonemizer import Phonemizer
 hb: Any = _hb
 
 ROOT = Path(__file__).resolve().parents[2]
-FONT = ROOT / "inspector/frontend/public/fonts/DigitalKhattV2.otf"
-DK = ROOT / "data/digital_khatt_v2_script.json"
+sys.path.insert(0, str(ROOT))
+from qua_shared import quran_text  # noqa: E402
+
+FONT = ROOT / "data/fonts/DigitalKhattV2.otf"  # scripts/devenv/install_quran_data.py fetches it
 OUTPUT_DIR = ROOT / "inspector/frontend/public/generated/shaped-glyphs-v13"
 SPECIAL = {
     0x0654: ("hamzaabove",),
@@ -33,6 +36,13 @@ SPECIAL = {
 _BLOCKED = -1
 STOP_MARKS = {0x06D6, 0x06D7, 0x06D8, 0x06DA, 0x06DB}
 SILENT_COMPANION_ROLE = "silent_companion"
+#: The verse words an opener's shard words (``0:1:n`` Isti'adha, ``0:2:n`` Basmala) are read as
+#: (``qua_sdk.integrations.special_native``): their tokens are these words', so they take these
+#: words' shapes. Mirrored by ``OPENER_SOURCE_WORDS`` in the FE ``recitation-data/specials.ts``.
+OPENER_SOURCE_WORDS = (
+    ("2:67:15", "16:98:5", "16:98:6", "16:98:7", "16:98:8"),
+    ("1:1:1", "1:1:2", "1:1:3", "1:1:4"),
+)
 
 
 def _verse_refs(dk: dict[str, dict]) -> tuple[str, ...]:
@@ -93,8 +103,21 @@ def _dk_owners(source_text: str, source_owners: list[int | None], dk_text: str) 
     return [None if owner == _BLOCKED else owner for owner in owners]
 
 
+def opener_words(dk: dict[str, dict], words: dict[str, dict]) -> dict[str, dict]:
+    """The shaped words the openers are read as, keyed by DK text like a chapter file."""
+    texts = [dk[ref]["text"] for refs in OPENER_SOURCE_WORDS for ref in refs]
+    return {text: words[text] for text in texts}
+
+
+def _write_json(target: Path, payload: dict) -> int:
+    target.write_text(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+    )
+    return target.stat().st_size
+
+
 def main() -> None:
-    dk = json.loads(DK.read_text(encoding="utf-8"))
+    dk = quran_text.digital_khatt_script()
     font_bytes = FONT.read_bytes()
     hb_font = hb.Font(hb.Face(font_bytes))
     tt = TTFont(FONT)
@@ -267,10 +290,14 @@ def main() -> None:
         target = OUTPUT_DIR / f"{chapter}.json"
         target.write_text(payload, encoding="utf-8")
         total_bytes += target.stat().st_size
+    total_bytes += _write_json(
+        OUTPUT_DIR / "openers.json",
+        {"upem": units_per_em, "words": opener_words(dk, canonical_words)},
+    )
     print(
         f"{OUTPUT_DIR}: {location_count} locations, {len(canonical_words)} unique "
         f"words, {len(paths)} glyph outlines, {total_bytes} bytes across shared paths "
-        f"and 114 chapters"
+        f"and 114 chapters + openers"
     )
 
 

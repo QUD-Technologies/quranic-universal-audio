@@ -1,38 +1,34 @@
 #!/usr/bin/env python3
-"""Persist a delivery's chapter audio + peaks to the bucket — the align pipeline's first stage.
+"""Persist a delivery's source audio to the bucket — the align pipeline's first stage.
 
 Runs as a CPU HF Job launched by ``services/admin/align_pipeline/stage_acquire.py``.
-Reads the delivery's audio manifest (``catalog/audio_manifest/<slug>.json``),
-fetches every chapter URL, re-encodes it to the canonical chapter mp3
-(192 kbps CBR, 44.1 kHz, source channel count preserved) and bakes the slim
-peaks blob beside it — the same bytes ``inspector/services/audio`` would produce,
-via ``qua_shared.audio.peaks``.
+Reads the delivery's audio manifest (``catalog/audio_manifest/<slug>.json``) and
+groups its chapters by source file (``qua_shared.audio.sources``):
 
-Chapters run **concurrently** on a thread pool (default: one worker per vCPU,
-capped by ``MAX_WORKERS``). Every per-chapter step releases the GIL — the fetch
-waits on a socket, ffprobe/ffmpeg/peaks are subprocesses — so the pool overlaps
-network latency with encode work instead of leaving a multi-core flavor idle on a
-single serial chain. Override with ``ACQUIRE_WORKERS``.
+* a **single-chapter** source is fetched, encoded to the canonical chapter mp3
+  (``qua_jobs/audio_io.encode``) and its peaks and loudness levels baked →
+  ``reciters/<slug>/audio/<ch>.mp3`` + ``peaks/<ch>.json.gz`` + ``levels/<ch>.json.gz``;
+* a **combined** source (several chapters in one Drive mp3 / YouTube video) is
+  fetched and encoded ONCE into its source slot ``reciters/<slug>/audio/<slot>.mp3``
+  — the align stage aligns it whole and ``split_audio.py`` cuts it per chapter.
 
-Idempotent per chapter: a chapter whose mp3 AND peaks already exist is skipped, so
-a retried run only pays for what the previous attempt did not finish. Writes:
-
-    reciters/<slug>/audio/<ch>.mp3
-    reciters/<slug>/peaks/<ch>.json.gz
-    reciters/<slug>/chapter_sources.json      {"<ch>": {"url", "offset_ms": 0}}
-    staging/<slug>/<run_id>/acquire.json      per-chapter outcome + failures
-
-Exits non-zero when any chapter failed, so the Inspector marks the run failed with
-the failure list instead of aligning a partial delivery. Only single-file-per-chapter
-(``by_surah``) manifests are supported; a URL claimed by two chapters is refused.
+Sources run concurrently on a thread pool (one worker per vCPU, ``ACQUIRE_WORKERS``
+overrides, 8 max); every step releases the GIL (socket waits, ffmpeg subprocesses).
+yt-dlp fetches are capped at ``YTDLP_WORKERS`` at once, and after YouTube's first
+bot-check refusal the remaining yt-dlp sources fail fast with the same reason.
+Idempotent: a chapter whose mp3 + peaks exist, or a slot whose mp3 exists (or
+whose chapters were already split), is skipped; a persisted chapter without
+levels gets them baked from its mp3 (retried, then reported as ``levels_missing``
+without failing the source). Writes the report
+``staging/<slug>/<run_id>/acquire.json`` and exits non-zero when any source failed.
 
 Env:
-  SLUG                    (required) delivery slug
-  RUN_ID                  (required) align run id (names the staging dir)
+  SLUG, RUN_ID            (required) delivery slug, align run id
   INSPECTOR_BUCKET_MOUNT  bucket mount root (default ``/data``)
   CHANNELS                optional 1|2 override; default = probe the source
-  ACQUIRE_WORKERS         optional concurrent chapter count (default = vCPUs, max 8)
-  HF_TOKEN                HF auth (secret) — only for yt-dlp-free direct fetches, unused otherwise
+  ACQUIRE_WORKERS         optional concurrent source count
+  YTDLP_COOKIES           optional secret — Netscape cookies.txt for YouTube
+  YTDLP_PROXY             optional proxy URL handed to yt-dlp
 """
 
 from __future__ import annotations
@@ -40,35 +36,55 @@ from __future__ import annotations
 import json
 import logging
 import os
-import shutil
-import subprocess
 import sys
 import tempfile
 import threading
-import urllib.request
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, os.environ.get("PYTHONPATH", "/aux/code"))
 
-from qua_shared.audio.peaks import compute_audio_peaks, pack_slim  # noqa: E402
+from qua_jobs import audio_io  # noqa: E402
+from qua_shared.audio.sources import (  # noqa: E402
+    SourceGroup,
+    groups_from_manifest,
+    needs_ytdlp,
+)
 
 log = logging.getLogger("acquire_audio")
 
-CANONICAL_BITRATE = "192k"
-CANONICAL_SAMPLE_RATE = "44100"
-_DIRECT_AUDIO_EXTS = frozenset({".mp3", ".wav", ".flac", ".m4a", ".ogg", ".opus", ".aac"})
-_USER_AGENT = "Mozilla/5.0 (quranic-universal-audio acquire)"
-_HTTP_TIMEOUT_S = 120
-_FFMPEG_TIMEOUT_S = 1800
-_YTDLP_FORMAT = "bestaudio/best"
-_YTDLP_EXTRACTOR_ARGS = "youtube:player_client=android,web"
-#: Beyond this the source CDN, not the flavor, is the limit — and each worker
-#: holds a raw + an encoded copy of its chapter in the job's ephemeral disk.
+#: Beyond this the source host, not the flavor, is the limit — and each worker
+#: holds a raw + an encoded copy of its file in the job's ephemeral disk.
 MAX_WORKERS = 8
 
+#: yt-dlp fetches in flight at once: one account hammering YouTube from a
+#: datacenter IP is what trips its bot check.
+YTDLP_WORKERS = 2
+
+#: Baking levels decodes a persisted chapter straight off the bucket mount, which
+#: drops reads of large files under concurrent load (ffmpeg exits 251, ``EIO``).
+LEVELS_ATTEMPTS = 3
+LEVELS_RETRY_S = 10
+
 _log_lock = threading.Lock()
+_ytdlp_gate = threading.Semaphore(YTDLP_WORKERS)
+#: The first bot-check refusal; later yt-dlp sources fail fast with it.
+_bot_blocked: list[str] = []
+
+
+def _fetch(url: str, dest: Path) -> Path:
+    if not needs_ytdlp(url):
+        return audio_io.fetch(url, dest)
+    with _ytdlp_gate:
+        if _bot_blocked:
+            raise audio_io.BotCheckError(f"skipped — {_bot_blocked[0]}")
+        try:
+            return audio_io.fetch(url, dest)
+        except audio_io.BotCheckError as exc:
+            _bot_blocked.append(str(exc))
+            raise
 
 
 def _bucket_root() -> Path:
@@ -79,206 +95,159 @@ def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _worker_count(chapters: int) -> int:
-    """Concurrent chapters: the env override, else one per vCPU within the cap."""
+def _worker_count(sources: int) -> int:
     override = os.environ.get("ACQUIRE_WORKERS", "").strip()
     if override.isdigit() and int(override) > 0:
-        return min(int(override), chapters)
-    return max(1, min(os.cpu_count() or 1, MAX_WORKERS, chapters))
+        return min(int(override), sources)
+    return max(1, min(os.cpu_count() or 1, MAX_WORKERS, sources))
 
 
-def _atomic_write(dest: Path, src: Path) -> None:
-    """Move ``src`` onto ``dest`` through a same-directory temp so a reader never
-    sees a half-written file on the bucket mount."""
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".part")
-    shutil.copyfile(src, tmp)
-    os.replace(tmp, dest)
-
-
-def _atomic_write_bytes(dest: Path, data: bytes) -> None:
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".part")
-    tmp.write_bytes(data)
-    os.replace(tmp, dest)
-
-
-# ---------------------------------------------------------------------------
-# Manifest
-# ---------------------------------------------------------------------------
-
-
-def _read_manifest(slug: str) -> dict[int, str]:
-    """``{chapter: url}`` from the by_surah audio manifest sidecar."""
+def read_groups(slug: str, run_id: str) -> list[SourceGroup]:
+    """The run's frozen grouping (``groups.json``, written by the Inspector when
+    the run starts) — the slot numbers must match what it aligns and splits.
+    Falls back to grouping the manifest for a standalone run."""
+    frozen = _bucket_root() / "staging" / slug / run_id / "groups.json"
+    if frozen.is_file():
+        raw = json.loads(frozen.read_text(encoding="utf-8"))["groups"]
+        return [
+            SourceGroup(url=g["url"], chapters=tuple(g["chapters"]), slot=g.get("slot"))
+            for g in raw
+        ]
     path = _bucket_root() / "catalog" / "audio_manifest" / f"{slug}.json"
     doc = json.loads(path.read_text(encoding="utf-8"))
-    chapters: dict[int, str] = {}
-    for key, entry in (doc.get("chapters") or {}).items():
-        if ":" in str(key):
-            raise ValueError(f"{slug}: by_ayah manifests are not supported by acquire_audio")
-        chapters[int(key)] = entry["url"]
-    if not chapters:
-        raise ValueError(f"{slug}: audio manifest lists no chapters")
-    by_url: dict[str, list[int]] = {}
-    for ch, url in chapters.items():
-        by_url.setdefault(url, []).append(ch)
-    shared = {url: chs for url, chs in by_url.items() if len(chs) > 1}
-    if shared:
-        raise ValueError(f"{slug}: one url maps to several chapters (combined files): {shared}")
-    return chapters
+    groups = groups_from_manifest(doc.get("chapters") or {}, doc.get("sources") or [])
+    if not groups:
+        raise ValueError(f"{slug}: audio manifest lists no chapters or sources")
+    return groups
 
 
 # ---------------------------------------------------------------------------
-# Fetch + encode
+# One source
 # ---------------------------------------------------------------------------
 
 
-def _needs_ytdlp(url: str) -> bool:
-    suffix = Path(url.split("?")[0]).suffix.lower()
-    return suffix not in _DIRECT_AUDIO_EXTS
-
-
-def _fetch(url: str, dest: Path) -> None:
-    if not _needs_ytdlp(url):
-        req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
-        with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_S) as resp, dest.open("wb") as fh:
-            shutil.copyfileobj(resp, fh)
-        return
-    if shutil.which("yt-dlp") is None:
-        raise RuntimeError("yt-dlp is not installed in the job image")
-    subprocess.run(
-        [
-            "yt-dlp",
-            "-f",
-            _YTDLP_FORMAT,
-            "--no-playlist",
-            "--extractor-args",
-            _YTDLP_EXTRACTOR_ARGS,
-            "--retries",
-            "5",
-            "--fragment-retries",
-            "5",
-            "--retry-sleep",
-            "5",
-            "--socket-timeout",
-            "30",
-            "-o",
-            str(dest),
-            "--force-overwrites",
-            url,
-        ],  # fmt: skip
-        check=True,
-        timeout=_FFMPEG_TIMEOUT_S,
-    )
-
-
-def _probe_channels(src: Path) -> int:
-    out = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-select_streams",
-            "a:0",
-            "-show_entries",
-            "stream=channels",
-            "-of",
-            "csv=p=0",
-            str(src),
-        ],  # fmt: skip
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=True,
-    ).stdout.strip()
-    channels = int(out.splitlines()[0]) if out else 1
-    return 2 if channels >= 2 else 1
-
-
-def _encode(src: Path, dest: Path, channels: int) -> None:
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(src),
-            "-vn",
-            "-c:a",
-            "libmp3lame",
-            "-b:a",
-            CANONICAL_BITRATE,
-            "-ar",
-            CANONICAL_SAMPLE_RATE,
-            "-ac",
-            str(channels),
-            "-f",
-            "mp3",
-            "-v",
-            "error",
-            str(dest),
-        ],  # fmt: skip
-        check=True,
-        timeout=_FFMPEG_TIMEOUT_S,
-    )
-    if not dest.is_file() or dest.stat().st_size == 0:
-        raise RuntimeError("ffmpeg produced an empty mp3")
-
-
-def _acquire_chapter(slug: str, chapter: int, url: str, channels_override: int | None) -> dict:
-    """Fetch, encode and bake one chapter. Returns the outcome record."""
+def _paths(slug: str, number: int) -> tuple[Path, Path]:
     reciter = _bucket_root() / "reciters" / slug
-    mp3_dest = reciter / "audio" / f"{chapter}.mp3"
-    peaks_dest = reciter / "peaks" / f"{chapter}.json.gz"
-    if mp3_dest.is_file() and peaks_dest.is_file():
-        log.info("chapter %d: already persisted, skipped", chapter)
-        return {"url": url, "skipped": True, "bytes": mp3_dest.stat().st_size}
+    return reciter / "audio" / f"{number}.mp3", reciter / "peaks" / f"{number}.json.gz"
 
-    with tempfile.TemporaryDirectory(prefix=f"acq_{chapter}_") as tmp:
+
+def _levels_path(slug: str, number: int) -> Path:
+    return _bucket_root() / "reciters" / slug / "levels" / f"{number}.json.gz"
+
+
+def _fill_levels(slug: str, group: SourceGroup) -> list[int]:
+    """Bake levels for persisted chapters of ``group`` that lack them.
+
+    Best-effort: the audio is already persisted, and a chapter without levels
+    only makes the pause sidecar ask every pause, so a bake that keeps failing
+    is logged and returned rather than failing the source.
+    """
+    missing = []
+    for ch in group.chapters:
+        mp3, dest = _paths(slug, ch)[0], _levels_path(slug, ch)
+        if mp3.is_file() and not dest.is_file() and not _bake_levels_to(mp3, dest):
+            missing.append(ch)
+    return missing
+
+
+def _bake_levels_to(mp3: Path, dest: Path) -> bool:
+    for attempt in range(1, LEVELS_ATTEMPTS + 1):
+        try:
+            audio_io.atomic_write_bytes(dest, audio_io.bake_levels(mp3))
+            return True
+        except Exception as exc:  # noqa: BLE001 — a mount read error, retried then reported
+            log.warning(
+                "%s: levels attempt %d/%d failed: %s", mp3.name, attempt, LEVELS_ATTEMPTS, exc
+            )
+            if attempt < LEVELS_ATTEMPTS:
+                time.sleep(LEVELS_RETRY_S)
+    return False
+
+
+def _already_done(slug: str, group: SourceGroup) -> bool:
+    if group.chapters and all(all(p.is_file() for p in _paths(slug, ch)) for ch in group.chapters):
+        return True  # every chapter persisted (a combined one: already split)
+    return group.combined and _paths(slug, group.item)[0].is_file()
+
+
+def acquire_group(slug: str, group: SourceGroup, channels_override: int | None) -> dict:
+    """Fetch + encode one source (and bake peaks for a single chapter)."""
+    mp3_dest, peaks_dest = _paths(slug, group.item)
+    if _already_done(slug, group):
+        missing = _fill_levels(slug, group)
+        log.info("%s: already persisted, skipped", _label(group))
+        outcome: dict = {"url": group.url, "skipped": True}
+        if missing:
+            outcome["levels_missing"] = missing
+        return outcome
+    with tempfile.TemporaryDirectory(prefix=f"acq_{group.item}_") as tmp:
         work = Path(tmp)
-        raw = work / ("src" + (Path(url.split("?")[0]).suffix or ".bin"))
-        _fetch(url, raw)
-        channels = channels_override or _probe_channels(raw)
-        encoded = work / f"{chapter}.mp3"
-        _encode(raw, encoded, channels)
-        hd = compute_audio_peaks(str(encoded))
-        if hd is None:
-            raise RuntimeError("ffmpeg produced no peaks for the encoded chapter")
-        blob = pack_slim(hd)
-        _atomic_write(mp3_dest, encoded)
-        _atomic_write_bytes(peaks_dest, blob)
-        return {
-            "url": url,
+        # No extension: ffmpeg would pick a demuxer by one (``.bin`` = bintext)
+        # over sniffing the bytes, and lose an mp3 behind a large ID3 tag.
+        raw = _fetch(group.url, work / "src")
+        channels = channels_override or audio_io.probe_channels(raw)
+        encoded = work / f"{group.item}.mp3"
+        antiphase = channels == 2 and audio_io.is_antiphase(raw)
+        if antiphase:
+            log.warning("%s: channels are polarity-inverted, flipping the right", _label(group))
+        audio_io.encode(raw, encoded, channels, invert_right=antiphase)
+        outcome = {
+            "url": group.url,
             "skipped": False,
             "bytes": encoded.stat().st_size,
             "channels": channels,
-            "duration_ms": hd["duration_ms"],
         }
+        if antiphase:
+            outcome["phase_inverted"] = True
+        if group.combined:
+            outcome["duration_ms"] = audio_io.probe_duration_ms(encoded)
+        else:
+            blob, outcome["duration_ms"] = audio_io.bake_peaks(encoded)
+            audio_io.atomic_write_bytes(peaks_dest, blob)
+            audio_io.atomic_write_bytes(
+                _levels_path(slug, group.item), audio_io.bake_levels(encoded)
+            )
+        audio_io.atomic_write(mp3_dest, encoded)
+    return outcome
 
 
-def _acquire_all(
-    slug: str, chapters: dict[int, str], channels_override: int | None, workers: int
-) -> tuple[dict[str, dict], dict[str, str]]:
-    """Run every chapter on the pool. Returns ``(outcomes, failures)`` keyed by chapter."""
-    outcomes: dict[str, dict] = {}
+def _label(group: SourceGroup) -> str:
+    if not group.combined:
+        return f"chapter {group.chapters[0]}"
+    if group.detect:
+        return f"slot {group.slot} (surahs detected after aligning)"
+    return f"slot {group.slot} (chapters {group.chapters[0]}-{group.chapters[-1]})"
+
+
+def acquire_all(
+    slug: str, groups: list[SourceGroup], channels_override: int | None, workers: int
+) -> tuple[dict[str, dict], dict[str, dict], dict[str, str]]:
+    """Returns ``(chapter outcomes, slot outcomes, failures)``; failures are keyed
+    by the chapter (single) or ``"slot <n>"`` (combined)."""
+    chapters: dict[str, dict] = {}
+    slots: dict[str, dict] = {}
     failures: dict[str, str] = {}
-    total = len(chapters)
+    total = len(groups)
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="acq") as pool:
-        futures = {
-            pool.submit(_acquire_chapter, slug, ch, chapters[ch], channels_override): ch
-            for ch in sorted(chapters)
-        }
+        futures = {pool.submit(acquire_group, slug, g, channels_override): g for g in groups}
         for future in as_completed(futures):
-            chapter = futures[future]
+            group = futures[future]
+            key = f"slot {group.slot}" if group.combined else str(group.chapters[0])
             try:
-                outcomes[str(chapter)] = future.result()
-                message = f"chapter {chapter}: ok ({chapters[chapter]})"
-            except Exception as exc:  # noqa: BLE001 — recorded per chapter, run continues
-                failures[str(chapter)] = f"{type(exc).__name__}: {exc}"
-                message = f"chapter {chapter}: FAILED {failures[str(chapter)]}"
+                outcome = future.result()
+                outcome["chapters"] = list(group.chapters)
+                if group.combined:
+                    slots[str(group.slot)] = outcome
+                else:
+                    chapters[key] = outcome
+                message = f"{_label(group)}: ok ({group.url})"
+            except Exception as exc:  # noqa: BLE001 — recorded per source, run continues
+                failures[key] = f"{type(exc).__name__}: {exc}"
+                message = f"{_label(group)}: FAILED {failures[key]}"
             with _log_lock:
-                done = len(outcomes) + len(failures)
+                done = len(chapters) + len(slots) + len(failures)
                 log.info("[%d/%d] %s", done, total, message)
-    return outcomes, failures
+    return chapters, slots, failures
 
 
 # ---------------------------------------------------------------------------
@@ -296,39 +265,34 @@ def main() -> int:
     channels_env = os.environ.get("CHANNELS", "").strip()
     channels_override = int(channels_env) if channels_env in ("1", "2") else None
 
-    chapters = _read_manifest(slug)
-    workers = _worker_count(len(chapters))
+    groups = read_groups(slug, run_id)
+    workers = _worker_count(len(groups))
+    combined = sum(1 for g in groups if g.combined)
     log.info(
-        "%s: %d chapter(s) to acquire on %d worker(s) (run %s)",
+        "%s: %d source(s) (%d combined) on %d worker(s) (run %s)",
         slug,
-        len(chapters),
+        len(groups),
+        combined,
         workers,
         run_id,
     )
-
-    outcomes, failures = _acquire_all(slug, chapters, channels_override, workers)
-
-    reciter = _bucket_root() / "reciters" / slug
-    sources = {str(ch): {"url": chapters[ch], "offset_ms": 0} for ch in sorted(chapters)}
-    _atomic_write_bytes(
-        reciter / "chapter_sources.json",
-        json.dumps(sources, ensure_ascii=False, indent=1).encode("utf-8"),
-    )
+    chapters, slots, failures = acquire_all(slug, groups, channels_override, workers)
     report = {
         "slug": slug,
         "run_id": run_id,
         "created_at": _now(),
-        "chapters": {ch: outcomes[ch] for ch in sorted(outcomes, key=int)},
+        "chapters": {k: chapters[k] for k in sorted(chapters, key=int)},
+        "sources": {k: slots[k] for k in sorted(slots, key=int)},
         "failures": failures,
     }
-    _atomic_write_bytes(
+    audio_io.atomic_write_bytes(
         _bucket_root() / "staging" / slug / run_id / "acquire.json",
         json.dumps(report, ensure_ascii=False, indent=1).encode("utf-8"),
     )
     if failures:
-        log.error("%s: %d chapter(s) failed: %s", slug, len(failures), sorted(failures))
+        log.error("%s: %d source(s) failed: %s", slug, len(failures), sorted(failures))
         return 1
-    log.info("%s: all %d chapter(s) persisted", slug, len(outcomes))
+    log.info("%s: all %d source(s) persisted", slug, len(groups))
     return 0
 
 

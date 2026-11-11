@@ -46,7 +46,7 @@ def test_first_release_added_only():
         members=[_member("Abdulbasit Abdulsamad"), _member("Saud Al-Shuraim")],
         owner="QUD-Technologies",
         repo="quranic-universal-audio",
-        hf_dataset="hetchyy/quranic-universal-ayahs",
+        hf_dataset="QUD-Technologies/quranic-universal-ayahs",
     )
     # Title first, then the asset section. Tolerant of the template's optional
     # standing intro paragraph between them (present on some release bodies) —
@@ -59,7 +59,7 @@ def test_first_release_added_only():
         "audio metadata, and the audio URLs paired with the timestamp data. |"
     ) in md
     # The release-level files index the whole release; each zip carries its own catalog.
-    assert "plus its own `catalog.json` and `LICENSE`." in md
+    assert "`specials.json` (its Isti'adha / Basmala)" in md
     assert "each zip also carries its own `catalog.json`" in md
     assert "release_schemas.json" not in md
     assert "First release: **2** recitations." in md
@@ -133,10 +133,9 @@ def test_audio_pairing_and_timestamp_layers_are_explained():
     assert "storage, speed, and network efficiency" in md
     assert "Use `shard.py` when your app prefers per-surah files locally" in md
     assert '["1:1", 70, 2790, true, 41]' in md
-    # The worked example spans multiple words and timed paint units.
+    # The worked example spans multiple words; letter tiers are no longer released.
     assert "ٱللَّهِ" in md
-    assert "word_occurrence" in md and "owns_sound" in md and "paint" in md
-    assert "Unicode-scalar ranges" in md
+    assert "letter_timestamps" not in md and "owns_sound" not in md
     assert "loops back or re-recites" in md
 
 
@@ -188,7 +187,7 @@ def test_schema_sections_are_collapsed():
     assert "type VerseTimestamps" in md
     assert '"tier": "verse"' in md
     assert '"tier": "word"' in md
-    assert '"tier": "letter"' in md
+    assert '"tier": "letter"' not in md
     assert "type ReleaseManifest" in md
 
 

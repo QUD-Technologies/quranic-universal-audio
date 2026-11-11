@@ -1,14 +1,23 @@
 /**
  * Timestamps-tab client types — FE-only.
  *
- * The timing view is assembled client-side from native v13 readings. Shard
+ * The timing view is assembled client-side from native readings. Shard
  * metadata and timing sidecars reuse generated wire types; native phonemizer
  * documents reuse the renderer package types.
  */
 
 import type { WirePayload } from '@quranic-phonemizer/cells';
-import type { TsShardMeta, TsWordShardMeta } from './generated/schemas';
+import type {
+    TsReadingVariant,
+    TsShardMeta,
+    TsShardReading as StoredShardReading,
+    TsVariantDefinition,
+    TsWordShardMeta,
+} from './generated/schemas';
 import type { VerseRef } from './view-models';
+
+/** The recited opener a special reading carries (`lib/recitation-data/specials.ts`). */
+export type SpecialKind = NonNullable<StoredShardReading['special']>;
 
 // ---------------------------------------------------------------------------
 // Client verse model (assembled by ts_client)
@@ -40,8 +49,8 @@ export type AnimationPolicy = 'timed' | 'cohighlight_previous' | 'cohighlight_ne
 /** Single word with text + timing + letters + phoneme indices into the flat intervals list. */
 export interface TsWord {
     location: string; // "surah:ayah:word"
+    /** Digital Khatt v2 text (Hafs), or the shard row's text for a word-profile edition. */
     text: string;
-    display_text: string;
     start: number; // seconds (may be negative for by_surah mode after offset)
     end: number;
     phoneme_indices: number[];
@@ -113,6 +122,9 @@ export interface TsVerseData {
      * narrow the shard with `isWordShard`) before assuming geometry exists.
      */
     wordReadings: WordProfileReading[];
+    /** The recited opener this occasion is, when it is one rather than a verse
+     *  (`verse_ref` is then its `0:1`/`0:2` part ref). Absent on verses. */
+    special?: SpecialKind | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -162,7 +174,7 @@ export interface TsCatalogResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Native shard v13
+// Native shard
 // ---------------------------------------------------------------------------
 
 export interface TsShardPart {
@@ -220,6 +232,12 @@ export interface TsShardReading {
         boundaries: TsBoundaryTiming[];
         columns: TsColumnTiming[];
     };
+    /** v15: the reading faces shown for this reading, absent when none is. */
+    variants?: TsReadingVariant[];
+    /** The chapter's definitions of `variants[].id`, copied from `_meta`. */
+    variantCatalogue?: Record<string, TsVariantDefinition>;
+    /** Set on a recited opener's reading (part `0:1`/`0:2`); absent on verses. */
+    special?: SpecialKind;
 }
 
 export interface TsNativeShardResponse {
@@ -253,6 +271,8 @@ export interface TsWordShardReading {
         words: TsWordTiming[];
         boundaries: TsBoundaryTiming[];
     };
+    /** Set on a recited opener's reading (part `0:1`/`0:2`); absent on verses. */
+    special?: SpecialKind;
 }
 
 export interface TsWordShardResponse {

@@ -19,8 +19,17 @@ from datetime import datetime
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
+from ...audio.sources import is_local_path, is_remote_url
 from ..config.state import SLUG_RE
 
 # Source slugs allow hyphens (e.g. ``surah-quran``); everything else uses
@@ -322,6 +331,41 @@ class ChapterEntry(BaseModel):
     source_url: str | None = Field(default=None, min_length=1)
     source_offset_ms: int | None = Field(default=None, ge=0)
 
+    @field_validator("url")
+    @classmethod
+    def _url_not_local(cls, v: str) -> str:
+        # A remote URL or a bucket-relative key — never a machine-local path
+        # (an offline-intake scratch path shipped in v3.2.0, #285).
+        if is_local_path(v):
+            raise ValueError(f"chapter url must not be a local filesystem path: {v!r}")
+        return v
+
+    @field_validator("source_url")
+    @classmethod
+    def _source_url_remote(cls, v: str | None) -> str | None:
+        if v is not None and not is_remote_url(v):
+            raise ValueError(f"chapter source_url must be an http(s) URL: {v!r}")
+        return v
+
+
+class ManifestSource(BaseModel):
+    """A source file whose chapters are not known yet (a playlist entry).
+
+    The align pipeline acquires it, lets the aligner detect which surahs it
+    holds, splits it into ``chapters`` and then drops it from ``sources``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(..., min_length=1)
+    title: str | None = None
+
+    @field_validator("url")
+    @classmethod
+    def _url_remote(cls, v: str) -> str:
+        if not is_remote_url(v):
+            raise ValueError(f"manifest source url must be an http(s) URL: {v!r}")
+        return v
+
 
 class AudioManifestSidecar(BaseModel):
     """Schema for ``<bucket>/catalog/audio_manifest/<slug>.json``.
@@ -342,6 +386,17 @@ class AudioManifestSidecar(BaseModel):
     slug: str
     meta: SidecarMeta = Field(alias="_meta")
     chapters: dict[str, ChapterEntry] = Field(default_factory=dict)
+    #: Files still awaiting surah detection (see :class:`ManifestSource`).
+    sources: list[ManifestSource] = Field(default_factory=list)
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_sources(self, handler: SerializerFunctionWrapHandler) -> dict:
+        # Only a playlist delivery awaiting its first align has sources; every
+        # other manifest keeps its exact on-disk shape.
+        data = handler(self)
+        if not self.sources:
+            data.pop("sources", None)
+        return data
 
     @field_validator("slug")
     @classmethod

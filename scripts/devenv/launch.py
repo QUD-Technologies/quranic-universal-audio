@@ -77,7 +77,7 @@ VITE_PORT_RANGE = range(5173, 5274)
 BACKEND_PORT_RANGE = range(5000, 5100)
 
 # Prod bucket repo id — `prod` mode points the local backend here, read-only.
-PROD_BUCKET_REPO = "hetchyy/quranic-inspector-bucket"
+PROD_BUCKET_REPO = "QUD-Technologies/quranic-inspector-bucket"
 
 MODES = ("dev", "prod", "fixtures")
 

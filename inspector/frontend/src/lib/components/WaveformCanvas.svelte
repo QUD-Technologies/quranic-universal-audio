@@ -14,6 +14,7 @@
     import { THEME_CHANGE_EVENT } from '../stores/theme.svelte';
     import type { PeakBucket } from '../types/peaks-transport';
     import { themeColor } from '../utils/canvas-theme';
+    import { readback2d } from '../utils/canvas-2d';
     import { drawWaveformPeaks } from '../utils/waveform-draw';
 
     /** Peak data to render. null = show empty (black) canvas. Both nested
@@ -40,6 +41,9 @@
      * Required when startMs/endMs are set. See startMs.
      */
     export let totalDurationMs: number | undefined = undefined;
+    /** Keep the canvas on the CPU — set by callers that read it back with
+     *  getImageData on every draw (see lib/utils/canvas-2d.ts). */
+    export let willReadFrequently = false;
 
     let canvas: HTMLCanvasElement;
 
@@ -52,13 +56,13 @@
 
     function redraw(): void {
         if (!canvas || !peaks) return;
-        const ctx = canvas.getContext('2d');
+        const ctx = (willReadFrequently ? readback2d(canvas) : canvas.getContext('2d'));
         if (!ctx) return;
         drawWaveformPeaks(ctx, peaks, { width: canvas.width, height: canvas.height, startMs, endMs, totalDurationMs });
     }
 
     function clearCanvas(): void {
-        const ctx = canvas.getContext('2d');
+        const ctx = (willReadFrequently ? readback2d(canvas) : canvas.getContext('2d'));
         if (!ctx) return;
         ctx.fillStyle = themeColor('--wf-bg', '#0f0f23');
         ctx.fillRect(0, 0, canvas.width, canvas.height);

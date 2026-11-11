@@ -31,6 +31,8 @@ from qua_shared.schemas.config.pending_requests import ProposedEdits
 from services.state import state as state_service
 
 SLUG = "rec_align"
+#: ``(slug, chapter, kwargs)`` of each stubbed ``aligner_timing.time_chapter`` call.
+_TIMED: list[tuple] = []
 OWNER = Actor(hf_user_id="u-owner", login_at_time="owner", role=Role.OWNER)
 
 
@@ -170,6 +172,19 @@ def test_align_batch_requests_only_auto_split_candidate_timings():
     body = AlignParams().batch_body()
     assert body["include_word_timestamps"] is False
     assert body["include_auto_split_timings"] is True
+    assert body["include_review_checks"] is True
+    assert body["include_basmala_voice"] is True
+
+
+def test_the_fatiha_voice_verdict_is_carried_into_the_run_dir(tmp_path):
+    from services.admin.align_pipeline import stage_assemble
+    from services.segments import promote_build
+
+    voice = {"verdict": "same", "z": 0.8, "version": 1}
+    stage_assemble._write_voice(tmp_path, {1: {"basmala_voice": voice}, 2: {}})
+    assert promote_build.read_voice(tmp_path) == voice
+    stage_assemble._write_voice(tmp_path / "x", {2: {}})
+    assert promote_build.read_voice(tmp_path / "x") is None
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +205,14 @@ def align_env(tmp_path, monkeypatch):
     monkeypatch.setenv("INSPECTOR_HF_TOKEN", "hf_test")
     backend = _hf_bucket.FilesystemBackend(tmp_path)
     _hf_bucket.set_backend(backend)
+    from services.timing import aligner_timing
+
+    _TIMED.clear()
+    monkeypatch.setattr(
+        aligner_timing,
+        "time_chapter",
+        lambda slug, chapter, **kw: _TIMED.append((slug, chapter, kw)),
+    )
     _seed_catalog(
         vocab=Vocab(
             riwayat=[Riwayah(slug="hafs", short="H", name="Hafs")],
@@ -226,6 +249,9 @@ def align_env(tmp_path, monkeypatch):
     )
     started: list[str] = []
     monkeypatch.setattr(runner, "ensure_worker", lambda run: started.append(run["run_id"]))
+    from qua_shared.audio import upstream
+
+    monkeypatch.setattr(upstream, "probe", lambda url: {"error": "offline"})
     progress._reset_for_tests()
     auto_detect._reset_seen_for_tests()
 
@@ -235,6 +261,53 @@ def align_env(tmp_path, monkeypatch):
     auto_detect._reset_seen_for_tests()
     audio_meta._clear_for_test()
     _hf_bucket.reset_backend()
+
+
+def test_start_adopts_a_replaced_upstream_recording_then_aligns_it(align_env, monkeypatch):
+    from qua_shared.audio import upstream
+    from services.admin.align_pipeline import runs
+    from services.audio import audio_meta
+    from services.storage import storage_paths
+
+    backend, started = align_env
+    doc = {
+        "schema_version": 1,
+        "slug": SLUG,
+        "_meta": {"checksum": "x", "chapter_count": 1, "category": "by_surah"},
+        "chapters": {
+            "112": {
+                "url": "https://cdn/112.mp3",
+                "size_bytes": 1000,
+                "duration_sec": 60,
+                "bitrate_kbps": 320,
+                "bitrate_mode": "cbr",
+            }
+        },
+    }
+    backend.write_json_atomic(storage_paths.audio_manifest_path(SLUG), doc)
+    audio_meta._stage_for_test(SLUG, doc)
+    stale = [
+        f"reciters/{SLUG}/{p}" for p in ("audio/112.mp3", "peaks/112.json.gz", "levels/112.json.gz")
+    ]
+    for path in stale:
+        backend.write_bytes_atomic(path, b"old recording")
+    monkeypatch.setattr(
+        upstream, "probe", lambda url: {"size": 800, "duration_s": 40.4, "kbps": 128, "sr": 44100}
+    )
+
+    status = runs.start(SLUG, OWNER)
+
+    entry = backend.read_json(storage_paths.audio_manifest_path(SLUG))["chapters"]["112"]
+    assert {k: v for k, v in entry.items() if v is not None} == {
+        "url": "https://cdn/112.mp3",
+        "size_bytes": 800,
+        "duration_sec": 40,
+        "bitrate_kbps": 128,
+        "bitrate_mode": "cbr",
+    }
+    assert [backend.exists(p) for p in stale] == [False, False, False]
+    assert status.detail["upstream_refreshed"] == ["ch112 recording (60s → 40s)"]
+    assert started == [status.run_id]
 
 
 def test_start_retry_cancel_lifecycle(align_env):
@@ -268,6 +341,25 @@ def test_start_retry_cancel_lifecycle(align_env):
     assert repo_align_runs.active_for_slug(SLUG) is None
     # A canceled run no longer blocks a fresh start.
     assert runs.start(SLUG, OWNER).run_id != status.run_id
+
+
+def test_retry_of_a_failed_acquire_drops_the_dead_job_but_not_later_stages(align_env):
+    from services.admin.align_pipeline import runs
+    from services.db import repo_align_runs
+    from services.db.sync import durable_transaction
+
+    run_id = runs.start(SLUG, OWNER).run_id
+    with durable_transaction():
+        repo_align_runs.update(run_id, status="failed", acquire_job_id="job_dead")
+    runs.retry(SLUG, OWNER)
+    row = repo_align_runs.get(run_id)
+    assert row is not None and row["acquire_job_id"] is None
+
+    with durable_transaction():
+        repo_align_runs.update(run_id, status="failed", stage="align", acquire_job_id="job_ok")
+    runs.retry(SLUG, OWNER)
+    row = repo_align_runs.get(run_id)
+    assert row is not None and row["acquire_job_id"] == "job_ok"
 
 
 def test_start_refuses_wrong_state_and_missing_config(align_env, monkeypatch):
@@ -353,7 +445,8 @@ def test_assemble_publishes_reciter_and_auto_detect_fires(align_env):
         "112:3:1-112:4:5",
     ]
     assert segs[1]["segment_uid"]  # the waqf row got its uid
-    assert "qalqala_letter" in segs[0] or "is_boundary_adj" in segs[0]  # stamped
+    assert _TIMED == [(SLUG, 112, {"riwayah": "hafs"})]
+    assert "qalqala_letter" in segs[0]  # stamped
 
     history = [
         json.loads(line)
@@ -366,7 +459,16 @@ def test_assemble_publishes_reciter_and_auto_detect_fires(align_env):
     assert "final_index" not in waqf["targets_after"][0]
 
     meta = json.loads(backend.read_bytes(f"reciters/{SLUG}/pipeline_meta.json"))
-    assert meta["deleted_basmala_chapters"] == [112]
+    assert "deleted_basmala_chapters" not in meta  # legacy key, no longer written
+    specials = json.loads(backend.read_bytes(f"reciters/{SLUG}/specials.json"))
+    [basmala] = specials["chapters"]["112"]
+    assert (basmala["type"], basmala["position"], basmala["start_ms"], basmala["end_ms"]) == (
+        "Basmala",
+        "pre",
+        820,
+        6680,
+    )
+    assert basmala["source"] == "align"
     assert json.loads(backend.read_bytes(f"reciters/{SLUG}/low_confidence_v2.json")) == {"v": 2}
     assert backend.exists(f"reciters/{SLUG}/edit_history_peaks.jsonl")
     assert backend.exists(f"reciters/{SLUG}/chapter_sources.json")
@@ -456,6 +558,44 @@ def test_sidecars_stage_skips_a_null_low_confidence(align_env, monkeypatch):
     )
 
 
+def _missed_waqf_after_sidecars(align_env, monkeypatch, neural):
+    from services.admin.align_pipeline import runs, stage_sidecars, staging
+    from services.admin.align_pipeline.params import AlignParams
+
+    run = runs.start(SLUG, OWNER)
+    staging.write_json(staging.chapter_path(SLUG, run.run_id, 112), CH112)
+    monkeypatch.setattr(
+        stage_sidecars,
+        "_call",
+        lambda _run_id, _body: {
+            "low_confidence_v2": None,
+            "missed_waqf_v2": neural,
+            "auto_split_v1": {"by_uid": {}},
+        },
+    )
+    stage_sidecars.run(SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"})
+    staged = staging.read_json(staging.sidecar_path(SLUG, run.run_id, "missed_waqf_v2.json"))
+    assert staged is not None
+    return staged
+
+
+def test_sidecars_stage_merges_the_neural_missed_waqf(align_env, monkeypatch):
+    """The Space's neural review is merged into the matcher-lattice Low Confidence Waqf."""
+    neural = {"_meta": {"kind": "missed_waqf", "method": "neural_checks"}, "by_uid": {}}
+
+    staged = _missed_waqf_after_sidecars(align_env, monkeypatch, neural)
+
+    assert staged["_meta"]["method"] == "neural_checks"
+    assert set(staged["_meta"]["by_axes"]) == {"neural", "lattice", "both"}
+
+
+def test_sidecars_stage_keeps_the_matcher_missed_waqf_without_a_neural_one(align_env, monkeypatch):
+    staged = _missed_waqf_after_sidecars(align_env, monkeypatch, None)
+
+    assert staged["_meta"]["kind"] == "missed_waqf"
+    assert staged["_meta"].get("method") != "neural_checks"
+
+
 def test_sidecars_stage_sends_interactive_timings_in_published_segment_order(
     align_env, monkeypatch
 ):
@@ -486,9 +626,7 @@ def test_sidecars_stage_sends_interactive_timings_in_published_segment_order(
 
     monkeypatch.setattr(stage_sidecars, "_call", fake_call)
 
-    stage_sidecars.run(
-        SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"}
-    )
+    stage_sidecars.run(SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"})
 
     assert captured["auto_split_timings"]["112"] == [None, None, chapter["segments"][3]["words"]]
 
@@ -535,3 +673,110 @@ def test_assemble_still_requires_low_confidence_on_hafs(align_env):
             {112: "https://cdn/112.mp3"},
             started_at="2026-09-13T00:00:00Z",
         )
+
+
+def test_sidecars_stage_builds_missed_waqf_v2_and_assemble_publishes_it(align_env):
+    from services.admin.align_pipeline import runs, stage_assemble, stage_sidecars, staging
+    from services.admin.align_pipeline.params import AlignParams
+
+    backend, _started = align_env
+    run = runs.start(SLUG, OWNER)
+    staging.write_json(staging.chapter_path(SLUG, run.run_id, 112), CH112)
+    for name in ("auto_split_v1.json", "low_confidence_v2.json"):
+        staging.write_json(staging.sidecar_path(SLUG, run.run_id, name), {"v": 1})
+    backend.write_bytes_atomic(f"reciters/{SLUG}/peaks/112.json.gz", _slim_blob(23000))
+
+    stage_sidecars.run(SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"})
+    staged = staging.read_json(staging.sidecar_path(SLUG, run.run_id, "missed_waqf_v2.json"))
+    assert staged is not None
+    assert staged["_meta"]["kind"] == "missed_waqf"
+    assert staged["by_uid"] == {}
+
+    stage_assemble.run(
+        SLUG,
+        run.run_id,
+        AlignParams(),
+        [112],
+        {112: "https://cdn/112.mp3"},
+        started_at="2026-09-13T00:00:00Z",
+    )
+    assert backend.exists(f"reciters/{SLUG}/missed_waqf_v2.json")
+
+
+def test_sidecars_stage_leaves_a_low_confidence_segment_one_card(align_env):
+    from services.admin.align_pipeline import runs, stage_sidecars, staging
+    from services.admin.align_pipeline.params import AlignParams
+
+    _backend, _started = align_env
+    run = runs.start(SLUG, OWNER)
+    path = staging.sidecar_path(SLUG, run.run_id, "missed_waqf_v2.json")
+    staging.write_json(path, {"_meta": {"kind": "missed_waqf", "segments": 2},
+                              "by_uid": {"a": {"cursors": [1]}, "b": {"cursors": [2]}}})  # fmt: skip
+    staging.write_json(staging.sidecar_path(SLUG, run.run_id, "auto_split_v1.json"), {"by_uid": {}})
+    staging.write_json(
+        staging.sidecar_path(SLUG, run.run_id, "low_confidence_v2.json"), {"failures": ["b", "c"]}
+    )
+
+    stage_sidecars.run(SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"})
+
+    staged = staging.read_json(path) or {}
+    assert list(staged["by_uid"]) == ["a"]
+    assert staged["_meta"]["segments"] == 1 and staged["_meta"]["low_confidence"] == 1
+
+
+def test_sidecars_stage_sends_the_align_stage_checks_on_the_staged_timeline(align_env, monkeypatch):
+    """A row's review checks travel by published segment index, moved with the row onto its
+    staged timeline; a check for another span (or none) is left for the Space to time."""
+    from copy import deepcopy
+
+    from services.admin.align_pipeline import runs, stage_sidecars, staging
+    from services.admin.align_pipeline.params import AlignParams
+
+    _backend, _started = align_env
+    run = runs.start(SLUG, OWNER)
+    chapter = deepcopy(CH112)
+    # As if the split stage moved the row 1000 ms earlier after the aligner checked it.
+    chapter["segments"][1]["review_checks"] = {
+        "row": {"uid": "1", "ref": "112:1:1-112:1:4", "start_ms": 8380, "end_ms": 11940,
+                "fit": -0.2},
+        "joins": [{"uid": "1", "before": "112:1:1", "after": "112:1:2", "at_ms": 9000}],
+    }  # fmt: skip
+    chapter["segments"][2]["review_checks"] = {
+        "row": {"uid": "2", "ref": "112:2:1-112:2:2", "start_ms": 0, "end_ms": 10},
+        "joins": [],
+    }
+    staging.write_json(staging.chapter_path(SLUG, run.run_id, 112), chapter)
+    captured = {}
+
+    def fake_call(_run_id, body):
+        captured.update(body)
+        return {"low_confidence_v2": {"failures": []}, "auto_split_v1": {"by_uid": {}}}
+
+    monkeypatch.setattr(stage_sidecars, "_call", fake_call)
+
+    stage_sidecars.run(SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"})
+
+    first, second, third = captured["review_checks"]["112"]
+    assert (first["row"]["start_ms"], first["row"]["end_ms"]) == (7380, 10940)
+    assert first["joins"][0]["at_ms"] == 8000
+    assert second is None and third is None
+
+
+def test_sidecars_stage_sends_no_checks_when_the_align_stage_had_none(align_env, monkeypatch):
+    from services.admin.align_pipeline import runs, stage_sidecars, staging
+    from services.admin.align_pipeline.params import AlignParams
+
+    _backend, _started = align_env
+    run = runs.start(SLUG, OWNER)
+    staging.write_json(staging.chapter_path(SLUG, run.run_id, 112), CH112)
+    captured = {}
+
+    def fake_call(_run_id, body):
+        captured.update(body)
+        return {"low_confidence_v2": {"failures": []}, "auto_split_v1": {"by_uid": {}}}
+
+    monkeypatch.setattr(stage_sidecars, "_call", fake_call)
+
+    stage_sidecars.run(SLUG, run.run_id, AlignParams(), [112], {112: "https://cdn/112.mp3"})
+
+    assert "review_checks" not in captured

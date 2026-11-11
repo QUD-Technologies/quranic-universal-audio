@@ -73,7 +73,7 @@ registerRuneSetter((loc) => {
 // RTL locales flip `<html dir="rtl">`; chrome mirrors via logical CSS while
 // time-axis surfaces (waveforms, filmstrip, scrubber, editor rows, history
 // diffs) stay pinned `dir="ltr"` islands. Keep in lockstep with locale-store.ts.
-const RTL: ReadonlySet<string> = new Set<string>(['ar']);
+const RTL: ReadonlySet<string> = new Set<string>(['ar', 'ckb']);
 
 function applyDocument(loc: Locale): void {
     const el = document.documentElement;
@@ -114,12 +114,6 @@ export const i18n = {
         } catch {
             /* storage blocked — the choice still applies for this session */
         }
-    },
-    /** Cycle Auto → each locale → Auto (the header toggle). */
-    cycle(): void {
-        const order: LocaleMode[] = ['auto', ...locales];
-        const next = order[(order.indexOf(_mode) + 1) % order.length];
-        this.setMode(next ?? 'auto');
     },
     /** Pin an explicit locale in-place (no reload). */
     set(loc: Locale): void {

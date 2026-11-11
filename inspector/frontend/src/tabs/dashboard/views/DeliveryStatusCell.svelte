@@ -1,5 +1,6 @@
 <script lang="ts">
     import StatePill from '../../../lib/components/StatePill.svelte';
+    import DeliveryAlignControl from './DeliveryAlignControl.svelte';
     import type { PublicDelivery } from '../../../lib/types/generated/schemas';
 
     export let delivery: PublicDelivery;
@@ -50,6 +51,10 @@
         >{claimReviewButtonLabel}</button>
     {:else}
         <StatePill state={delivery.bucket} size="sm" />
+    {/if}
+
+    {#if delivery.bucket === 'requested'}
+        <DeliveryAlignControl slug={delivery.slug} />
     {/if}
 
     {#if canDiscard}

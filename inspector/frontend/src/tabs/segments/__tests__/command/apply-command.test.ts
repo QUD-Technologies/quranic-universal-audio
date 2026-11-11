@@ -41,21 +41,6 @@ describe('applyCommand', () => {
     expect(Array.isArray(r.validationDelta!.introduced)).toBe(true);
   });
 
-  it('records op_context_category and resolved delta for Basmala + Amin edits', () => {
-    // basmala_amin behaves like the other resolve-by-edit categories:
-    // edits from inside the accordion stamp op_context_category so the BE
-    // resolved-by-edit index can suppress the flag on next revalidation.
-    const cmd: SegmentCommand = {
-      type: 'trim',
-      segmentUid: 'uid-1',
-      delta: { time_start: 100 },
-      sourceCategory: 'basmala_amin',
-    };
-    const r = applyCommand(baseState, cmd);
-    expect(r.operation.op_context_category).toBe('basmala_amin');
-    expect(r.validationDelta?.resolved ?? []).toContain('basmala_amin');
-  });
-
   it('strips history context for muqattaat edits', () => {
     const cmd: SegmentCommand = {
       type: 'trim',

@@ -9,7 +9,6 @@
     "status_code": 200,
     "field_keys_top_level": [
       "audio_bleeding",
-      "boundary_adj",
       "cross_verse",
       "errors",
       "failed",
@@ -51,13 +50,10 @@
     "field_keys_top_level": [
       "accordion_context",
       "low_conf_default_threshold",
-      "muqattaat_verses",
       "qalqala_letters",
       "seg_font_size",
       "seg_scroll_anim_mode",
       "seg_word_spacing",
-      "standalone_refs",
-      "standalone_words",
       "trim_dim_alpha",
       "trim_pad_left",
       "trim_pad_right",

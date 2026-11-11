@@ -1,54 +1,46 @@
 """TsJobSettings / TsJobRecord schema tests.
 
-Pure ``extra="forbid"``: the retired ``persist_audio`` / ``gen_peaks`` knobs
-(the timestamps job is alignment-only now — audio + peaks land offline) are
-REJECTED on read rather than stripped. A clean settings/record round-trips.
+``TsJobSettings`` ignores unknown keys: run records written by the MFA engine
+carry its alignment knobs, which parse and are dropped. A record round-trips.
 """
 
 from __future__ import annotations
 
-import pytest
-
 from qua_shared.schemas import TsJobRecord, TsJobSettings
 
 
-def test_settings_with_retired_persist_or_peaks_key_rejected():
-    for retired in ("persist_audio", "gen_peaks"):
-        with pytest.raises(ValueError):
-            TsJobSettings.model_validate({"beams": [50, 2], "workers": 8, retired: True})
+def test_settings_drop_mfa_alignment_knobs():
+    s = TsJobSettings.model_validate(
+        {
+            "beams": [50, 2],
+            "workers": 8,
+            "aligner_model": "m1",
+            "persist_audio": True,
+            "chapters": [2],
+        }
+    )
+    assert s.model_dump() == {"chapters": [2]}
 
 
-def test_clean_settings_validates():
-    s = TsJobSettings.model_validate({"beams": [50, 2], "workers": 8})
-    assert s.beams == [50, 2]
-    assert s.workers == 8
-
-
-def test_record_with_retired_settings_rejected():
-    with pytest.raises(ValueError):
-        TsJobRecord.model_validate(
-            {
-                "job_id": "j1",
-                "slug": "minshawy_murattal",
-                "settings": {"beams": [50], "persist_audio": True, "gen_peaks": True},
-                "status": "succeeded",
-            }
-        )
-
-
-def test_clean_record_validates():
+def test_mfa_record_validates_and_keeps_its_scope():
     rec = TsJobRecord.model_validate(
         {
             "job_id": "j1",
             "slug": "minshawy_murattal",
-            "settings": {"beams": [50]},
+            "settings": {"beams": [50], "padding": "forward", "chapters": [108]},
             "status": "succeeded",
         }
     )
-    assert rec.settings.beams == [50]
+    assert rec.settings.chapters == [108]
+    assert rec.model_dump()["settings"] == {"chapters": [108]}
 
 
-def test_settings_default_beams_is_single_50():
-    # The schema default stays a neutral resolved list; the launch form is the
-    # single place that defaults probe beams to [2].
-    assert TsJobSettings().beams == [50]
+def test_record_round_trips():
+    rec = TsJobRecord(
+        job_id="j1", slug="r", settings=TsJobSettings(chapters=[1, 2]), status="failed"
+    )
+    assert TsJobRecord.model_validate_json(rec.model_dump_json()) == rec
+
+
+def test_settings_default_is_full_reciter():
+    assert TsJobSettings().chapters is None

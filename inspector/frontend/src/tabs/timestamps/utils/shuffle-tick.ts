@@ -25,6 +25,24 @@ export interface ShuffleTickOccasion {
     ref: string;
     startMs: number;
     endMs: number;
+    /** The verse's own words (chapter-absolute ms): narrower than the segment span
+     *  when one segment reads several verses. */
+    speechStartMs?: number;
+    speechEndMs?: number;
+}
+
+/** A by-surah verse's own speech span (chapter-absolute ms) from its words,
+ *  which are anchored at `time_start_ms`; empty for by-ayah audio or no words. */
+export function speechSpan(data: {
+    audio_category: string;
+    time_start_ms: number;
+    words: { start: number; end: number }[];
+}): { speechStartMs?: number; speechEndMs?: number } {
+    if (data.audio_category !== 'by_surah_audio' || data.words.length === 0) return {};
+    return {
+        speechStartMs: data.time_start_ms + Math.min(...data.words.map((w) => w.start)) * 1000,
+        speechEndMs: data.time_start_ms + Math.max(...data.words.map((w) => w.end)) * 1000,
+    };
 }
 
 export type ShuffleTickOutcome =
@@ -46,6 +64,9 @@ export interface ShuffleFireArgs {
     /** True once the jump has already fired for the occasion in focus
      *  (once-per-occasion guard). */
     firedForCurrentFocus: boolean;
+    /** The occasion in focus is a recited opener (Isti'adha/Basmala), not a
+     *  verse: it leads into ayah 1, so its end is no ayah end to shuffle at. */
+    focusSpecial?: boolean;
 }
 
 /** The end-of-occasion fire predicate: armed, the auditioned occasion's end is
@@ -55,23 +76,31 @@ export interface ShuffleFireArgs {
  *  leak bug violated by re-measuring against the next occasion after focus had
  *  advanced. */
 export function shouldFireShuffle(args: ShuffleFireArgs): boolean {
-    const { armed, ms, focusEndMs, guardMs, firedForCurrentFocus } = args;
-    if (!armed || focusEndMs === null || firedForCurrentFocus) return false;
+    const { armed, ms, focusEndMs, guardMs, firedForCurrentFocus, focusSpecial } = args;
+    if (!armed || focusEndMs === null || firedForCurrentFocus || focusSpecial) return false;
     return ms >= focusEndMs - guardMs;
 }
 
-/** The index of the occasion to focus for playhead `ms`: the one whose span
- *  contains it, else the nearest preceding, else the first. Returns -1 when there
- *  are no occasions. */
+/** The index of the occasion to focus for playhead `ms`: the one whose speech
+ *  span contains it, else — among those whose segment span does — the last whose
+ *  speech has begun (or the first), else the nearest preceding, else the first.
+ *  The segment fallback matters: a jump seeks to the
+ *  segment start, which precedes the first word — resolving that to the previous
+ *  occasion would focus one whose end is already behind the playhead and fire the
+ *  shuffle again at once (a runaway jump loop). Returns -1 when there are no
+ *  occasions. */
 export function occasionIndexAt(occasions: ShuffleTickOccasion[], ms: number): number {
     if (occasions.length === 0) return -1;
+    let segHit = -1;
     let hit = 0;
     for (let i = 0; i < occasions.length; i++) {
         const o = occasions[i]!;
-        if (ms >= o.startMs && ms < o.endMs) return i;
+        const speechStart = o.speechStartMs ?? o.startMs;
+        if (ms >= speechStart && ms < (o.speechEndMs ?? o.endMs)) return i;
+        if (ms >= o.startMs && ms < o.endMs && (segHit < 0 || speechStart <= ms)) segHit = i;
         if (o.startMs <= ms) hit = i; // nearest preceding
     }
-    return hit;
+    return segHit >= 0 ? segHit : hit;
 }
 
 /** Combined tick decision: hold everything while a chapter is mid-swap, else

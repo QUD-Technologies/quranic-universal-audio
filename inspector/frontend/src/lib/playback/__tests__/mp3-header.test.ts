@@ -4,8 +4,8 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { firstFrameVbrTag, isNativelySeekable } from '../mp3-header';
-import { frame, id3v2, mp3Head, MPEG1_MONO, MPEG1_STEREO, MPEG2_STEREO } from './mp3-fixtures';
+import { firstFrameVbrTag, hasGaplessSampleCount, isNativelySeekable } from '../mp3-header';
+import { ascii, frame, frameRun, id3v2, mp3Head, MPEG1_MONO, MPEG1_STEREO, MPEG2_STEREO } from './mp3-fixtures';
 
 describe('firstFrameVbrTag', () => {
     it('reads an Info tag on a bare MPEG-1 stereo frame', () => {
@@ -44,13 +44,63 @@ describe('firstFrameVbrTag', () => {
 });
 
 describe('isNativelySeekable', () => {
-    it('is true for Info-tagged and untagged files', () => {
+    it('is true for an Info-tagged file', () => {
         expect(isNativelySeekable(mp3Head({ tag: 'Info' }))).toBe(true);
-        expect(isNativelySeekable(mp3Head({ tag: null }))).toBe(true);
+    });
+
+    it('is true for an untagged file whose frames hold the nominal byte rate', () => {
+        expect(isNativelySeekable(frameRun(150, { padded: true }))).toBe(true);
+        const hz48k = [0xff, 0xfb, 0x94, 0x64];
+        expect(isNativelySeekable(frameRun(150, { padded: false, header: hz48k, nominal: 384 }))).toBe(true);
+    });
+
+    it('is false for an untagged file that never pads (nominal-rate seek drifts)', () => {
+        expect(isNativelySeekable(frameRun(150, { padded: false }))).toBe(false);
+    });
+
+    it('is false for an untagged file that changes bitrate (untagged VBR)', () => {
+        expect(isNativelySeekable(frameRun(150, { padded: true, switchAt: 40 }))).toBe(false);
+    });
+
+    it('is false for an untagged head too short to vouch for', () => {
+        expect(isNativelySeekable(mp3Head({ tag: null }))).toBe(false);
+        expect(isNativelySeekable(frameRun(4, { padded: true }))).toBe(false);
+    });
+
+    it('does not walk frames behind an Info tag', () => {
+        expect(isNativelySeekable(frameRun(150, { padded: false, tag: 'Info' }))).toBe(true);
     });
 
     it('is false for a Xing-tagged file (TOC seek) and for an unreadable head', () => {
         expect(isNativelySeekable(mp3Head({ tag: 'Xing' }))).toBe(false);
         expect(isNativelySeekable(new Uint8Array(id3v2(50)))).toBe(false);
+    });
+});
+
+/** ID3v2 tag whose payload holds `text` (at offset 4), as Latin-1 or UTF-16LE. */
+function id3With(text: string, utf16 = false): number[] {
+    const tag = id3v2(200);
+    const bytes = utf16 ? text.split('').flatMap(c => [c.charCodeAt(0), 0]) : ascii(text);
+    tag.splice(14, bytes.length, ...bytes);
+    return tag;
+}
+
+describe('iTunSMPB gapless sample count', () => {
+    const smpb = 'iTunSMPB\u0000 00000000 00000210 000007F5 0000000003E7FF7B';
+
+    it('detects the key in Latin-1 and UTF-16LE tag text', () => {
+        expect(hasGaplessSampleCount(new Uint8Array(id3With(smpb)))).toBe(true);
+        expect(hasGaplessSampleCount(new Uint8Array(id3With('iTunSMPB', true)))).toBe(true);
+    });
+
+    it('ignores tags without it, and audio past the tag', () => {
+        expect(hasGaplessSampleCount(new Uint8Array(id3With('iTunNORM 00000616')))).toBe(false);
+        expect(hasGaplessSampleCount(new Uint8Array([...ascii('iTunSMPB'), ...frameRun(10, { padded: true })]))).toBe(false);
+    });
+
+    it('makes an otherwise seekable file go through the proxy', () => {
+        const run = frameRun(150, { padded: true });
+        expect(isNativelySeekable(new Uint8Array([...id3v2(200), ...run]))).toBe(true);
+        expect(isNativelySeekable(new Uint8Array([...id3With(smpb), ...run]))).toBe(false);
     });
 });

@@ -1,6 +1,8 @@
 """Undo operations: batch reversal, snapshot verification, segment restoration.
 
 No Flask imports -- all functions accept parameters and return plain dicts.
+An undo runs under ``data_loader.detailed_lock`` like a save, so it never
+overlaps another write of the same reciter's ``detailed.json``.
 """
 
 from datetime import UTC, datetime
@@ -14,7 +16,7 @@ from services.reference.delivery_edition import sdk_riwayah_for
 from services.segments.save import persist_detailed
 from services.segments.stamping import stamp_segment
 from services.storage import cache, data_dir
-from services.storage.data_loader import get_single_word_verses, load_detailed
+from services.storage.data_loader import detailed_lock, load_detailed
 from utils.references import chapter_from_ref
 from utils.uuid7 import uuid7
 
@@ -300,21 +302,20 @@ def _restamp(entries: list[dict], chapters: set[int], riwayah: str) -> None:
     coordinates: ``_reverse_ref_edit`` rewrites ``matched_ref`` outright, and
     the patch path replaces the whole segment dict with the frontend's
     before-snapshot. That snapshot carries only what the editor can change --
-    ``snapshotSeg`` never sees ``source_ref``, ``projection_support``,
-    ``qalqala_letter`` or ``is_boundary_adj``, because none of them are on the
-    wire model -- so restoring it drops them.
+    ``snapshotSeg`` never sees ``source_ref``, ``projection_support`` or
+    ``qalqala_letter``, because none of them are on the wire model -- so
+    restoring it drops them.
 
     For a projected delivery that is not cosmetic: the timestamps engine refuses
     a run whose projected segments have no ``source_ref``
     (``assert_projected_segments_are_sourced``), so one undo would block the
     next alignment until every touched segment was re-saved by hand.
     """
-    single_word_verses = get_single_word_verses(riwayah)
     for entry in entries:
         if chapters and chapter_from_ref(entry.get("ref", "")) not in chapters:
             continue
         for seg in entry.get("segments", []):
-            stamp_segment(seg, single_word_verses, riwayah)
+            stamp_segment(seg, riwayah)
 
 
 def _append_revert_record(
@@ -358,6 +359,11 @@ def undo_batch(reciter: str, target_batch_id: str, *, actor: Actor) -> dict | tu
     panel can attribute who undid the batch (separate from who originally
     saved it).
     """
+    with detailed_lock(reciter):
+        return _undo_batch(reciter, target_batch_id, actor=actor)
+
+
+def _undo_batch(reciter: str, target_batch_id: str, *, actor: Actor) -> dict | tuple:
     all_records = parse_history_for_reciter(reciter)
     if not all_records:
         return {"error": "No edit history found"}, 404
@@ -430,7 +436,7 @@ def undo_batch(reciter: str, target_batch_id: str, *, actor: Actor) -> dict | tu
         # about the ref, not a 409 about the batch, and a write-time
         # ValidationError is a fault rather than a conflict.
         _restamp(entries, affected_chapters, riwayah)
-        persist_detailed(reciter, meta, entries)
+        persist_detailed(reciter, meta, entries, affected_chapters)
         persisted = True
     finally:
         if not persisted:
@@ -468,6 +474,17 @@ def undo_ops(
 
     Returns result dict or ``(error_dict, status)``.
     """
+    with detailed_lock(reciter):
+        return _undo_ops(reciter, target_batch_id, requested_op_ids, actor=actor)
+
+
+def _undo_ops(
+    reciter: str,
+    target_batch_id: str,
+    requested_op_ids: set[str],
+    *,
+    actor: Actor,
+) -> dict | tuple:
     all_records = parse_history_for_reciter(reciter)
     if not all_records:
         return {"error": "No edit history found"}, 404
@@ -541,7 +558,7 @@ def undo_ops(
         # about the ref, not a 409 about the batch, and a write-time
         # ValidationError is a fault rather than a conflict.
         _restamp(entries, affected_chapters, riwayah)
-        persist_detailed(reciter, meta, entries)
+        persist_detailed(reciter, meta, entries, affected_chapters)
         persisted = True
     finally:
         if not persisted:

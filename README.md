@@ -1,14 +1,21 @@
-<h1 align="center">Qur'anic Universal Audio</h1>
+<p align="center">
+  <a href="https://audio.qud.dev">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset=".github/banner-ink.png">
+      <img alt="Quranic Universal Audio: Every provider. Every recitation. One consistent catalog, timed down to the letter." src=".github/banner-paper.png">
+    </picture>
+  </a>
+</p>
 
 <p align="center">
   <a href="https://aligner.qud.dev/"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Tool-Qur'anic%20Universal%20Aligner-E8C32E" alt="Demo - Qur'anic Universal Aligner"></a>
   <a href="https://audio.qud.dev/"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Website-Qur'anic%20Universal%20Audio-E8C32E" alt="App - Qur'anic Universal Audio"></a>
-  <a href="https://huggingface.co/datasets/hetchyy/quranic-universal-ayahs"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-Qur'anic%20Universal%20Ayahs-E8C32E" alt="Dataset - Qur'anic Universal Ayahs"></a>
+  <a href="https://huggingface.co/datasets/QUD-Technologies/quranic-universal-ayahs"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-Qur'anic%20Universal%20Ayahs-E8C32E" alt="Dataset - Qur'anic Universal Ayahs"></a>
   <!-- stats-badges:start -->
   <br>
   <img src="https://img.shields.io/badge/%F0%9F%94%89%20Catalog-64748b" alt="🔉 Catalog"> <img src="https://img.shields.io/badge/Reciters-1%2C214-d4842a" alt="Reciters: 1,214"> <img src="https://img.shields.io/badge/Riwayat-19-f0ad4e" alt="Riwayat: 19"> <img src="https://img.shields.io/badge/Hours-47%2C500h%2B-d4842a" alt="Hours: 47,500h+">
   <br>
-  <img src="https://img.shields.io/badge/%F0%9F%8E%AF%20Aligned-64748b" alt="🎯 Aligned"> <img src="https://img.shields.io/badge/Mushafs-56-d4842a" alt="Mushafs: 56"> <img src="https://img.shields.io/badge/Riwayat-4-f0ad4e" alt="Riwayat: 4"> <img src="https://img.shields.io/badge/Hours-1%2C650h%2B-d4842a" alt="Hours: 1,650h+">
+  <img src="https://img.shields.io/badge/%F0%9F%8E%AF%20Aligned-64748b" alt="🎯 Aligned"> <img src="https://img.shields.io/badge/Mushafs-102-d4842a" alt="Mushafs: 102"> <img src="https://img.shields.io/badge/Riwayat-4-f0ad4e" alt="Riwayat: 4"> <img src="https://img.shields.io/badge/Hours-2%2C950h%2B-d4842a" alt="Hours: 2,950h+">
   <!-- stats-badges:end -->
   <br>
   <a href="https://github.com/QUD-Technologies/quranic-universal-audio/releases/latest"><img src="https://img.shields.io/github/v/release/QUD-Technologies/quranic-universal-audio?label=Release&color=4a5568" alt="Latest Release"></a>
@@ -31,11 +38,11 @@
 
 ## Highlights
 
-- **Unified Qur'anic audio hub:** A single consistent schema with comprehensive metadata for reciters and recitations instead of scattered websites, CDN APIs, YouTube playlists, and raw files with different formats.
+- **Unified Qur'anic audio hub:** A single consistent schema with comprehensive metadata for reciters and recitations instead of scattered websites, CDNs, YouTube playlists, and raw files with different formats.
 
-- **Large-scale, multi-riwayah, multi-style:** Full Qur'an coverage across many recitations and hours of audio, spanning mujawwad, murattal, muallim, taraweeh and children repeat styles.
+- **Large-scale, multi-riwayah, multi-style:** Full Qur'an coverage across many recitations and hours of audio, spanning mujawwad, murattal, muallim and taraweeh styles.
 
-- **Phoneme-based alignment:** 20ms phoneme-level precision yields maximum accuracy, eliminates ambiguity at word boundaries and disambiguates tajweed effects where sounds merge across words.
+- **Precise alignment:** 20ms timing precision yields maximum accuracy, eliminates ambiguity at word boundaries and disambiguates tajweed effects where sounds merge across words.
 
 - **Repetition-aware, gap-free timestamps:** The pipeline transcribes each silence-based segment independently, so repeated words are detected and timestamped correctly. See the [comparison with QUL timestamps](docs/qul_timestamp_comparison.md).
 
@@ -50,14 +57,13 @@
 - **Verse playback** — play or seek any ayah or ayah range straight from the original surah audio.
 - **Follow-along** — word-by-word highlighting synced to the recitation.
 - **Word study** — replay the sound of individual words for learners.
-- **Tajweed research** — measure ghunnah and madd durations from letter timestamps, study cross-word effects and silent-letter interactions, and support tajweed teaching.
-- **ML research** — a large, diverse corpus (reciters, paces, styles, riwayat) for speech recognition, tajweed, recitation start/stop detection, and reciter identification.
+- **ML research** — a large, diverse corpus (reciters, paces, styles, riwayat) for speech recognition, tajweed and reciter identification.
 
 ## Data Access
 
 Audio, timestamps and metadata ship in two open formats — pick by your use case.
 
-| | [GitHub Releases](https://github.com/QUD-Technologies/quranic-universal-audio/releases) | [Hugging Face Dataset](https://huggingface.co/datasets/hetchyy/quranic-universal-ayahs) |
+| | [GitHub Releases](https://github.com/QUD-Technologies/quranic-universal-audio/releases) | [Hugging Face Dataset](https://huggingface.co/datasets/QUD-Technologies/quranic-universal-ayahs) |
 |---|---|---|
 | **Best for** | Apps, offline use, archives | ML research, analysis, direct audio access |
 | **Shape** | JSON per recitation, in ayah / word / letter tiers | Parquet, one row per ayah |
@@ -70,22 +76,6 @@ Audio, timestamps and metadata ship in two open formats — pick by your use cas
 Visit the [website](https://audio.qud.dev/) and read the overview info and editing guide to get started in contributing recitations and fixing alignment errors.
 
 Issues and pull requests are welcome. If you've found a bug or have a feature idea, open an [issue](https://github.com/QUD-Technologies/quranic-universal-audio/issues) or jump into the Discord.
-
-To contribute code to the repo directly, fork the repo and see [inspector/README.md](inspector/README.md) for setup instructions.
-
-## Roadmap
-
-**Access**
-
-- [ ] **Unified API/SDKs** — typed Python/JS client (`pip`/`npm`) over the published QUA artifacts: fetches and caches only requested data, defaults to latest with optional pinning and offline vendoring, and exposes the schemas for type consistency. Complements the Releases + HF dataset.
-- [ ] **Global CDN** — mirror all recitations and audio across regions, prewarmed with demand-based routing for low-latency delivery everywhere.
-- [ ] **Rich Metadata** — Comprehensive metadata for reciters (personal information, images, links, etc.) and recitations (year, tajweed conventions/turuq, mistakes, audio issues, etc.) ensuring consistency and easier developer integration.
-
-**Coverage + Quality**
-
-- [ ] **100+ recitations** — reach 100+ fully aligned and verified recitations.
-- [x] **Letter-level precision** — word and letter timestamps are both high quality; close the few minor systematic and timing differences in letter timestamps that depend on context, tajweed, and reciter.
-- [x] **Riwayah** — extend beyond Hafs. Each riwayah has its own unique sounds, tajweed, symbols, and ayah orderings, with fewer and less reliable digital assets than Hafs.
 
 ## Acknowledgements
 

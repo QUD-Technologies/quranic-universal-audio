@@ -123,7 +123,7 @@ No eager warms of reciter data — timestamps + per-reciter caches are lazy on f
 
 ## Caching
 
-All mutable cache vars live in `services/storage/cache.py` (`services.cache`); no `global` for caches elsewhere. Classes: `_SingletonCache` (one nullable value), `_KeyedCache` (LRU dict, ceiling `_KEYED_CACHE_LRU_MAX=20`).
+All mutable cache vars live in `services/storage/cache.py` (`services.cache`); no `global` for caches elsewhere. Classes: `_SingletonCache` (one nullable value), `_KeyedCache` (LRU dict, ceiling `_KEYED_CACHE_LRU_MAX=20`; the audio-manifest sidecar caches use `_AUDIO_MANIFEST_LRU_MAX=512`, above the released-reciter count the TS manifest rebuild walks).
 
 - **Eager (singletons, immutable post-boot):** word counts, single-word verses, QPC/DK data, surah-info-lite — filled on first use, never invalidated.
 - **Lazy per-reciter (LRU-bounded):** segments, seg meta/verses, probe-v2, auto-split, pipeline-meta, history batches, split-group index, validate/stats results, audio manifest.

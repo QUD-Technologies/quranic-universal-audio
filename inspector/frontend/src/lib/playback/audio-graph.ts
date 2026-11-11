@@ -87,8 +87,9 @@ export function getOutputLatencyMs(): number {
 
 /** Media-clock ms → display ms: subtract the platform output latency so a
  *  visual playhead tracks the AUDIBLE position instead of the decode position.
- *  DISPLAY ONLY — never feed the result to seek / boundary / highlight logic
- *  (those must use the raw media clock). Clamps to ≥ 0; identity when no
+ *  VISUAL ONLY — never feed the result to seek / boundary logic (those use the
+ *  raw media clock); every visual that says what is sounding (cursor, row
+ *  highlight) should use it so they agree. Clamps to ≥ 0; identity when no
  *  latency is known. */
 export function displayTimeMs(mediaTimeMs: number): number {
     return Math.max(0, mediaTimeMs - getOutputLatencyMs());

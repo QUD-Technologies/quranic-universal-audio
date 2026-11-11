@@ -31,6 +31,7 @@
   "errors_mark_ready_blocking_counts": "Resolve the remaining blocking validation issues before marking ready.",
   "errors_mark_ready_payload": "Your mark-ready submission was incomplete. Please review and resubmit.",
   "errors_mark_ready_no_segments": "Can't mark ready — this reciter has no saved segments yet.",
+  "errors_quality_status_payload": "Pick a valid quality status.",
   "errors_last_owner": "You can't remove the last owner — promote another owner first.",
   "errors_unknown_reciter": "That reciter couldn't be found.",
   "errors_read_only": "This instance is read-only; changes aren't saved.",

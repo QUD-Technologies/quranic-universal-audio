@@ -67,7 +67,10 @@
         getTimeMs: () => number;
         /** Whether playback is running (drives the rAF loop). */
         playing: boolean;
-        /** Pre-shaped DigitalKhatt geometry for the active Hafs chapter. */
+        /** Pre-shaped DigitalKhatt geometry for the active Hafs chapter, keyed by
+         *  word text: the chapter's verse words plus the verse words the openers
+         *  are read as (an opener word's text and tokens are its source word's),
+         *  so an Isti'adha / Basmala is drawn like a verse. Openers get no `۝`. */
         shapedGlyphs?: ShapedGlyphFixture;
         /** Reveal timing-only silent tokens without applying the active colour. */
         omitSilentHighlights?: boolean;
@@ -144,7 +147,6 @@
             pageUnits.map(
                 (u): AnimSourceWord => ({
                     text: u.text,
-                    display_text: u.text,
                     // Letter timings are anchored to the FIRST occurrence; a
                     // repeated word's `u.start/u.end` are expanded to span every
                     // occurrence (min..max), which would stretch the char
@@ -217,6 +219,7 @@
         void config.fontFamily;
         void config.granularity;
         void config.showAyahMarker;
+        void shapedGlyphs; // may land after the units (outlines vs native text)
         pageCount = null;
         // Snap (no fade) across this re-page so a granularity switch doesn't
         // flash every word lit; re-enabled once the sweep below settles.
@@ -243,6 +246,7 @@
     $effect(() => {
         void structure; // re-run when the page content changes
         void omitSilentHighlights; // policy toggles re-sweep without re-paging
+        void shapedGlyphs; // late glyphs replace the word spans → re-index them
         if (!rootEl) return;
         wordCache = indexCache(rootEl, '.ra-word');
         charCache = config.granularity === 'char' ? indexCache(rootEl, '.ra-char') : null;
@@ -638,7 +642,7 @@
                     class="ra-decorator ra-decorator--{d.role}"
                     aria-hidden="true">{ZWSP}{d.glyph}</span
                 >{/each}</span
-        >{#if config.showAyahMarker && u && ayahRanges.get(u.ayahKey)?.[1] === pageStart + i + 1}{' '}<span
+        >{#if config.showAyahMarker && u && !u.special && ayahRanges.get(u.ayahKey)?.[1] === pageStart + i + 1}{' '}<span
                 class="ra-ayah-marker"
                 data-after-word={i}>{ayahMarker}{toArabicNumeral(u.ayah)}</span
             >{/if}

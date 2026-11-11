@@ -15,7 +15,7 @@
     "synthetic_injections": [
       {"index": 5, "purpose": "audio_bleeding — segment with matched_ref outside of entry_ref; uses entry 113 but matched_ref points at 1:1:1-1:1:1"},
       {"index": 6, "purpose": "cross_verse — single segment spans 113:1:4 through 113:2:1"},
-      {"index": 7, "purpose": "boundary_adj — single-word matched_ref (113:1:1-113:1:1) on a non-standalone word"}
+      {"index": 7, "purpose": "single-word matched_ref (113:1:1-113:1:1) — classifies as nothing"}
     ],
     "segments": [
       {"index": 0, "expected_categories": [], "notes": "Real segment; final letter qāf (ق) triggers qalqala classification, but ignored_categories=[\"qalqala\"] suppresses it — classifier emits no categories"},
@@ -25,7 +25,7 @@
       {"index": 4, "expected_categories": [], "notes": "Real segment; final letter dāl, qalqala letter"},
       {"index": 5, "expected_categories": ["audio_bleeding"], "notes": "Synthetic: matched_ref 1:1:1-1:1:1 belongs to a different surah; entry_ref is 113 → audio_bleeding fires"},
       {"index": 6, "expected_categories": ["cross_verse"], "notes": "Synthetic: matched_ref 113:1:4-113:2:1 spans verses; cross_verse fires"},
-      {"index": 7, "expected_categories": ["boundary_adj"], "notes": "Synthetic: single-word matched_ref 113:1:1-113:1:1; not in STANDALONE_REFS; boundary_adj fires"}
+      {"index": 7, "expected_categories": [], "notes": "Synthetic: single-word matched_ref 113:1:1-113:1:1; no category fires"}
     ]
   },
   "entries": [

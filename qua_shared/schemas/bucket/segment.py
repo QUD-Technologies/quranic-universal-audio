@@ -72,6 +72,53 @@ class SegmentFlag(BaseModel):
     follow_ups: list[FlagFollowUp] = Field(default_factory=list)
 
 
+class DetailedWordTiming(BaseModel):
+    """One legacy/review word interval preserved inside ``detailed.json``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    word: str
+    location: str
+    start_ms: int = Field(..., ge=0)
+    end_ms: int = Field(..., ge=0)
+
+    @model_validator(mode="after")
+    def _validate_time_range(self) -> DetailedWordTiming:
+        if self.end_ms < self.start_ms:
+            raise ValueError(f"end_ms ({self.end_ms}) must be >= start_ms ({self.start_ms})")
+        return self
+
+
+class DetailedPause(BaseModel):
+    """A stop the aligner's phoneme lattice heard inside a segment.
+
+    ``after_ref`` is the last word before the stop (``s:a:w``); ``gain`` is how
+    much the decode loses when that join may not pause, ``separability`` how far
+    apart the stopped and continued voicings are. The aligner never cuts on it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    after_ref: str
+    gain: float
+    separability: float
+
+
+class JoinVerdict(BaseModel):
+    """A reviewed word join: waqf at a boundary, wasl inside a segment.
+
+    Owned by the segment containing the audio immediately before ``at_ms``.
+    Cuts record waqf; resolving an item records wasl at its uncut cursors.
+    The word reference and audio cursor together distinguish repeated words.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    after_ref: str = Field(..., pattern=r"^[1-9][0-9]*:[1-9][0-9]*:[1-9][0-9]*$")
+    at_ms: int = Field(..., ge=0)
+    verdict: Literal["wasl", "waqf"]
+
+
 class DetailedSegment(BaseModel):
     """Atomic seg in a chapter's ``segments`` list.
 
@@ -85,8 +132,6 @@ class DetailedSegment(BaseModel):
     Persisted classifier optimisations (migrate_wip §2):
       - ``qalqala_letter`` — last Arabic letter when it's in the qalqala set
         (ق ط ب ج د), else ``None``. Default ``None`` for legacy data.
-      - ``is_boundary_adj`` — pad-floor boundary flag (structural + phoneme
-        tail). Default ``False`` for legacy data.
 
     Optional content fields:
       - ``confidence`` — DP alignment confidence in ``[0.0, 1.0]``. Failed
@@ -97,6 +142,11 @@ class DetailedSegment(BaseModel):
       - ``segment_uid`` — UUIDv7 stamped by save-flow merge / split / strip
         ops and by the ``/seg/all`` lazy backfill route. Absent on fresh
         extraction output.
+      - ``word_timings`` — optional historical word intervals retained by
+        imported review samples and exposed for playback highlighting.
+      - ``pauses`` — stops the aligner heard inside the segment
+        (``DetailedPause``). Kept only while the segment's time and ref are
+        unchanged; the source of the Low Confidence Waqf review.
       - ``ignored_categories`` — per-seg category-level ignore set written
         by the "ignore this issue" accordion action; consulted by
         ``services/validation/classifier.py::is_ignored_for`` to suppress
@@ -118,12 +168,37 @@ class DetailedSegment(BaseModel):
 
     # === Persisted classifier optimisations ===
     qalqala_letter: str | None = None
-    is_boundary_adj: bool = False
 
     # === Optional content ===
     confidence: float = Field(0.0, ge=0.0, le=1.0)
     wrap_word_ranges: list[list[str]] | None = None
     segment_uid: str | None = None
+    # Optional reviewed/legacy word boundaries. Most production segment files
+    # omit these, but QAB review samples carry them and the Inspector must not
+    # hide them from playback review.
+    word_timings: list[DetailedWordTiming] | None = None
+    pauses: list[DetailedPause] | None = None
+    join_verdicts: list[JoinVerdict] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_is_boundary_adj(cls, data: Any) -> Any:
+        """Published segments may carry ``is_boundary_adj``; it is ignored."""
+        if isinstance(data, dict) and "is_boundary_adj" in data:
+            data = {k: v for k, v in data.items() if k != "is_boundary_adj"}
+        return data
+
+    @model_validator(mode="after")
+    def _validate_join_verdicts(self) -> DetailedSegment:
+        seen: set[tuple[int, str]] = set()
+        for answer in self.join_verdicts or []:
+            key = (answer.at_ms, answer.after_ref)
+            if key in seen:
+                raise ValueError("duplicate join verdict")
+            seen.add(key)
+            if not self.time_start < answer.at_ms <= self.time_end:
+                raise ValueError("join verdict must belong to the segment on its left")
+        return self
 
     # === Coordinate provenance (multi-riwayah) ===
     # ``matched_ref`` above is the DELIVERY EDITION's coordinate — what the

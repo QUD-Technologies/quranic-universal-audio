@@ -7,33 +7,42 @@ Writes go through ``services.data_dir`` which routes to ``BucketBackend`` or
 writes through the hf-mount FUSE; the daemon's debounced flush handles
 durability to remote storage.
 
-Phase 3 made ``@require_edit_lock`` (signed-in + claim + state checks) the
-sole authoritative writer gate. The earlier ``INSPECTOR_LOCAL_WRITES`` env
-guard is gone — both local and deployed modes route every mutation through
-the same OAuth + claim check on the route layer.
+A save rewrites the whole ``detailed.json``, so saves and undos of one reciter
+are serialized under ``data_loader.detailed_lock``: each loads the document the
+previous one wrote, applies its edits and evicts the cache before the next
+begins. ``@require_edit_lock`` on the route layer is the writer gate (signed-in
++ claim + state checks).
 """
 
+import logging
 from collections import defaultdict
+from copy import deepcopy
 from datetime import UTC, datetime
+
+from pydantic import ValidationError
 
 from adapters.save_payload import build_seg_lookups as _adapter_build_seg_lookups
 from adapters.save_payload import make_seg as _adapter_make_seg
 from adapters.segments_json import build_segments_doc as _adapter_build_segments_doc
 from constants import HISTORY_SCHEMA_VERSION
 from domain.command import validate_patch_dict
+from qua_shared.join_verdicts import contained_verdicts
 from qua_shared.riwayat import DEFAULT_SDK_RIWAYAH
 from qua_shared.schemas import Actor, FlagFollowUp, SegmentFlag
+from qua_shared.schemas.bucket.segment import DetailedSegment, DetailedWordTiming
 from services.audio import op_peaks as op_peaks_svc
 from services.audio.peaks_history import append_peaks_records
 from services.reference.delivery_edition import sdk_riwayah_for
+from services.segments import specials as specials_svc
 from services.segments.stamping import stamp_segment
-from services.storage import cache, data_dir
+from services.storage import cache, data_dir, storage_paths
 from services.storage.data_loader import (
-    get_single_word_verses,
+    detailed_lock,
     get_word_counts,
     load_detailed,
     load_probe_v2,
 )
+from services.timing import retime_queue
 from services.validation.registry import filter_persistent_ignores
 from services.validation.snapshot_classifier import classify_snapshot
 from utils.references import chapter_from_ref, normalize_ref
@@ -47,9 +56,9 @@ SaveResult = dict | tuple[dict, int]
 # "classified_issues" deltas. They exist in the validation accordion for
 # review/awareness but represent display-only context, not gains/losses
 # from an edit.
-#   - ``basmala_amin`` flags verse-boundary basmala / amin conventions and
-#     would otherwise show up as a noisy +/- pill on every boundary edit.
 #   - ``muqattaat`` flags huruf-muqattaʼat verse openings — display-only.
+#   - ``basmala_amin`` is a retired category (legacy category, still hidden
+#     in old history).
 HISTORY_NEUTRAL_CATEGORIES = frozenset({"basmala_amin", "muqattaat"})
 
 
@@ -82,6 +91,7 @@ _ALLOWED_COMMAND_TYPES: frozenset[str] = frozenset(
         # validation category. Applied by ``_apply_flag_ops``.
         "flag_segment",
         "flagSegment",
+        "editWordTimings",
         # ``confirm_reference`` is a reducer-edge variant of editReference recorded
         # on ``op_type`` only; the ``command.type`` itself remains ``editReference``.
     }
@@ -93,8 +103,8 @@ def _validate_command_envelopes(operations: list) -> str | None:
 
     Each operation must carry a ``command`` object whose ``type`` is a known
     string and matches the enclosing ``op.type``.  Ops without a ``type`` (the
-    pre-Phase-3 round-trip shape used by patch-only saves) are skipped to
-    preserve MUST-1 (additive only).
+    round-trip shape used by patch-only saves) are skipped to preserve MUST-1
+    (additive only).
     """
     for op in operations or []:
         if not isinstance(op, dict):
@@ -239,11 +249,13 @@ def _attach_classified_issues(
     return out
 
 
-def persist_detailed(reciter: str, meta: dict, entries: list[dict]) -> None:
-    """Write detailed.json atomically; rebuild segments.json.
+def persist_detailed(reciter: str, meta: dict, entries: list[dict], chapters) -> None:
+    """Write detailed.json atomically; rebuild segments.json; re-time ``chapters``.
 
     Shared helper consumed by both undo.py and (internally) save_seg_data.
-    Does NOT append history — callers are responsible for that.
+    Does NOT append history — callers are responsible for that. The changed
+    ``chapters`` get their stored segment times brought up to date in the
+    background (:mod:`services.timing.retime_queue`).
 
     v2: writes go through ``data_dir`` (storage backend). No ``.bak`` files
     (audit log + edit_history.jsonl are the recovery surface). No file
@@ -256,6 +268,33 @@ def persist_detailed(reciter: str, meta: dict, entries: list[dict]) -> None:
             seg.pop("_resolved_by_edit", None)
     data_dir.write_detailed_doc(reciter, {"_meta": meta, "entries": entries})
     rebuild_segments_json(reciter, entries)
+    _sync_labelled_specials(reciter, entries, chapters)
+    retime_queue.schedule(reciter, chapters)
+
+
+def _sync_labelled_specials(reciter: str, entries: list[dict], chapters) -> None:
+    """Mirror the changed chapters' labelled special rows into ``specials.json``.
+
+    Only by-surah recordings: a special's times are chapter-audio ms. A failure
+    leaves ``specials.json`` behind until the chapter's next save; the edit itself
+    is already durable, so it is logged rather than failing the save.
+    """
+    wanted = {int(c) for c in chapters}
+    by_chapter = {
+        chapter_from_ref(str(e["ref"])): e.get("segments", [])
+        for e in entries
+        if ":" not in str(e["ref"]) and chapter_from_ref(str(e["ref"])) in wanted
+    }
+    if not by_chapter:
+        return
+    try:
+        specials_svc.sync_from_detailed(
+            reciter, by_chapter, generated_at=_utc_now_iso(), riwayah=sdk_riwayah_for(reciter)
+        )
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "specials sync failed for %s chapters %s", reciter, sorted(by_chapter)
+        )
 
 
 def normalize_ref_with_wc(ref: str, riwayah: str = DEFAULT_SDK_RIWAYAH) -> str:
@@ -330,14 +369,13 @@ def _apply_full_replace(
     input validation failure (propagated by the caller as the route response).
     """
     word_counts = get_word_counts(riwayah)
-    single_word_verses = get_single_word_verses(riwayah)
     if len(matching) == 1:
         new_segs = [
             _make_seg(s, existing_by_time, existing_by_uid, word_counts)
             for s in updates["segments"]
         ]
         for seg in new_segs:
-            stamp_segment(seg, single_word_verses, riwayah)
+            stamp_segment(seg, riwayah)
         matching[0]["segments"] = new_segs
         return None
 
@@ -375,7 +413,7 @@ def _apply_full_replace(
             }, 400
 
         new_seg = _make_seg(s, existing_by_time, existing_by_uid, word_counts)
-        stamp_segment(new_seg, single_word_verses, riwayah)
+        stamp_segment(new_seg, riwayah)
         candidates[0]["segments"].append(new_seg)
     return None
 
@@ -387,12 +425,18 @@ def _apply_patch(matching: list[dict], updates: dict, riwayah: str = DEFAULT_SDK
         for seg in e.get("segments", []):
             flat_segments.append(seg)
 
-    single_word_verses = get_single_word_verses(riwayah)
     for upd in updates["segments"]:
         idx = upd.get("index")
         if idx is not None and 0 <= idx < len(flat_segments):
             ref = normalize_ref_with_wc(upd.get("matched_ref", ""), riwayah)
+            if ref != flat_segments[idx].get("matched_ref"):
+                flat_segments[idx].pop("word_timings", None)
+                flat_segments[idx].pop("pauses", None)
             flat_segments[idx]["matched_ref"] = ref
+            if "join_verdicts" in flat_segments[idx]:
+                flat_segments[idx]["join_verdicts"] = contained_verdicts(
+                    flat_segments[idx], flat_segments[idx]["join_verdicts"] or []
+                )
             if "confidence" in upd:
                 flat_segments[idx]["confidence"] = upd["confidence"]
             if "ignored_categories" in upd:
@@ -402,13 +446,125 @@ def _apply_patch(matching: list[dict], updates: dict, riwayah: str = DEFAULT_SDK
                 else:
                     flat_segments[idx].pop("ignored_categories", None)
                     flat_segments[idx].pop("ignored", None)
+            if "join_verdicts" in upd:
+                flat_segments[idx]["join_verdicts"] = upd["join_verdicts"] or []
+            if upd.get("is_wasl") is not None:
+                flat_segments[idx]["is_wasl"] = bool(upd["is_wasl"])
             # Re-stamp persisted classifier fields since matched_ref/text changed.
-            stamp_segment(flat_segments[idx], single_word_verses, riwayah)
+            stamp_segment(flat_segments[idx], riwayah)
+
+
+def _apply_word_timing_op(matching: list[dict], updates: dict, *, reciter: str, chapter: int):
+    """Apply one sample-only word-boundary edit and build its authoritative undo patch."""
+    operations = updates.get("operations") or []
+    timing_ops = [
+        op for op in operations if isinstance(op, dict) and op.get("op_type") == "edit_word_timings"
+    ]
+    if any(
+        isinstance(op, dict)
+        and op.get("type") == "editWordTimings"
+        and op.get("op_type") != "edit_word_timings"
+        for op in operations
+    ):
+        return {"error": "Invalid word timing edit operation."}, 400
+    if not timing_ops:
+        return None
+    if (
+        not storage_paths.is_sample_slug(reciter)
+        or len(operations) != 1
+        or len(timing_ops) != 1
+        or updates.get("segments")
+        or updates.get("full_replace")
+    ):
+        return {"error": "Word timing edits must be a single sample-only operation."}, 400
+    op = timing_ops[0]
+    cmd = op.get("command") or {}
+    if op.get("type") != "editWordTimings" or cmd.get("type") != "editWordTimings":
+        return {"error": "Invalid word timing edit operation."}, 400
+    uid = cmd.get("segmentUid")
+    expected = cmd.get("expected")
+    boundaries = cmd.get("boundaries")
+    if (
+        not isinstance(uid, str)
+        or not isinstance(expected, list)
+        or not isinstance(boundaries, list)
+    ):
+        return {"error": "Word timing edit requires a segment and boundary lists."}, 400
+    for entry in matching:
+        for index, segment in enumerate(entry.get("segments", [])):
+            if segment.get("segment_uid") != uid:
+                continue
+            old = segment.get("word_timings") or []
+            current_bounds = [{"start_ms": w["start_ms"], "end_ms": w["end_ms"]} for w in old]
+            if expected != current_bounds:
+                return {
+                    "error": "Word timings changed since this editor opened. Reload the sample."
+                }, 409
+            if not old or len(boundaries) != len(old):
+                return {"error": "Word count changed; reload the sample."}, 409
+            candidate = []
+            previous_end = segment["time_start"]
+            for old_word, bound in zip(old, boundaries, strict=True):
+                if not isinstance(bound, dict) or set(bound) != {"start_ms", "end_ms"}:
+                    return {"error": "Each word needs start_ms and end_ms."}, 400
+                start, end = bound["start_ms"], bound["end_ms"]
+                if (
+                    type(start) is not int
+                    or type(end) is not int
+                    or start < previous_end
+                    or end - start < 20
+                    or end > segment["time_end"]
+                ):
+                    return {
+                        "error": "Word boundaries must stay ordered, non-overlapping, and inside the segment."
+                    }, 400
+                try:
+                    candidate.append(
+                        DetailedWordTiming.model_validate({**old_word, **bound}).model_dump(
+                            mode="json"
+                        )
+                    )
+                except ValidationError:
+                    return {"error": "Invalid word timing data."}, 400
+                previous_end = end
+            if candidate == old:
+                return {"error": "No word timing change to save."}, 400
+            before = deepcopy(segment)
+            segment["word_timings"] = candidate
+            try:
+                DetailedSegment.model_validate(
+                    {k: v for k, v in segment.items() if k != "_resolved_by_edit"}
+                )
+            except ValidationError:
+                segment.clear()
+                segment.update(before)
+                return {"error": "Invalid word timing edit."}, 400
+            after = deepcopy(segment)
+            op["patch"] = {
+                "before": [before],
+                "after": [after],
+                "removedIds": [],
+                "insertedIds": [],
+                "affectedChapterIds": [chapter],
+            }
+            op["targets_before"] = [
+                {**before, "chapter": chapter, "entry_ref": entry["ref"], "index_at_save": index}
+            ]
+            op["targets_after"] = [
+                {**after, "chapter": chapter, "entry_ref": entry["ref"], "index_at_save": index}
+            ]
+            op["op_context_category"] = None
+            op["fix_kind"] = "manual"
+            return None
+    return {"error": "Word timing segment no longer exists. Reload the sample."}, 409
 
 
 def _utc_now_iso() -> str:
     """Millisecond ISO-8601 UTC stamp with a ``Z`` suffix (batch-clock format)."""
     return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+DELETE_FLAG_CAP = "segments.delete_flag"
 
 
 def _mutate_seg_flag(seg: dict, intent: str, comment: str, actor: Actor, now: str):
@@ -419,6 +575,8 @@ def _mutate_seg_flag(seg: dict, intent: str, comment: str, actor: Actor, now: st
       - ``edit`` — replace the root comment (flagger-only); an empty comment
         removes the whole flag (the unflag mechanism).
       - ``followup`` — append a reply (any editor; comment required).
+      - ``delete`` — remove the whole flag thread, whoever raised it
+        (``segments.delete_flag`` holders only; owner by default).
 
     The flag is always rebuilt through ``SegmentFlag`` so ``actor`` and the
     timestamps stay server-authoritative — the client never supplies identity.
@@ -454,6 +612,16 @@ def _mutate_seg_flag(seg: dict, intent: str, comment: str, actor: Actor, now: st
         seg["flag"] = flag.model_copy(update={"follow_ups": [*flag.follow_ups, reply]}).model_dump(
             mode="json"
         )
+        return None
+
+    if intent == "delete":
+        from services.auth.capabilities import can
+
+        if not existing:
+            return {"error": "No flag to delete on this segment."}, 404
+        if not can(actor, DELETE_FLAG_CAP):
+            return {"error": "You don't have permission to delete flags."}, 403
+        seg.pop("flag", None)
         return None
 
     return {"error": f"unknown flag intent: {intent!r}"}, 400
@@ -550,13 +718,13 @@ def _persist_and_record(
         return {"error": patch_err}, 400
 
     # Write detailed.json + rebuild segments.json via storage backend.
-    persist_detailed(reciter, meta, entries)
+    persist_detailed(reciter, meta, entries, [chapter])
 
     # Each operation's snapshots gain a ``classified_issues`` field so the
     # frontend history-delta path reads it directly off the saved record
     # instead of running a second classifier pass on snapshot dicts.
     # Ops also receive a ``patch`` envelope when absent.
-    probe_failed_uids, _ = load_probe_v2(reciter)
+    probe_failed_uids, _, _ = load_probe_v2(reciter)
     operations = _attach_classified_issues(
         _ensure_patch_on_ops(raw_ops),
         probe_failed_uids=probe_failed_uids,
@@ -633,30 +801,22 @@ def _refresh_split_group_index_on_save(reciter: str, batch: dict) -> None:
     cache.pop_seg_split_group_index(reciter)
 
 
-def save_seg_data(reciter: str, chapter: int, updates: dict, *, actor: Actor) -> SaveResult:
-    """Save edited segments.  Returns ``{"ok": True}`` or ``{"error": ...}``
-    with an HTTP status code as a second element in a tuple.
+def _apply_and_persist(
+    reciter: str, chapter: int, updates: dict, *, actor: Actor
+) -> tuple[SaveResult, list[dict], list[dict]]:
+    """Apply ``updates`` to the current document and persist it.
 
-    ``actor`` (kw-only) carries the per-edit attribution stamped on every
-    new edit_history.jsonl batch. The route layer builds it from the
-    authenticated user (see ``inspector/routes/segments_edit.py``).
+    Returns ``(result, flag_replies, flag_owner_activity)``. The caller holds
+    :func:`detailed_lock`, so ``load_detailed`` hands back the document as the
+    last write left it.
     """
-    # Validate command envelopes on every op before any work is done.  Each
-    # op declaring a discriminated ``type`` must carry a matching ``command``
-    # object whose ``type`` is in the allowed set.  Rejection is additive
-    # (MUST-1): historical patch-style ops without a ``type`` discriminator
-    # pass through untouched.
-    cmd_err = _validate_command_envelopes(updates.get("operations") or [])
-    if cmd_err:
-        return {"error": cmd_err}, 400
-
     entries = load_detailed(reciter)
     if not entries:
-        return {"error": "Reciter not found"}, 404
+        return ({"error": "Reciter not found"}, 404), [], []
 
     matching = [e for e in entries if chapter_from_ref(e["ref"]) == chapter]
     if not matching:
-        return {"error": "Chapter not found"}, 404
+        return ({"error": "Chapter not found"}, 404), [], []
 
     # Build lookups of existing segments by time and by uid for field preservation
     existing_by_time, existing_by_uid = _build_seg_lookups(matching)
@@ -678,9 +838,13 @@ def save_seg_data(reciter: str, chapter: int, updates: dict, *, actor: Actor) ->
         if updates.get("full_replace"):
             err = _apply_full_replace(matching, updates, existing_by_time, existing_by_uid, riwayah)
             if err is not None:
-                return err
+                return err, [], []
         else:
             _apply_patch(matching, updates, riwayah)
+
+        word_err = _apply_word_timing_op(matching, updates, reciter=reciter, chapter=chapter)
+        if word_err is not None:
+            return word_err, [], []
 
         # Flag ops carry their payload in the operation envelope, not in
         # ``segments`` — applied here with a server-authoritative actor + clock.
@@ -688,14 +852,12 @@ def save_seg_data(reciter: str, chapter: int, updates: dict, *, actor: Actor) ->
             matching, updates.get("operations") or [], actor=actor
         )
         if flag_err is not None:
-            return flag_err
+            return flag_err, [], []
 
         # ``ignored_categories`` is mutated only when the payload explicitly
         # carries it (Ignore action, or explicit ``[]`` clear -- MUST-7).
-        # Edits dispatched from validation accordion cards no longer write to
-        # ``ignored_categories``: that contract is reserved for explicit Ignore.
-        # Card dismissal for soft-rule categories is purely a frontend
-        # session-state concern.
+        # Card dismissal for soft-rule categories is a frontend session-state
+        # concern and never reaches this payload.
         result = _persist_and_record(
             reciter,
             chapter,
@@ -709,29 +871,59 @@ def save_seg_data(reciter: str, chapter: int, updates: dict, *, actor: Actor) ->
     finally:
         if not persisted:
             cache.invalidate_seg_caches(reciter)
+    return result, flag_replies, flag_owner_activity
 
-    # Notify after the save persisted — best-effort (own durable txn), never
-    # affects the save. Two audiences: the original flagger on a reply to their
-    # flag, and the review-alert recipients on any new flag / reply.
+
+def _notify_flag_activity(
+    reciter: str, actor: Actor, replies: list[dict], owner_activity: list[dict]
+) -> None:
+    """Notify the original flagger of each reply and the review-alert recipients
+    of each new flag / reply. Best-effort (own durable txn), never affects the save."""
+    from services.notifications import emit as _notify
+
+    for r in replies:
+        _notify.notify_flag_reply(
+            flagger_id=r["flagger_id"],
+            replier=actor,
+            slug=reciter,
+            segment_uid=r["segment_uid"],
+            comment=r["comment"],
+            at_utc=r["at_utc"],
+        )
+    for a in owner_activity:
+        _notify.notify_owners_flag_activity(
+            actor=actor,
+            slug=reciter,
+            segment_uid=a["segment_uid"],
+            kind=a["kind"],
+            body=f"{a['ref']} — {a['comment']}",
+            at_utc=a["at_utc"],
+        )
+
+
+def save_seg_data(reciter: str, chapter: int, updates: dict, *, actor: Actor) -> SaveResult:
+    """Save edited segments.  Returns ``{"ok": True}`` or ``{"error": ...}``
+    with an HTTP status code as a second element in a tuple.
+
+    Saves of one reciter run one at a time under :func:`detailed_lock`, each
+    applying its chapter's edits to the document the previous save wrote, so
+    overlapping saves of different chapters never drop each other's changes.
+
+    ``actor`` (kw-only) carries the per-edit attribution stamped on every
+    new edit_history.jsonl batch. The route layer builds it from the
+    authenticated user (see ``inspector/routes/segments/edit.py``).
+    """
+    # Validate command envelopes on every op before any work is done.  Each
+    # op declaring a discriminated ``type`` must carry a matching ``command``
+    # object whose ``type`` is in the allowed set.  Rejection is additive
+    # (MUST-1): patch-style ops without a ``type`` discriminator pass through
+    # untouched.
+    cmd_err = _validate_command_envelopes(updates.get("operations") or [])
+    if cmd_err:
+        return {"error": cmd_err}, 400
+
+    with detailed_lock(reciter):
+        result, replies, owner_activity = _apply_and_persist(reciter, chapter, updates, actor=actor)
     if not isinstance(result, tuple):
-        from services.notifications import emit as _notify
-
-        for r in flag_replies:
-            _notify.notify_flag_reply(
-                flagger_id=r["flagger_id"],
-                replier=actor,
-                slug=reciter,
-                segment_uid=r["segment_uid"],
-                comment=r["comment"],
-                at_utc=r["at_utc"],
-            )
-        for a in flag_owner_activity:
-            _notify.notify_owners_flag_activity(
-                actor=actor,
-                slug=reciter,
-                segment_uid=a["segment_uid"],
-                kind=a["kind"],
-                body=f"{a['ref']} — {a['comment']}",
-                at_utc=a["at_utc"],
-            )
+        _notify_flag_activity(reciter, actor, replies, owner_activity)
     return result

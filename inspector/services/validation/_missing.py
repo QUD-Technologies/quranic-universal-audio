@@ -10,6 +10,15 @@ from qua_shared.riwayat import DEFAULT_SDK_RIWAYAH
 from services.storage.data_loader import word_has_stop
 
 
+def _issue_chapter(surah: int, gap_refs: set[tuple[int, int]]) -> int:
+    """The chapter a missing-words issue opens in: the verse's surah when one of its
+    gap segments is there, else the (earliest) chapter whose audio holds them."""
+    chapters = {ch for ch, _ in gap_refs}
+    if not chapters or surah in chapters:
+        return surah
+    return min(chapters)
+
+
 def _build_missing_words(
     verse_segments: dict[tuple[int, int], list],
     word_counts: dict[tuple[int, int], int],
@@ -18,8 +27,12 @@ def _build_missing_words(
 ) -> list[dict]:
     """Build a list of missing-word issue dicts from the verse coverage map.
 
-    verse_segments maps (surah, ayah) → [(word_from, word_to, seg_index), ...].
-    seg_index is the chapter-local segment index used for auto-fix targeting.
+    verse_segments maps (surah, ayah) → [(word_from, word_to, seg_index, chapter), ...].
+    seg_index counts within ``chapter``, the chapter whose audio holds the segment.
+    That is usually the verse's surah, but not always: a chapter file that runs into
+    the next surah's opening carries a segment of it. The issue points at the chapter
+    its gap segments sit in, and auto-fix only offers to stretch a segment in the
+    verse's own chapter (stretching a spilled one would claim the wrong audio).
     sequence_gaps carries local audio-order jumps whose skipped words may be
     covered later by a valid backtrack/repetition.
     """
@@ -31,30 +44,33 @@ def _build_missing_words(
             continue
         seg_list.sort(key=lambda x: x[0])
         covered = set()
-        for wf, wt, _ in seg_list:
+        for wf, wt, _, _ in seg_list:
             covered.update(range(wf, wt + 1))
         missing = set(range(1, expected + 1)) - covered
         if not missing:
             continue
 
-        gap_indices: set[int] = set()
+        gap_refs: set[tuple[int, int]] = set()  # (chapter, seg_index)
         for j in range(len(seg_list)):
-            wf, wt, idx = seg_list[j]
+            wf, wt, idx, ch = seg_list[j]
             if j + 1 < len(seg_list):
-                next_wf, _, next_idx = seg_list[j + 1]
+                next_wf, _, next_idx, next_ch = seg_list[j + 1]
                 if next_wf > wt + 1:
-                    gap_indices.add(idx)
-                    gap_indices.add(next_idx)
+                    gap_refs.add((ch, idx))
+                    gap_refs.add((next_ch, next_idx))
             if j == len(seg_list) - 1 and wt < expected:
-                gap_indices.add(idx)
+                gap_refs.add((ch, idx))
             if j == 0 and wf > 1:
-                gap_indices.add(idx)
+                gap_refs.add((ch, idx))
+        issue_chapter = _issue_chapter(surah, gap_refs)
+        gap_indices = {idx for ch, idx in gap_refs if ch == issue_chapter}
 
         auto_fix = None
-        if len(missing) == 1:
+        own_audio = all(ch == surah for *_, ch in seg_list)
+        if len(missing) == 1 and own_audio:
             mw = next(iter(missing))
-            first_wf, first_wt, first_idx = seg_list[0]
-            last_wf, last_wt, last_idx = seg_list[-1]
+            first_wf, first_wt, first_idx, _ = seg_list[0]
+            last_wf, last_wt, last_idx, _ = seg_list[-1]
 
             if mw == 1 and first_wf > 1:
                 auto_fix = {
@@ -70,8 +86,8 @@ def _build_missing_words(
                 }
             else:
                 for j in range(len(seg_list) - 1):
-                    wf, wt, idx = seg_list[j]
-                    next_wf, next_wt, next_idx = seg_list[j + 1]
+                    wf, wt, idx, _ = seg_list[j]
+                    next_wf, next_wt, next_idx, _ = seg_list[j + 1]
                     if wt + 1 == mw and mw + 1 == next_wf:
                         if word_has_stop(surah, ayah, wt, riwayah):
                             auto_fix = {
@@ -100,7 +116,7 @@ def _build_missing_words(
 
         issue: dict = {
             "verse_key": f"{surah}:{ayah}",
-            "chapter": surah,
+            "chapter": issue_chapter,
             "segment_uid": None,
             "msg": f"missing words: {sorted(missing)}",
             "missing_words": sorted(missing),

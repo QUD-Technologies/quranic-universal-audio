@@ -26,6 +26,7 @@ import { playbackSpeed, segPort } from '../../stores/playback';
 import type { PreviewLoopMode, RafHandle } from '../../types/segments';
 import { drawSplitWaveform } from '../waveform/split-draw';
 import { drawTrimWaveform } from '../waveform/trim-draw';
+import { readback2d } from '../../../../lib/utils/canvas-2d';
 
 // ---------------------------------------------------------------------------
 // Module-local state
@@ -129,7 +130,7 @@ function _setupPreviewLoop(startMs: number, endMs: number, coldSeek: boolean): v
     const inEditMode = canvas && (canvas._splitData || canvas._trimWindow);
     let _playRangeSnapshot: ImageData | null = null;
     if (canvas && !inEditMode) {
-        const ctx = canvas.getContext('2d');
+        const ctx = readback2d(canvas);
         if (ctx) _playRangeSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
     }
 
@@ -241,7 +242,7 @@ function _setupPreviewLoop(startMs: number, endMs: number, coldSeek: boolean): v
         if (canvas._splitData) drawSplitWaveform(canvas);
         else if (canvas._trimWindow) drawTrimWaveform(canvas);
         else if (_playRangeSnapshot) {
-            const ctx2 = canvas.getContext('2d');
+            const ctx2 = readback2d(canvas);
             if (ctx2) ctx2.putImageData(_playRangeSnapshot, 0, 0);
         }
         // Re-read view bounds each frame so wheel-zoom mid-playback updates
@@ -255,7 +256,7 @@ function _setupPreviewLoop(startMs: number, endMs: number, coldSeek: boolean): v
             : canvas._splitData ? canvas._splitData.viewEnd
             : wfEnd;
         if (curMs >= liveStart && curMs <= liveEnd) {
-            const ctx = canvas.getContext('2d');
+            const ctx = readback2d(canvas);
             if (!ctx) { _playRangeRAF = requestAnimationFrame(animatePlayhead); return; }
             const w = canvas.width, h = canvas.height;
             const x = ((curMs - liveStart) / (liveEnd - liveStart)) * w;

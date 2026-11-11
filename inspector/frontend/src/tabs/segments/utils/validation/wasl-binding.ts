@@ -37,3 +37,26 @@ export function waslCommitForPiece(
     if (below && commits.has(below)) return commits.get(below) ?? null;
     return null;
 }
+
+/** The piece `accordionNavCursor` names (see `stores/playback`). */
+export interface PieceCursor {
+    uid: string;
+    startMs: number;
+}
+
+/**
+ * Whether a staged piece is the one the user is ON, and so takes 1 / 2.
+ * Staged pieces share their parent's (chapter, index), so position comes from
+ * the piece-granular nav cursor — set by ↑/↓, a row click or play, never by
+ * the playhead walking on through the group. Only before any cursor exists
+ * does the playhead decide (`playing` live, `latched` after it stops).
+ */
+export function stagedPieceIsCurrent(
+    cursor: PieceCursor | null,
+    piece: { uid: string; startMs: number },
+    playing: boolean,
+    latched: boolean,
+): boolean {
+    if (cursor) return cursor.uid === piece.uid && cursor.startMs === piece.startMs;
+    return playing || latched;
+}

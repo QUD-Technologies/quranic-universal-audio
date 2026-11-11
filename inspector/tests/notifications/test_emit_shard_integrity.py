@@ -73,3 +73,25 @@ def test_no_findings_writes_nothing(seed_role):
 
     assert emit.notify_owners_shard_integrity([]) == 0
     assert repo_notifications.list_active("owner-1") == []
+
+
+def test_a_card_whose_shard_came_back_is_archived(seed_role):
+    """A chapter flagged while its timestamps were still being written must not
+    sit in the rail once the shard exists."""
+    seed_role("owner-1", role="owner")
+    emit.notify_owners_shard_integrity([_finding(chapter=45, kind="missing_shard")])
+
+    emit.resolve_shard_integrity(scanned=["r"], findings=[])
+
+    assert repo_notifications.list_active("owner-1") == []
+
+
+def test_resolve_keeps_cards_still_missing_or_not_rescanned(seed_role):
+    seed_role("owner-1", role="owner")
+    still = _finding(chapter=45, kind="missing_shard")
+    elsewhere = _finding(chapter=9, kind="missing_shard", slug="other")
+    emit.notify_owners_shard_integrity([still, elsewhere])
+
+    emit.resolve_shard_integrity(scanned=["r"], findings=[still])
+
+    assert sorted(r["slug"] for r in repo_notifications.list_active("owner-1")) == ["other", "r"]

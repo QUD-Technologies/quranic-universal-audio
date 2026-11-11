@@ -32,6 +32,7 @@ from .bucket.segment import (
     SegmentFlag,
 )
 from .bucket.ts_job_record import TsJobRecord, TsJobSettings
+from .bucket.ts_readings import TsReadingOption, TsReadingRow, TsReadingsDoc, TsReadingVerse
 from .bucket.ts_shard import (
     TsAnimationTiming,
     TsColumnTiming,
@@ -58,7 +59,6 @@ from .config.automation import (
     HfPublishConfig,
     StaleMetadataConfig,
     StaleTsRegenConfig,
-    TsGenerationDefaults,
 )
 from .config.riwayat import RiwayahSupport, RiwayatConfig
 from .wire._envelopes import ErrorEnvelope, OkAck
@@ -68,7 +68,6 @@ from .wire.admin_permissions import (
     AdminPermissionGroup,
     AdminPermissionsResponse,
 )
-from .wire.align_runs import AlignRunStatus, AlignStartRequest
 from .wire.admin_requests import (
     AdminRequestCounts,
     AdminRequestRow,
@@ -97,9 +96,22 @@ from .wire.admin_users import (
     AdminVisitorStats,
     VisitorDayStat,
 )
+from .wire.align_runs import AlignQuota, AlignRunStatus, AlignStartRequest
 from .wire.announcements import Announcement
 from .wire.audio import AudioSurahEntry, AudioSurahsResponse
 from .wire.email_preferences import EmailPreferences, EmailPreferencesSaved
+from .wire.intake_plan import (
+    IntakeAlignRequest,
+    IntakeAlignResponse,
+    IntakePlan,
+    IntakePlanUpdate,
+    IntakePlanView,
+    PlanCoverage,
+    PlanEntry,
+    PlanEntryEdit,
+    PlanIdentity,
+    PlanOption,
+)
 from .wire.intake_requests import (
     IntakeAttestations,
     IntakeSource,
@@ -122,6 +134,7 @@ from .wire.public import (
     PublicReciter,
     PublicReciterPage,
 )
+from .wire.quality_status import QualityStatusRequest
 from .wire.release import (
     AdminCutReleaseRequest,
     AdminGhReleaseMember,
@@ -152,10 +165,16 @@ from .wire.seg import (
     SegPeaksResponse,
     SegReciter,
     SegRecitersResponse,
+    SegReviewSignal,
+    SegReviewSignalsResponse,
     SegSaveRequest,
     SegSaveResponse,
     SegSegmentPeaksRequest,
     SegSegmentPeaksResponse,
+    SegSpecialsResponse,
+    SegSpecialsVoiceRequest,
+    SegStoredTimes,
+    SegStoredWordTime,
     SegUndoBatchRequest,
     SegUndoOpsRequest,
     SegUndoResponse,
@@ -163,9 +182,16 @@ from .wire.seg import (
     SegValFalseSplitItem,
     SegValHiddenPauseItem,
     SegValidateResponse,
+    SegValMissedWaqfItem,
     SegValUnmarkedWaslItem,
+    SegWordTimesResponse,
 )
-from .wire.timestamps import TsConfigResponse, TsManifestResponse
+from .wire.timestamps import (
+    TsConfigResponse,
+    TsMaddRow,
+    TsManifestResponse,
+    TsRecitationProfile,
+)
 from .wire.ts_reports import (
     TsReciterReports,
     TsReport,
@@ -197,25 +223,35 @@ __all__ = [
     "SegAllResponse",
     "SegConfigResponse",
     "SegDataResponse",
+    "SegStoredTimes",
+    "SegStoredWordTime",
+    "SegWordTimesResponse",
     "SegPeaksResponse",
     "SegReciter",
     "SegRecitersResponse",
+    "SegReviewSignal",
+    "SegReviewSignalsResponse",
     "SegSaveRequest",
     "SegSaveResponse",
     "SegSegmentPeaksRequest",
     "SegSegmentPeaksResponse",
+    "SegSpecialsResponse",
+    "SegSpecialsVoiceRequest",
     "SegUndoBatchRequest",
     "SegUndoOpsRequest",
     "SegUndoResponse",
     "SegValAnyItem",
     "SegValFalseSplitItem",
     "SegValHiddenPauseItem",
+    "SegValMissedWaqfItem",
     "SegValUnmarkedWaslItem",
     "SegValidateResponse",
     "SegmentFlagView",
     "SegmentsChapterSummary",
     "TsConfigResponse",
+    "TsMaddRow",
     "TsManifestResponse",
+    "TsRecitationProfile",
     "TsReciterReports",
     "TsReport",
     "TsReportAuthor",
@@ -236,7 +272,6 @@ __all__ = [
     "HfPublishConfig",
     "StaleMetadataConfig",
     "StaleTsRegenConfig",
-    "TsGenerationDefaults",
     "RiwayahSupport",
     "RiwayatConfig",
     "AdminActiveClaim",
@@ -262,8 +297,19 @@ __all__ = [
     "AdminReleasesSummary",
     "AdminPermissionGroup",
     "AdminPermissionsResponse",
+    "AlignQuota",
     "AlignRunStatus",
     "AlignStartRequest",
+    "IntakeAlignRequest",
+    "IntakeAlignResponse",
+    "IntakePlan",
+    "IntakePlanUpdate",
+    "IntakePlanView",
+    "PlanCoverage",
+    "PlanEntry",
+    "PlanEntryEdit",
+    "PlanIdentity",
+    "PlanOption",
     "AdminRequestCounts",
     "AdminRequestEvent",
     "AdminRequestRow",
@@ -301,6 +347,7 @@ __all__ = [
     "JobsListResponse",
     "MarkReadyChecklist",
     "MarkReadyRequest",
+    "QualityStatusRequest",
     "MarkReadySubmission",
     "OkAck",
     "PeaksRecord",
@@ -330,5 +377,9 @@ __all__ = [
     "TsValidationDoc",
     "TsValidationMeta",
     "TsValidationVerse",
+    "TsReadingOption",
+    "TsReadingRow",
+    "TsReadingVerse",
+    "TsReadingsDoc",
     "VisitorDayStat",
 ]

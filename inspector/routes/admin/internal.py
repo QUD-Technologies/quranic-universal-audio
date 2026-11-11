@@ -11,7 +11,8 @@ refresh stays silent.
 ``POST /api/admin/internal/ts-refreshed`` — record an out-of-band TS shard
 refresh so it is no longer silent: advances the reciter's ``ts`` release
 ``produced_at`` (clearing computed staleness), re-stamps HF/GH stale, and audits
-``reciter.ts_refreshed``. Idempotent + best-effort on the caller's side (the
+``reciter.ts_refreshed``, rebuilds the reciter's readings summary from the new
+shards on a background thread and drops its cached recitation profile. Idempotent + best-effort on the caller's side (the
 shared ``qua_shared.inspector_notify.notify_ts_refreshed`` helper swallows
 errors so a failed callback never fails the backfill).
 """
@@ -64,7 +65,8 @@ def ts_refreshed():
 
     Body: ``TsRefreshedRequest{slug, chapters?, reason?, produced_at?}``. Updates
     the current ``ts`` release ``produced_at`` to the supplied/``now`` watermark,
-    re-stamps HF/GH stale, and emits ``reciter.ts_refreshed``. A reciter with no
+    re-stamps HF/GH stale, emits ``reciter.ts_refreshed``, rebuilds ``readings.json`` in
+    the background and drops the cached recitation profile. A reciter with no
     current ``ts`` release (never generated) is acked with ``refreshed: false``.
     """
     ok, err = _check_secret()
@@ -99,5 +101,9 @@ def ts_refreshed():
         log.warning("ts-refreshed for %s failed: %s", body.slug, exc)
         return jsonify(ErrorEnvelope(error=str(exc)).model_dump(exclude_none=True)), 502
 
+    from services.reference import readings, recitation_profile
+
+    readings.refresh_in_background(body.slug)
+    recitation_profile.drop(body.slug)
     log.info("ts-refreshed slug=%s chapters=%s refreshed=%s", body.slug, body.chapters, refreshed)
     return jsonify({**OkAck().model_dump(), "refreshed": refreshed})

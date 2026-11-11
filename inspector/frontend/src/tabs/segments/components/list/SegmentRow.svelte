@@ -15,6 +15,11 @@
      * Layout: normal mode = horizontal (play-col | left-col | text-box).
      * History mode = vertical (waveform above text) — scoped via `class:mode-history`.
      *
+     * Text body: one `.seg-review-word` span per word when word times match
+     * the ref; the playing word takes `.active`. On a Low Confidence v2 row
+     * (main list or accordion) the flagged words also take `.lc`, with
+     * `--lc-alpha` from `lowConfidenceWords` and their fits as the title.
+     *
      * Waveform observer: onMount registers the canvas with the segments
      * IntersectionObserver via _ensureWaveformObserver().observe(canvas).
      * On destroy the canvas is implicitly unobserved (the observer's weak
@@ -28,9 +33,11 @@
     import { fetchJsonOrNull } from '../../../../lib/api';
     import { localeStore, tr } from '../../../../lib/i18n/locale-store';
     import * as m from '../../../../lib/paraglide/messages';
-    import { shadowPrewarm } from '../../../../lib/playback/shadow-audio';
+    import { displayTimeMs } from '../../../../lib/playback/audio-graph';
+    import { specialLabel } from '../../../../lib/recitation-animation/special-label';
     import { quranRefs } from '../../../../lib/refs/quran-refs';
     import { currentUser } from '../../../../lib/stores/current-user';
+    import { pushToast } from '../../../../lib/stores/toast';
     import type { FlagAuthor } from '../../../../lib/types/generated/schemas';
 import type { Segment } from '../../../../lib/types/view-models';
     import { clearAccordionPin } from '../../stores/accordion-pin';
@@ -39,13 +46,14 @@ import type { Segment } from '../../../../lib/types/view-models';
     import {
         getAdjacentSegments,
         pickerDisplayChapter,
+        refreshSegInStore,
         segAllData,
         segCurrentIdx,
         selectedChapter,
         selectedReciter,
         selectedVerse,
     } from '../../stores/chapter';
-    import { dirtyTick, isIndexDirty } from '../../stores/dirty';
+    import { dirtyTick, isDirty, isIndexDirty } from '../../stores/dirty';
     import {
         editingMountId,
         editingSegUid,
@@ -55,14 +63,21 @@ import type { Segment } from '../../../../lib/types/view-models';
     import { activeFilters } from '../../stores/filters';
     import { savedFilterView } from '../../stores/navigation';
     import { isSampleMode } from '../../stores/samples';
-    import { missingWordsSegKeys } from '../../stores/validation';
+    import { ensureWordTimes, timesForCard, wordTimes } from '../../stores/word-times';
+    import { lowConfidenceWords, missingWordsSegKeys } from '../../stores/validation';
     import { deriveRowChips, type RowChip } from '../../utils/samples/chips';
+    import { displayWordsForTimings, timingsMatchRef } from '../../utils/samples/word-timing';
+    import { contiguousWordDraft } from '../../utils/samples/word-timing-draft';
+    import { type LowConfidenceWordMark, lowConfidenceAlpha } from '../../utils/validation/low-confidence-words';
+    import { stagedPieceIsCurrent } from '../../utils/validation/wasl-binding';
     import {
         chapterIndexKey,
         flashSegmentIndices,
         targetSegmentIndex,
     } from '../../stores/navigation';
     import {
+        accordionNavCursor,
+        activeWordCursor,
         isMainAudioPlaying,
         playingSegmentIndex,
         segListElement,
@@ -84,19 +99,23 @@ import type { Segment } from '../../../../lib/types/view-models';
         formatRef,
         formatTimeMs,
         isCrossVerse,
+        isSpecialRef,
+        specialTextForRef,
+        wordLocationsForRef,
     } from '../../utils/data/references';
     import { deleteSegment } from '../../utils/edit/delete';
     import { enterEditWithBuffer } from '../../utils/edit/enter';
     import { flagSegment } from '../../utils/edit/flag';
     import { mergeAdjacent } from '../../utils/edit/merge';
     import { beginRefEdit } from '../../utils/edit/reference';
-    import { playFromSegment } from '../../utils/playback/playback';
+    import { playFromSegment, startWordTimingPreview, updateWordTimingPreview, stopWordTimingPreview, onSegPlayClick } from '../../utils/playback/playback';
     import type { PreviewPlaybackContext } from '../../utils/playback/preview';
     import { deregisterRow, registerRow } from '../../utils/playback/row-registry';
-    import { wrapCbrSrcIfBySurah } from '../../utils/playback/source';
-    import { warmSeg } from '../../utils/playback/warmup';
+    import { warmSeg, warmSegChapter } from '../../utils/playback/warmup';
     import { getConfClass } from '../../utils/validation/conf-class';
     import { _ensureWaveformObserver } from '../../utils/waveform/utils';
+    import { resetHistoryLoader } from '../../utils/history/loader';
+    import WordTimingEditor from '../edit/WordTimingEditor.svelte';
     import ReferenceEditor from '../edit/ReferenceEditor.svelte';
     import SplitPanel from '../edit/SplitPanel.svelte';
     import TrimPanel from '../edit/TrimPanel.svelte';
@@ -196,24 +215,27 @@ import type { Segment } from '../../../../lib/types/view-models';
      */
     export let groupEndMs: number | null = null;
     /**
-     * Staged piece of a pre-applied cross-verse split that is not in the
-     * store yet (see `utils/validation/staged-split.ts`). The row looks and
-     * acts like any other, drawing its own waveform from the piece's time
-     * range (`data-hist-*`); the differences are that it does not register
-     * in the playback row registry (its index is still the parent's) and
-     * every edit action first calls `onStagedActivate` — the card commits
-     * the split — then runs against the now-real piece (same uid, same
-     * mounted row).
+     * Staged piece of a pre-applied split (cross-verse, missed-waqf) that is
+     * not in the store yet (see `utils/validation/staged-split.ts`). The row
+     * looks and acts like any other, drawing its own waveform from the
+     * piece's time range (`data-hist-*`); the differences are that it does
+     * not register in the playback row registry (its index is still the
+     * parent's) and every edit action first calls `onStagedActivate(uid)` —
+     * the card commits the split — then runs against the now-real piece
+     * (same uid, same mounted row). The card answers false when the commit
+     * left no real piece with this uid; the action is then a no-op.
      */
     export let staged: boolean = false;
-    export let onStagedActivate: (() => void) | null = null;
+    export let onStagedActivate: ((_uid: string | null) => boolean) | null = null;
 
     /** Materialise the staged split before an edit action, and let the
-     *  props settle so `seg` is the store-backed piece. */
-    async function activate(): Promise<void> {
-        if (!staged || !onStagedActivate) return;
-        onStagedActivate();
+     *  props settle so `seg` is the store-backed piece. False = no piece to
+     *  act on. */
+    async function activate(): Promise<boolean> {
+        if (!staged || !onStagedActivate) return true;
+        const ok = onStagedActivate(seg.segment_uid ?? null);
         await tick();
+        return ok;
     }
 
     // Apply history-mode highlight descriptors to the underlying canvas element
@@ -302,14 +324,170 @@ import type { Segment } from '../../../../lib/types/view-models';
     $: bodyText = (() => {
         const text = dkTextForRef(bodyRef, $quranRefs?.dk_words, $quranRefs?.verse_word_counts);
         if (!text) {
-            // Special segs (Basmala/Isti'adha/Amin/Takbir/...) carry their
-            // Arabic text on the snapshot but have non-Quran-ref matched_refs,
-            // so the dk_words lookup is empty. Fall back to matched_text.
+            // Special segs (Basmala/Isti'adha/Amin/Takbir/...) have no verse
+            // words: an opener shows its edition text, a history snapshot its
+            // stored text, and any other special its name.
+            const specialText = specialTextForRef(bodyRef, $quranRefs);
+            if (specialText) return specialText;
             if (seg.matched_text) return seg.matched_text;
+            if (isSpecialRef(bodyRef)) return tr($localeStore, specialLabel(bodyRef));
             return seg.matched_ref ? tr($localeStore, m.segments_row_no_text_fallback()) : tr($localeStore, m.segments_row_no_match_fallback());
         }
         return _addVerseMarkers(text, bodyRef, $quranRefs?.verse_word_counts) || text;
     })();
+    $: reviewWordTimings = $isSampleMode && timingsMatchRef(bodyRef, seg.word_timings)
+        ? (seg.word_timings ?? [])
+        : [];
+    $: reviewDisplayWords = displayWordsForTimings(
+        reviewWordTimings,
+        bodyText,
+        $quranRefs?.dk_words,
+        $quranRefs?.verse_word_counts,
+        $quranRefs?.verse_marker_prefix ?? '۝',
+    );
+    // Outside review samples the highlight follows the stored segment times.
+    $: if (!$isSampleMode) ensureWordTimes($selectedReciter, rowChapter);
+    $: storedWords = $isSampleMode ? [] : timesForCard($wordTimes, rowChapter, seg);
+    $: highlightTimings = $isSampleMode
+        ? reviewWordTimings
+        : (timingsMatchRef(bodyRef, storedWords) ? storedWords : []);
+    $: highlightDisplayWords = $isSampleMode
+        ? reviewDisplayWords
+        : displayWordsForTimings(
+            highlightTimings,
+            bodyText,
+            $quranRefs?.dk_words,
+            $quranRefs?.verse_word_counts,
+            $quranRefs?.verse_marker_prefix ?? '۝',
+        );
+    // Low Confidence v2 words ride the same word spans. A row without matching
+    // word times still gets spans, from its ref's own words (zero-length, so
+    // they never take the playback highlight).
+    $: lcMarks = (instanceRole === 'main' || instanceRole === 'accordion') && seg.segment_uid
+        ? $lowConfidenceWords.get(seg.segment_uid) ?? null
+        : null;
+    $: timedWords = highlightDisplayWords.length > 0;
+    $: spanTimings = timedWords || !lcMarks
+        ? highlightTimings
+        : wordLocationsForRef(bodyRef, $quranRefs?.verse_word_counts)
+            .map((location) => ({ location, start_ms: 0, end_ms: 0 }));
+    $: spanWords = timedWords || !lcMarks
+        ? highlightDisplayWords
+        : displayWordsForTimings(
+            spanTimings,
+            bodyText,
+            $quranRefs?.dk_words,
+            $quranRefs?.verse_word_counts,
+            $quranRefs?.verse_marker_prefix ?? '۝',
+        );
+    function lcScore(value: number | null): string {
+        return value === null ? '—' : value.toFixed(1);
+    }
+    function lcWordTitle(mark: LowConfidenceWordMark): string {
+        return tr($localeStore, m.segments_row_lc_word_title({ fit: lcScore(mark.fit), sound: lcScore(mark.soundFit) }));
+    }
+    let wordEditing = false;
+    let wordDraft: { start_ms: number; end_ms: number }[] = [];
+    let wordLockedIndex: number | null = null;
+    let wordActiveIndex = -1;
+    let wordSaving = false;
+    let wordError = '';
+    let wordHasChanges = false;
+    $: wordHasChanges = wordDraft.some((word, index) =>
+        word.start_ms !== reviewWordTimings[index]?.start_ms || word.end_ms !== reviewWordTimings[index]?.end_ms);
+    // A missing time_start/time_end makes the span NaN, and Math.max/min propagate it —
+    // the canvas width would collapse to 0. Fall back to the 900px floor instead.
+    $: wordEditWidth = Math.min(8000, Math.max(900, reviewWordTimings.length * 150, ((seg.time_end - seg.time_start) * 0.1) || 0));
+    function onWordPreviewTick(audibleTimeMs: number): void {
+        // The preview follows the editable boundaries, not the saved row timings.
+        audibleTimeMs = Math.max(seg.time_start, Math.min(audibleTimeMs, seg.time_end));
+        wordActiveIndex = wordDraft.findIndex((word, index) =>
+            audibleTimeMs >= word.start_ms
+            && (audibleTimeMs < word.end_ms || (index === wordDraft.length - 1 && audibleTimeMs === word.end_ms)));
+    }
+    async function toggleWordEditor(): Promise<void> {
+        if (!wordEditing && get(editMode)) return;
+        if (!wordEditing && isDirty()) {
+            pushToast({ kind: 'warn', text: tr($localeStore, m.segments_word_edit_pending()) });
+            return;
+        }
+        wordEditing = !wordEditing;
+        wordError = '';
+        wordLockedIndex = null;
+        wordActiveIndex = -1;
+        if (wordEditing) {
+            wordDraft = contiguousWordDraft(reviewWordTimings);
+            onWordPreviewTick(seg.time_start);
+            startWordTimingPreview(seg, rowChapter, seg.time_start, seg.time_end, seg.time_start, onWordPreviewTick);
+        } else {
+            stopWordTimingPreview(seg.segment_uid ?? '');
+        }
+        await tick();
+        if (canvasEl) {
+            canvasEl.setAttribute('data-needs-waveform', '');
+            _ensureWaveformObserver().observe(canvasEl);
+        }
+    }
+    function onWordDraftChange(boundaries: { start_ms: number; end_ms: number }[]): void {
+        const previousLocked = wordLockedIndex === null ? null : wordDraft[wordLockedIndex];
+        wordDraft = boundaries;
+        onWordPreviewTick(displayTimeMs(segPort.currentTimeMs()));
+        if (wordLockedIndex !== null) {
+            const locked = boundaries[wordLockedIndex]!;
+            if (!previousLocked || previousLocked.start_ms !== locked.start_ms || previousLocked.end_ms !== locked.end_ms) {
+                updateWordTimingPreview(seg.segment_uid ?? '', locked.start_ms, locked.end_ms);
+            }
+        }
+    }
+    function seekWordPreview(timeMs: number): void {
+        wordLockedIndex = null;
+        startWordTimingPreview(seg, rowChapter, seg.time_start, seg.time_end, timeMs, onWordPreviewTick);
+    }
+    function toggleWordLock(index: number): void {
+        if (wordLockedIndex === index) {
+            wordLockedIndex = null;
+            startWordTimingPreview(seg, rowChapter, seg.time_start, seg.time_end, seg.time_start, onWordPreviewTick);
+        } else {
+            wordLockedIndex = index;
+            startWordTimingPreview(seg, rowChapter, wordDraft[index]!.start_ms, wordDraft[index]!.end_ms, wordDraft[index]!.start_ms, onWordPreviewTick);
+        }
+    }
+    async function applyWordTimings(): Promise<void> {
+        if (wordSaving) return;
+        wordSaving = true;
+        wordError = '';
+        try { await saveWordTimings(wordDraft); }
+        catch (error) { wordError = error instanceof Error ? error.message : tr($localeStore, m.segments_word_edit_error()); }
+        finally { wordSaving = false; }
+    }
+    async function saveWordTimings(boundaries: { start_ms: number; end_ms: number }[]): Promise<boolean> {
+        if (!seg.segment_uid || isDirty()) throw new Error(tr($localeStore, m.segments_word_edit_pending()));
+        const reciter = get(selectedReciter);
+        const expected = reviewWordTimings.map(w => ({ start_ms: w.start_ms, end_ms: w.end_ms }));
+        const response = await fetch(`/api/seg/save/${encodeURIComponent(reciter)}/${rowChapter}`, {
+            method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ segments: [], operations: [{
+                op_id: crypto.randomUUID(), op_type: 'edit_word_timings', type: 'editWordTimings',
+                command: { type: 'editWordTimings', segmentUid: seg.segment_uid, expected, boundaries },
+            }] }),
+        });
+        if (!response.ok) {
+            const body = await response.json().catch(() => null) as { error?: string } | null;
+            throw new Error(body?.error || `Save failed (${response.status}).`);
+        }
+        seg.word_timings = reviewWordTimings.map((w, i) => ({ ...w, ...boundaries[i]! }));
+        refreshSegInStore(seg);
+        resetHistoryLoader();
+        wordEditing = false;
+        stopWordTimingPreview(seg.segment_uid ?? '');
+        await tick();
+        if (canvasEl) {
+            canvasEl.setAttribute('data-needs-waveform', '');
+            _ensureWaveformObserver().observe(canvasEl);
+        }
+        pushToast({ kind: 'success', text: tr($localeStore, m.segments_word_edit_saved()) });
+        return true;
+    }
     $: confText = (void segStoreTick, seg.matched_ref ? ((seg.confidence ?? 0) * 100).toFixed(1) + '%' : tr($localeStore, m.segments_row_conf_fail_label()));
     $: indexLabel = (showChapter && seg.chapter != null)
         ? `${seg.chapter}:#${seg.index}`
@@ -555,6 +733,15 @@ import type { Segment } from '../../../../lib/types/view-models';
     }
 
     onDestroy(() => {
+        if (wordEditing) stopWordTimingPreview(seg.segment_uid ?? '');
+        // Drop the per-canvas ImageData snapshots so a detached row's pixels are not
+        // kept alive by anything still holding the element (edit/play-range state).
+        if (canvasEl) {
+            const c = canvasEl as SegCanvas;
+            c._wfCache = null;
+            c._trimBaseCache = null;
+            c._splitBaseCache = null;
+        }
         // Use the stored prev values rather than the current (potentially
         // shifted) seg.index — otherwise a row that's been reindexed since
         // mount would deregister under the wrong key, leaving a ghost entry.
@@ -584,13 +771,11 @@ import type { Segment } from '../../../../lib/types/view-models';
     }
 
     // Hover-warm — fires ~80 ms after the cursor enters the play button.
-    // Two warmups in parallel:
-    //   1. `shadowPrewarm(cbrSrc)` fills the browser HTTP cache for the
-    //      chapter MP3 on a hidden <audio>. Covers cross-chapter clicks
-    //      that the panel-level next-card prediction missed (user jumped
-    //      to a non-sequential card or played a row in a different
-    //      chapter from the main list). When user clicks play, the
-    //      primary <audio>'s el.load() hits the warm cache → fast canplay.
+    // Warms via `warmSegChapter` (CBR):
+    //   1. Probes the CDN so a cross-chapter click (a card the panel-level
+    //      next-card prediction missed, or another chapter's row) plays
+    //      direct rather than through the audio-proxy; a direct chapter also
+    //      gets a hidden-<audio> HTTP-cache warm → fast canplay on click.
     //   2. `warmSeg(seg)` fetches a 64 KB Range around the seg's byte
     //      offset. Primes the server-side OS page cache for the mid-file
     //      seek the audio element will issue when it seeks to seg.time_start.
@@ -605,19 +790,15 @@ import type { Segment } from '../../../../lib/types/view-models';
             _hoverWarmTimer = null;
             const reciter = get(selectedReciter);
             if (!reciter) return;
-            // Server-side byte-Range warmup at seg's byte offset.
-            warmSeg(seg, reciter);
-            // Browser HTTP cache warmup for the chapter MP3 (cross-chapter
-            // jumps). Skip VBR — clip URL is per-seg and shadow can't
-            // precache that.
             const audioUrl = seg.audio_url
                 ?? get(segAllData)?.audio_by_chapter?.[String(seg.chapter ?? rowChapter)]
                 ?? '';
             const ch = seg.chapter ?? rowChapter;
             const isVbr = ch != null && ($segAllData?.reciter_vbr_chapters ?? []).includes(ch as number);
-            if (audioUrl && !isVbr) {
-                shadowPrewarm(wrapCbrSrcIfBySurah(audioUrl, reciter));
-            }
+            // VBR plays per-seg clips, so only the byte-Range warm applies.
+            // CBR probes the CDN first (so the click plays direct), then warms.
+            if (isVbr || !audioUrl) warmSeg(seg, reciter);
+            else warmSegChapter(seg, reciter, audioUrl);
         }, 80);
     }
     function onPlayLeave(): void {
@@ -706,7 +887,7 @@ import type { Segment } from '../../../../lib/types/view-models';
 
     function onAdjustClick(e: MouseEvent): void {
         e.stopPropagation();
-        void activate().then(doAdjust);
+        void activate().then((ok) => { if (ok) doAdjust(); });
     }
 
     function doAdjust(): void {
@@ -727,7 +908,7 @@ import type { Segment } from '../../../../lib/types/view-models';
 
     function onSplitClick(e: MouseEvent): void {
         e.stopPropagation();
-        void activate().then(doSplit);
+        void activate().then((ok) => { if (ok) void doSplit(); });
     }
 
     async function doSplit(): Promise<void> {
@@ -777,17 +958,17 @@ import type { Segment } from '../../../../lib/types/view-models';
 
     function onMergePrevClick(e: MouseEvent): void {
         e.stopPropagation();
-        void activate().then(() => mergeAdjacent(seg, 'prev', validationCategory, _mountId));
+        void activate().then((ok) => { if (ok) mergeAdjacent(seg, 'prev', validationCategory, _mountId); });
     }
 
     function onMergeNextClick(e: MouseEvent): void {
         e.stopPropagation();
-        void activate().then(() => mergeAdjacent(seg, 'next', validationCategory, _mountId));
+        void activate().then((ok) => { if (ok) mergeAdjacent(seg, 'next', validationCategory, _mountId); });
     }
 
     function onDeleteClick(e: MouseEvent): void {
         e.stopPropagation();
-        void activate().then(doDelete);
+        void activate().then((ok) => { if (ok) doDelete(); });
     }
 
     function doDelete(): void {
@@ -796,7 +977,7 @@ import type { Segment } from '../../../../lib/types/view-models';
 
     function onEditRefClick(e: MouseEvent): void {
         e.stopPropagation();
-        void activate().then(doEditRef);
+        void activate().then((ok) => { if (ok) doEditRef(); });
     }
 
     function doEditRef(): void {
@@ -818,11 +999,20 @@ import type { Segment } from '../../../../lib/types/view-models';
     // card commits with the split, exactly like clicking the picker. So the
     // wasl action publishes for staged rows too, and the rest doesn't.
     // ---------------------------------------------------------------------
+    // A staged piece's position comes from the nav cursor, not the playhead
+    // (`stagedPieceIsCurrent`).
+    // ---------------------------------------------------------------------
     $: accordionOpen = $valUiOpenCategory !== null;
+    $: stagedPrimary = stagedPieceIsCurrent(
+        $accordionNavCursor,
+        { uid: seg.segment_uid ?? '', startMs: seg.time_start },
+        isPlaying,
+        segIsCurrent && _stagedCursorLatched,
+    );
     $: isPrimaryRow = !readOnly && !isContext && !!rowEl
-        && (isPlaying
-            || (staged && segIsCurrent && _stagedCursorLatched)
-            || (instanceRole === 'main' && !accordionOpen && $segCurrentIdx === seg.index));
+        && (staged
+            ? stagedPrimary
+            : isPlaying || (instanceRole === 'main' && !accordionOpen && $segCurrentIdx === seg.index));
     $: isPrimaryForShortcuts = isPrimaryRow && !staged;
     $: isPrimaryForWasl = isPrimaryRow && !!onCardSetWasl;
     let _pubKey = '';
@@ -856,7 +1046,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     function onRefTextClick(e: MouseEvent): void {
         if (readOnly) return;
         e.stopPropagation();
-        void activate().then(() => beginRefEdit(seg, validationCategory, _mountId));
+        void activate().then((ok) => { if (ok) beginRefEdit(seg, validationCategory, _mountId); });
     }
 
     // ---------------------------------------------------------------------
@@ -882,7 +1072,8 @@ import type { Segment } from '../../../../lib/types/view-models';
     function openFlagEditor(e: MouseEvent): void {
         e.stopPropagation();
         if (!canEditFlag) return;
-        void activate().then(() => {
+        void activate().then((ok) => {
+            if (!ok) return;
             flagDraft = seg.flag?.comment ?? '';
             flagEditing = true;
         });
@@ -909,6 +1100,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     }
 
     function onRowClick(e: MouseEvent): void {
+        if (wordEditing) return;
         if (get(editMode) || readOnly) return;
         const t = e.target as Element;
         if (t.closest('.seg-row-controls') || t.closest('canvas') || t.closest('.seg-text-ref')) return;
@@ -953,7 +1145,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     }
 
     function onCanvasMousedown(e: MouseEvent): void {
-        if (readOnly || get(editMode)) return;
+        if (readOnly || get(editMode) || wordEditing) return;
         const canvas = e.currentTarget as SegCanvas;
 
         e.preventDefault();
@@ -981,6 +1173,11 @@ import type { Segment } from '../../../../lib/types/view-models';
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup', onUp);
     }
+    function onWordCanvasClick(e: MouseEvent): void {
+        if (!wordEditing || !canvasEl) return;
+        e.stopPropagation();
+        seekWordPreview(_timeFromCanvasEvent(e, canvasEl));
+    }
 </script>
 
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
@@ -997,6 +1194,7 @@ import type { Segment } from '../../../../lib/types/view-models';
     class:seg-row-staged={staged}
     class:seg-neighbour={isNeighbour}
     class:seg-edit-target={isEditingThisRow}
+    class:word-editing={wordEditing}
     class:mode-history={mode === 'history'}
     data-seg-index={seg.index}
     data-seg-chapter={seg.chapter ?? undefined}
@@ -1007,10 +1205,17 @@ import type { Segment } from '../../../../lib/types/view-models';
     data-hist-time-end={readOnly || staged ? String(seg.time_end) : undefined}
     data-hist-audio-url={(readOnly || staged) && seg.audio_url ? seg.audio_url : undefined}
     data-hist-op-id={opId ?? undefined}
+    style:max-width={wordEditing ? `min(100%, ${wordEditWidth + 24}px)` : undefined}
     bind:this={rowEl}
     on:click={onRowClick}
 >
     <div class="seg-left">
+        {#if wordEditing}
+            <div class="word-editor-header">
+                <span class="word-editor-title">{formatRef(seg.matched_ref, $quranRefs?.verse_word_counts)}</span>
+                <span class="word-editor-status">{wordLockedIndex === null ? tr($localeStore, m.segments_word_loop_segment()) : tr($localeStore, m.segments_word_loop_word({ number: String(wordLockedIndex + 1) }))}</span>
+            </div>
+        {/if}
         {#if readOnly && showPlayBtn}
             {#if previewCtx}
                 <button
@@ -1023,20 +1228,42 @@ import type { Segment } from '../../../../lib/types/view-models';
                 <button class="btn btn-sm seg-card-play-btn" title={playButtonTitle}>&#9654;</button>
             {/if}
         {/if}
+        <div class="seg-waveform-viewport" class:word-editing={wordEditing}>
+        <div class="seg-waveform-stage" class:word-editing={wordEditing} style:width={wordEditing ? `${wordEditWidth}px` : undefined}>
         <canvas
             bind:this={canvasEl}
-            width={SEG_ROW_CANVAS_WIDTH}
+            width={wordEditing ? Math.round(wordEditWidth) : SEG_ROW_CANVAS_WIDTH}
             height={SEG_ROW_CANVAS_HEIGHT}
             data-needs-waveform
             on:mousedown={onCanvasMousedown}
+            on:click={onWordCanvasClick}
         ></canvas>
-        {#if isEditingThisRow && $editMode === 'trim' && editSegCanvas}
+        {#if wordEditing}
+            <WordTimingEditor words={wordDraft} labels={reviewDisplayWords}
+                startMs={seg.time_start} endMs={seg.time_end} width={wordEditWidth}
+                lockedIndex={wordLockedIndex} activeIndex={wordLockedIndex === null && isPlaying && $isMainAudioPlaying ? wordActiveIndex : null}
+                onChange={onWordDraftChange} onSeek={seekWordPreview} onLock={toggleWordLock} />
+        {/if}
+        </div>
+        </div>
+        {#if wordEditing}
+            <div class="word-editor-toolbar">
+                <button class="btn btn-sm seg-card-play-btn" type="button" title={playButtonTitle} on:click|stopPropagation={onSegPlayClick}>{playGlyph}</button>
+                <span class="word-editor-hint">{tr($localeStore, m.segments_word_edit_hint())}</span>
+                <div class="word-editor-actions">
+                    <button class="btn btn-sm" type="button" disabled={wordSaving} on:click|stopPropagation={toggleWordEditor}>{tr($localeStore, m.common_action_cancel())}</button>
+                    <button class="btn btn-sm word-editor-save" type="button" disabled={wordSaving || !wordHasChanges} on:click|stopPropagation={applyWordTimings}>{tr($localeStore, wordSaving ? m.segments_word_edit_saving() : m.segments_word_edit_save())}</button>
+                </div>
+            </div>
+            {#if wordError}<div class="word-editor-error" role="alert">{wordError}</div>{/if}
+        {:else if isEditingThisRow && $editMode === 'trim' && editSegCanvas}
             <TrimPanel {seg} canvas={editSegCanvas} />
         {:else if isEditingThisRow && $editMode === 'split' && editSegCanvas}
             <SplitPanel {seg} canvas={editSegCanvas} />
         {:else if !readOnly}
             <div class="seg-row-controls">
                 {#if showPlayBtn || showGotoBtn || !isContext}
+                    <div class="seg-row-play-stack">
                     <div class="seg-row-play-actions">
                         {#if showPlayBtn}
                             <button class="btn btn-sm seg-card-play-btn" title={playButtonTitle} on:click={onPlayClick} on:mouseenter={onPlayHover} on:mouseleave={onPlayLeave}>{playGlyph}</button>
@@ -1068,6 +1295,12 @@ import type { Segment } from '../../../../lib/types/view-models';
                                     </span>
                                 {/if}
                             </span>
+                        {/if}
+                    </div>
+                        {#if $isSampleMode && instanceRole === 'main' && reviewWordTimings.length > 0 && reviewDisplayWords.length === reviewWordTimings.length}
+                            <button class="btn btn-sm seg-word-edit-btn" class:is-open={wordEditing} use:editGate
+                                disabled={!!$editMode && !wordEditing}
+                                on:click|stopPropagation={toggleWordEditor}>{tr($localeStore, wordEditing ? m.segments_word_close_button() : m.segments_word_edit_button())}</button>
                         {/if}
                     </div>
                 {/if}
@@ -1121,7 +1354,7 @@ import type { Segment } from '../../../../lib/types/view-models';
         {/if}
     </div>
 
-    <div class="seg-text {confClass}">
+    {#if !wordEditing}<div class="seg-text {confClass}">
         <div class="seg-text-meta">
             <div class="seg-text-header">
                 <span class="seg-text-index">{indexLabel}</span>
@@ -1153,11 +1386,49 @@ import type { Segment } from '../../../../lib/types/view-models';
                 <div class="seg-text-label">{contextLabel}</div>
             {/if}
         </div>
-        <div class="seg-text-body" class:seg-history-changed={changedRef}>{bodyText}</div>
-    </div>
+        <div class="seg-text-body" class:seg-history-changed={changedRef} class:word-edit-hidden={wordEditing}>
+            {#if spanWords.length > 0}
+                {#each spanTimings as word, wordIndex (`${word.location}:${word.start_ms}`)}
+                    {@const lcMark = lcMarks?.get(word.location)}
+                    <span
+                        class="seg-review-word"
+                        class:lc={!!lcMark}
+                        style:--lc-alpha={lcMark ? lowConfidenceAlpha(lcMark.intensity) : null}
+                        title={lcMark ? lcWordTitle(lcMark) : null}
+                        class:active={timedWords
+                            && $isMainAudioPlaying
+                            && $activeWordCursor?.chapter === rowChapter
+                            && $activeWordCursor?.index === seg.index
+                            && $activeWordCursor?.wordIndex === wordIndex}
+                    >{spanWords[wordIndex]}</span>{#if wordIndex < spanTimings.length - 1}{' '}{/if}
+                {/each}
+            {:else}
+                {bodyText}
+            {/if}
+        </div>
+    </div>{/if}
 </div>
 
 <style>
+    :global(.seg-row.word-editing) { display: flex; flex-direction: column; }
+    :global(.seg-row.word-editing .seg-left) { flex: none; width: 100%; min-width: 0; }
+    .seg-waveform-viewport.word-editing { width: 100%; overflow-x: auto; overflow-y: hidden; }
+    .seg-waveform-stage { position: relative; width: 100%; }
+    .seg-waveform-stage.word-editing { height: 146px; flex: none; }
+    .seg-waveform-stage canvas { display: block; }
+    .word-editor-header, .word-editor-toolbar { display: flex; align-items: center; gap: 12px; }
+    .word-editor-header { justify-content: space-between; padding: 2px 8px 8px; }
+    .word-editor-title { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+    .word-editor-status { font-size: 12px; color: var(--accent); }
+    .word-editor-toolbar { padding: 9px 8px 2px; }
+    .word-editor-hint { flex: 1; color: var(--text-muted); font-size: 12px; }
+    .word-editor-actions { display: flex; gap: 8px; margin-left: auto; }
+    .word-editor-save { background: var(--accent); color: var(--accent-fg); }
+    .word-editor-error { padding: 6px 8px; color: var(--state-error-fg); font-size: 12px; }
+    .seg-row-play-stack { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+    .seg-word-edit-btn { align-self: stretch; }
+    .seg-word-edit-btn.is-open { border-color: var(--accent); color: var(--accent); }
+    .word-edit-hidden { display: none; }
     /* ---- Sample-mode row chips ---- */
     .seg-chip {
         display: inline-flex; align-items: center; height: 18px; padding: 0 7px; margin-inline-start: 6px;
@@ -1165,6 +1436,21 @@ import type { Segment } from '../../../../lib/types/view-models';
         font-size: 10.5px; font-family: var(--font-mono); color: var(--text-secondary); white-space: nowrap;
     }
     .seg-chip-warn { background: var(--state-error-bg); border-color: oklch(0.86 0.130 75 / 0.4); color: var(--state-error-fg); }
+    /* No transition: a fading-out word re-lit for a frame on later style
+       recalcs, flashing the previous word on every step. */
+    .seg-review-word {
+        display: inline;
+        border-radius: 0.25em;
+    }
+    /* Low Confidence v2 word: alpha carries its severity within the reciter. */
+    .seg-review-word.lc {
+        background: color-mix(in oklch, var(--state-error-fg) calc(var(--lc-alpha) * 45%), transparent);
+        box-shadow: inset 0 -2px 0 color-mix(in oklch, var(--state-error-fg) calc(var(--lc-alpha) * 100%), transparent);
+    }
+    .seg-review-word.active {
+        color: var(--accent-fg);
+        background: var(--accent);
+    }
 
     /* ---- Flag button (manual "needs a second look") ---- */
     /* A peer of the play/go-to controls. Idle reads as a quiet outline; an

@@ -13,14 +13,19 @@ Playbook for one-shot migrations / backfills against bucket data (`reciters/<slu
 | `migrate_to_reciters_prefix.py` | bucket layout | `wip/<slug>/` + `published/<slug>/` → `reciters/<slug>/` | yes (skip-existing) | One-shot prefix unification. Copy → verify → `--delete-old`. |
 | `purge_stale_wraps.py` | detailed.json | strip stale `wrap_word_ranges` | yes | Migration #1. |
 | `backfill_qalqala_letter.py` | detailed.json | persist `qalqala_letter` per seg | yes (drift-gated) | Migration #2. See [validation.md](validation.md). |
-| `backfill_boundary_adj.py` | detailed.json | persist `is_boundary_adj` per seg | yes (drift-gated) | Migration #2. Needs `quranic_phonemizer` (offline-only). |
 | `purge_pad_migration.py` | edit_history.jsonl | strip `batch_type=="pad_migration"` batches | yes (noop on clean) | Migration #3. |
 | `convert_peaks_v2_to_v3.py` | peaks/ | plain `<ch>.json` v2 → slim `<ch>.json.gz` v3 | yes | Migration #5 wire shape. See the inspector-audio skill. |
-| `backfill_deleted_basmala.py` | pipeline_meta.json | derive `deleted_basmala_chapters` sidecar | yes (byte-equal) | Migration #5. |
-| `derive_pipeline_meta.py` | pipeline_meta.json | derive sidecar for a local slug dir | yes (modulo `generated_at`) | New-pipeline + legacy fallback paths. |
+| `backfill_deleted_basmala.py` | pipeline_meta.json | derive `deleted_basmala_chapters` sidecar | yes (byte-equal) | Migration #5. **Retired** with the `basmala_amin` category — nothing reads the field. |
+| `derive_pipeline_meta.py` | pipeline_meta.json | derive sidecar for a local slug dir | yes (modulo `generated_at`) | New-pipeline + legacy fallback paths. **Retired** with `backfill_deleted_basmala.py`. |
+| `backfills/regen_timestamps_offline.py` | timestamps shards, timing, ts_validation, readings, recitation profile, run record | regenerate many reciters' timestamps outside the Space (e.g. timing recorded openers into every shard) | yes (re-times only stale segments unless `--full`) | Dry run by default; `--execute --workers N`. Each success is reported to `POST /api/admin/internal/ts-refreshed` (needs `INSPECTOR_WEBHOOK_SECRET`), which advances the `ts` release and marks HF/GH stale. |
+| `backfills/splice_opener_readings.py` | timestamps shards + specials.json `words` | splice each chapter's opener readings (`0:1` / `0:2`) in front of its verse readings, ids renumbered; timing on the aligner or on Katana (`--export` → `katana_openers/` → `--replies`) | yes (skips a shard that has openers) | Reports each reciter to `ts-refreshed`. |
+| `backfills/rebuild_specials_from_history.py` | specials.json | a delivery aligned before the run wrote `specials.json` gets one from the pipeline's strip events in `edit_history.jsonl` (same builder as an align run) | yes | Refuses to overwrite without `--force`; the Fatiha 1:1 gets no voice verdict. |
+| `backfills/restamp_source_refs.py` | detailed.json `source_ref` / `projection_support` | re-stamp every non-Hafs segment through `stamp_projection`; a cross-verse span stamped by an older SDK lost its tail words (Warsh `7:136:12-7:137:2` → `7:137:12-7:137:18`), so the engine never timed them and `cut_release` gated the verse | yes | Prints the moved chapters; TS-regen them, then restart the Space. 219 segments over 8 Warsh/Qalun deliveries on 2026-10-25. |
+| `backfills/clamp_opener_spans.py` | specials.json opener `end_ms` / `clipped` / `words` | end each `pre` opener (not Al-Fatiha's 1:1) at the next opener's or ayah 1's first segment start; the opener backfill's `aligner_backfill` spans padded into ayah 1, and their words were timed over its speech | yes | Then `splice_opener_readings.py --redo <file>` re-times those openers and replaces their shard readings. 449 chapters over 21 reciters on 2026-10-25. |
+| `backfills/write_opener_voice.py` | specials.json `voice_z` / `voice_verdict` | every opener's same / different voice verdict, decided per audio source from the Katana voice run | yes | Never touches `voice_confirmed`; reports changed reciters to `ts-refreshed`. |
+| `backfills/restore_fatiha_basmala.py` | detailed.json + specials.json | undo the deletion of Hafs/Shu'ba Al-Fatiha 1:1 (the retired `basmala_amin` flow); re-label its specials entry `fatiha_verse` | yes (skips a chapter 1 that has its 1:1) | Dry run by default; `--execute` writes through the Inspector's undo (history records it); restart the Space after. See [specials.md](specials.md). |
 | `backfill_pipeline_peaks.py` | edit_history_peaks.jsonl | resync per-op pipeline peaks with history | yes | Migration #5 catch-up tool. |
 | `backfill_peaks_slim.py` / `rollback_peaks_slim.py` | peaks/ | legacy `.json` → slim `.json.gz` (+ reverse) | yes | See the inspector-audio skill. |
-| `backfill_deleted_basmala.py` is paired with extraction's native write | — | — | — | New reciters land pre-stamped; backfill is legacy catch-up only. |
 | `unignore_category.py` | edit_history.jsonl | bulk-revert `ignore_issue` ops for a category | yes (skips reverted) | Data fix, not a migration — drives `services.segments.undo.undo_ops`. |
 | `audit_bucket_reciter.py` | (read-only) | per-reciter integrity audit | n/a | Run before publishing a reciter. |
 | `restamp_timestamps_v12.py` | timestamps/ | historical chapter shard → native v12 staging object | separate output | Migration #7; strict local cutover only. |
@@ -54,11 +59,11 @@ Legacy boot-time reconcile *deleted* pending-request orphans (losing proposed_ed
 **Apply** — `--apply` writes `archive/stale_wraps/<slug>/detailed.json.<ts>.bak` then overwrites. Flags `--slug`, `--show-details`.
 **Does NOT** — touch `edit_history.jsonl`; invalidate caches (restart / reciter-switch to see); re-segment the corrupted-geometry segs (wrap stripped, re-segment manually if needed).
 
-### #2 `qalqala_letter` + `is_boundary_adj` backfill (`backfill_qalqala_letter.py`, `backfill_boundary_adj.py`)
-Persist two classifier fields per seg so the runtime validate loop is a dict-lookup. **One source-of-truth helper each** (`services/segments/qalqala.py::compute_qalqala_letter`, `services/validation/classifier.py::compute_is_boundary_adj`) shared by save / extraction / backfill. Field semantics + write-vs-read ownership in [validation.md](validation.md).
+### #2 `qalqala_letter` backfill (`backfill_qalqala_letter.py`)
+Persist the qalqala classifier field per seg so the runtime validate loop is a dict-lookup. One source-of-truth helper (`services/segments/qalqala.py::compute_qalqala_letter`) shared by save / extraction / backfill. The same migration stamped `is_boundary_adj`; published segments still carry it and `DetailedSegment` discards it on read. Field semantics + write-vs-read ownership in [validation.md](validation.md).
 **Apply** — `--slug <s> --dry-run` / `--all`. Each slug **drift-gated** independently: stamp → run validate against persisted fields → compare to `bench/ground_truth/<slug>.json` → promote only on byte-equal; else abort. Writes `archive/backfill/<slug>/detailed.json` before promotion.
-**Re-run after** — restoring an old `archive/` snapshot, a `quranic_phonemizer` version bump (re-stamps phonemic side of `is_boundary_adj`), or a manual catalog import that bypasses extraction/save. Legacy segs missing the field fall through to live compute (identical answer, slower).
-**Does NOT** — touch `edit_history.jsonl`; cross-process cache invalidate; delete `quranic_phonemizer` (still imported by the backfill + extraction).
+**Re-run after** — restoring an old `archive/` snapshot, or a manual catalog import that bypasses extraction/save. Segs missing the field fall through to live compute (identical answer, slower).
+**Does NOT** — touch `edit_history.jsonl`; cross-process cache invalidate.
 
 ## edit_history migrations
 
@@ -79,7 +84,8 @@ A pipeline-era cluster of changes; the post-#5 invariants are: every history sna
 
 - **`convert_peaks_v2_to_v3.py`** — walks a dir of plain `peaks/<ch>.json` (v2: `schema_version:2`, nested float `peaks`) → emits slim `<ch>.json.gz` siblings (mirrors `services/audio/peaks_slim.py::pack_slim`). Deletes the plain files unless `--keep-legacy`. Runs in a download → migrate → re-upload flow; orphaned plain `.json` on the bucket need a separate delete pass. Peaks shape detail lives in the **inspector-audio skill**.
 - **`derive_pipeline_meta.py`** — derives `<dir>/pipeline_meta.json` for a local slug dir. New path: walk `strip_specials` snapshots, collect Basmala-class chapters from the `chapter` stamp. Legacy fallback: pair each Basmala-class op with the next `batch.chapters[]` entry (valid because strip ops emit in chapter+time order). Idempotent modulo `generated_at`.
-- **`backfill_deleted_basmala.py`** — same derivation via `qua_shared/pipeline_meta.py::collect_deleted_basmalas` (the helper extraction calls — byte-identical), writing the `deleted_basmala_chapters` sidecar field for legacy reciters. The post-#5 inspector reads this sidecar instead of re-deriving from `edit_history.jsonl` on every cold validate. `--slug` / `--all --dry-run`. Deterministic — re-run as a drift check.
+- **`backfill_deleted_basmala.py`** — same derivation via `qua_shared/pipeline_meta.py::collect_deleted_basmalas` (the helper extraction calls — byte-identical), writing the `deleted_basmala_chapters` sidecar field for legacy reciters. The post-#5 inspector read this sidecar instead of re-deriving from `edit_history.jsonl` on every cold validate. `--slug` / `--all --dry-run`. Deterministic — re-run as a drift check.
+- **Retired (both scripts above).** The `basmala_amin` validation category that consumed `deleted_basmala_chapters` is gone, so validation no longer reads `pipeline_meta.json` and promote no longer writes the field. `PipelineMeta` keeps it as a deprecated, never-serialized field (`exclude=True`) so old sidecars still validate under `extra="forbid"`; `promote_run.py --compare` drops it from both sides.
 - **`backfill_pipeline_peaks.py`** — catch-up when `edit_history_peaks.jsonl` drifts from `edit_history.jsonl` (partial migration / manual mutation / pre-#5 reciter). Assumes the #5 invariants — if unmet, fix source data (`.local/extraction/scripts/migrate_wip5_in_place.py`) or re-extract rather than adding fallbacks here.
 
 ## Migration #7 — native timestamp shards and report targets
@@ -130,7 +136,7 @@ this migration and requires a separate reviewed release procedure.
 
 All these scripts read/write through the shared pydantic schemas in `qua_shared/schemas/` (and `qua_shared/pipeline_meta.py` for the sidecar) — never dict literals. Extraction and the inspector save flow stamp the same fields natively, so new reciters land pre-migrated and only legacy / archive-restored data needs a backfill pass.
 
-`qua_shared/schemas/` is split into three subpackages by where the shape lives: `bucket/` (external bucket-resident JSON artefacts — `segment`, `edit_history`, `peaks_history`, `catalog`, `pipeline_meta`, `ts_validation`, `ts_job_record`, `playlist_map`, `ts_shard`, `segments_doc`), `wire/` (HTTP request/response — `admin_*`, `intake_requests`, `mark_ready`, `release`, `seg`, `timestamps`, `public`, `audio`, plus `_envelopes` `ErrorEnvelope`/`OkAck`), and `config/` (state+db blobs — `state`, `access`, `audit`, `capabilities`, `automation`, `activity_state`, `pending_requests`). The root keeps the full barrel (`__init__.py`), the slim FE codegen surface (`fe_types.py`), `_extras.py` (`strip_and_warn`, surviving only for the `ts_shard` `_meta` forward-compat exception), and `smoke.py`. `extra` policy: bucket artefacts are pure `extra="forbid"` (an unknown/legacy field raises `ValidationError`, never silently stripped); wire request/response + config use `extra="forbid"`; `extra="allow"` only where a forward-compat fixture proves an unknown field rides through unchanged — the only survivors are `ts_validation`, `playlist_map`, and `ts_shard`'s `_meta` (the last still via `strip_and_warn`). Codegen is unchanged in mechanism — `scripts/codegen/regen_fe_types.py` over `fe_types.py` → `inspector/frontend/src/lib/types/generated/schemas.ts`, gated by CI `schema-codegen-check`.
+`qua_shared/schemas/` is split into three subpackages by where the shape lives: `bucket/` (external bucket-resident JSON artefacts — `segment`, `edit_history`, `peaks_history`, `catalog`, `pipeline_meta`, `ts_validation`, `ts_job_record`, `ts_shard`, `segments_doc`), `wire/` (HTTP request/response — `admin_*`, `intake_requests`, `mark_ready`, `release`, `seg`, `timestamps`, `public`, `audio`, plus `_envelopes` `ErrorEnvelope`/`OkAck`), and `config/` (state+db blobs — `state`, `access`, `audit`, `capabilities`, `automation`, `activity_state`, `pending_requests`). The root keeps the full barrel (`__init__.py`), the slim FE codegen surface (`fe_types.py`), `_extras.py` (`strip_and_warn`, surviving only for the `ts_shard` `_meta` forward-compat exception), and `smoke.py`. `extra` policy: bucket artefacts are pure `extra="forbid"` (an unknown/legacy field raises `ValidationError`; the one exception is `DetailedSegment` discarding a published `is_boundary_adj`); wire request/response + config use `extra="forbid"`; `extra="allow"` only where a forward-compat fixture proves an unknown field rides through unchanged — the only survivors are `ts_validation` and `ts_shard`'s `_meta` (the last still via `strip_and_warn`). Codegen is unchanged in mechanism — `scripts/codegen/regen_fe_types.py` over `fe_types.py` → `inspector/frontend/src/lib/types/generated/schemas.ts`, gated by CI `schema-codegen-check`.
 
 ### Route serialization through wire models
 
@@ -138,8 +144,68 @@ The `seg`/`timestamps`/`public`/`audio` routes serialize **through** the `wire/`
 
 ### Bucket-validation harness
 
-`inspector/services/storage/bucket_audit.py` is the Flask-free engine that walks one `reciters/<slug>/` folder and parses every artefact through the canonical schemas, surfacing any `ValidationError` an unknown/legacy field raises under the pure-`forbid` models (post-migration this should be silent for all reciters). It backs three callers: the per-reciter CLI `scripts/bucket/audit_bucket_reciter.py`, the whole-bucket gate `scripts/diagnostics/validate_bucket.py` (per-reciter artefacts + DB-catalog rebuild + audio-manifest sidecars; exits non-zero on any hard error, `--strict` also fails on unknown fields), and `sample_validation` wired into `/healthz?deep=1`. The nightly `.github/workflows/bucket-validate.yml` runs the whole-bucket validator so external-file drift is caught in CI rather than mid-request.
+`inspector/services/storage/bucket_audit.py` is the Flask-free engine that walks one `reciters/<slug>/` folder and parses every artefact through the canonical schemas, surfacing any `ValidationError` an unknown/legacy field raises under the pure-`forbid` models (post-migration this should be silent for all reciters). It backs three callers: the per-reciter CLI `scripts/bucket/audit_bucket_reciter.py`, the whole-bucket gate `scripts/diagnostics/validate_bucket.py` (per-reciter artefacts + DB-catalog rebuild + audio-manifest sidecars; exits non-zero on any hard error, `--strict` also fails on unknown fields), and `sample_validation` wired into `/healthz?deep=1`.
 
 ### Dead-set-emptying prod migration (done, 2026-06)
 
-The bucket artefact models are now pure `extra="forbid"`: the `strip_and_warn` helper and the per-model dead-field sets (`_OP_DEAD_FIELDS` / `_BATCH_DEAD_FIELDS`, etc.) are gone, so any unknown/legacy field raises `ValidationError` rather than being silently stripped. The one-shot prod-data migration ran in 2026-06 — every reciter's on-disk artefacts were rewritten to the canonical shape via round-trip through the schemas, then re-audited to ZERO legacy strips. The only survivors of the old tolerance are the documented forward-compat exceptions `ts_validation`, `playlist_map`, and `ts_shard`'s `_meta`.
+The bucket artefact models are now pure `extra="forbid"`: the `strip_and_warn` helper and the per-model dead-field sets (`_OP_DEAD_FIELDS` / `_BATCH_DEAD_FIELDS`, etc.) are gone, so any unknown/legacy field raises `ValidationError` rather than being silently stripped. The one-shot prod-data migration ran in 2026-06 — every reciter's on-disk artefacts were rewritten to the canonical shape via round-trip through the schemas, then re-audited to ZERO legacy strips. The only survivors of the old tolerance are the documented forward-compat exceptions `ts_validation` and `ts_shard`'s `_meta`.
+
+
+## Join-verdict backfill
+
+`scripts/backfills/backfill_join_verdicts.py` reads a local snapshot containing
+`<slug>/{detailed.json,edit_history.jsonl,missed_waqf_v1.json}`. All snapshot voices
+are included by default; repeat `--slug` to select voices. It imports no bucket
+client or Inspector services. Dry run prints totals; `--report-dir` writes
+`report.json` and `summary.txt`, including every change and every skip.
+
+```powershell
+python scripts/backfills/backfill_join_verdicts.py --input C:/review-snapshot --report-dir C:/joins_dry
+python scripts/backfills/backfill_join_verdicts.py --input C:/review-snapshot --apply --output C:/joins_staged
+```
+
+Missed Waqf split cuts recover waqf; ignores recover wasl at every asked cursor;
+mixed splits recover wasl at uncut cursors. Questions come from the snapshotted
+sidecar, following effective split ancestry for child operations. Reviewed
+cross-verse boundaries and recorded verse-end splits recover waqf where the
+boundary still exists. Placement requires current word and audio ownership.
+Wasl answers awaiting a containing segment are retried after the merges.
+Reverts, changed geometry, missing coordinates and conflicting explicit answers
+are listed with source operation IDs, rather than guessed.
+
+A left segment with `is_wasl: true` merges with its immediate temporal successor
+only within the same chapter, entry and audio, with contiguous references,
+nonoverlapping times and neither flags, wraps nor special/unmatched rows.
+Chains merge left to right. Each merge keeps the first UID, spans the time/ref
+range, takes minimum confidence, unions ignores and verdicts, records wasl at
+the join, and drops word timings. Only a blocked trailing connection retains
+`is_wasl`. One `merge_segments` operation per merge carries `cross_verse` context
+and the `join-verdict-backfill` actor in a reversible audit batch; timestamp
+staleness therefore sees every structural change. Verdict-only audit operations
+do not mark timestamps stale.
+
+`--apply` requires a new output directory outside the input tree. It stages all
+voices for direct comparison, preserves history bytes, appends validated audit
+batches and copies the sidecar. Inputs are re-read before writing and every
+output is read back. `--live-input` can name a second local export: any difference
+in detailed.json refuses staging before output creation. Neither mode writes
+to the snapshot or bucket. A subsequent remote rollout must obtain a fresh
+export and pass this comparison; this command has no upload path.
+
+Reports include hashes, per-voice/category counts, merge chains, reasons and
+timestamp impact. Known snapshot-only annotations present in the supplied
+export are retained on untouched rows; the persisted projection and audit
+models are validated. Unknown fields still fail validation. Re-running staged
+data produces no additional changes.
+
+## Verse-end verdict backfill
+
+`scripts/backfills/store_verse_end_verdicts.py --slug <slug> --applied verse_ends_applied.json [--apply]`
+stores the boundary lab's WASL verse-end verdicts, which `apply_verse_end_verdicts`
+left unrecorded because a WASL join needs no split, as `join_verdicts` (`at_ms` =
+the lab cursor) on the live segment. A segment whose every verse end is then
+answered is settled for `cross_verse` exactly as a reviewer's all-WASL answer is
+(`ignore_issue`, `fix_kind: auto_fix`); otherwise only the answers are stored and
+the rest stay asked. Joins whose segment is gone, whose word is no longer a verse
+end inside it, whose cursor is outside it, or that are already answered are
+skipped. Dry run by default; restart the Space before and after `--apply`.

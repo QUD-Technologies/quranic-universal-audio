@@ -53,7 +53,6 @@ def test_detail_marked_ready_round_trips_submission(seed_state):
         "low_confidence": True,
         "repetitions": True,
         "splits_wasl_waqf": True,
-        "basmala_amin_intros": True,
     }
     with db.transaction():
         repo_claims.set_marked_ready(
@@ -91,3 +90,33 @@ def test_detail_legacy_marked_ready_without_checklist(seed_state):
     assert detail is not None
     assert detail["current_claim"]["marked_ready_at"] is not None
     assert detail["current_claim"]["mark_ready_submission"] is None
+
+
+def test_detail_drops_retired_checklist_key_from_old_claim(seed_state):
+    """Claims marked ready before the ``basmala_amin`` category was retired
+    store ``basmala_amin_intros`` in their checklist JSON. ``MarkReadyChecklist``
+    forbids unknown keys, so the drawer must drop it rather than 500."""
+    seed_state(
+        "d_old",
+        state="under_review",
+        assignee_hf_id="rev4",
+        assignee_login="reviewer4",
+    )
+    current = {
+        "failed_alignments": True,
+        "missing_words": False,
+        "low_confidence": True,
+        "repetitions": False,
+        "splits_wasl_waqf": True,
+    }
+    with db.transaction():
+        repo_claims.set_marked_ready(
+            "d_old",
+            ready=True,
+            checklist_json=_serde.json_dumps({**current, "basmala_amin_intros": True}),
+        )
+
+    detail = reviews_service.get_review_detail("d_old")
+
+    assert detail is not None
+    assert detail["current_claim"]["mark_ready_submission"]["checklist"] == current

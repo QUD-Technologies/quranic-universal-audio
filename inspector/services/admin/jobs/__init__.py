@@ -3,7 +3,7 @@
 Public entry points re-exported here so callers (routes, tests, admin tools)
 don't have to know which module owns each kind:
 
-  - ``ts``           — Generate timestamps (MFA in-container alignment).
+  - ``ts``           — Generate timestamps (aligner timing run).
   - ``hf_publish``   — Push a recitation to the public HF dataset.
   - ``cut_release``  — Cut a new global GH release snapshot.
 

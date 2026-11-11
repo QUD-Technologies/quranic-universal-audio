@@ -35,6 +35,7 @@ import {
 } from '../../stores/save';
 import { clearStats } from '../../stores/stats';
 import { clearValidation } from '../../stores/validation';
+import { clearWordTimes } from '../../stores/word-times';
 import { resetHistoryLoader } from '../history/loader';
 import { disposeSegRange, stopSegAnimation } from '../playback/playback';
 import { clearRowRegistry } from '../playback/row-registry';
@@ -56,6 +57,7 @@ export function clearPerReciterState(): void {
     clearValidation();
     clearAccordionPin();
     clearAutoSplitMap();
+    clearWordTimes();
     clearAllStagedPicks();
     clearStats();
 

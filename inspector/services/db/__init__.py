@@ -22,12 +22,32 @@ from .connection import (
 from .migrate import current_version, run_migrations
 
 
-def init_db() -> int:
-    """Open the writer + apply pending migrations. Returns schema version."""
+def init_db(*, persist_migrations: bool = False) -> int:
+    """Open the writer and apply migrations.
+
+    Deployed boot passes ``persist_migrations=True`` so a pulled bucket DB is
+    upgraded durably. Tests and offline tools keep the default and never gain
+    an unexpected remote write merely by initializing a local database.
+    """
     conn = get_writer()
+    previous_version = current_version(conn)
     version = run_migrations(conn)
     # WAL/SHM sidecars only exist after the first write; tighten perms now.
     _chmod_600(db_path())
+    if persist_migrations and version > previous_version:
+        # Migrations write through sqlite directly rather than the service
+        # transaction seam. Persist the upgraded snapshot now so a cold restart
+        # does not pull and re-run a stale bucket DB. The read-only escape hatch
+        # keeps local prod inspection fully disarmed.
+        from . import sync
+
+        if sync.is_sync_enabled():
+            # A migration changes persisted state without using the normal
+            # service transaction seam. Advance db_seq before upload so the
+            # new container is newer than the snapshot it just pulled; an
+            # equal sequence is correctly rejected by the deploy-overlap CAS.
+            with sync.durable_transaction():
+                pass
     return version
 
 

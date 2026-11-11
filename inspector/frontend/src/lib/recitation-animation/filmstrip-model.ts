@@ -18,6 +18,7 @@
  */
 
 import type { ChapterCoverage } from '../recitation-data/coverage';
+import type { SpecialKind } from '../types/ts-client';
 import { ayahUnitRanges } from './chapter-words';
 import type { AnimUnit } from './types';
 
@@ -34,6 +35,8 @@ export type CellMissing = 'none' | 'words' | 'full';
 export interface ActiveCellInfo {
     ayah: number;
     missing: CellMissing;
+    /** Set when the active cell is a recited opener (its `ayah` is not a verse). */
+    special: SpecialKind | null;
 }
 
 /** A word's position within its verse, as a half-open fraction range. */
@@ -83,6 +86,10 @@ export interface VerseCell {
      *  any-take-bridges renders permanently merged. `false` on placeholders + the
      *  last cell. */
     waslNext: boolean;
+    /** Set on a recited opener's cell (Isti'adha/Basmala), which sits before
+     *  ayah 1, is labelled by name, and is never a coverage verse. Its `ayahKey`
+     *  is the opener's `0:x` ref and its `ayah` is NOT a verse number. */
+    special: SpecialKind | null;
 }
 
 export interface FilmstripModel {
@@ -124,6 +131,7 @@ function placeholderCell(surah: number, ayah: number): VerseCell {
         nextGapSec: 0,
         missing: 'full',
         waslNext: false,
+        special: null,
     };
 }
 
@@ -183,21 +191,28 @@ export function buildFilmstripModel(
             canonStartSec: head.intervals[0]?.start ?? head.start,
             canonEndSec,
             nextGapSec: 0,
-            missing: coverage?.status.get(head.ayah) === 'words' ? 'words' : 'none',
+            // An opener is no coverage verse: its `ayah` (1 or 2 of `0:x`) would
+            // read that verse's status.
+            missing: !head.special && coverage?.status.get(head.ayah) === 'words' ? 'words' : 'none',
             waslNext: false, // refined in `_assemble` (needs the next present cell)
+            special: head.special ?? null,
         });
     }
 
     if (!coverage) return _assemble(present, units);
 
-    // Merge placeholders for fully-missing verses in ayah order. Defensive max
-    // covers a present ayah beyond the qpc reference count (shouldn't happen).
-    const presentByAyah = new Map(present.map((c) => [c.ayah, c]));
-    const surah = present[0]!.surah;
+    // Openers lead the strip in recitation order; placeholders for fully-missing
+    // verses merge into the verse cells in ayah order. Defensive max covers a
+    // present ayah beyond the qpc reference count (shouldn't happen).
+    const openers = present.filter((c) => c.special);
+    const verses = present.filter((c) => !c.special);
+    const surah = verses[0]?.surah;
+    if (surah === undefined) return _assemble(present, units);
+    const presentByAyah = new Map(verses.map((c) => [c.ayah, c]));
     let maxAyah = coverage.numVerses;
-    for (const c of present) if (c.ayah > maxAyah) maxAyah = c.ayah;
+    for (const c of verses) if (c.ayah > maxAyah) maxAyah = c.ayah;
 
-    const merged: VerseCell[] = [];
+    const merged: VerseCell[] = [...openers];
     for (let a = 1; a <= maxAyah; a++) {
         merged.push(presentByAyah.get(a) ?? placeholderCell(surah, a));
     }

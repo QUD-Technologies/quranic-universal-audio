@@ -81,6 +81,8 @@ HIDDEN_EVENTS: frozenset[str] = frozenset(
         "admin.unlocked_for_revision",
         # Catalog metadata edits.
         "catalog.edited",
+        # Maintainer's manual recitation quality rating (audit-only).
+        "reciter.quality_set",
         # Request review moved off the notifications rail into the Admin dashboard
         # → Requests tab. The submit event stays public prose (PUBLIC_EVENTS);
         # the reject outcomes are hidden (still audited).
@@ -98,6 +100,7 @@ HIDDEN_EVENTS: frozenset[str] = frozenset(
         "access.role_revoked",
         "access.role_updated",
         "access.permission_changed",
+        "specials.voice_confirmed",
         # Owner-only public-feed tombstone (the only remaining mutation against
         # the activity sidecars).
         "admin.activity_deleted",

@@ -59,13 +59,13 @@ imports `qua_domain`. Everything else goes through it.
 `qua_domain`'s Hafs index has the same 77,433 refs but different glyph spellings
 in **44,481** words (U+0652 vs U+06E1 and friends). Swapping the Hafs display
 path to it would silently change every existing render, snapshot and qalqala
-derivation. Hafs display text stays on `data/qpc_hafs.json` +
-`data/digital_khatt_v2_script.json` + `DigitalKhattV2.otf`.
+derivation. Hafs display text stays on Digital Khatt v2 from the `talqeen-quran-data`
+pack ([quran-data.md](quran-data.md)) + `DigitalKhattV2.otf`.
 
-Hafs *counting* is a different matter: `surah_info.json` and
-`load_edition_index("hafs")` are byte-identical (6,236 verses, 77,433 words, zero
-diffs) and a parity test keeps them so. The Hafs runtime path therefore keeps
-reading `surah_info.json` and works with the package absent.
+Hafs *counting* is a different matter: the pack's surah metadata (`quran_text.surah_info()`)
+and `load_edition_index("hafs")` are identical (6,236 verses, 77,433 words, zero diffs)
+and a parity test keeps them so. The Hafs runtime path therefore never needs
+`qua-domain`.
 
 ### Degradation
 
@@ -149,22 +149,13 @@ Two consequences worth stating outright:
   locations are Hafs.** They do not match for a renumbered surah, so the word
   filter reads the segment's `source_ref` span (`raw_v2._source_verse_keys`).
 
-The hardcoded classifier tables are projected through `qua_domain`, never
+The hardcoded classifier table is projected through `qua_domain`, never
 duplicated per edition — see `services/reference/edition_tables.py`. Hafs is the
 identity there (it returns the constants and never touches the package).
 
 | Table | hafs | shuba | warsh / qalun |
 |---|---|---|---|
-| `muqattaat_words` | 30 | 30 | 30 |
-| `muqattaat_verses` | 30 | 30 | **29** |
-| `standalone_refs` | 10 | 10 | 10, four renumbered |
-| `standalone_words` | 8 | 8 | 8, one respelled |
-| `single_word_verses` | 28 | 28 | **3** |
-
-> **A muqattaat verse is not always one word.** 13:1 runs on for eight more
-> words after `الٓمٓر`. That is why the boundary-adjacency exemption is keyed on
-> the **verse** (`muqattaat_verses`) while the `muqattaat` flag is keyed on the
-> **word** (`muqattaat_words`). Do not collapse the two tables.
+| `muqattaat_words` | 30 | 30 | 30 — Hafs 42:1:1 + 42:2:1 land in one verse as 42:1:1 + 42:1:2 |
 
 ---
 
@@ -199,7 +190,7 @@ for a non-Hafs delivery (**D12**). `auto_split_v1.json` publishes the delivery's
 section refs while measuring their word counts in Hafs — the space the aligner's
 word list lives in.
 
-The extraction runbook is `.claude/skills/segments-extraction/` in the `qua` repo.
+Extraction runs through the native align pipeline ([`align-pipeline.md`](align-pipeline.md)).
 
 ### Segments tab
 
@@ -226,10 +217,9 @@ against a 5–10 MB quota), so switching editions and back refetches by design.
 
 ### Validation
 
-Every table read is per-edition. `basmala_amin` emits its sounded-Basmala
-sub-check **only** where the edition numbers the Basmala as `1:1` (hafs, shuba);
-the Amin check and the missed-Basmala augmentation stay for all four, resolving
-the edition's last Fatiha verse rather than hardcoding 7.
+Every table read is per-edition (`edition_tables.muqattaat_words`). The retired
+`basmala_amin` category was the only reader of the edition's Basmala numbering
+and last Fatiha verse, so `basmala_is_numbered` / `fatiha_last_ayah` went with it.
 
 Not produced for non-Hafs (**D12**): `low_confidence_v2.json`,
 `ts_validation.json`. Both are tight-beam MFA probes against Hafs proxy phones —

@@ -250,7 +250,6 @@ def _verse_fixture(*, time_start_ms: int) -> dict:
             {
                 "location": "1:1:1",
                 "text": "بِسْمِ",
-                "display_text": "بِسْمِ",
                 "start": 0.10,
                 "end": 0.54,
                 "phoneme_indices": [0, 1],

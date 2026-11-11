@@ -31,7 +31,6 @@
 
     import { localeStore, tr } from '../../../../lib/i18n/locale-store';
     import * as m from '../../../../lib/paraglide/messages';
-    import { shadowPrewarm } from '../../../../lib/playback/shadow-audio';
     import { can } from '../../../../lib/stores/capabilities';
     import { currentUser, isOwner } from '../../../../lib/stores/current-user';
     import type { SegValAnyItem, SegValLowConfidenceItem, SegValQalqalaItem, SegValidateResponse } from '../../../../lib/types/generated/schemas';
@@ -39,13 +38,13 @@
     import { TAB_NAMES } from '../../../../lib/utils/constants';
     import { pendingSegmentsDeepLink, type SegmentsDeepLink } from '../../../../lib/utils/goto-segments';
     import { getWaveformPeaks } from '../../../../lib/utils/waveform-cache';
-    import { IssueRegistry } from '../../domain/registry';
+    import { IssueRegistry, isCategoryHidden } from '../../domain/registry';
     import { SORT_META, sortItems, type SortOption } from '../../domain/sorting';
     import { hasAccordionGuide, isGuideRead } from '../../guides/registry';
     import { VALIDATION_TITLE } from '../../i18n/validation-labels';
     import { accordionPin, clearAccordionPin, pinAccordion } from '../../stores/accordion-pin';
     import { autoSplitMap, ensureAutoSplitMap } from '../../stores/auto-split';
-    import { toggleBoundaryState, valBoundaryFilter } from '../../stores/boundary-filter';
+    import { resetBoundaryFilter, toggleBoundaryState, valBoundaryFilter } from '../../stores/boundary-filter';
     import { getChapterSegments, segAllData, selectedReciter } from '../../stores/chapter';
     import { segConfig } from '../../stores/config';
     import { dirtyTick, getChapterOpsSnapshot } from '../../stores/dirty';
@@ -53,14 +52,13 @@
     import { stagedWaslPicks } from '../../stores/staged-split';
     import { openGuideModal } from '../../stores/guides';
     import { autoScrollEnabled, playingSegmentIndex } from '../../stores/playback';
-    import { segValidation, splitGroupIndex, valUiLcThreshold, valUiMeasuredCardHeight,valUiOpenCategory, valUiScrollTop } from '../../stores/validation';
+    import { segValidation, splitGroupIndex, valUiLcThreshold, valUiMeasuredCardHeight,valUiOpenCategory, valUiScrollTop, waslRecheck } from '../../stores/validation';
     import { resolveSort, selectSort, toggleDir, valSortPrefs, type SortPrefs } from '../../stores/validation-sort';
     import {
         VAL_VIRTUALIZE_THRESHOLD,
         VIRT_BUFFER_ROWS,
     } from '../../utils/constants';
-    import { wrapCbrSrcIfBySurah } from '../../utils/playback/source';
-    import { warmSeg } from '../../utils/playback/warmup';
+    import { warmSeg, warmSegChapter } from '../../utils/playback/warmup';
     import {
         BOUNDARY_STATES,
         type BoundaryCtx,
@@ -70,6 +68,7 @@
         filterByBoundaryStates,
     } from '../../utils/validation/boundary-state';
     import { resolveCardLeadSeg } from '../../utils/validation/card-lead-seg';
+    import type { StagedKind } from '../../utils/validation/staged-split';
     import { filterStaleIssues } from '../../utils/validation/stale';
     import { _fetchPeaks } from '../../utils/waveform/utils';
     import ErrorCard from './ErrorCard.svelte';
@@ -261,9 +260,12 @@
 
     // Reset scroll position and measured height when the open category changes
     // so the new category starts at the top and re-measures its own card sizes.
+    // A boundary accordion (Cross-verse, Low Confidence Waqf) also opens on
+    // Unset only, whatever the chips were left at last time.
     let _prevOpenCategory: string | null = openCategory;
     $: if (openCategory !== _prevOpenCategory) {
         _prevOpenCategory = openCategory;
+        if (openCategory && IssueRegistry[openCategory]?.boundaryFilter) resetBoundaryFilter();
         cardsScrollTop = 0;
         estCardHeight = FALLBACK_CARD_HEIGHT;
         if (cardsContainerEl) {
@@ -305,7 +307,7 @@
         qalqalaLetters: string[];
         /** Sort options this accordion offers (undefined = no sort pills). */
         sorts?: readonly SortOption[];
-        /** Unset · Wasl · Waqf boundary totals (cross-verse only). */
+        /** Unset · Wasl · Waqf boundary totals (staged-split categories only). */
         boundaryCounts?: Record<BoundaryState, number>;
     }
 
@@ -341,7 +343,6 @@
         cross_verse: 'val-cross-count',
         muqattaat: 'val-cross-count',
         qalqala: 'val-cross-count',
-        basmala_amin: 'val-cross-count',
     };
     function _countClassFor(kind: string): string {
         const override = COUNT_CLASS_OVERRIDES[kind];
@@ -403,11 +404,10 @@
             return _baseMemoResult;
         }
 
-        // Owner-only categories are dropped outright for everyone else — no
-        // accordion, no count, no filter entry: the category may as well not
-        // exist for a non-owner.
+        // Owner-only categories are dropped for everyone else — no accordion,
+        // no count, no filter entry.
         const ordered = Object.values(IssueRegistry)
-            .filter((d) => owner || !d.ownerOnly)
+            .filter((d) => !isCategoryHidden(d.kind, owner))
             .sort((a, b) => a.accordionOrder - b.accordionOrder);
 
         // Build the live-uid set once so stale-filter has O(1) membership
@@ -483,11 +483,12 @@
             let summaryCount = b.items.length;
             let boundaryCounts: Record<BoundaryState, number> | undefined;
             if (b.boundaryFilter) {
-                // Cross-verse: chips count boundaries; the badge counts items
-                // still holding an unlabelled boundary (the work left).
-                boundaryCounts = countBoundaryStates(b.items, _boundaryCtx);
-                visibleItems = filterByBoundaryStates(b.items, _boundarySel, _boundaryCtx);
-                summaryCount = b.items.filter((it) => boundaryStates(it, _boundaryCtx).includes('unset')).length;
+                // Cross-verse / missed-waqf: chips count boundaries; the badge
+                // counts items still holding an unlabelled boundary (the work left).
+                const cat = b.kind as StagedKind;
+                boundaryCounts = countBoundaryStates(b.items, _boundaryCtx, cat);
+                visibleItems = filterByBoundaryStates(b.items, _boundarySel, _boundaryCtx, cat);
+                summaryCount = b.items.filter((it) => boundaryStates(it, _boundaryCtx, cat).includes('unset')).length;
             } else if (b.isLowConf) {
                 const lowConf = b.items as SegValLowConfidenceItem[];
                 visibleItems = lowConf.filter((i) => (i.confidence * 100) < _lcThreshold);
@@ -530,9 +531,10 @@
         return out;
     }
 
-    // Live inputs for the cross-verse boundary states: store segs + op log
+    // Live inputs for the staged-split boundary states: store segs + op log
     // (committed / in-progress splits and their is_wasl), pending post-split
-    // picks, the sidecar map (staged splits) and the staged session picks.
+    // picks, re-asked boundaries, the sidecar map (staged splits) and the
+    // staged session picks.
     $: boundaryCtx = ((): BoundaryCtx => {
         void $segAllData; void $dirtyTick;
         return {
@@ -540,6 +542,7 @@
             opLog: getChapterOpsSnapshot,
             splitGroupIndex: $splitGroupIndex,
             pendingWasl: $pendingWaslConfirm,
+            waslRecheck: $waslRecheck,
             autoSplitMap: $autoSplitMap,
             stagedPicks: $stagedWaslPicks,
         };
@@ -675,6 +678,14 @@
         return out;
     })();
     $: openTotal = displayedItems.length;
+    // Pinned cards no longer in the live list were settled by an edit (the
+    // server dropped them); they render as done. Boundary accordions keep
+    // answered items live and filter them by state, so they never settle here.
+    $: settledKeys = ((): Set<string> => {
+        if (!openCat || openCat.boundaryCounts) return new Set();
+        const live = new Set(openCat.visibleItems.map((it) => issueKey(it, openCat.type)));
+        return new Set(displayedItems.map((it) => issueKey(it, openCat.type)).filter((k) => !live.has(k)));
+    })();
 
     // ---- Card-transition audio warmup ----
     //
@@ -718,12 +729,11 @@
         _cardOwnerByChIdx = m;
     }
 
-    // Resolve a card's lead seg to the audio-proxy-wrapped URL that the
-    // primary `<audio>` element will later load. The shadow element fetches
-    // this URL so the browser HTTP cache is warm by the time the user clicks
-    // play. For VBR chapters the seg-clip URL is per-segment and the shadow
-    // can't pre-cache that — fall back to the byte-Range warmup, which still
-    // primes the server-side ffmpeg read.
+    // Warm a card's lead seg before the user clicks it. CBR goes through
+    // `warmSegChapter`: probe the CDN (so the click plays direct, not via the
+    // audio-proxy) and warm the chapter off the Space. For VBR chapters the
+    // seg-clip URL is per-segment and can't be pre-cached — fall back to the
+    // byte-Range warmup, which still primes the server-side ffmpeg read.
     function _warmAccordionLead(lead: ReturnType<typeof resolveCardLeadSeg>): void {
         if (!lead) return;
         const reciter = $selectedReciter;
@@ -739,8 +749,7 @@
             warmSeg(lead, reciter);
             return;
         }
-        const wrapped = wrapCbrSrcIfBySurah(audioUrl, reciter);
-        shadowPrewarm(wrapped);
+        warmSegChapter(lead, reciter, audioUrl);
     }
 
     /**
@@ -780,18 +789,20 @@
         _fetchPeaks(reciter, Array.from(wanted).sort((a, b) => a - b));
     }
 
-    // Card-0 warmup on category open / re-pin. Fires once per (category, item-0).
-    let _lastCard0Key: string | null = null;
+    // Card-0 warmup — once per category OPEN. Deliberately not keyed on item-0:
+    // every autosave's validation refresh drops the card just fixed, so an
+    // item-0 key re-fired a chapter warm + peaks prefetch right as the user
+    // clicked the next card, competing with that play.
+    let _lastCard0Cat: string | null = null;
     $: {
         const kind = openCategory;
         const first = displayedItems[0];
-        const key = kind && first ? `${kind}|${(first as { chapter?: number }).chapter ?? ''}|${(first as { seg_index?: number; verse_key?: string }).seg_index ?? (first as { verse_key?: string }).verse_key ?? ''}` : null;
-        if (key && first && kind && key !== _lastCard0Key) {
-            _lastCard0Key = key;
+        if (!kind) {
+            _lastCard0Cat = null;
+        } else if (first && kind !== _lastCard0Cat) {
+            _lastCard0Cat = kind;
             _warmAccordionLead(resolveCardLeadSeg(first, kind));
             _prefetchAccordionPeaks();
-        } else if (!key) {
-            _lastCard0Key = null;
         }
     }
 
@@ -1115,7 +1126,7 @@
                     </div>
                 {/if}
 
-                <!-- Boundary chips (Cross-verse only): Unset · Wasl · Waqf, each
+                <!-- Boundary chips (Cross-verse, Missed Waqf): Unset · Wasl · Waqf, each
                      with its boundary count; multi-select filter. -->
                 {#if cat.boundaryCounts}
                     <div class="lc-slider-row val-boundary-row">
@@ -1199,6 +1210,7 @@
                                 bind:this={windowCardRefs[localIdx]}
                                 category={cat.type}
                                 item={issue}
+                                settled={settledKeys.has(issueKey(issue, cat.type))}
                                 initialContextShown={getContextState(cat.type).get(startIdx + localIdx) ?? false}
                                 on:contextchange={contextRelay(cat.type, startIdx + localIdx)}
                             />

@@ -42,7 +42,7 @@
     import { getSurahInfo, surahInfoReady } from '../../../../lib/utils/surah-info';
     import { SEGMENTS_SPEEDS } from '../../../../lib/utils/speed-control';
     import { autoSaveEnabled, toggleAutoSave } from '../../stores/autosave';
-    import { activeSample, isSampleMode, segmentsSubTab } from '../../stores/samples';
+    import { activeSample, isSampleMode } from '../../stores/samples';
     import {
         livePlayingVerse,
         pickerDisplayChapter,
@@ -83,6 +83,7 @@
         hideSavePreview,
         onSegSaveClick,
     } from '../../utils/save/actions';
+    import QualityStatusControl from './QualityStatusControl.svelte';
     import MarkReadyModal from './MarkReadyModal.svelte';
     import ShortcutsGuide from './ShortcutsGuide.svelte';
 
@@ -110,6 +111,8 @@
         unclaim: void;
         markReady: void;
         claimed: void;
+        qualityChanged: void;
+        backToSamples: void;
     }>();
 
     let pickerOpen = false;
@@ -250,7 +253,7 @@
     $: displaySurahName = ((): string | null => {
         const info = _surahMap[String(displaySurahNum)];
         if (!info) return null;
-        return $localeStore === 'ar' && info.name_ar ? info.name_ar.replace(/^سُورَةُ\s*/, '') : info.name_en;
+        return ['ar', 'ckb'].includes($localeStore) && info.name_ar ? info.name_ar.replace(/^سُورَةُ\s*/, '') : info.name_en;
     })();
 
     $: chipMeta = tr(
@@ -592,7 +595,7 @@
                 type="button"
                 class="identity"
                 class:placeholder={!hasReciter}
-                on:click={() => ($isSampleMode ? segmentsSubTab.set('samples') : (pickerOpen = true))}
+                on:click={() => ($isSampleMode ? dispatch('backToSamples') : (pickerOpen = true))}
                 aria-haspopup="dialog"
                 title={identityTitle}
             >
@@ -643,6 +646,11 @@
                             >
                         {/if}
                     {/if}
+                    <QualityStatusControl
+                        slug={$selectedReciter || ''}
+                        task={reciterTask}
+                        onChanged={() => dispatch('qualityChanged')}
+                    />
                 </div>
             {/if}
 

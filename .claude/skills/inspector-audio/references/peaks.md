@@ -52,7 +52,7 @@ Peaks live under the single `reciters/<slug>/peaks/` prefix regardless of lifecy
 
 ## Generation — single writer
 
-**Katana extraction only.** `.local/extraction/segments/audio_persist.py` computes HD peaks → `pack_slim` → writes `<ch>.json.gz` next to the chapter MP3; `upload_to_bucket.py --include-audio` lands audio + peaks + sentinel. **There is no in-Flask fallback writer.** Peaks missing on the bucket fall through to Tier 2 ffmpeg in `routes/segments/peaks.py` — no runtime re-bake.
+**Align pipeline HF jobs only.** `qua_jobs/acquire_audio.py` (single-chapter sources) and `qua_jobs/split_audio.py` (cut chapters) write `<ch>.json.gz` next to the chapter MP3. **There is no in-Flask fallback writer.** Peaks missing on the bucket fall through to Tier 2 ffmpeg in `routes/segments/peaks.py` — no runtime re-bake.
 
 > Stale-comment caveat: `peaks.py` / `peaks_slim.py` docstrings still mention an `audio_fetch.fetch_and_persist_chapter` fallback that "re-bakes on AWAITING_REVIEW". That function was removed (see `prefetch.md`); ignore the comments.
 

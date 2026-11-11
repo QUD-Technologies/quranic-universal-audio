@@ -47,8 +47,16 @@ def test_publish_hf_syncs_catalog_and_card_after_split(monkeypatch, tmp_path):
     def fake_sync_dataset_assets(*, repo_id, assets, remove=(), token):
         called["assets"] = (repo_id, assets, remove, token)
 
+    # The staged job code root: the DK script is built from the pack at staging time.
+    code_root = tmp_path / "code"
+    (code_root / "data").mkdir(parents=True)
+    (code_root / "data/digital_khatt_v2_script.json").write_bytes(b'{"1:1:1": {}}')
+    font = code_root / "data/fonts/DigitalKhattV2.otf"
+    font.parent.mkdir(parents=True)
+    font.write_bytes(b"OTTO font")
+
     monkeypatch.setenv("INSPECTOR_BUCKET_MOUNT", str(bucket))
-    monkeypatch.setenv("INSPECTOR_CODE_DIR", str(publish_hf._REPO_ROOT))
+    monkeypatch.setenv("INSPECTOR_CODE_DIR", str(code_root))
     monkeypatch.setenv("HF_TOKEN", "hf_test")
     monkeypatch.setattr(
         "qua_shared.hf_dataset_catalog.hub_published_splits_by_config",
@@ -87,16 +95,11 @@ def test_publish_hf_syncs_catalog_and_card_after_split(monkeypatch, tmp_path):
     )
     assert called["upload"] == ("owner/dataset", "RENDERED CARD", "hf_test")
 
-    repo_root = Path(publish_hf._REPO_ROOT)
     repo_id, assets, remove, token = called["assets"]
     assert repo_id == "owner/dataset"
     assert assets == {
-        "digital_khatt_v2_script.json": (
-            repo_root / "data/digital_khatt_v2_script.json"
-        ).read_bytes(),
-        "DigitalKhattV2.otf": (
-            repo_root / "inspector/frontend/public/fonts/DigitalKhattV2.otf"
-        ).read_bytes(),
+        "digital_khatt_v2_script.json": b'{"1:1:1": {}}',
+        "DigitalKhattV2.otf": b"OTTO font",
     }
     assert remove == ("letter_vocab_hafs_qpc.csv", "qpc_hafs.json")
     assert token == "hf_test"

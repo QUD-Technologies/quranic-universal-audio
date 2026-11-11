@@ -83,7 +83,6 @@ class RunManifestDoc(BaseModel):
     inputs: RunInputsDoc
     artifacts: list[ArtifactEntryDoc]
     required: list[str]
-    deleted_basmala_chapters: list[int]
 
 
 class CandidateEntryDoc(BaseModel):

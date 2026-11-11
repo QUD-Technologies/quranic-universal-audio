@@ -24,9 +24,8 @@ def test_validate_includes_classified_issues_field_per_snapshot(flask_client, tm
     """Every issue item should carry a classified_issues: string[] field after Phase 2.
 
     Walks the per-category arrays at the top of the response (``failed``,
-    ``low_confidence``, ``boundary_adj``, ``cross_verse``, ``audio_bleeding``,
-    ``repetitions``, ``muqattaat``, ``qalqala``) plus any nested ``by_*``
-    container the response may grow in later phases.
+    ``low_confidence``, ``cross_verse``, ``audio_bleeding``, ``repetitions``,
+    ``muqattaat``, ``qalqala``) plus any nested ``by_*`` container the response may grow in later phases.
     """
     reciter = "fixture_reciter"
     tmp_reciter_dir.install(reciter, "synthetic-classifier")
@@ -38,7 +37,6 @@ def test_validate_includes_classified_issues_field_per_snapshot(flask_client, tm
     per_segment_array_keys = {
         "failed",
         "low_confidence",
-        "boundary_adj",
         "cross_verse",
         "audio_bleeding",
         "repetitions",

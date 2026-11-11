@@ -1,6 +1,7 @@
 import { get } from 'svelte/store';
 
-import { quranRefs } from '../../../../lib/refs/quran-refs';
+import type { SpecialName } from '../../../../lib/recitation-animation/special-label';
+import { type QuranRefs, quranRefs } from '../../../../lib/refs/quran-refs';
 import type { Ref, VerseRef } from '../../../../lib/types/view-models';
 import { _ARABIC_DIGITS } from '../constants';
 
@@ -14,6 +15,38 @@ export interface ParsedSegRef {
 }
 
 type VerseWordCounts = Record<VerseRef, number>;
+
+/** What a reviewer may type for each special, lower-cased with apostrophes, hyphens and spaces dropped. */
+const _SPECIAL_SPELLINGS: Record<SpecialName, readonly string[]> = {
+    "Isti'adha": ['istiadha', 'istiatha', 'istiaza', 'istiaadha', 'istiaatha', 'taawwudh', 'taawudh'],
+    Basmala: ['basmala', 'basmalah', 'bismillah'],
+    Amin: ['amin', 'ameen', 'aameen'],
+    Sadaqa: ['sadaqa', 'sadaqallah'],
+    Takbir: ['takbir', 'takbeer'],
+    Tahmeed: ['tahmeed', 'tahmid'],
+    Tasleem: ['tasleem', 'taslim'],
+};
+
+const _SPECIAL_BY_SPELLING = new Map<string, SpecialName>(
+    (Object.entries(_SPECIAL_SPELLINGS) as [SpecialName, readonly string[]][])
+        .flatMap(([name, spellings]) => spellings.map((s) => [s, name] as const)),
+);
+
+/** The special a typed ref names (`basmala`, `Istiatha` …), canonically spelled; `null` for anything else. */
+export function specialRefName(input: string | null | undefined): SpecialName | null {
+    const key = (input ?? '').toLowerCase().replace(/['’ʿʾ`\-\s]/g, '');
+    return _SPECIAL_BY_SPELLING.get(key) ?? null;
+}
+
+/** Whether a stored `matched_ref` is a special rather than a verse ref. */
+export function isSpecialRef(ref: Ref | null | undefined): ref is SpecialName {
+    return !!ref && Object.hasOwn(_SPECIAL_SPELLINGS, ref);
+}
+
+/** A special row's Arabic text in the loaded edition (an opener's `special_texts`), else null. */
+export function specialTextForRef(ref: Ref | null | undefined, refs: QuranRefs | null | undefined): string | null {
+    return isSpecialRef(ref) ? refs?.special_texts?.[ref] ?? null : null;
+}
 
 /** Read verse-word-counts from the shared Quran-refs bundle. */
 export function getVerseWordCounts(): VerseWordCounts | undefined {
@@ -53,6 +86,18 @@ export function parseSegRef(ref: Ref | null | undefined): ParsedSegRef | null {
     if (s.length < 3 || e.length < 3) return null;
     if (s[0] == null || s[1] == null || s[2] == null || e[1] == null || e[2] == null) return null;
     return { surah: +s[0], ayah_from: +s[1], word_from: +s[2], ayah_to: +e[1], word_to: +e[2] };
+}
+
+/** `s:a:last` for every verse that ends inside `ref` (same-surah spans only). */
+export function verseEndsIn(ref: Ref | null | undefined, vwc?: VerseWordCounts): string[] {
+    const p = parseSegRef(ref);
+    if (!p || !ref || ref.split('-')[0]!.split(':')[0] !== ref.split('-')[1]!.split(':')[0]) return [];
+    const out: string[] = [];
+    for (let a = p.ayah_from; a < p.ayah_to; a++) {
+        const last = vwc?.[`${p.surah}:${a}`];
+        if (last) out.push(`${p.surah}:${a}:${last}`);
+    }
+    return out;
 }
 
 export function countSegWords(ref: Ref | null | undefined, vwc?: VerseWordCounts): number {
@@ -95,13 +140,58 @@ export function _normalizeRef(ref: Ref | null | undefined, vwc?: VerseWordCounts
     return ref;
 }
 
+const MAX_AYAH_BOUNDARY = 300;
+
+/**
+ * `surah:ayah:word` locations of a canonical word-range ref, start through end
+ * inclusive, advancing through the verse-word-counts map at each verse end.
+ * Empty for malformed refs.
+ */
+export function wordLocationsForRef(
+    ref: Ref | null | undefined,
+    vwc: VerseWordCounts | undefined,
+): string[] {
+    if (!ref) return [];
+    const parts = ref.split('-');
+    if (parts.length !== 2 || !parts[0] || !parts[1]) return [];
+    const sP = parts[0].split(':');
+    const eP = parts[1].split(':');
+    if (sP.length !== 3 || eP.length !== 3) return [];
+    const sSu = +sP[0]!, sAy = +sP[1]!, sW = +sP[2]!;
+    const eSu = +eP[0]!, eAy = +eP[1]!, eW = +eP[2]!;
+    if (![sSu, sAy, sW, eSu, eAy, eW].every(Number.isFinite)) return [];
+
+    // Segments never cross surahs in practice — Python `dk_text_for_ref`
+    // shares this assumption. If `sSu !== eSu` the ref is malformed and the
+    // ayah-overflow guard below short-circuits the walk.
+    const su = sSu;
+    const locations: string[] = [];
+    let ay = sAy, w = sW;
+    // Lexicographic (su, ay, w) ≤ (eSu, eAy, eW) — mirrors Python tuple compare.
+    const lte = (): boolean =>
+        su < eSu
+        || (su === eSu && (ay < eAy || (ay === eAy && w <= eW)));
+    while (lte()) {
+        locations.push(`${su}:${ay}:${w}`);
+        w++;
+        const max = vwc?.[`${su}:${ay}`] ?? 0;
+        if (w > max) {
+            w = 1;
+            ay++;
+            // Runaway ayah means malformed input; mirrors Python's
+            // `_MAX_AYAH_BOUNDARY` in `services/reference/quran_refs.py`.
+            if (ay > MAX_AYAH_BOUNDARY) break;
+        }
+    }
+    return locations;
+}
+
 /**
  * Build Digital Khatt display text for a canonical word-range ref.
  *
- * TS port of `services/data_loader.py::dk_text_for_ref`. Walks `surah:ayah:word`
- * keys from start endpoint through end endpoint (inclusive), advancing the
- * word counter through the verse-word-counts map at each boundary. Returns ''
- * for malformed / missing inputs so callers can decide a fallback string.
+ * TS port of `services/data_loader.py::dk_text_for_ref`: the `dkWords` text of
+ * every `wordLocationsForRef` location, space-joined. Returns '' for
+ * malformed / missing inputs so callers can decide a fallback string.
  *
  * Parity with the Python implementation is enforced at the call site —
  * the response root carries the same `dkWords` map the server would use.
@@ -111,40 +201,11 @@ export function dkTextForRef(
     dkWords: Record<string, string> | undefined,
     vwc: VerseWordCounts | undefined,
 ): string {
-    if (!ref || !dkWords) return '';
-    const parts = ref.split('-');
-    if (parts.length !== 2 || !parts[0] || !parts[1]) return '';
-    const sP = parts[0].split(':');
-    const eP = parts[1].split(':');
-    if (sP.length !== 3 || eP.length !== 3) return '';
-    const sSu = +sP[0]!, sAy = +sP[1]!, sW = +sP[2]!;
-    const eSu = +eP[0]!, eAy = +eP[1]!, eW = +eP[2]!;
-    if (![sSu, sAy, sW, eSu, eAy, eW].every(Number.isFinite)) return '';
-
-    // Segments never cross surahs in practice — Python `dk_text_for_ref`
-    // shares this assumption. If `sSu !== eSu` the ref is malformed and the
-    // ayah-overflow guard below short-circuits the walk.
-    const su = sSu;
-    const words: string[] = [];
-    let ay = sAy, w = sW;
-    // Lexicographic (su, ay, w) ≤ (eSu, eAy, eW) — mirrors Python tuple compare.
-    const lte = (): boolean =>
-        su < eSu
-        || (su === eSu && (ay < eAy || (ay === eAy && w <= eW)));
-    while (lte()) {
-        const t = dkWords[`${su}:${ay}:${w}`];
-        if (t) words.push(t);
-        w++;
-        const max = vwc?.[`${su}:${ay}`] ?? 0;
-        if (w > max) {
-            w = 1;
-            ay++;
-            // Mirrors MAX_AYAH_BOUNDARY_CHECK (formerly in config.py).
-            // Runaway ayah means malformed input.
-            if (ay > 300) break;
-        }
-    }
-    return words.join(' ');
+    if (!dkWords) return '';
+    return wordLocationsForRef(ref, vwc)
+        .map((location) => dkWords[location])
+        .filter(Boolean)
+        .join(' ');
 }
 
 /** Insert verse end markers at verse boundaries within segment text. */

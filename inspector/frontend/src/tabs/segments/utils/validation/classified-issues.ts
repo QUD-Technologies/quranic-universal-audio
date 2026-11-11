@@ -21,6 +21,7 @@ import type { EditOp } from '../../../../lib/types/view-models';
 // Categories that exist in the accordion for review/awareness but should
 // NOT surface as history-delta pills (`+cat` / `−cat`) on edit cards. They
 // represent display-only flags or context, not gains/losses from an edit.
+// `basmala_amin`: legacy category, still hidden in old history.
 const HISTORY_NEUTRAL_CATEGORIES = new Set(['basmala_amin', 'muqattaat']);
 
 /** Loose snapshot shape — anything carrying the optional field qualifies. */

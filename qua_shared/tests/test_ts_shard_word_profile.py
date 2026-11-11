@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import copy
+from typing import get_args
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from qua_shared.schemas.bucket.ts_shard import (
     TS_SHARD_SCHEMA_VERSION,
@@ -108,8 +109,8 @@ def _shard(**meta_overrides) -> dict:
 
 
 def test_absent_profile_reads_as_native():
-    """Every existing v13 object predates ``profile`` and must stay native."""
-    assert shard_profile({"_meta": {"schema_version": 13}}) == "native"
+    """No native object carries ``profile``; absent means native."""
+    assert shard_profile({"_meta": {"schema_version": 15}}) == "native"
     assert shard_profile({}) == "native"
 
 
@@ -118,14 +119,14 @@ def test_word_profile_is_discriminated():
     assert isinstance(parse_shard(WORD_SHARD), TsWordShardDoc)
 
 
-def test_native_meta_accepts_both_schema_versions():
-    """v13 objects are never restamped, so the reader accepts 13 and 14."""
-    assert NATIVE_SHARD_SCHEMA_VERSIONS == (13, 14)
-    assert TS_SHARD_SCHEMA_VERSION == 14
+def test_native_meta_accepts_every_native_schema_version():
+    """Native shards are read at the version the builders write."""
+    assert NATIVE_SHARD_SCHEMA_VERSIONS == (15,)
+    assert TS_SHARD_SCHEMA_VERSION == 15
     meta_model = TsShardDoc.model_fields["meta"].annotation
-    assert meta_model is not None
+    assert isinstance(meta_model, type) and issubclass(meta_model, BaseModel)
     fields = meta_model.model_fields
-    assert fields["schema_version"].annotation.__args__ == (13, 14)
+    assert get_args(fields["schema_version"].annotation) == (15,)
 
 
 def test_native_meta_declares_no_profile_field():
@@ -133,11 +134,11 @@ def test_native_meta_declares_no_profile_field():
     would rewrite 4,126 existing objects on the first round-trip. Native is the
     absence of the key; ``shard_profile`` reads it from the raw dict."""
     meta_model = TsShardDoc.model_fields["meta"].annotation
-    assert meta_model is not None
+    assert isinstance(meta_model, type) and issubclass(meta_model, BaseModel)
     assert "profile" not in meta_model.model_fields
     native = {
         "_meta": {
-            "schema_version": 13,
+            "schema_version": 15,
             "chapter": 1,
             "audio_category": "by_surah",
             "phonemizer_version": "3.0",
@@ -281,6 +282,47 @@ def test_special_ordinals_bypass_the_coordinate_check():
     raw = copy.deepcopy(WORD_SHARD)
     raw["readings"][0]["words"][0] = ["0:0:1", "basmala", 0, 700]
     assert audit_word_document(raw)
+
+
+def _special_reading(name: str, part: str) -> dict:
+    words = [[f"{part}:{n}", f"s{n}", 700 * (n - 1), 700 * n] for n in range(1, 5)]
+    return {
+        "id": "s1",
+        "special": name,
+        "parts": [[part, 0, 2800, 0, 4]],
+        "words": words,
+        "boundaries": [[1, None]] * 4,
+    }
+
+
+def test_a_special_reading_round_trips_and_passes_the_audit():
+    raw = copy.deepcopy(WORD_SHARD)
+    raw["readings"].insert(0, _special_reading("Basmala", "0:2"))
+    doc = TsWordShardDoc.model_validate(raw)
+    assert doc.model_dump(mode="json", by_alias=True, exclude_none=True) == raw
+    assert audit_word_document(raw)
+
+
+def test_a_reading_without_special_dumps_without_the_key():
+    dumped = TsWordShardDoc.model_validate(WORD_SHARD).readings[0].model_dump(mode="json")
+    assert "special" not in dumped
+
+
+@pytest.mark.parametrize(
+    ("name", "part"), [("Basmala", "0:1"), ("Isti'adha", "2:1"), ("Amin", "0:3")]
+)
+def test_a_special_reading_must_sit_on_its_own_part(name, part):
+    raw = copy.deepcopy(WORD_SHARD)
+    raw["readings"].insert(0, _special_reading(name, part))
+    with pytest.raises(ValidationError):
+        TsWordShardDoc.model_validate(raw)
+
+
+def test_special_part_refs_are_refused_on_a_verse_reading():
+    raw = copy.deepcopy(WORD_SHARD)
+    raw["readings"][0]["words"][0] = ["0:2:1", "basmala", 0, 700]
+    with pytest.raises(WordAuditError):
+        audit_word_document(raw)
 
 
 # -- Writer dispatch --------------------------------------------------------

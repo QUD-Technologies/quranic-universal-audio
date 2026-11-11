@@ -54,7 +54,7 @@ Details + file:line in `references/backend-db.md`.
 
 - **Cache invalidation that isn't keyed on a version is hand-maintained and fragile.** The DB caches self-invalidate on `db_seq`; the bucket-file caches don't, so their invalidation is a choreography in `save.py` that's easy to get subtly wrong (the auto-split "only when uid set changes" gate is exactly this). New cache → entry in `cache.py` + an explicit invalidation hook; never an ad-hoc module global.
 - **Two caches are unbounded** (`_PEAKS_CACHE`, `_AUDIO_CACHE_STATUS`) — they grow per (reciter × url) for the process lifetime. Don't add a third; bound new caches (LRU / explicit eviction).
-- **Recompute-on-read of a pure-over-stable-input value is waste.** Persist it at write-time behind one source-of-truth helper, drift-gated (qalqala, boundary_adj). Asymmetric save-vs-read ownership is a smell.
+- **Recompute-on-read of a pure-over-stable-input value is waste.** Persist it at write-time behind one source-of-truth helper, drift-gated (qalqala). Asymmetric save-vs-read ownership is a smell.
 - **Sequential bucket reads in a hot path** are a code smell — check whether each call truly depends on the prior one; fan out if not.
 - **Wire-shape bloat compounds** (~25 B/row × thousands × many users). Strip unused fields aggressively; keep payloads slim (slim int8 peaks, `limit`-capped catalog).
 - **Eager work the user may never need** — a tab's `onMount` fetch behind a `hidden=`-only gate, a `preload="metadata"` audio element mounted in a panel, a heavy dep in the main bundle. Defer mount (not just visibility), lazy-load panels, dynamic-import-gate heavy chunks.

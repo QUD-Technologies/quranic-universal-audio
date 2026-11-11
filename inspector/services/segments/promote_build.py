@@ -34,12 +34,20 @@ from qua_shared.schemas.bucket.staged_run import (
 
 log = logging.getLogger("inspector")
 
+#: The aligner's Al-Fatiha ``basmala_voice`` result, when the run has one.
+VOICE_FILE = "basmala_voice.json"
+
 # Constant actor on every published pipeline batch — the offline writer's stamp.
 PIPELINE_ACTOR = {"hf_user_id": "pipeline", "login_at_time": "pipeline", "role": "pipeline"}
 _PIPELINE_ACTOR = PIPELINE_ACTOR
 
 # Staged sidecars publish under their bare names at the reciter root.
-SIDECAR_NAMES = ("low_confidence_v2.json", "auto_split_v1.json")
+SIDECAR_NAMES = (
+    "low_confidence_v2.json",
+    "auto_split_v1.json",
+    "missed_waqf_v2.json",
+    "verse_ends_v1.json",
+)
 _SIDECARS = SIDECAR_NAMES
 
 
@@ -372,6 +380,11 @@ def build_peaks_records(
 # ---------------------------------------------------------------------------
 
 
+def read_voice(run_dir: Path) -> dict | None:
+    path = run_dir / VOICE_FILE
+    return json.loads(path.read_bytes()) if path.is_file() else None
+
+
 def build_artifacts(
     run_dir: Path,
     manifest: RunManifestDoc,
@@ -384,13 +397,15 @@ def build_artifacts(
     ``peaks_blobs`` is forwarded to ``build_chapter_peaks`` (see there).
     """
     from adapters.segments_json import build_segments_doc
-    from config import DK_SCRIPT_PATH, SURAH_INFO_PATH
+    from qua_shared import quran_text
     from qua_shared.schemas.bucket.pipeline_meta import PipelineMeta
     from services.segments import stamping
+    from services.segments.specials_doc import specials_from_run
 
-    for path in (SURAH_INFO_PATH, DK_SCRIPT_PATH):
-        if not Path(path).is_file():
-            raise ValueError(f"reference data missing: {path} — every stamp would be empty")
+    if not quran_text.available():
+        raise ValueError(
+            f"reference data missing: {quran_text.pack_path()} — every stamp would be empty"
+        )
 
     entries, by_chapter = read_entries(run_dir, manifest)
     n_segs = sum(len(e["segments"]) for e in entries)
@@ -423,7 +438,6 @@ def build_artifacts(
                 schema_version=1,
                 # The run's stamp, not promote's clock — one run, one timestamp.
                 generated_at=manifest.created_at,
-                deleted_basmala_chapters=sorted(manifest.deleted_basmala_chapters),
                 riwayah=meta_riwayah(manifest),
                 # exclude_none so a Hafs run's sidecar keeps the bytes it has always
                 # had — the key appears only where it says something.
@@ -440,6 +454,15 @@ def build_artifacts(
             built[name] = sidecar.read_bytes()
     if batches:
         built["edit_history.jsonl"] = _jsonl_bytes(batches)
+    specials = specials_from_run(
+        events,
+        by_chapter,
+        generated_at=manifest.created_at,
+        riwayah=manifest.inputs.riwayah,
+        voice=read_voice(run_dir),
+    )
+    if specials:
+        built["specials.json"] = dumps(specials.model_dump(mode="json"))
 
     chapters, envelopes = build_chapter_peaks(run_dir, source_urls, peaks_blobs=peaks_blobs)
     records = build_peaks_records(slug, batches, source_urls, envelopes)

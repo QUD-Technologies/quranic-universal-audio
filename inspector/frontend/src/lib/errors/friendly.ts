@@ -62,6 +62,7 @@ const CODE_COPY: Record<string, CopyEntry> = {
     MARK_READY_BLOCKING_COUNTS: m.errors_mark_ready_blocking_counts,
     MARK_READY_PAYLOAD: m.errors_mark_ready_payload,
     MARK_READY_NO_SEGMENTS: m.errors_mark_ready_no_segments,
+    QUALITY_STATUS_PAYLOAD: m.errors_quality_status_payload,
 
     // Admin / structural
     LAST_OWNER: m.errors_last_owner,

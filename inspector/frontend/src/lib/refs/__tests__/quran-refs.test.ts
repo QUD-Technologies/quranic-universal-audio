@@ -9,6 +9,7 @@ function bundle(riwayah: string): QuranRefs {
         dk_words: { '1:1:1': `${riwayah}-word` },
         verse_word_counts: { '1:1': 1 },
         verse_marker_prefix: riwayah === 'hafs' ? '۝' : '',
+        special_texts: {},
     };
 }
 

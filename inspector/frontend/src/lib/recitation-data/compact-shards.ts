@@ -2,8 +2,8 @@
  * Decode stored shard storage into the Inspector's timing view.
  *
  * Two profiles share the path, discriminated by `_meta.profile`:
- * native (schema 13/14, full phonemizer cells — Hafs only) and word
- * (schema 14, proxy-timed word intervals for another riwayah).
+ * native (schema 15, full phonemizer cells and reading variants — Hafs only)
+ * and word (schema 14, proxy-timed word intervals for another riwayah).
  */
 
 import {
@@ -11,8 +11,14 @@ import {
     type CompactCellPayload,
 } from '@quranic-phonemizer/cells';
 
-import type { TsShardMeta, TsWordShardMeta } from '../types/generated/schemas';
 import type {
+    TsReadingVariant,
+    TsShardMeta,
+    TsVariantDefinition,
+    TsWordShardMeta,
+} from '../types/generated/schemas';
+import type {
+    SpecialKind,
     TsBoundaryTiming,
     TsShardPart,
     TsShardReading,
@@ -20,8 +26,8 @@ import type {
     TsWordShardReading,
 } from '../types/ts-client';
 
-/** Schema versions a native document may declare. 13 is never restamped. */
-const NATIVE_SCHEMA_VERSIONS: readonly number[] = [13, 14];
+/** Schema versions a native document may declare. */
+const NATIVE_SCHEMA_VERSIONS: readonly number[] = [15];
 
 /** Index order must match `TS_WORD_BOUNDARY_STATES` in the Pydantic schema. */
 const WORD_BOUNDARY_STATES = ['start', 'join', 'sakt', 'stop'] as const;
@@ -35,6 +41,7 @@ interface StoredWordReading {
     parts: StoredPart[];
     words: StoredWordRow[];
     boundaries: StoredWordBoundary[];
+    special?: SpecialKind | null;
 }
 
 interface StoredWordShard {
@@ -55,6 +62,8 @@ interface StoredReading {
         a: StoredAnimation[];
         c: StoredColumn[];
     };
+    variants?: TsReadingVariant[] | null;
+    special?: SpecialKind | null;
 }
 
 interface StoredShard {
@@ -91,7 +100,10 @@ function boundariesOf(
     return rows;
 }
 
-function readingOf(raw: StoredReading): TsShardReading {
+function readingOf(
+    raw: StoredReading,
+    catalogue: Record<string, TsVariantDefinition> | null | undefined,
+): TsShardReading {
     const parts = partsOf(raw.parts);
     if (raw.timing.w.length !== raw.render.w.length
         || raw.timing.s.length !== raw.render.p.length
@@ -126,6 +138,10 @@ function readingOf(raw: StoredReading): TsShardReading {
                 column_id, start_ms, end_ms,
             })),
         },
+        ...(raw.variants?.length && catalogue
+            ? { variants: raw.variants, variantCatalogue: catalogue }
+            : {}),
+        ...(raw.special ? { special: raw.special } : {}),
     };
 }
 
@@ -185,6 +201,7 @@ function wordReadingOf(raw: StoredWordReading): TsWordShardReading {
             // phoneme-free, so the two profiles agree on boundary timing.
             boundaries: boundariesOf(parts, wordSpans),
         },
+        ...(raw.special ? { special: raw.special } : {}),
     };
 }
 
@@ -200,8 +217,9 @@ function storedWordShard(raw: unknown): StoredWordShard {
 /**
  * Decode a stored shard of either profile.
  *
- * `_meta.profile` is the discriminator. It is absent on every schema-13 object
- * — those predate the word profile — so absent means native.
+ * `_meta.profile` is the discriminator. No native object carries it, so
+ * absent means native. A reading's `variants` travel with the chapter's
+ * definitions of them.
  */
 export function decodeTimestampShard(raw: unknown): TsShardResponse {
     if (!raw || typeof raw !== 'object') throw new Error('Timestamp shard is not an object');
@@ -215,7 +233,8 @@ export function decodeTimestampShard(raw: unknown): TsShardResponse {
     }
 
     const shard = storedShard(raw);
-    const readings = shard.readings.map(readingOf);
+    const catalogue = shard._meta.variant_catalogue;
+    const readings = shard.readings.map((reading) => readingOf(reading, catalogue));
     stitchInterReadingPauses(readings);
     return { _meta: shard._meta, readings };
 }

@@ -11,7 +11,7 @@ import json
 import os
 from dataclasses import asdict, dataclass
 
-DEFAULT_ALIGNER_URL = "https://hetchyy-quranic-universal-aligner-dev.hf.space"
+DEFAULT_ALIGNER_URL = "https://qud-technologies-quranic-universal-aligner-dev.hf.space"
 
 MODEL_LARGE = "Large"
 DEVICE_GPU = "GPU"
@@ -39,6 +39,9 @@ class AlignParams:
     #: Lane the batch STARTS on — ``GPU`` (ZeroGPU, falls back to CPU when the
     #: quota runs out) or ``CPU`` (the Space's CPU worker pool, no quota).
     device: str = DEVICE_GPU
+    #: Started by a holder of ``intake.align_unlimited`` — never counts toward
+    #: the shared budget (``limits.py``). Not sent to the aligner.
+    quota_exempt: bool = False
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), sort_keys=True)
@@ -49,7 +52,8 @@ class AlignParams:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
     def batch_body(self, *, device: str | None = None) -> dict:
-        """The ``POST /api/v1/batches`` body for alignment plus split-candidate timing.
+        """The ``POST /api/v1/batches`` body for alignment plus split-candidate timing and
+        the rows' review checks (the sidecars' Low Confidence and Missed Waqf).
 
         ``device`` overrides the run's starting lane — the align stage passes the
         live one so a GPU→CPU fallback recreates the batch on CPU."""
@@ -62,7 +66,10 @@ class AlignParams:
             "min_silence_floor_ms": self.min_silence_floor_ms,
             "include_word_timestamps": False,
             "include_auto_split_timings": True,
+            "include_review_checks": True,
             "include_merge_groups": True,
+            # The aligner answers this on a Hafs/Shu'ba Al-Fatiha item only.
+            "include_basmala_voice": True,
             "discard_session": True,
         }
 

@@ -146,7 +146,7 @@
                     >
                         <span class="badge {tone}">{rec.job_id === activeJobId ? liveStatus ?? rec.status : rec.status}</span>
                         <span class="job-id">{rec.job_id.slice(0, 8)}</span>
-                        <span class="meta">beams [{(rec.settings?.beams ?? []).join(', ')}]</span>
+                        <span class="meta">{rec.settings?.chapters?.length ? `chapters [${rec.settings.chapters.join(', ')}]` : 'full reciter'}</span>
                         <span class="when">{fmtWhen(rec.started_at)}</span>
                     </button>
                     {#if rec.job_id === activeJobId && statusTone(liveStatus) === 'run'}

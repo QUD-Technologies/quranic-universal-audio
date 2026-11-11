@@ -295,6 +295,16 @@ CAPABILITIES: tuple[Capability, ...] = (
         maintainer=False,
     ),
     _c(
+        "intake.ingest",
+        G_REQUESTS,
+        "Plan and mint an intake",
+        "Enumerate a submission's playlist / Drive folder / links, review which "
+        "file holds which chapter, set the catalog identity, and mint the "
+        "delivery (the Align on an intake row). Owner only by default.",
+        contributor=False,
+        maintainer=False,
+    ),
+    _c(
         "intake.align",
         G_REQUESTS,
         "Run the align pipeline",
@@ -303,6 +313,16 @@ CAPABILITIES: tuple[Capability, ...] = (
         "assemble). Owner and maintainer by default.",
         contributor=False,
         maintainer=True,
+    ),
+    _c(
+        "intake.align_unlimited",
+        G_REQUESTS,
+        "Bypass align limits",
+        "Start align runs past the shared budget (2 GPU runs per 24 h, 1 CPU "
+        "run at a time). Runs started with this never count toward the budget. "
+        "Owner only by default.",
+        contributor=False,
+        maintainer=False,
     ),
     # --- D. Claims & review ---
     _c(
@@ -361,6 +381,15 @@ CAPABILITIES: tuple[Capability, ...] = (
         G_CLAIMS,
         "Send a recitation back",
         "Reject a marked-ready recitation and return it for more review.",
+        contributor=False,
+        maintainer=True,
+    ),
+    _c(
+        "reciter.set_quality_status",
+        G_CLAIMS,
+        "Set recitation quality",
+        "Rate a published or marked-ready recitation Clean, Almost clean or "
+        "Needs work from the Segments footer, or clear the rating.",
         contributor=False,
         maintainer=True,
     ),
@@ -435,7 +464,7 @@ CAPABILITIES: tuple[Capability, ...] = (
         "reviews.generate_timestamps",
         G_ADMIN,
         "Generate timestamps",
-        "Launch the MFA alignment job for a marked-ready recitation (first "
+        "Launch the timestamps run for a marked-ready recitation (first "
         "publish) or an already-released one (regenerate), writing per-chapter "
         "timestamps to the bucket. First publish auto-releases; regenerate keeps "
         "it released and flags its HF/GH releases stale for re-publish (also "
@@ -464,12 +493,41 @@ CAPABILITIES: tuple[Capability, ...] = (
         maintainer=True,
     ),
     _c(
+        "timestamps.unlimited_access",
+        G_ADMIN,
+        "Unlimited timestamps reads",
+        "Read timestamps without the per-visitor chapter limit and temporary "
+        "ban that stop bulk downloads, and from the direct Space address.",
+        contributor=False,
+        maintainer=True,
+    ),
+    _c(
         "segments.view_boundary_review",
         G_ADMIN,
         "View boundary-review flags",
         "See the Hidden Pause, False Split and Unmarked Wasl accordions on the "
         "Segments tab (offline re-segmentation evidence, keyed by segment). "
         "Review-only: none of these categories blocks mark-ready.",
+        contributor=False,
+        maintainer=True,
+    ),
+    _c(
+        "segments.delete_flag",
+        G_ADMIN,
+        "Delete any segment flag",
+        "Remove a flagged segment's whole comment thread from the Flagged Issues "
+        "accordion, whoever raised it. Owner-only by default; the flagger can "
+        "still clear their own flag by emptying its comment.",
+        contributor=False,
+        maintainer=False,
+    ),
+    _c(
+        "segments.confirm_basmala_voice",
+        G_ADMIN,
+        "Confirm a Basmala voice verdict",
+        "Decide whether a recitation's Basmala is the reciter's own voice when the "
+        "automatic check is unsure (or overrule it). The release flags a Basmala in "
+        "another voice instead of presenting it as the reciter's.",
         contributor=False,
         maintainer=True,
     ),

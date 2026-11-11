@@ -177,7 +177,6 @@ def _begin_db_discard(slug: str, actor: Actor, reason: str) -> tuple[ReciterRow,
 
 def _invalidate(slug: str) -> None:
     cache.invalidate_seg_caches(slug)
-    cache.pop_seg_pipeline_meta(slug)
     cache.pop_audio_manifest_cache(slug)
     cache.pop_audio_url_cache(slug)
     cache.pop_reciter_peaks_response_cache(slug)

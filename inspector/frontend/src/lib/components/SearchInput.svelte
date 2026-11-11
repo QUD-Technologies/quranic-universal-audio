@@ -1,7 +1,8 @@
 <script context="module" lang="ts">
     /**
      * Canonical search input — magnifying-glass icon on the left, optional
-     * inline "X of Y" count on the right. Layout (width, container) is the
+     * inline "X of Y" count on the right (a flex sibling, so it never
+     * overlaps the text however many digits it grows to). Layout (width, container) is the
      * caller's job; this component owns input chrome only.
      *
      * Used by CombinationPicker (modal search), CatalogList (dashboard), and
@@ -92,35 +93,42 @@
 </div>
 
 <style>
+    /* The wrapper draws the field chrome and lays icon / input / count out as
+       flex siblings, so the count reserves exactly its own width — a fixed
+       end-padding let a wide label ("200 of 200") overlap the text (#338). */
     .search-input {
-        position: relative;
         display: flex;
         align-items: center;
+        gap: var(--s-2);
         width: 100%;
+        height: 32px;
+        padding-inline: var(--s-3);
+        background: var(--panel);
+        border: 1px solid var(--border-default);
+        border-radius: var(--r-2);
+        transition: border-color var(--t-fast), background var(--t-fast);
+    }
+    .search-input:focus-within {
+        border-color: var(--accent);
+        background: var(--panel-2);
     }
     .icon {
-        position: absolute;
-        inset-inline-start: var(--s-3);
         display: flex;
+        flex-shrink: 0;
         color: var(--text-faint);
         pointer-events: none;
     }
     input {
-        width: 100%;
-        height: 32px;
-        padding-block: 0;
-        padding-inline: calc(var(--s-3) + 24px) 56px;
-        background: var(--panel);
-        border: 1px solid var(--border-default);
-        border-radius: var(--r-2);
+        flex: 1 1 auto;
+        min-width: 0;
+        height: 100%;
+        padding: 0;
+        background: transparent;
+        border: none;
         color: var(--text-primary);
         font-size: var(--fs-body);
+        text-overflow: ellipsis;
         outline: none;
-        transition: border-color var(--t-fast), background var(--t-fast);
-    }
-    input:focus {
-        border-color: var(--accent);
-        background: var(--panel-2);
     }
     input::placeholder { color: var(--text-faint); }
     /* Suppress the native ×; no custom clear button yet. */
@@ -130,8 +138,8 @@
         display: none;
     }
     .count {
-        position: absolute;
-        inset-inline-end: var(--s-3);
+        flex-shrink: 0;
+        white-space: nowrap;
         font-size: 10.5px;
         color: var(--text-faint);
         font-family: var(--font-mono);

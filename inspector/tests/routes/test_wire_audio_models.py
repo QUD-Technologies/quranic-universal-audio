@@ -26,10 +26,10 @@ def _install_manifest(backend, slug: str, chapters: dict) -> None:
 def test_model_validates_live_audio_surahs_response(flask_client, tmp_reciter_dir):
     """The live ``/api/audio/surahs`` body validates AND round-trips key-for-key.
 
-    Every entry carries exactly ``url`` and
-    ``duration_ms``. ``duration_ms`` is derived from the sidecar's
-    ``duration_sec`` (chapter 1) and ``None`` when neither manifest nor peaks
-    yield a length (chapter 2).
+    Every entry carries exactly ``url``, ``duration_ms`` and ``size_bytes``.
+    ``duration_ms`` is derived from the sidecar's ``duration_sec`` (chapter 1)
+    and ``None`` when neither manifest nor peaks yield a length (chapter 2);
+    ``size_bytes`` passes the sidecar size through and is ``None`` without one.
     """
     cache._audio_url.clear()
     slug = "wire_audio_fixture"
@@ -40,7 +40,7 @@ def test_model_validates_live_audio_surahs_response(flask_client, tmp_reciter_di
         tmp_reciter_dir.backend,
         slug,
         {
-            "1": {"url": "https://cdn.example/1.mp3", "duration_sec": 12.5},
+            "1": {"url": "https://cdn.example/1.mp3", "duration_sec": 12.5, "size_bytes": 200_000},
             "2": {"url": "https://cdn.example/2.mp3"},
         },
     )
@@ -53,14 +53,16 @@ def test_model_validates_live_audio_surahs_response(flask_client, tmp_reciter_di
     assert set(model.surahs.keys()) == {"1", "2"}
     assert model.surahs["1"].duration_ms == 12500
     assert model.surahs["2"].duration_ms is None
+    assert model.surahs["1"].size_bytes == 200_000
+    assert model.surahs["2"].size_bytes is None
 
     # Dump reproduces the live response key-for-key (the Phase-5 regression net).
-    # The route always emits ``duration_ms`` (nullable), so no ``exclude_none``.
+    # The route always emits the nullable keys, so no ``exclude_none``.
     dumped = model.model_dump(by_alias=True)
     assert dumped == body
     # Every entry carries exactly the canonical fields.
     for entry in dumped["surahs"].values():
-        assert set(entry.keys()) == {"url", "duration_ms"}
+        assert set(entry.keys()) == {"url", "duration_ms", "size_bytes"}
 
 
 def test_audio_surahs_404_is_not_this_model(flask_client, tmp_reciter_dir):
@@ -80,11 +82,13 @@ def test_response_model_rejects_unknown_top_level_key():
         AudioSurahsResponse.model_validate({"surahs": {}, "unexpected": 1})
 
 
-def test_entry_model_requires_duration_ms_key():
-    """``duration_ms`` is required-nullable — the route always emits the key, so
-    a missing key (vs an explicit ``None``) is a contract violation."""
+def test_entry_model_requires_nullable_keys():
+    """``duration_ms`` / ``size_bytes`` are required-nullable — the route always
+    emits both, so a missing key (vs an explicit ``None``) is a contract violation."""
     import pytest
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
-        AudioSurahEntry.model_validate({"url": "x"})
+        AudioSurahEntry.model_validate({"url": "x", "size_bytes": None})
+    with pytest.raises(ValidationError):
+        AudioSurahEntry.model_validate({"url": "x", "duration_ms": None})

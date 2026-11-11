@@ -10,6 +10,10 @@
  * lives on the LEFT seg. Callers should only invoke this when the seg
  * has a right neighbour in the same chapter — the inter-row WaslGap
  * affordance already enforces that gate.
+ *
+ * `force` records the op even when the value already matches — used to
+ * persist the answer to a re-asked boundary (`wasl_recheck`), where WAQF on a
+ * piece already `is_wasl: false` is still an answer.
  */
 
 import { get } from 'svelte/store';
@@ -27,12 +31,16 @@ import {
  * Set ``is_wasl`` on ``seg`` by dispatching a ``setIsWasl`` command, then
  * commit the resulting op to the dirty store and refresh ``seg``.
  *
- * Returns false when the requested value already matches (no-op guard) or
- * when the segment lacks a UID (legacy fixtures only).
+ * Returns false when the requested value already matches and `force` is not
+ * set (no-op guard), or when the segment lacks a UID (legacy fixtures only).
  */
-export function setIsWaslOnSegment(seg: Segment, value: boolean): boolean {
+export function setIsWaslOnSegment(
+    seg: Segment,
+    value: boolean,
+    opts: { force?: boolean } = {},
+): boolean {
     const current = seg.is_wasl === true;
-    if (current === value) return false;
+    if (current === value && opts.force !== true) return false;
 
     const segChapter = seg.chapter ?? parseInt(get(selectedChapter));
     const uid = seg.segment_uid;

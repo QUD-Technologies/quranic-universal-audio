@@ -14,12 +14,11 @@ from qua_shared.riwayat import SUPPORTED_RIWAYAT as _INSPECTOR_RIWAYAT  # noqa: 
 #: SDK slugs, in product order. Defined once, in qua_shared.riwayat.
 _SDK_RIWAYAT = tuple(_INSPECTOR_RIWAYAT.values())
 
-# Data root — holds only bundled reference data (surah_info, qpc_hafs,
-# digital_khatt, phoneme_sub_costs, .audio_meta) in deployed mode. All
-# per-reciter content lives in the bucket at INSPECTOR_BUCKET_MOUNT.
+# Data root — holds only bundled reference data (phoneme_sub_costs,
+# .audio_meta) in deployed mode. Hafs text and surah metadata come from the
+# talqeen-quran-data pack (``qua_shared.quran_text``); all per-reciter content
+# lives in the bucket at INSPECTOR_BUCKET_MOUNT.
 DATA_DIR = Path(os.environ.get("INSPECTOR_DATA_DIR", str(_REPO / "data"))).resolve()
-
-SURAH_INFO_PATH = DATA_DIR / "surah_info.json"
 
 # Legacy filesystem constant — only consulted by ``services/history_query.py``
 # tests that monkeypatch a tmp_path in. Production reads edit_history through
@@ -40,13 +39,11 @@ GUIDE_FLAGS_PATH = Path(
     )
 ).resolve()
 
-# Bundled linguistic data (qpc_hafs, digital_khatt, phoneme_sub_costs) lives in
-# the repo's ``data/`` dir alongside ``surah_info.json``. Override the base dir
-# via INSPECTOR_QUA_DATA_PATH for standalone / Docker deployments.
+# Bundled linguistic data (phoneme_sub_costs) lives in the repo's ``data/`` dir.
+# Override the base dir via INSPECTOR_QUA_DATA_PATH for standalone / Docker
+# deployments.
 _QUA_DATA_OVERRIDE = os.getenv("INSPECTOR_QUA_DATA_PATH")
 _QUA_DATA = Path(_QUA_DATA_OVERRIDE) if _QUA_DATA_OVERRIDE else DATA_DIR
-QPC_HAFS_PATH = _QUA_DATA / "qpc_hafs.json"
-DK_SCRIPT_PATH = _QUA_DATA / "digital_khatt_v2_script.json"
 PHONEME_SUB_COSTS_PATH = _QUA_DATA / "phoneme_sub_costs.json"
 
 # Display settings
@@ -94,7 +91,6 @@ ACCORDION_CONTEXT = {
     "failed": "shown",
     "missing_words": "shown",
     "low_confidence": "hidden",
-    "boundary_adj": "hidden",
     "repetitions": "hidden",
     "cross_verse": "hidden",
     "muqattaat": "hidden",
@@ -126,7 +122,7 @@ PEAKS_BUCKETS_PER_SEC = 30  # target peak density for segment-level peaks
 # slider default + form's blocking-counts panel derive from the
 # percentage form below (shipped via /api/seg/data as
 # ``low_conf_default_threshold``). Bump this and both layers agree.
-LOW_CONFIDENCE_THRESHOLD = 0.80
+LOW_CONFIDENCE_THRESHOLD = 0.85
 # Percentage scale (0–99 int) the FE slider works in. Derived — never
 # edit this independently; the assertion below guards against drift.
 LOW_CONF_DEFAULT_THRESHOLD = int(round(LOW_CONFIDENCE_THRESHOLD * 100))
@@ -135,11 +131,6 @@ assert 50 <= LOW_CONF_DEFAULT_THRESHOLD <= 99, (
     f"out-of-range slider default {LOW_CONF_DEFAULT_THRESHOLD}; the FE "
     f"slider expects 50–99 (see frontend/.../config-loader.ts)."
 )
-# Minimum number of pipeline-stripped basmalas required before we flag the
-# remaining (non-stripped) chapters as "missed Basmala" candidates. Below this
-# count the reciter is treated as one who doesn't recite inter-chapter
-# basmalas, and the augmentation is suppressed to avoid accordion noise.
-MISSED_BASMALA_FLAG_MIN_DELETED = int(os.getenv("MISSED_BASMALA_FLAG_MIN_DELETED", "10"))
 # "Show everything below perfect" tier — used to populate detail lists (not count badges).
 # Distinct from LOW_CONFIDENCE_THRESHOLD (count badge cutoff) and LOW_CONFIDENCE_RED (red highlight).
 LOW_CONFIDENCE_DETAIL_THRESHOLD = 1.0
@@ -217,16 +208,6 @@ MISSING_WORD_DIFF_MS_WEIGHT = 1000
 WORDS_PER_SEG_HIST_MAX = 15  # upper bound for words-per-segment histogram
 SEGS_PER_VERSE_HIST_MAX = 8  # upper bound for segs-per-verse histogram
 CONF_HIST_BIN_SIZE = 5  # bin width (percentage points) for confidence histogram
-
-# Auto-split (services/auto_split.py): MFA Space + timeout. Cross-verse
-# accordion's "Auto Split" routes here to compute the verse-boundary split
-# time. Always the dev Space — interactive call volume is low. Override
-# via INSPECTOR_MFA_SPACE_URL. On any failure or timeout the FE silently
-# falls back to a midpoint cursor.
-MFA_SPACE_URL = os.environ.get(
-    "INSPECTOR_MFA_SPACE_URL", "https://hetchyy-quran-phoneme-mfa-dev.hf.space"
-)
-AUTO_SPLIT_MFA_TIMEOUT = 15
 
 # Admin dashboard — identity recency + visitor analytics
 # How stale last_entry_at must be before /api/me writes again (debounce so a
@@ -310,3 +291,32 @@ AUDIO_MIME_TYPES = {
 # loudly. Silently substituting Hafs coordinates under another edition's
 # script would let a reviewer save wrong refs.
 MULTI_RIWAYAH_ENABLED = os.getenv("INSPECTOR_MULTI_RIWAYAH", "1") not in ("0", "false", "False")
+
+# ── Timestamps data routes: per-client limits (services/auth/ts_rate_limit.py) ──
+# Distinct chapters one client may open. Sized for the heaviest thing the site
+# itself does: Shuffle jumps to a random verse at every verse end, usually in
+# another chapter, so short verses open a new chapter every ~5 s (plus the one
+# it pre-warms) and a few hundred an hour. Anything a page does faster than
+# these gets its own users banned. A bulk pull of the catalog needs tens of
+# thousands.
+TS_LIMIT_CHAPTERS_PER_MINUTE = int(os.environ.get("INSPECTOR_TS_LIMIT_CHAPTERS_PER_MINUTE", "25"))
+TS_LIMIT_CHAPTERS_PER_HOUR = int(os.environ.get("INSPECTOR_TS_LIMIT_CHAPTERS_PER_HOUR", "450"))
+TS_LIMIT_CHAPTERS_PER_DAY = int(os.environ.get("INSPECTOR_TS_LIMIT_CHAPTERS_PER_DAY", "1500"))
+# Chapter + verse reads in total (stepping through verses re-reads one chapter).
+TS_LIMIT_REQUESTS_PER_MINUTE = int(os.environ.get("INSPECTOR_TS_LIMIT_REQUESTS_PER_MINUTE", "150"))
+# Access-token mints; a page mints one every ~5 minutes.
+TS_LIMIT_TOKENS_PER_HOUR = int(os.environ.get("INSPECTOR_TS_LIMIT_TOKENS_PER_HOUR", "30"))
+# Cloudflare Turnstile for /api/ts/access-token. With the secret set, a token is
+# issued only for a passed challenge; the site key is handed to the page.
+TS_TURNSTILE_SITE_KEY = os.environ.get("INSPECTOR_TS_TURNSTILE_SITE_KEY", "").strip()
+TS_TURNSTILE_SECRET = os.environ.get("INSPECTOR_TS_TURNSTILE_SECRET", "").strip()
+# Where a pass is verified. Not Cloudflare's siteverify itself: a Hugging Face
+# Space cannot connect to challenges.cloudflare.com, so the qud.dev Pages
+# Function relays the form to it (qud-website functions/api/turnstile-verify.js).
+TS_TURNSTILE_VERIFY_URL = os.environ.get(
+    "INSPECTOR_TS_TURNSTILE_VERIFY_URL", "https://qud.dev/api/turnstile-verify"
+).strip()
+# Shared secret the Cloudflare zone adds as `X-QUA-Edge` on /api/ts requests.
+# Set: anonymous requests without it (the direct *.hf.space origin) are refused.
+# Unset: no check.
+TS_EDGE_SECRET = os.environ.get("INSPECTOR_TS_EDGE_SECRET", "").strip()

@@ -114,3 +114,20 @@ def test_a_verse_text_resolves_in_the_editions_own_script():
         "1:1:1-1:1:1"
     )
     assert quran_refs.dk_text_for_ref("1:1:1-1:1:4", "warsh").count(" ") == 3
+
+
+def test_a_hafs_opener_row_shows_the_dk_words_it_is_read_as(monkeypatch):
+    data_loader.cache.set_dk_words_flat_cache(None)  # type: ignore[reportArgumentType]
+    basmala = {f"1:1:{n}": {"text": f"b{n}"} for n in range(1, 5)}
+    monkeypatch.setattr(data_loader, "load_dk", lambda: basmala)
+    monkeypatch.setattr(quran_refs, "get_word_counts", lambda riwayah="hafs": {(1, 1): 4})
+    body = orjson.loads(quran_refs.build_payload())
+    # The Isti'adha's words are missing from this stub corpus, so it carries no text.
+    assert body["special_texts"] == {"Basmala": "b1 b2 b3 b4"}
+
+
+@has_editions
+def test_a_warsh_opener_row_shows_the_editions_own_text():
+    texts = quran_refs.special_texts("warsh")
+    assert texts == {name: editions.special(name, "warsh") for name in ("Isti'adha", "Basmala")}
+    assert texts["Basmala"] != quran_refs.special_texts("hafs")["Basmala"]

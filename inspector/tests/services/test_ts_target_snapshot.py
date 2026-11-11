@@ -1,4 +1,4 @@
-"""Exact native v13 report target resolution and staleness."""
+"""Exact native report target resolution and staleness."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from services.ts_reports import ts_target_snapshot as snapshots
 
 def _doc() -> dict:
     return {
-        "_meta": {"schema_version": 13},
+        "_meta": {"schema_version": 15},
         "readings": [
             {
                 "id": "r1",
@@ -108,7 +108,7 @@ def test_resolves_every_native_target_kind_exactly():
         assert snapshot is not None, (kind, target_id)
         assert snapshot["timing"] == {"start_ms": span[0], "end_ms": span[1]}
         assert snapshot["native_schema_version"] == 2
-        assert snapshot["shard_schema_version"] == 13
+        assert snapshot["shard_schema_version"] == 15
 
 
 def test_group_identity_is_ordered_native_column_ids():

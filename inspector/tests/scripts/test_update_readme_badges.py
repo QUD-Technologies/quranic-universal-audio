@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPT_PATH = (
     Path(__file__).resolve().parents[3] / "scripts" / "codegen" / "update_readme_badges.py"
 )
@@ -82,6 +84,18 @@ def test_replace_badges_updates_existing_marked_block():
     assert "stale" not in updated
     assert updated.count(badges.START_MARKER) == 1
     assert "Reciters-1" in updated
+
+
+def test_sources_only_manifest_counts_zero_seconds():
+    # Online-intake "detect" group: playlist sources, surahs not split out yet.
+    doc = {"chapters": {}, "sources": [{"url": "https://example.com/1"}]}
+
+    assert badges._duration_from_manifest(doc, "pending_yt") == 0
+
+
+def test_manifest_without_chapters_or_sources_raises():
+    with pytest.raises(RuntimeError, match="no chapters or sources"):
+        badges._duration_from_manifest({"chapters": {}, "sources": []}, "broken")
 
 
 def test_collect_stats_filters_public_released_and_uses_manifest_fallback(tmp_path):

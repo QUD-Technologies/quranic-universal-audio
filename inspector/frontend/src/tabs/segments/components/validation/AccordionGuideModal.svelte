@@ -10,6 +10,8 @@
     import { currentUser, loadCurrentUser, markGuideReadLocally } from '../../../../lib/stores/current-user';
     import type { HistoryBatch } from '../../../../lib/types/view-models';
     import EditingGuideContent from '../../guides/editing/EditingGuideContent.svelte';
+    import EditingGuideContentCkb from '../../guides/editing/EditingGuideContent.ckb.svelte';
+    import FlaggingGuideContentCkb from '../../guides/editing/FlaggingGuideContent.ckb.svelte';
     import EditingGuideContentAr from '../../guides/editing/EditingGuideContent.ar.svelte';
     import FlaggingGuideContent from '../../guides/editing/FlaggingGuideContent.svelte';
     import FlaggingGuideContentAr from '../../guides/editing/FlaggingGuideContent.ar.svelte';
@@ -42,6 +44,10 @@
     // sibling components (their prose is inline, not message-keyed). OverviewContent
     // localizes itself (picks overview.ar.md), so it needs no sibling.
     function guideComponent(name: string, locale: string): typeof EditingGuideContent | null {
+        if (locale === 'ckb') {
+            if (name === 'editing-guide') return EditingGuideContentCkb;
+            if (name === 'flagging-demo') return FlaggingGuideContentCkb;
+        }
         if (locale === 'ar') {
             if (name === 'editing-guide') return EditingGuideContentAr;
             if (name === 'flagging-demo') return FlaggingGuideContentAr;
@@ -154,7 +160,7 @@
     // Scoped RTL for the guide prose while the app layout stays LTR (full flip is
     // a separate workflow). The time-directional visualizations inside an example
     // (before→after diffs, waveforms, segment rows) stay LTR islands.
-    $: dir = ($localeStore === 'ar' ? 'rtl' : 'ltr') as 'rtl' | 'ltr';
+    $: dir = (['ar', 'ckb'].includes($localeStore) ? 'rtl' : 'ltr') as 'rtl' | 'ltr';
 
     $: guideKicker = tr($localeStore, m.segments_validation_guide_modal_kicker());
     $: closeAriaLabel = tr($localeStore, m.segments_validation_guide_modal_close_aria_label());

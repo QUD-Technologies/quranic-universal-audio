@@ -40,7 +40,6 @@ export const CHECKLIST_ORDER: readonly ChecklistKey[] = [
     'low_confidence',
     'repetitions',
     'splits_wasl_waqf',
-    'basmala_amin_intros',
 ] as const;
 
 /** Validation `category_counts` keys that BLOCK submission. Mirrors
@@ -51,8 +50,7 @@ export const CHECKLIST_ORDER: readonly ChecklistKey[] = [
 export const BLOCKING_COUNT_KEYS = [
     'low_confidence',
     'low_confidence_v2',
-    'cross_verse',
-    'basmala_amin',
+    'missed_waqf',
     'repetitions',
 ] as const;
 
@@ -63,8 +61,7 @@ export type BlockingCountKey = (typeof BLOCKING_COUNT_KEYS)[number];
 export const BLOCKING_LABELS: Record<BlockingCountKey, string> = {
     low_confidence: 'Low confidence',
     low_confidence_v2: 'Low confidence v2',
-    cross_verse: 'Cross-verse',
-    basmala_amin: 'Basmala + amin',
+    missed_waqf: 'Low Confidence Waqf',
     repetitions: 'Repetitions',
 };
 
@@ -163,7 +160,7 @@ export const markReadyCopy: MarkReadyCopy = buildCopy(
 const markReadyCopyByLocale: Record<string, MarkReadyCopy> = {};
 {
     const trios: Record<string, { form?: string; checklist?: string; comments?: string }> = {};
-    const re = /^\.\/(form|checklist|comments)\.([a-z]{2})\.md$/;
+    const re = /^\.\/(form|checklist|comments)\.([a-z]{2,3})\.md$/;
     for (const [path, raw] of Object.entries(localeMd)) {
         const match = re.exec(path);
         if (!match) continue;
@@ -203,10 +200,15 @@ export function emptyChecklist(): MarkReadyChecklist {
         low_confidence: false,
         repetitions: false,
         splits_wasl_waqf: false,
-        basmala_amin_intros: false,
     };
 }
 
-export function isAllChecked(checklist: MarkReadyChecklist): boolean {
-    return CHECKLIST_ORDER.every((k) => checklist[k]);
+/** True when every shown box is ticked. `keys` is the reciter's
+ *  `checklist_keys` from validation — only boxes whose categories ever had an
+ *  item are shown; defaults to all five. */
+export function isAllChecked(
+    checklist: MarkReadyChecklist,
+    keys: readonly ChecklistKey[] = CHECKLIST_ORDER,
+): boolean {
+    return keys.every((k) => checklist[k]);
 }

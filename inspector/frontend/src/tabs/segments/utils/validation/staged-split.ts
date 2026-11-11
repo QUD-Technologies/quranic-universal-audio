@@ -1,10 +1,14 @@
 /**
  * Staged split — pure helpers that turn a sidecar auto-split entry into the
- * N display pieces a cross-verse card renders BEFORE the split is dispatched.
+ * N display pieces a card renders BEFORE the split is dispatched.
  *
  * `resolveStagedSplit` is the eligibility gate: anything short of a clean,
- * in-range, cross_verse sidecar entry answers `null`, and the card falls back
- * to the classic single row with its Auto Split / Split button.
+ * in-range sidecar entry of an accepted kind answers `null`, and the card
+ * falls back to the classic single row with its Auto Split / Split button.
+ * `stagedSplitFor` picks the source per card: a cross-verse card stages the
+ * `cross_verse` entry of the Auto Split map; a missed-waqf card stages its own
+ * item's `boundary` (cursors + refs), where a WASL pick means "no stop here"
+ * and only the boundaries picked WAQF are cut (`waqfOnlySplit`).
  *
  * `buildStagedChildren` slices the parent exactly as `_reduceSplit` would
  * (piece 0 keeps the parent uid + index; later pieces take the memoised
@@ -15,15 +19,22 @@
 import { get } from 'svelte/store';
 
 import { quranRefs } from '../../../../lib/refs/quran-refs';
+import type { SegValAnyItem } from '../../../../lib/types/generated/schemas';
 import type { Segment } from '../../../../lib/types/view-models';
 import type { AutoSplitMap } from '../../stores/auto-split';
 import type { StagedPick } from '../../stores/staged-split';
 import { dkTextForRef, getVerseWordCounts, isCrossVerse } from '../data/references';
+import { endRef, wordAnswer } from '../../domain/join-verdict';
 
 export interface StagedSplit {
     cursors: number[];
     refs: string[];
 }
+
+/** Also the categories whose card stages a split with a WASL / WAQF pick per boundary. */
+export type StagedKind = 'cross_verse' | 'missed_waqf';
+export const CROSS_VERSE_KINDS: readonly StagedKind[] = ['cross_verse'];
+export const MISSED_WAQF_KINDS: readonly StagedKind[] = ['missed_waqf'];
 
 export type StagedSegment = Segment & { _staged: true };
 
@@ -31,13 +42,18 @@ export function isStagedSegment(seg: Segment): seg is StagedSegment {
     return (seg as { _staged?: boolean })._staged === true;
 }
 
-/** Sidecar entry usable as a pre-applied split for `seg`, else `null`. */
-export function resolveStagedSplit(seg: Segment | null, map: AutoSplitMap | null): StagedSplit | null {
+/** Sidecar entry of one of `kinds` usable as a pre-applied split for `seg`, else `null`. */
+export function resolveStagedSplit(
+    seg: Segment | null,
+    map: AutoSplitMap | null,
+    kinds: readonly StagedKind[] = CROSS_VERSE_KINDS,
+): StagedSplit | null {
     if (!seg || !map) return null;
     const uid = seg.segment_uid;
-    if (!uid || !isCrossVerse(seg.matched_ref)) return null;
+    if (!uid) return null;
     const entry = map[uid];
-    if (!entry || entry.kind !== 'cross_verse') return null;
+    if (!entry || !(kinds as readonly string[]).includes(entry.kind)) return null;
+    if (entry.kind === 'cross_verse' && !isCrossVerse(seg.matched_ref)) return null;
     const { cursors, refs } = entry;
     if (!Array.isArray(cursors) || !Array.isArray(refs)) return null;
     if (cursors.length < 1 || refs.length !== cursors.length + 1) return null;
@@ -48,6 +64,107 @@ export function resolveStagedSplit(seg: Segment | null, map: AutoSplitMap | null
     }
     if (refs.some((r) => typeof r !== 'string' || !r)) return null;
     return { cursors: cursors.slice(), refs: refs.slice() };
+}
+
+interface ItemBoundary {
+    cursors?: number[];
+    refs?: string[] | null;
+}
+
+function _itemBoundary(item: SegValAnyItem | null): ItemBoundary | null {
+    return (item as { boundary?: ItemBoundary } | null)?.boundary ?? null;
+}
+
+/** Number of proposed cuts on a missed-waqf item (0 when it carries none). */
+export function itemCursorCount(item: SegValAnyItem | null): number {
+    const cursors = _itemBoundary(item)?.cursors;
+    return Array.isArray(cursors) ? cursors.length : 0;
+}
+
+/** The staged split a `category` card shows for `seg` (the item's root), or null. */
+export function stagedSplitFor(
+    category: StagedKind,
+    seg: Segment | null,
+    item: SegValAnyItem | null,
+    map: AutoSplitMap | null,
+): StagedSplit | null {
+    if (category === 'cross_verse') return resolveStagedSplit(seg, map, CROSS_VERSE_KINDS);
+    const uid = seg?.segment_uid;
+    const b = _itemBoundary(item);
+    if (!uid || !Array.isArray(b?.cursors) || !Array.isArray(b?.refs)) return null;
+    const entry = { cursors: b.cursors, refs: b.refs, kind: 'missed_waqf' as const };
+    return resolveStagedSplit(seg, { [uid]: entry }, MISSED_WAQF_KINDS);
+}
+
+/**
+ * Picks a staged card starts from: each cut's live answer on the seg (`wordAnswer`,
+ * `true` = WASL), so an answer shows as soon as it is made, before any save. An
+ * ignored seg answered every cut WASL.
+ */
+export function savedPicks(staged: StagedSplit | null, seg: Segment | null, ignored: boolean): StagedPick[] {
+    if (!staged || !seg) return [];
+    return staged.refs.slice(0, staged.cursors.length).map((ref) => {
+        const state = wordAnswer([seg], endRef(ref));
+        if (state === 'unset') return ignored ? true : undefined;
+        return state === 'wasl';
+    });
+}
+
+/** Session-pick key: one seg can sit in both staged accordions with different cuts. */
+export function stagedPickKey(category: StagedKind, uid: string): string {
+    return category === 'cross_verse' ? uid : `${category}:${uid}`;
+}
+
+function joinRefs(a: string, b: string): string {
+    return `${a.split('-')[0]}-${b.split('-').pop()}`;
+}
+
+/**
+ * Only the boundaries picked WAQF (`false`, or unanswered) are cut; a WASL
+ * pick merges its two pieces back into one ref. `null` when no boundary is cut.
+ */
+export function waqfOnlySplit(staged: StagedSplit, picks: readonly StagedPick[]): StagedSplit | null {
+    const cursors: number[] = [];
+    const refs: string[] = [];
+    let open = staged.refs[0]!;
+    for (let i = 0; i < staged.cursors.length; i++) {
+        const next = staged.refs[i + 1]!;
+        if (picks[i] === true) {
+            open = joinRefs(open, next);
+            continue;
+        }
+        cursors.push(staged.cursors[i]!);
+        refs.push(open);
+        open = next;
+    }
+    refs.push(open);
+    return cursors.length ? { cursors, refs } : null;
+}
+
+export type StagedCommit =
+    | { kind: 'none' }
+    | { kind: 'split'; split: StagedSplit; wasls: (boolean | undefined)[]; newUids: string[] };
+
+/**
+ * What a staged card commits from its picks so far. `childUids` are the
+ * staged pieces' uids (pieces 1..N).
+ *
+ * Both categories cut only the boundaries answered WAQF: a WASL or unanswered
+ * cut never becomes a split (a WASL join is a verdict on the whole segment).
+ * Each committed piece keeps the
+ * uid of the staged piece that starts where it starts, so those rows keep
+ * their identity. `none` when no cut is answered WAQF.
+ */
+export function stagedCommit(
+    staged: StagedSplit,
+    picks: readonly StagedPick[],
+    childUids: readonly string[],
+): StagedCommit {
+    const kept = staged.cursors.map((_, i) => picks[i] === false);
+    const split = waqfOnlySplit(staged, kept.map((k) => !k));
+    if (!split) return { kind: 'none' };
+    const newUids = childUids.filter((_, i) => kept[i]);
+    return { kind: 'split', split, wasls: split.cursors.map(() => false), newUids };
 }
 
 /**

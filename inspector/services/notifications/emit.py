@@ -1,6 +1,6 @@
 """Fan a just-recorded event out to per-user notification rows.
 
-Two entry points, one per source write-path:
+Entry points cover the source write-paths:
 
 - ``emit_for_event`` — called from ``state._apply_event`` (and intake) INSIDE
   the live durable transaction, right after the transition row is appended.
@@ -8,8 +8,10 @@ Two entry points, one per source write-path:
   becomes one ``repo_notifications.create`` row (deduped on the transition id).
 - ``notify_flag_reply`` — called from the segment-save flow, which writes the
   bucket (not SQLite), so it opens its OWN ``durable_transaction``.
+- ``notify_owners_release_cut`` — reports publication or failure, listing
+  chapters left out because their upstream recording changed.
 
-Both are **best-effort**: the whole body is wrapped in try/except-log. Losing a
+All are **best-effort**: the whole body is wrapped in try/except-log. Losing a
 notification is acceptable; raising into the caller would roll back a lifecycle
 transition or a segment save, which is not. Self-suppression drops a target
 equal to the actor (you don't get notified for your own action), except for the
@@ -119,6 +121,100 @@ def notify_owners_shard_integrity(findings: list) -> int:
         return len(findings)
     except Exception:  # noqa: BLE001 — best-effort; never break the sweep
         logger.exception("notifications.notify_owners_shard_integrity failed")
+        return 0
+
+
+def notify_owners_release_cut(
+    *,
+    job_id: str,
+    version: str | None,
+    recitation_count: int = 0,
+    dropped: dict[str, list[str]] | None = None,
+    failed: bool = False,
+) -> int:
+    """One card per review-alert recipient for a finished GitHub release cut.
+
+    ``dropped`` is the job's ``validation_summary.dropped_upstream_chapters`` —
+    ``{slug: ["ch62 recording (465s → 321s)", …]}`` for chapters left out
+    because their linked upstream audio is a different recording. The body
+    names each recitation and its chapters to realign. Deduped on the job
+    id; best-effort, like every other emitter. Returns the cards created.
+    """
+    try:
+        from services.db import sync as _sync
+        from services.state import catalog
+
+        recipients = _review_alert_recipients()
+        if not recipients:
+            return 0
+        dropped = dropped or {}
+        lines = [
+            f"{catalog.display_name(slug) or slug} ({slug}): {', '.join(chapters)}"
+            for slug, chapters in sorted(dropped.items())
+        ]
+        if failed:
+            title = copy.release_cut_failed()
+            event = "release.failed"
+        elif dropped:
+            title = copy.release_cut_dropped(
+                version or "", sum(len(chapters) for chapters in dropped.values())
+            )
+            event = "release.cut"
+        else:
+            title = copy.release_cut(version or "", recitation_count)
+            event = "release.cut"
+        body = (
+            "Chapters were left out of the release because their upstream audio changed; "
+            "realign these chapters:\n" + "\n".join(lines)
+            if lines
+            else None
+        )
+        created = 0
+        with _sync.durable_transaction():
+            for uid in recipients:
+                if repo_notifications.create(
+                    hf_user_id=uid,
+                    event=event,
+                    slug=None,
+                    title=title,
+                    body=body,
+                    payload={
+                        "version": version,
+                        "job_id": job_id,
+                        "dropped_upstream_chapters": dropped,
+                    },
+                    source_key=f"release:{job_id}",
+                ):
+                    created += 1
+        return created
+    except Exception:  # noqa: BLE001 — best-effort; never break the release webhook
+        logger.exception("notifications.notify_owners_release_cut failed")
+        return 0
+
+
+def resolve_shard_integrity(scanned: list[str], findings: list) -> int:
+    """Archive shard-missing cards the latest sweep no longer finds.
+
+    Only cards for ``scanned`` slugs are judged — a slug that was skipped or could
+    not be listed proves nothing. Returns the number of cards archived;
+    best-effort, like the emitter.
+    """
+    try:
+        from services.db import sync as _sync
+
+        looked = set(scanned)
+        still = {f.source_key for f in findings}
+        stale = [
+            key
+            for key, slug in repo_notifications.active_source_keys("shard.missing")
+            if slug in looked and key not in still
+        ]
+        if not stale:
+            return 0
+        with _sync.durable_transaction():
+            return sum(repo_notifications.dismiss_by_source_key(key) for key in stale)
+    except Exception:  # noqa: BLE001 — best-effort; never break the sweep
+        logger.exception("notifications.resolve_shard_integrity failed")
         return 0
 
 

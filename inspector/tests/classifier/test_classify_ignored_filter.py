@@ -32,9 +32,6 @@ def test_ignored_categories_excludes_from_classification(category):
         s_ayah=1,
         e_ayah=1,
         s_word=1,
-        e_word=4,
-        single_word_verses=set(),
-        canonical=None,
     )
     assert flags.get(category) is False, (
         f"{category}: ignored_categories filter not honored — flag={flags.get(category)!r}"
@@ -59,9 +56,6 @@ def test_all_marker_excludes_all():
         s_ayah=1,
         e_ayah=1,
         s_word=1,
-        e_word=4,
-        single_word_verses=set(),
-        canonical=None,
     )
     for category in CAN_IGNORE_CATEGORIES:
         assert flags.get(category) is False, (
@@ -90,9 +84,19 @@ def test_legacy_ignored_boolean_treated_as_all():
         s_ayah=1,
         e_ayah=1,
         s_word=1,
-        e_word=4,
-        single_word_verses=set(),
-        canonical=None,
     )
     for category in CAN_IGNORE_CATEGORIES:
         assert flags.get(category) is False
+
+
+def test_an_unknown_ignored_category_suppresses_nothing():
+    """Published segments may list ``boundary_adj``; it names no category."""
+    from services.validation.classifier import classify_segment
+
+    seg = {
+        "matched_ref": "112:1:1-112:1:4",
+        "confidence": 0.5,
+        "is_boundary_adj": True,
+        "ignored_categories": ["boundary_adj"],
+    }
+    assert "low_confidence" in classify_segment(seg)

@@ -95,9 +95,6 @@ from services.data_loader import load_surah_info_lite
 from services.errors import Codes, error_body
 from services.reference.delivery_edition import RiwayahMismatch
 from services.reference.editions import EditionsUnavailable, RefNotInEdition
-
-# Phonemizer was eagerly initialized here. It's now imported lazily inside
-# scripts/backfills/backfill_boundary_adj.py (the only remaining consumer).
 from services.secrets_guard import MissingSecret, get_session_secret
 from services.state.state import InvalidTransition, NotAuthorizedForTransition, UnknownReciter
 from services.storage.hf_bucket import StorageReadOnly
@@ -191,9 +188,12 @@ def _configure_logging() -> None:
     # Silence chatty third-party libraries:
     # - httpx logs every HTTP request at INFO (one line per bucket read);
     #   bumping to WARNING keeps real failures, drops the per-request noise.
+    #   huggingface_hub 2.x ships its fork as ``httpx2`` (own logger name), so
+    #   both are silenced.
     # - huggingface_hub._login prints a benign HF_TOKEN-already-set warning
     #   on every fresh login() call when the env var is present.
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpx2").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("huggingface_hub._login").setLevel(logging.ERROR)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
@@ -270,7 +270,7 @@ _assert_single_worker()
 auth_service.assert_dev_mode_safe()
 
 # Flask's built-in static handler serves everything under FRONTEND_DIST at
-# the site root (`/assets/<hash>.js`, `/fonts/DigitalKhattV2.otf`, …). The
+# the site root (`/assets/<hash>.js`, `/favicon-dark.webp`, …). The
 # `/` route below handles index.html explicitly.
 app = Flask(__name__, static_folder=str(FRONTEND_DIST), static_url_path="")
 
@@ -414,7 +414,7 @@ def _boot_substrate() -> None:
         )
 
         prepare_native_report_map(_db.get_writer())
-        ver = _db.init_db()  # open writer + run migrations (fail-fast)
+        ver = _db.init_db(persist_migrations=True)  # migrate + persist pulled bucket DB
         assert_native_report_schema(_db.get_writer())
         logger.info("db substrate: ready at schema v%s", ver)
     except Exception:  # noqa: BLE001
@@ -468,6 +468,17 @@ def _boot_substrate() -> None:
             logger.info("release-job poll worker started")
         except Exception as e:  # noqa: BLE001
             logger.warning("release-job poll wiring failed: %s", e)
+
+    # Timestamps runs are threads of this process: a run
+    # still ``running`` at boot died with the previous one. Deployed only — a local
+    # process shares the dev bucket with the dev Space.
+    if os.environ.get("INSPECTOR_BEHIND_PROXY") == "1":
+        try:
+            from services.admin import timestamps_jobs as _ts_jobs
+
+            _ts_jobs.close_interrupted_runs()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("timestamps: closing interrupted runs failed: %s", e)
 
     # Native align pipeline: resume any pending/running align run's worker thread
     # (a ``running`` row after a restart means the previous process died
@@ -662,12 +673,6 @@ if __name__ == "__main__":
             "and visit http://localhost:5173 (Vite proxies /api + /audio to this Flask).",
             FRONTEND_DIST / "index.html",
         )
-
-    # Phonemizer is no longer used by the validate runtime path; the phonemic
-    # side of boundary_adj is captured at backfill / extraction time and
-    # persisted as ``is_boundary_adj`` on every segment. The remaining
-    # consumer is ``scripts/backfills/backfill_boundary_adj.py`` (offline)
-    # which imports lazily on demand.
 
     # Timestamp data loads lazily on first request now (per-reciter cache in
     # services/data_loader.py). The earlier eager preload pinned ~22 MB *

@@ -184,7 +184,7 @@ class TsReportSnapshot(BaseModel):
     #: ``None`` on a word profile, which carries no native analysis at all — a
     #: reader must not expect cells behind the fingerprint.
     native_schema_version: Literal[2] | None = 2
-    shard_schema_version: Literal[12, 13, 14] = 13
+    shard_schema_version: Literal[12, 13, 14, 15] = 13
     #: Which shard shape the fingerprint came from. Absent on every row written
     #: before the word profile existed, all of which are native.
     shard_profile: Literal["native", "word"] = "native"

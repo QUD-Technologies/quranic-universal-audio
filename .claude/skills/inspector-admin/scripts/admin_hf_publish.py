@@ -46,7 +46,7 @@ def _do_launch(a, ctx) -> int:
         _print(f"DRY RUN — would launch hf_publish for {a.slug}"); return 0
     result = hf_publish.launch(
         a.slug,
-        webhook_base="https://hetchyy-quranic-universal-audio.hf.space",
+        webhook_base="https://qud-technologies-quranic-universal-audio.hf.space",
     )
     _print(f"launched job_id={result.get('job_id')}")
     _print(f"  URL: {result.get('url')}")

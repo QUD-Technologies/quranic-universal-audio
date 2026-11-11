@@ -4,7 +4,7 @@ Measures cold + warm timings for the read/write operations the
 inspector actually performs against a real reciter in the dev bucket.
 
 Run:
-    INSPECTOR_BUCKET_REPO=hetchyy/quranic-inspector-bucket-dev \\
+    INSPECTOR_BUCKET_REPO=QUD-Technologies/quranic-inspector-bucket-dev \\
     python3 scripts/diagnostics/bench_storage.py [--mount /path]
 
 A scratch dir ``reciters/__bench__/`` is created for writes and cleaned at exit.
@@ -26,7 +26,7 @@ sys.path.insert(0, str(ROOT))
 
 from inspector.services.hf_bucket import BucketBackend  # noqa: E402
 
-BUCKET = os.environ.get("INSPECTOR_BUCKET_REPO", "hetchyy/quranic-inspector-bucket-dev")
+BUCKET = os.environ.get("INSPECTOR_BUCKET_REPO", "QUD-Technologies/quranic-inspector-bucket-dev")
 SLUG = "mishary_rashid_al_afasy_mp3quran"
 SCRATCH = "reciters/__bench__"
 

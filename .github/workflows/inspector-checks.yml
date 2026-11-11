@@ -1,13 +1,16 @@
 name: Inspector checks (reusable)
 
 # Reusable workflow: frontend + backend checks for the inspector.
-# Called by docker-publish.yml (build gate) and inspector-deploy.yml (deploy gate).
+# Called by inspector-pr-checks.yml (PRs) and inspector-deploy.yml (deploy gate).
 
 on:
   workflow_call:
     secrets:
       PAT_TOKEN:
         description: Read-only token for QUD Technologies private dependencies
+        required: true
+      TALQEEN_DATA_READ_TOKEN:
+        description: Read access to QUD-Technologies/talqeen-ai-data (talqeen-quran-data SDK + pack)
         required: true
 
 jobs:
@@ -35,6 +38,11 @@ jobs:
         run: |
           AUTH="$(printf 'x-access-token:%s' "$PRIVATE_REPO_TOKEN" | base64 -w0)"
           git config --global http.https://github.com/.extraheader "AUTHORIZATION: basic $AUTH"
+
+      - name: Fetch the TS data SDK (talqeen-ai-data release tarball, sha256-pinned)
+        env:
+          TALQEEN_DATA_READ_TOKEN: ${{ secrets.TALQEEN_DATA_READ_TOKEN }}
+        run: python3 ../../scripts/devenv/install_quran_data.py --ts-only
 
       - name: Install deps
         run: npm ci
@@ -95,6 +103,32 @@ jobs:
             inspector/requirements.txt
             inspector/requirements-dev.txt
 
+      - name: No old scripts layout
+        # Imported-at-runtime code is a package (qua_shared/ or qua_jobs/); operational
+        # CLIs live in scripts/<function>/. See scripts/README.md.
+        working-directory: ${{ github.workspace }}
+        run: |
+          bad_files=$(git ls-files 'scripts/lib/**' 'scripts/jobs/**' 'inspector/scripts/**')
+          bad_imports=$(git grep -nE '^[[:space:]]*(from|import)[[:space:]]+scripts\.(lib|jobs)' -- '*.py' || true)
+          if [ -n "$bad_files$bad_imports" ]; then
+            echo "::error::Old scripts layout reintroduced — imported code → qua_shared/ or qua_jobs/; CLIs → scripts/<function>/. See scripts/README.md"
+            [ -n "$bad_files" ] && { echo "Files in dead homes:"; echo "$bad_files"; }
+            [ -n "$bad_imports" ] && { echo "Old scripts.lib/scripts.jobs imports:"; echo "$bad_imports"; }
+            exit 1
+          fi
+
+      - name: No Flask in services (except auth.py)
+        # services/ stays framework-agnostic; authlib's flask_client OAuth in
+        # services/auth/auth.py is the one exception. See docs/reference/architecture.md.
+        working-directory: ${{ github.workspace }}
+        run: |
+          bad=$(git grep -nE '^[[:space:]]*(from|import)[[:space:]]+(flask|authlib)' -- 'inspector/services/' ':!inspector/services/auth/auth.py' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Flask/authlib imported in services/ outside the auth.py allow-list. Move it to routes/ or adapters/, or extend the allow-list in architecture.md if genuinely irreducible."
+            echo "$bad"
+            exit 1
+          fi
+
       - name: Install qua-domain (multi-riwayah edition data)
         working-directory: ${{ github.workspace }}
         env:
@@ -102,6 +136,13 @@ jobs:
         # Exits 0 having installed nothing when the secret is absent (a fork).
         # The edition tests then skip and the degraded-path tests still run.
         run: python scripts/devenv/install_qua_domain.py
+
+      - name: Install talqeen-quran-data (Hafs reference data)
+        working-directory: ${{ github.workspace }}
+        env:
+          TALQEEN_DATA_READ_TOKEN: ${{ secrets.TALQEEN_DATA_READ_TOKEN }}
+        # Required: the SDK + quran-core.qref pack at qua_shared/quran_data_pin.py.
+        run: python scripts/devenv/install_quran_data.py
 
       - name: Install deps and run pytest
         run: |
@@ -155,6 +196,7 @@ jobs:
     # changes and the dev forgot to regen the FE types, this job fails
     # with `git diff --exit-code` on the generated file. See
     # docs/reference/data-migrations.md §5 and scripts/codegen/regen_fe_types.py.
+    # Also runs the blocking pyright gate, which needs the same backend deps.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -163,7 +205,9 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
-          cache-dependency-path: inspector/requirements-dev.txt
+          cache-dependency-path: |
+            inspector/requirements.txt
+            inspector/requirements-dev.txt
 
       - uses: actions/setup-node@v4
         with:
@@ -185,7 +229,14 @@ jobs:
           # tests use (prevents silent JSON-schema drift if
           # pydantic-to-typescript's loose dep resolves to an older pydantic).
           pip install -r inspector/requirements.txt -r inspector/requirements-dev.txt
-          cd inspector/frontend && npm ci
+
+      - name: Install talqeen-quran-data (types for pyright; the TS SDK for npm ci)
+        env:
+          TALQEEN_DATA_READ_TOKEN: ${{ secrets.TALQEEN_DATA_READ_TOKEN }}
+        run: python scripts/devenv/install_quran_data.py
+
+      - name: Install frontend deps
+        run: cd inspector/frontend && npm ci
 
       - name: Regenerate FE types
         run: python scripts/codegen/regen_fe_types.py
@@ -199,73 +250,12 @@ jobs:
             exit 1
           fi
 
-  type-check:
-    # Blocking pyright gate for the whole backend (inspector, qua_jobs,
-    # qua_shared). Runtime + dev deps are installed first so pyright resolves
-    # real third-party types — without them, imports collapse to Unknown and the
-    # gate both misses real errors and reports spurious None-union ones. Pyright
-    # itself is run via `npx`, so no type-checker dep is added to the image.
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: pip
-          cache-dependency-path: |
-            inspector/requirements.txt
-            inspector/requirements-dev.txt
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
-      - name: Install backend deps (for type resolution)
-        run: pip install -r inspector/requirements.txt -r inspector/requirements-dev.txt
-
       - name: Pyright (basic, whole backend)
+        # Blocking gate for inspector, qua_jobs and qua_shared. Runs after the
+        # backend deps above are installed so third-party types resolve; via npx,
+        # so the image gains no type-checker dependency.
         run: >-
           npx -y pyright
           --pythonversion 3.11
           --level error
           inspector qua_jobs qua_shared
-
-  scripts-layout-guard:
-    # Stops the old scattered-scripts layout from creeping back. Imported-at-runtime
-    # code is a package (qua_shared/ or qua_jobs/); operational CLIs live in
-    # scripts/<function>/. There is no scripts/lib, scripts/jobs, or inspector/scripts.
-    # See scripts/README.md for the placement rule.
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: No old scripts layout
-        run: |
-          bad_files=$(git ls-files 'scripts/lib/**' 'scripts/jobs/**' 'inspector/scripts/**')
-          bad_imports=$(git grep -nE '^[[:space:]]*(from|import)[[:space:]]+scripts\.(lib|jobs)' -- '*.py' || true)
-          if [ -n "$bad_files$bad_imports" ]; then
-            echo "::error::Old scripts layout reintroduced — imported code → qua_shared/ or qua_jobs/; CLIs → scripts/<function>/. See scripts/README.md"
-            [ -n "$bad_files" ] && { echo "Files in dead homes:"; echo "$bad_files"; }
-            [ -n "$bad_imports" ] && { echo "Old scripts.lib/scripts.jobs imports:"; echo "$bad_imports"; }
-            exit 1
-          fi
-          echo "scripts layout OK"
-
-  services-flask-free:
-    # services/ business logic stays framework-agnostic. The sole exception is
-    # services/auth/auth.py, whose authlib flask_client OAuth integration is
-    # irreducible. Any other flask/authlib import under services/ is a layering
-    # violation — push it up to routes/ or down to adapters/. See CLAUDE.md +
-    # docs/reference/architecture.md.
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: No Flask in services (except auth.py)
-        run: |
-          bad=$(git grep -nE '^[[:space:]]*(from|import)[[:space:]]+(flask|authlib)' -- 'inspector/services/' ':!inspector/services/auth/auth.py' || true)
-          if [ -n "$bad" ]; then
-            echo "::error::Flask/authlib imported in services/ outside the auth.py allow-list. Move it to routes/ or adapters/, or extend the allow-list in architecture.md if genuinely irreducible."
-            echo "$bad"
-            exit 1
-          fi
-          echo "services Flask-free OK"

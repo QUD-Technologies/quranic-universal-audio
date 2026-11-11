@@ -35,7 +35,7 @@ describe('classifier output parity', () => {
     expect(classifyMod).toBeNull();
   });
 
-  it('history issue deltas hide Basmala + Amin', () => {
+  it('history issue deltas hide the legacy Basmala + Amin category', () => {
     const delta = deriveOpIssueDelta([
       {
         targets_before: [{ segment_uid: 'u1', classified_issues: ['basmala_amin'] }],

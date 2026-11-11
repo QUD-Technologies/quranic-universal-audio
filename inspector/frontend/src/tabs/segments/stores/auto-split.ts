@@ -1,10 +1,11 @@
 /**
  * Segments tab — Auto Split cursor map (client-side preload cache).
  *
- * Background: the Auto Split button (cross-verse, repetitions and hidden-pause
- * accordions) resolves its cursor positions from offline-precomputed sidecars
- * (`auto_split_v1.json` plus the `hidden_pause_v1.json` entries that carry
- * refs, keyed by `segment_uid`). The server holds the whole
+ * Background: the Auto Split button (cross-verse, repetitions, missed-waqf and
+ * hidden-pause accordions) resolves its cursor positions from offline-precomputed
+ * sidecars (`auto_split_v1.json` plus the `missed_waqf_v1.json` /
+ * `hidden_pause_v1.json` entries that carry refs, keyed by `segment_uid`). The
+ * server holds the whole
  * map in process memory after the first read, but the FE historically re-POSTed
  * per click — one network round trip every click. On the deployed Space that
  * round trip (RTT + single-worker serialization) is the dominant latency.
@@ -31,7 +32,7 @@ export interface AutoSplitEntry {
     cursors: number[];
     /** Per-section refs (N entries). */
     refs: string[];
-    kind: 'cross_verse' | 'repetition' | 'hidden_pause';
+    kind: 'cross_verse' | 'repetition' | 'missed_waqf' | 'hidden_pause';
 }
 
 export type AutoSplitMap = Record<string, AutoSplitEntry>;

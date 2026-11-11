@@ -49,7 +49,9 @@
             const st = d.sidecar_stage ? String(d.sidecar_stage).replace(/_/g, ' ') : 'submitting';
             return st;
         }
-        if (run.stage === 'assemble') return 'building artifacts…';
+        if (run.stage === 'assemble') {
+            return d.timing_chapter ? `timing chapter ${String(d.timing_chapter)}` : 'building artifacts…';
+        }
         return '';
     }
 </script>

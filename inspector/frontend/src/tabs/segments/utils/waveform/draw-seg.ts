@@ -14,6 +14,7 @@ import { drawWaveformPeaks } from '../../../../lib/utils/waveform-draw';
 import { segAllData } from '../../stores/chapter';
 import type { SegCanvas } from '../../types/segments-waveform';
 import { _findCoveringPeaks } from './peaks-cache';
+import { readback2d } from '../../../../lib/utils/canvas-2d';
 
 type Peaks = PeakBucket[] | Int8Array;
 
@@ -30,7 +31,7 @@ export function drawSegmentWaveformFromPeaks(
     peaks: Peaks,
     totalDurationMs: number,
 ): void {
-    const ctx = canvas.getContext('2d');
+    const ctx = readback2d(canvas);
     if (!ctx) return;
     drawWaveformPeaks(ctx, peaks, {
         width: canvas.width,
@@ -81,7 +82,7 @@ export function drawSegBaseAndOverlays(
     endMs: number,
     audioUrl: string,
 ): boolean {
-    const ctx = canvas.getContext('2d');
+    const ctx = readback2d(canvas);
     if (!ctx) return false;
     ctx.fillStyle = themeColor('--wf-bg', WAVEFORM_BG_COLOR);
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -133,7 +134,7 @@ export function drawSegPlayhead(
     currentTimeMs: number,
     audioUrl: string,
 ): void {
-    const ctx = canvas.getContext('2d');
+    const ctx = readback2d(canvas);
     if (!ctx) return;
     const cacheKey = `${startMs}:${endMs}`;
     if (canvas._wfCache && canvas._wfCacheKey === cacheKey) {
@@ -195,7 +196,7 @@ export function drawEditPeakBase(
     startMs: number,
     endMs: number,
 ): boolean {
-    const ctx = canvas.getContext('2d');
+    const ctx = readback2d(canvas);
     if (!ctx) return false;
     const width = canvas.width;
     const height = canvas.height;
@@ -309,7 +310,7 @@ function _slicePeaks(
 export function _drawTrimHighlight(canvas: SegCanvas, seg: Segment): void {
     const hl = canvas._trimHL;
     if (!hl) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = readback2d(canvas);
     if (!ctx) return;
     const w = canvas.width, h = canvas.height;
     const dur = seg.time_end - seg.time_start;
@@ -350,7 +351,7 @@ export function _drawTrimHighlight(canvas: SegCanvas, seg: Segment): void {
 export function _drawSplitHighlight(canvas: SegCanvas, wfSeg: Segment): void {
     const hl = canvas._splitHL;
     if (!hl) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = readback2d(canvas);
     if (!ctx) return;
     const w = canvas.width, h = canvas.height;
     const dur = wfSeg.time_end - wfSeg.time_start;
@@ -374,7 +375,7 @@ export function _drawSplitHighlight(canvas: SegCanvas, wfSeg: Segment): void {
 export function _drawMergeHighlight(canvas: SegCanvas, seg: Segment): void {
     const hl = canvas._mergeHL;
     if (!hl) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = readback2d(canvas);
     if (!ctx) return;
     const w = canvas.width, h = canvas.height;
     const dur = seg.time_end - seg.time_start;

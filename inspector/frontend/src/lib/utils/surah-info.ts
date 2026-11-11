@@ -20,7 +20,7 @@ export function getSurahInfo(): SurahInfoResponse {
 export function surahName(num: number | string, locale?: string): string {
     const info = _surahInfo[String(num)];
     if (!info) return String(num);
-    if (locale === 'ar' && info.name_ar) return info.name_ar.replace(/^سُورَةُ\s*/, '');
+    if (['ar', 'ckb'].includes(locale ?? 'en') && info.name_ar) return info.name_ar.replace(/^سُورَةُ\s*/, '');
     return info.name_en;
 }
 
@@ -31,7 +31,7 @@ export function surahName(num: number | string, locale?: string): string {
 export function surahOptionText(num: number | string, locale?: string): string {
     const info = _surahInfo[String(num)];
     if (!info) return String(num);
-    if (locale === 'ar' && info.name_ar) {
+    if (['ar', 'ckb'].includes(locale ?? 'en') && info.name_ar) {
         return `${num} ${info.name_ar.replace(/^سُورَةُ\s*/, '')}`;
     }
     return `${num} ${info.name_en}`;

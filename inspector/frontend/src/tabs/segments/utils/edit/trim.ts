@@ -423,6 +423,23 @@ export function confirmTrim(seg: Segment, canvas?: SegCanvas | null): void {
         return;
     }
 
+    commitTrim(seg, { time_start: newStart, time_end: newEnd }, ctxCat, exitEditMode);
+}
+
+/**
+ * Dispatch a `trim` of `seg` to `delta` and land it in the store (bounds,
+ * confidence, verdicts). `onApplied` runs after the chapter sync, before the
+ * op is finalized (the edit-mode caller exits there).
+ */
+export function commitTrim(
+    seg: Segment,
+    delta: { time_start?: number; time_end?: number },
+    contextCategory: string | null,
+    onApplied?: () => void,
+): void {
+    const uid = seg.segment_uid;
+    if (!uid) return;
+    const chapter = seg.chapter || parseInt(get(selectedChapter));
     const result = applyCommand(
         {
             byId: { [uid]: seg },
@@ -432,9 +449,9 @@ export function confirmTrim(seg: Segment, canvas?: SegCanvas | null): void {
         {
             type: 'trim',
             segmentUid: uid,
-            delta: { time_start: newStart, time_end: newEnd },
-            sourceCategory: ctxCat ?? undefined,
-            contextCategory: ctxCat ?? undefined,
+            delta,
+            sourceCategory: contextCategory ?? undefined,
+            contextCategory: contextCategory ?? undefined,
         },
     );
     const updated = result.nextState.byId[uid];
@@ -442,6 +459,7 @@ export function confirmTrim(seg: Segment, canvas?: SegCanvas | null): void {
         seg.time_start = updated.time_start;
         seg.time_end = updated.time_end;
         seg.confidence = updated.confidence;
+        if (updated.join_verdicts) seg.join_verdicts = updated.join_verdicts;
         if (updated.ignored_categories) {
             seg.ignored_categories = [...updated.ignored_categories];
         }
@@ -449,17 +467,15 @@ export function confirmTrim(seg: Segment, canvas?: SegCanvas | null): void {
     markDirty(chapter, undefined, true);
 
     const curData = get(segData);
-    if (chapter !== currentChapter || !curData?.segments) {
-        // Non-current chapter trim: seg identity replaced via refreshSegInStore
-        // below patches the cache surgically. Drop only the affected chapter's
-        // entries as a safety net for the rare case where the seg is newly
-        // added to the chapter (cache miss rebuild).
+    if (chapter !== parseInt(get(selectedChapter)) || !curData?.segments) {
+        // A trim outside the current chapter: refreshSegInStore below patches the
+        // cache; dropping the chapter's index covers a cache-miss rebuild.
         invalidateChapterIndexFor(chapter);
     } else {
         syncChapterSegsToAll();
     }
 
-    exitEditMode();
+    onApplied?.();
     refreshSegInStore(seg);
     finalizeEdit(result.operation, chapter, [seg], { skipAccordion: true, patch: result.patch });
 }

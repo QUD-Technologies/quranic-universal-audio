@@ -1,4 +1,4 @@
-/** Cross-verse connected-reading helpers for native v13 occasions. */
+/** Cross-verse connected-reading helpers for native occasions. */
 
 import type { ChapterOccasion } from './occasions';
 

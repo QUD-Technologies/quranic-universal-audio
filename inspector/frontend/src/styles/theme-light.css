@@ -209,6 +209,8 @@
     --brand-hf:            oklch(0.800 0.160 85);
     --brand-discord:       oklch(0.520 0.200 268);
     --brand-rel:           oklch(0.700 0.150 72);
+    --brand-qud:           #be260b;   /* QUD³ accent (qud.dev paper) */
+    --brand-qud-fg:        oklch(0.300 0.010 268);
     /* Softer, recessive resting rail on paper — text-muted (0.51) reads too
        heavy on near-white; this is the light peer of the dark muted mark. */
     --brand-rail-fg:       oklch(0.680 0.010 268);
@@ -240,6 +242,10 @@
     --shadow-pop:          0 8px 28px oklch(0.300 0.030 275 / 0.14);
     --shadow-modal:        0 18px 48px oklch(0.300 0.030 275 / 0.20),
                            0 2px 6px oklch(0.300 0.030 275 / 0.10);
+
+    /* Timestamps Mushaf view — a warm ivory page, a soft spine shade. */
+    --mushaf-paper:        oklch(0.990 0.008 85);
+    --mushaf-spine:        oklch(0.300 0.030 275 / 0.12);
 
     /* ---------- playback highlight default (overridden live by config) ---------- */
     --anim-highlight-color: oklch(0.620 0.150 70);

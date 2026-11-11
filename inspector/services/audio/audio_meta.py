@@ -71,6 +71,27 @@ def _chapters(slug: str) -> dict:
     return chapters if isinstance(chapters, dict) else {}
 
 
+def manifest_checksum(chapters: dict) -> str:
+    """``_meta.checksum``: a stable digest of the sorted ``(key, url)`` pairs, so
+    re-writing the same chapters produces the same checksum."""
+    import hashlib
+
+    src = "".join(f"{k}={chapters[k]['url']};" for k in sorted(chapters)).encode("utf-8")
+    return hashlib.sha256(src).hexdigest()[:16]
+
+
+def manifest_chapters(slug: str) -> dict:
+    """The sidecar's raw ``chapters`` map (``{}`` when there is no sidecar)."""
+    return _chapters(slug)
+
+
+def manifest_sources(slug: str) -> list[dict]:
+    """The sidecar's ``sources`` — files still awaiting surah detection."""
+    doc = _load_sidecar(slug) or {}
+    sources = doc.get("sources")
+    return sources if isinstance(sources, list) else []
+
+
 def chapter_meta(reciter: str, chapter: int | str) -> dict | None:
     """Return the sidecar entry for ``(reciter, chapter)``, or None."""
     entry = _chapters(reciter).get(str(chapter))

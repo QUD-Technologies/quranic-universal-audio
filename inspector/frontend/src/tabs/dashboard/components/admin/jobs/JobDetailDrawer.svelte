@@ -141,7 +141,7 @@
                 <div class="section">
                     <h3>Settings</h3>
                     <div class="mono small">
-                        beams [{(rec.settings.beams ?? []).join(', ')}]{#if rec.settings.chapters?.length} · chapters [{rec.settings.chapters.join(', ')}]{/if}{#if rec.settings.flavor} · {rec.settings.flavor}{/if}
+                        {#if rec.settings.chapters?.length}chapters [{rec.settings.chapters.join(', ')}]{:else}full reciter{/if}
                     </div>
                 </div>
             {/if}

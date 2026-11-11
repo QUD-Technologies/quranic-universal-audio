@@ -10,6 +10,9 @@ from functools import cache
 DIGITAL_KHATT_SCRIPT_ID = "digital_khatt_v2"
 DIGITAL_KHATT_SCRIPT_FILENAME = "digital_khatt_v2_script.json"
 DIGITAL_KHATT_FONT_FILENAME = "DigitalKhattV2.otf"
+#: Repo-relative (and staged-job-relative) path of the font: a Talqeen release asset fetched
+#: next to the pack by ``scripts/devenv/install_quran_data.py`` (``data/fonts/``), never committed.
+DIGITAL_KHATT_FONT_PATH = f"data/fonts/{DIGITAL_KHATT_FONT_FILENAME}"
 UNICODE_INDEXING = "scalar"
 
 # Presentation-only marks stay in the released text but own no timed paint.
@@ -167,6 +170,7 @@ def project_word(word: dict, presentation_text: str) -> tuple[str, list[dict]]:
 
 __all__ = [
     "DIGITAL_KHATT_FONT_FILENAME",
+    "DIGITAL_KHATT_FONT_PATH",
     "DIGITAL_KHATT_SCRIPT_FILENAME",
     "DIGITAL_KHATT_SCRIPT_ID",
     "DISPLAY_ONLY_MARKS",

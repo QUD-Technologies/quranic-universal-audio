@@ -1,9 +1,9 @@
 """HTTP boundary tests for ``POST /api/admin/generate-timestamps/<slug>``.
 
-The route launches the in-container MFA timestamps job. It accepts two entry
-states — a marked-ready ``under_review`` row (first publish) and an already
-``released`` row (regenerate) — and 409s any other state. The actual HF Job
-launch + single-flight check are stubbed so we don't hit the network.
+The route launches the aligner timestamps run. It accepts two entry states — a
+marked-ready ``under_review`` row (first publish) and an already ``released``
+row (regenerate) — and 409s any other state. The launch + single-flight check
+are stubbed so we don't hit the network.
 """
 
 from __future__ import annotations
@@ -13,14 +13,17 @@ _URL = "/api/admin/generate-timestamps"
 
 
 def _stub_launch(monkeypatch):
-    """Stub the launcher + single-flight check so no HF Jobs call is made."""
+    """Stub the launcher + single-flight check so no run starts."""
     from services.admin import timestamps_jobs as ts_jobs
 
     monkeypatch.setattr(ts_jobs, "running_job_for", lambda slug: None)
     monkeypatch.setattr(
         ts_jobs,
         "launch",
-        lambda slug, settings=None, webhook_base=None: {"job_id": "j_test", "url": None},
+        lambda slug, settings=None, full=False: {
+            "job_id": "j_test",
+            "url": None,
+        },
     )
 
 
@@ -85,9 +88,10 @@ def test_generate_ts_scopes_to_affected_chapters(signed_in_client, monkeypatch, 
     monkeypatch.setattr(ts_jobs, "running_job_for", lambda slug: None)
     captured: dict = {}
 
-    def _capture(slug, settings=None, webhook_base=None):
+    def _capture(slug, settings=None, full=False):
         assert settings is not None
         captured["chapters"] = settings.chapters
+        captured["full"] = full
         return {"job_id": "j_test", "url": None}
 
     monkeypatch.setattr(ts_jobs, "launch", _capture)
@@ -95,7 +99,22 @@ def test_generate_ts_scopes_to_affected_chapters(signed_in_client, monkeypatch, 
     resp = client.post(f"{_URL}/rec_a", headers=_HEADERS, json={"chapters": [12, 5, 5]})
 
     assert resp.status_code == 202, resp.get_data(as_text=True)
-    assert captured["chapters"] == [5, 12]  # deduped + sorted
+    assert captured == {"chapters": [5, 12], "full": False}  # deduped + sorted
+
+    resp = client.post(f"{_URL}/rec_a", headers=_HEADERS, json={"full": True})
+
+    assert resp.status_code == 202, resp.get_data(as_text=True)
+    assert captured == {"chapters": None, "full": True}
+
+
+def test_generate_ts_rejects_a_non_boolean_full(signed_in_client, monkeypatch, seed_state):
+    client, _user = signed_in_client(role="maintainer")
+    _stub_launch(monkeypatch)
+    seed_state("rec_a", state="released")
+
+    resp = client.post(f"{_URL}/rec_a", headers=_HEADERS, json={"full": "yes"})
+
+    assert resp.status_code == 400
 
 
 def test_generate_ts_rejects_out_of_range_chapters(signed_in_client, monkeypatch, seed_state):

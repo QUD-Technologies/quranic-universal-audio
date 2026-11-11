@@ -1,3 +1,5 @@
+import { localizeDigits, SORANI_MONTHS } from '$lib/i18n/format';
+import { getLocale } from '$lib/paraglide/runtime';
 import * as m from '../../../../lib/paraglide/messages';
 import type { EditOp, GenerationBoundary, HistoryBatch } from '../../../../lib/types/view-models';
 import type {
@@ -66,11 +68,12 @@ export interface FilteredItemSummary {
 /** Short-label dictionary for issue-delta badges (preserved verbatim). */
 export const SHORT_LABELS: Record<string, string> = {
     failed: 'fail', low_confidence: 'low conf', low_confidence_v2: 'low conf',
-    boundary_adj: 'boundary', cross_verse: 'cross', missing_words: 'gaps',
+    cross_verse: 'cross', missing_words: 'gaps',
     audio_bleeding: 'bleed', repetitions: 'reps',
     qalqala: 'qalqala',
 };
 
+// `basmala_amin`: legacy category, still hidden in old history.
 const HISTORY_NEUTRAL_CATEGORIES = new Set(['basmala_amin', 'muqattaat']);
 
 export function versesFromRef(ref: string | null | undefined): string[] {
@@ -113,11 +116,19 @@ export function countVersesFromItems(items: OpFlatItem[]): number {
     return verses.size;
 }
 
+
 export function formatHistDate(isoStr: string | null | undefined): string {
     if (!isoStr) return m.segments_history_date_pending();
     try {
         const d = new Date(isoStr);
-        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        // Browser ICU builds may not ship Sorani date names. Use explicit
+        // Gregorian month names so selecting Kurdish never falls back to English.
+        if (getLocale() === 'ckb' && !Number.isNaN(d.getTime())) {
+            const month = SORANI_MONTHS[d.getMonth()];
+            const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+            return localizeDigits(`${d.getDate()} ${month} ${time}`, 'ckb');
+        }
+        return d.toLocaleDateString(getLocale(), { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' });
     } catch { return isoStr; }
 }
 
@@ -224,15 +235,15 @@ export function chainMatchesCatFilter(chain: EditChain, cats: Set<string>): bool
 }
 
 /** True iff any snapshot inside ``op.targets_after`` or
- *  ``op.snapshots?.after`` carries ``is_wasl === true``. Waqf is the default
- *  state for any cross-verse boundary; the filter exists to surface the
- *  affirmative WASL assertions, not the trivially-true waqf majority. */
+ *  ``op.snapshots?.after`` carries ``is_wasl === true``. Explicit internal WASL answers also count. Legacy true flags remain
+ *  visible in historical records; absent/false flags never imply an answer. */
 function _opHasWaslAnnotation(op: EditOp): boolean {
     const seen = (arr: unknown): boolean => {
         if (!Array.isArray(arr)) return false;
         for (const snap of arr) {
             if (snap && typeof snap === 'object'
-                && (snap as { is_wasl?: unknown }).is_wasl === true) {
+                && ((snap as HistorySnapshot).join_verdicts?.some((j) => j.verdict === 'wasl')
+                    || (snap as { is_wasl?: unknown }).is_wasl === true)) {
                 return true;
             }
         }

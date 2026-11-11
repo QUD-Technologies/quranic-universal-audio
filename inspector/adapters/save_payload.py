@@ -8,6 +8,7 @@ adapter internally; the route shape is unchanged (MUST-1).
 
 from __future__ import annotations
 
+from qua_shared.join_verdicts import contained_verdicts
 from services.validation.registry import filter_persistent_ignores
 from utils.references import normalize_ref
 from utils.repetitions import is_wrap_consistent
@@ -86,11 +87,11 @@ def make_seg(
     ):
         result["ignored_categories"] = ["_all"]
 
-    # is_wasl boundary annotation. Payload-authoritative when the key is
-    # present (FE just toggled or split set it); otherwise inherit from the
-    # existing entry-side value. Omit from serialization when False so the
-    # field stays absent on untouched segs.
-    if "is_wasl" in s:
+    # is_wasl boundary annotation. Payload-authoritative when set (the FE
+    # sends it on every seg); otherwise inherit from the existing entry-side
+    # value. Omit from serialization when False so the field stays absent on
+    # untouched segs.
+    if s.get("is_wasl") is not None:
         if bool(s.get("is_wasl")):
             result["is_wasl"] = True
     elif bool(existing.get("is_wasl")):
@@ -103,12 +104,29 @@ def make_seg(
     if existing_flag:
         result["flag"] = existing_flag
 
+    # Word timings and aligner pauses describe the row's exact audio and text:
+    # still valid when a chapter-wide save rebuilds an otherwise untouched row,
+    # invalidated by a trim or reference edit.
+    unchanged = (
+        s.get("time_start", 0) == existing.get("time_start")
+        and s.get("time_end", 0) == existing.get("time_end")
+        and matched_ref == existing.get("matched_ref")
+    )
+    for field in ("word_timings", "pauses"):
+        if unchanged and existing.get(field):
+            result[field] = existing[field]
+
     # Coordinate provenance (multi-riwayah) is deliberately NOT carried here.
     # The FE never sends it — the editor works in the delivery edition's
     # coordinates and knows nothing about the Hafs source span — and inheriting
     # it would keep a value the new ``matched_ref`` has invalidated. It is
     # re-derived from the ref by ``services.segments.stamping.stamp_segment``,
     # which every save path already runs and which knows the riwayah.
+
+    if "join_verdicts" in s:
+        result["join_verdicts"] = s["join_verdicts"] or []
+    elif "join_verdicts" in existing:
+        result["join_verdicts"] = contained_verdicts(result, existing["join_verdicts"] or [])
 
     return result
 

@@ -141,9 +141,6 @@ def create_sample(
     data_dir.write_segments_doc(
         slug, build_segments_doc(detailed["entries"], detailed["_meta"], with_repeated=True)
     )
-    data_dir.write_pipeline_meta_doc(
-        slug, {"schema_version": 1, "generated_at": _now_iso(), "deleted_basmala_chapters": []}
-    )
     backend.write_json_atomic(
         storage_paths.audio_manifest_path(slug),
         _audio_manifest(sample_id, chapter, size_bytes=len(mp3_bytes), probe=probe),
@@ -250,7 +247,6 @@ def delete_sample(sample_id: str, *, user: Any) -> None:
     with _sync.durable_transaction():
         repo_samples.delete(sample_id)
     cache.invalidate_seg_caches(slug)
-    cache.pop_seg_pipeline_meta(slug)
     cache.pop_audio_manifest_cache(slug)
     cache.pop_reciter_peaks_response_cache(slug)
 

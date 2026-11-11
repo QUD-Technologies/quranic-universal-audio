@@ -28,7 +28,8 @@
 
 import { get } from 'svelte/store';
 
-import { playUrl } from '../../../../lib/playback/play-url';
+import { playUrl, probeDirectPlayable } from '../../../../lib/playback/play-url';
+import { shadowPrewarm } from '../../../../lib/playback/shadow-audio';
 import type { Segment } from '../../../../lib/types/view-models';
 import { segAllData } from '../../stores/chapter';
 import { cbrKbpsForChapter } from '../../stores/chapter-meta';
@@ -130,6 +131,24 @@ export function warmSeg(
     const bytesPerSec = kbps * 125;
     const byteStart = Math.max(0, Math.floor((seg.time_start / 1000) * bytesPerSec));
     _warmAtByte(reciter, audioUrl, byteStart);
+}
+
+/** Warm a CBR seg's chapter ahead of a likely play (accordion lead card,
+ *  play-button hover). Probes the CDN first so the eventual click resolves
+ *  direct instead of via the proxy, then warms the 64 KB Range at the seg.
+ *  Only a DIRECT chapter also gets the hidden-`<audio>` whole-chapter warm:
+ *  a proxied one would stream the chapter through the single-worker Space
+ *  alongside the play it is meant to speed up. */
+export function warmSegChapter(
+    seg: Segment | null | undefined,
+    reciter: string,
+    audioUrl: string = seg ? _segAudioUrl(seg) : '',
+): void {
+    if (!seg || !reciter || !audioUrl) return;
+    void probeDirectPlayable(audioUrl).then((direct) => {
+        if (direct) shadowPrewarm(audioUrl);
+        warmSeg(seg, reciter);
+    });
 }
 
 /** Warm bytes 0–65535 of a chapter MP3 — used by the chapter-load trigger

@@ -97,6 +97,9 @@ class PublicDelivery(TypedDict):
     bitrate_kbps_nominal: int | None
     bitrate_mode: str
     total_duration_sec: int | None
+    marked_ready: bool  # public READY flag; the claimer's identity stays admin-only.
+    aligned_at: str | None  # ISO; when alignment last finished. None = never aligned here.
+    quality_status: str | None  # maintainer's manual rating; None = not rated.
     # Per-bucket entry timestamps: {bucket: [iso, ...]} chronological, one entry
     # per *distinct* visit to that bucket. Modal-only — attached by the detail /
     # admin-view paths (NOT the cached list), so it's absent on list payloads.
@@ -158,8 +161,9 @@ def bucket_for(row: ReciterRow | None) -> PublicBucket:
     if row is None:
         return "available_for_request"
     try:
-        # marked_ready stays internal-only; an under_review reciter reads as
-        # "under_review" publicly until its timestamps job publishes it RELEASED.
+        # marked_ready does not change the bucket; an under_review reciter reads
+        # as "under_review" until its timestamps job publishes it RELEASED. The
+        # flag itself rides separately as ``PublicDelivery.marked_ready``.
         return _STATE_TO_BUCKET[row.state]
     except KeyError:
         # Defensive — new ReciterState members must be added to _STATE_TO_BUCKET
@@ -178,6 +182,7 @@ def _to_public_delivery(
     d: Delivery,
     row: ReciterRow | None,
     channel_names: dict[str, str],
+    aligned_index: dict[str, str] | None = None,
 ) -> PublicDelivery:
     return PublicDelivery(
         slug=d.slug,
@@ -199,6 +204,11 @@ def _to_public_delivery(
         if hasattr(d.bitrate_mode, "value")
         else str(d.bitrate_mode),
         total_duration_sec=d.total_duration_sec,
+        marked_ready=bool(row is not None and row.marked_ready),
+        aligned_at=(aligned_index or {}).get(d.slug),
+        quality_status=(
+            row.quality_status.value if row is not None and row.quality_status else None
+        ),
     )
 
 
@@ -306,6 +316,7 @@ def to_public_reciter(
     channel_names: dict[str, str] | None = None,
     *,
     include_everyayah: bool = False,
+    aligned_index: dict[str, str] | None = None,
 ) -> PublicReciter:
     """Aggregate one reciter's catalog + state into a single public payload.
 
@@ -326,7 +337,7 @@ def to_public_reciter(
         row = state_index.get(d.slug)
         if row is not None and row.visibility != Visibility.PUBLIC:
             continue
-        public_dels.append(_to_public_delivery(d, row, channel_names))
+        public_dels.append(_to_public_delivery(d, row, channel_names, aligned_index))
 
     buckets = _unique_ordered([d["bucket"] for d in public_dels])
     last_activity_values = [d["state_since"] for d in public_dels if d["state_since"]]
@@ -357,6 +368,13 @@ def to_public_reciter(
 # ---------- list / stats helpers ----------
 
 
+def _aligned_index() -> dict[str, str]:
+    """``{slug: iso}`` of the last alignment completion — one indexed query."""
+    from services.db import repo_transitions
+
+    return repo_transitions.aligned_at_by_slug()
+
+
 def _build_state_index() -> dict[str, ReciterRow]:
     """Snapshot the state table (DB via ``state_service``) into a slug-keyed index."""
     return {row.slug: row for row in state_service.all_rows()}
@@ -385,6 +403,7 @@ def all_public_reciters(*, include_everyayah: bool = False) -> list[PublicRecite
     catalog = catalog_service.snapshot()
     state_index = _build_state_index()
     channel_names = {ch.slug: ch.name for ch in catalog.vocab.channels}
+    aligned_index = _aligned_index()
 
     # Group deliveries by reciter_id once.
     by_reciter: dict[str, list[Delivery]] = {}
@@ -402,6 +421,7 @@ def all_public_reciters(*, include_everyayah: bool = False) -> list[PublicRecite
             state_index,
             channel_names,
             include_everyayah=include_everyayah,
+            aligned_index=aligned_index,
         )
         # If every delivery was discarded, the reciter has no public deliveries
         # — also skip; it would render an empty row.
@@ -437,6 +457,7 @@ def detail(reciter_id: str, *, include_everyayah: bool = False) -> PublicReciter
         state_index,
         channel_names,
         include_everyayah=include_everyayah,
+        aligned_index=_aligned_index(),
     )
     if not public["deliveries"]:
         return None
@@ -488,10 +509,11 @@ def _to_admin_discarded_delivery(
     d: Delivery,
     row: ReciterRow,
     channel_names: dict[str, str],
+    aligned_index: dict[str, str] | None = None,
 ) -> AdminViewDelivery:
     """Like ``_to_public_delivery`` but adds visibility fields. Caller guarantees
     ``row.visibility == DISCARDED``."""
-    base = _to_public_delivery(d, row, channel_names)
+    base = _to_public_delivery(d, row, channel_names, aligned_index)
     return AdminViewDelivery(
         **base,
         variant_label=d.variant_label,
@@ -518,9 +540,10 @@ def _to_admin_public_delivery(
     d: Delivery,
     row: ReciterRow | None,
     channel_names: dict[str, str],
+    aligned_index: dict[str, str] | None = None,
 ) -> AdminDelivery:
     return AdminDelivery(
-        **_to_public_delivery(d, row, channel_names),
+        **_to_public_delivery(d, row, channel_names, aligned_index),
         variant_label=d.variant_label,
         codec=d.codec,
         container=d.container,
@@ -558,6 +581,7 @@ def admin_view_reciter(
 
     state_index = _build_state_index()
     channel_names = {ch.slug: ch.name for ch in catalog.vocab.channels}
+    aligned = _aligned_index()
 
     public_dels: list[AdminDelivery] = []
     discarded_dels: list[AdminViewDelivery] = []
@@ -566,9 +590,9 @@ def admin_view_reciter(
             continue
         row = state_index.get(d.slug)
         if row is not None and row.visibility == Visibility.DISCARDED:
-            discarded_dels.append(_to_admin_discarded_delivery(d, row, channel_names))
+            discarded_dels.append(_to_admin_discarded_delivery(d, row, channel_names, aligned))
         else:
-            public_dels.append(_to_admin_public_delivery(d, row, channel_names))
+            public_dels.append(_to_admin_public_delivery(d, row, channel_names, aligned))
 
     if not public_dels and not discarded_dels:
         return None

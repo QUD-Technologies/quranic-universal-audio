@@ -32,7 +32,7 @@
   },
   "_meta": {
     "fixture": "112-ikhlas",
-    "generator": "inspector.tests.parity.snapshot_expected_outputs",
-    "policy": "post-Phase-2 unified classifier"
+    "generator": "scripts/codegen/regen_classifier_baselines.py",
+    "policy": "unified classifier"
   }
 }

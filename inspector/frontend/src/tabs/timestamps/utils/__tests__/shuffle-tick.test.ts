@@ -4,6 +4,7 @@ import {
     occasionIndexAt,
     resolveShuffleTick,
     shouldFireShuffle,
+    speechSpan,
     type ShuffleTickOccasion,
 } from '../shuffle-tick';
 
@@ -168,7 +169,82 @@ describe('shouldFireShuffle', () => {
     });
 });
 
+describe('resolveShuffleTick — recited opener ahead of ayah 1', () => {
+    // A Basmala special (part 0:2) then ayah 1, as the chapter's first occasions.
+    const OPENER: ShuffleTickOccasion[] = [
+        { ref: '0:2', startMs: 1000, endMs: 3000, speechStartMs: 1000, speechEndMs: 3000 },
+        { ref: '2:1', startMs: 3400, endMs: 4400, speechStartMs: 3400, speechEndMs: 4400 },
+    ];
+    const args = { armed: true, guardMs: GUARD, firedForCurrentFocus: false, swapInFlight: false };
+
+    it('reads on from the opener into ayah 1 instead of shuffling at its end', () => {
+        expect(resolveShuffleTick({
+            ...args, occasions: OPENER, ms: 3000, focusEndMs: 3000, focusSpecial: true,
+        })).toEqual({ kind: 'focus', idx: 0 });
+        expect(resolveShuffleTick({
+            ...args, occasions: OPENER, ms: 3500, focusEndMs: 3000, focusSpecial: true,
+        })).toEqual({ kind: 'focus', idx: 1 });
+    });
+
+    it('still shuffles at the end of ayah 1 once it is in focus', () => {
+        expect(resolveShuffleTick({
+            ...args, occasions: OPENER, ms: 4400, focusEndMs: 4400, focusSpecial: false,
+        })).toEqual({ kind: 'fire' });
+    });
+
+    it('lands a jump to ayah 1 on ayah 1, not the opener before it', () => {
+        expect(occasionIndexAt(OPENER, 3400)).toBe(1);
+    });
+});
+
 describe('occasionIndexAt', () => {
+    it('follows the verse being read inside a segment that reads two verses', () => {
+        const shared: ShuffleTickOccasion[] = [
+            { ref: '18:1', startMs: 5000, endMs: 15000, speechStartMs: 5200, speechEndMs: 9000 },
+            { ref: '18:2', startMs: 5000, endMs: 15000, speechStartMs: 9000, speechEndMs: 14800 },
+        ];
+
+        expect(occasionIndexAt(shared, 6000)).toBe(0);
+        expect(occasionIndexAt(shared, 9500)).toBe(1);
+        expect(occasionIndexAt(shared, 14900)).toBe(1);
+    });
+
+    it('keeps a jump landing in leading silence on its own verse, not the previous one', () => {
+        const occs: ShuffleTickOccasion[] = [
+            { ref: '2:1', startMs: 0, endMs: 4000, speechStartMs: 300, speechEndMs: 3800 },
+            { ref: '2:2', startMs: 4000, endMs: 9000, speechStartMs: 4400, speechEndMs: 8800 },
+        ];
+
+        // Seek lands on the segment start (4000), before 2:2's first word.
+        expect(occasionIndexAt(occs, 4000)).toBe(1);
+        // Gap between two verses' words inside one segment stays on the earlier.
+        const shared: ShuffleTickOccasion[] = [
+            { ref: '18:1', startMs: 5000, endMs: 15000, speechStartMs: 5200, speechEndMs: 9000 },
+            { ref: '18:2', startMs: 5000, endMs: 15000, speechStartMs: 9400, speechEndMs: 14800 },
+        ];
+        expect(occasionIndexAt(shared, 5000)).toBe(0);
+        expect(occasionIndexAt(shared, 9200)).toBe(0);
+    });
+
+    it('does not re-fire the shuffle right after a jump lands in leading silence', () => {
+        const occs: ShuffleTickOccasion[] = [
+            { ref: '2:1', startMs: 0, endMs: 4000, speechStartMs: 300, speechEndMs: 3800 },
+            { ref: '2:2', startMs: 4000, endMs: 9000, speechStartMs: 4400, speechEndMs: 8800 },
+        ];
+        const idx = occasionIndexAt(occs, 4000);
+        expect(shouldFireShuffle({
+            armed: true, ms: 4000, focusEndMs: occs[idx]!.endMs, guardMs: 40, firedForCurrentFocus: false,
+        })).toBe(false);
+    });
+
+    it('takes a by-surah verse speech span from its words', () => {
+        const words = [{ start: 0.2, end: 1.5 }, { start: 1.5, end: 4 }];
+
+        expect(speechSpan({ audio_category: 'by_surah_audio', time_start_ms: 5000, words }))
+            .toEqual({ speechStartMs: 5200, speechEndMs: 9000 });
+        expect(speechSpan({ audio_category: 'by_ayah_audio', time_start_ms: 0, words })).toEqual({});
+    });
+
     it('returns the index of the occasion whose span contains the playhead', () => {
         expect(occasionIndexAt(CONTIGUOUS, 1500)).toBe(1);
     });

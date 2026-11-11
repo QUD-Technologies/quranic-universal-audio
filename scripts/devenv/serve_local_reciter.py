@@ -22,8 +22,6 @@ What it seeds (idempotent — existing rows are left alone):
   Segments tab)
 * ``catalog/audio_manifest/<slug>.json`` mapping every ``audio/<ch>.mp3`` to a
   bucket-path URL so the audio proxy serves the local file (only when absent)
-* ``reciters/<slug>/pipeline_meta.json`` (only when absent; validate hard-fails
-  without it)
 
 The DB lives at ``<root>/db/inspector.db`` (the backend's copy) with the working
 file at ``<root>/.local/inspector.db``. ``--vite`` also starts the Vite dev
@@ -184,17 +182,6 @@ def _seed_audio_manifest(root: Path, slug: str) -> None:
     print(f"==> wrote {path} ({len(chapters)} local chapters)")
 
 
-def _seed_pipeline_meta(slug: str) -> None:
-    from qua_shared.schemas import PipelineMeta
-    from services.storage import data_dir
-
-    if data_dir.read_pipeline_meta_doc(slug) is not None:
-        return
-    doc = PipelineMeta(generated_at=datetime.now(UTC).isoformat())
-    data_dir.write_pipeline_meta_doc(slug, doc.model_dump(mode="json"))
-    print(f"==> wrote reciters/{slug}/pipeline_meta.json")
-
-
 def seed(root: Path, slug: str, name: str, state: str) -> None:
     from services import db
     from services.db import sync as _sync
@@ -205,7 +192,6 @@ def seed(root: Path, slug: str, name: str, state: str) -> None:
     _seed_catalog(slug, name, len(chapters))
     _seed_state(slug, state)
     _seed_audio_manifest(root, slug)
-    _seed_pipeline_meta(slug)
 
 
 def _start_vite(env: dict[str, str], port: int, backend_port: int) -> subprocess.Popen:

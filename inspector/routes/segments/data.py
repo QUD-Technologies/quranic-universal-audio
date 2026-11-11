@@ -27,6 +27,8 @@ from qua_shared.schemas.wire.seg import (
     SegConfigResponse,
     SegDataResponse,
     SegRecitersResponse,
+    SegReviewSignalsResponse,
+    SegWordTimesResponse,
 )
 from services import cache
 from services import state as state_service
@@ -43,6 +45,8 @@ from services.reference.editions import EditionsUnavailable
 from services.segments.flags import flag_view
 from services.segments_query import get_chapter_data
 from services.state import catalog as catalog_service
+from services.timing import word_times
+from services.validation import review_signals
 from services.validation.registry import ALL_CATEGORIES
 from utils.formatting import slug_to_name
 from utils.json_response import orjson_cached_response, orjson_response
@@ -93,10 +97,7 @@ def _seg_config_model(riwayah: str) -> SegConfigResponse:
         low_conf_default_threshold=LOW_CONF_DEFAULT_THRESHOLD,
         validation_categories=list(ALL_CATEGORIES),
         riwayah=from_sdk_slug(riwayah),
-        muqattaat_verses=sorted(edition_tables.muqattaat_verses(riwayah)),
         qalqala_letters=sorted(_QALQALA_LETTERS),
-        standalone_refs=sorted(edition_tables.standalone_refs(riwayah)),
-        standalone_words=sorted(edition_tables.standalone_words(riwayah)),
         muqattaat_words=sorted(edition_tables.muqattaat_words(riwayah)),
         low_confidence_threshold=LOW_CONFIDENCE_THRESHOLDS[riwayah],
         accordion_context=ACCORDION_CONTEXT,
@@ -137,6 +138,20 @@ def seg_reciters():
     return orjson_response(model.model_dump(**_DUMP), headers={"Cache-Control": "no-store"})
 
 
+@seg_data_bp.route("/review-signals")
+def seg_review_signals():
+    """Open Low Confidence / Low Confidence v2 counts per delivery, for the reciter picker.
+
+    Served from the small ``catalog/review_signals.json`` file (no per-reciter reads); only
+    deliveries with something open are listed. Rows follow ``/reciters``' access rule.
+    """
+    slugs = [
+        row.slug for row in state_service.all_rows() if state_service.has_content_access(row.slug)
+    ]
+    model = SegReviewSignalsResponse.model_validate({"signals": review_signals.signals_for(slugs)})
+    return orjson_response(model.model_dump(**_DUMP), headers={"Cache-Control": "no-store"})
+
+
 @seg_data_bp.route("/chapters/<reciter>")
 def seg_chapters(reciter):
     """Return list of chapter numbers available for a reciter."""
@@ -164,6 +179,30 @@ def seg_data(reciter, chapter):
     if result is None:
         return jsonify(ErrorEnvelope(error="Chapter not found").model_dump(exclude_none=True)), 404
     model = SegDataResponse.model_validate(result)
+    return orjson_cached_response(model.model_dump(**_DUMP))
+
+
+@seg_data_bp.route("/word-times/<reciter>/<int:chapter>")
+def seg_word_times(reciter, chapter):
+    """Return the chapter's stored word intervals for the segment cards' word highlight.
+
+    Read from the stored segment times (``services.timing.word_times``); a segment
+    whose times are stale is absent until the background re-time stores new ones.
+    """
+    if not state_service.has_content_access(reciter):
+        return jsonify(ErrorEnvelope(error="Chapter not found").model_dump(exclude_none=True)), 404
+    entries = [e for e in load_detailed(reciter) or [] if chapter_from_ref(e["ref"]) == chapter]
+    doc = word_times.read_doc(reciter, chapter)
+    counts = None
+    if doc and any(s.get("source_ref") for e in entries for s in e.get("segments", [])):
+        try:
+            from services.reference import editions
+
+            counts = editions.word_counts(sdk_riwayah_for(reciter))
+        except (RiwayahMismatch, UnsupportedRiwayah, EditionsUnavailable):
+            counts = None
+    segments = word_times.chapter_word_times(entries, doc, counts)
+    model = SegWordTimesResponse.model_validate({"segments": segments})
     return orjson_cached_response(model.model_dump(**_DUMP))
 
 
@@ -220,9 +259,7 @@ def seg_all(reciter):
         return jsonify(ErrorEnvelope(error="Reciter not found").model_dump(exclude_none=True)), 404
 
     # Chapter audio URLs come from the bucket audio_manifest sidecar
-    # (catalog/audio_manifest/<slug>.json) — the single source of truth
-    # post Migration #5. The legacy per-entry ``audio`` field is no longer
-    # written by the extractor and no longer read here.
+    # (catalog/audio_manifest/<slug>.json), the single source of truth.
     from services.audio.audio_meta import chapter_urls
 
     viewer = current_user()
@@ -267,6 +304,10 @@ def seg_all(reciter):
                 seg_dict["is_wasl"] = True
             if seg.get("flag"):
                 seg_dict["flag"] = flag_view(seg["flag"], viewer_id, can_see_flagger)
+            if "join_verdicts" in seg:
+                seg_dict["join_verdicts"] = seg["join_verdicts"]
+            if seg.get("word_timings"):
+                seg_dict["word_timings"] = seg["word_timings"]
             segments.append(seg_dict)
 
     pad_left_ms, pad_right_ms, min_silence_floor_ms = resolve_pad(cache.get_seg_meta(reciter))
@@ -279,11 +320,18 @@ def seg_all(reciter):
     # waveform fetch return truncated/empty peaks and the canvas paints blank.
     # URL-keyed (not chapter-keyed) so by_ayah deliveries — where each ayah
     # is its own audio file — are clamped correctly per-ayah.
+    # ``size_bytes_by_url`` carries the manifest size of the source file the
+    # delivery was aligned on; the FE plays a CDN URL directly only when the
+    # live file still has that size (a replaced file would desync playback).
     duration_ms_by_url: dict[str, int] = {}
+    size_bytes_by_url: dict[str, int] = {}
     for key, url in (chapter_urls(reciter) or {}).items():
         meta = chapter_meta(reciter, key)
         if not isinstance(meta, dict):
             continue
+        size_bytes = meta.get("size_bytes")
+        if isinstance(url, str) and url and isinstance(size_bytes, int) and size_bytes > 0:
+            size_bytes_by_url[url] = size_bytes
         duration_sec = meta.get("duration_sec")
         if (
             isinstance(url, str)
@@ -311,6 +359,7 @@ def seg_all(reciter):
         "audio_by_chapter": audio_by_chapter,
         "chapter_duration_ms_by_chapter": chapter_duration_ms_by_chapter,
         "duration_ms_by_url": duration_ms_by_url,
+        "size_bytes_by_url": size_bytes_by_url,
         "reciter_vbr_chapters": vbr_chapters_for_reciter(reciter),
         # Symmetric shim: total padding == 2 * pad_ms ≈ pad_left + pad_right.
         "pad_ms": (pad_left_ms + pad_right_ms) // 2,

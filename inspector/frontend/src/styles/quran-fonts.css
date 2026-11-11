@@ -1,0 +1,17 @@
+/*
+ * The 'DigitalKhatt' face the analysis cells and the tajweed panel draw with: Digital Khatt v2,
+ * a release asset of the Talqeen data (sha256-pinned in qua_shared/quran_data_pin.py), fetched at
+ * build time and served by the backend (no binary rides the Space's LFS handling; see
+ * docs/reference/quran-data.md).
+ *
+ * Imported right after @quranic-phonemizer/cells/cells.css on purpose: that stylesheet declares
+ * its own 'DigitalKhatt' at /fonts/DigitalKhattV2.woff2, which this app does not serve (404).
+ * Of two faces with the same descriptors the browser uses the last one declared, so this one,
+ * declared after it, is the face that loads.
+ */
+@font-face {
+    font-family: 'DigitalKhatt';
+    src: url('/api/static/quran-data/DigitalKhattV2.woff2') format('woff2'),
+        url('/api/static/quran-data/DigitalKhattV2.otf') format('opentype');
+    font-display: swap;
+}

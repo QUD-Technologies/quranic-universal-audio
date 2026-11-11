@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""HF Job entrypoint: cut a global GitHub release (v2 track).
+"""HF Job entrypoint: cut a global GitHub release (schema 3).
 
 Reads the inspector DB (read-only) to discover every recitation eligible for
 GH releases (a current ``per_recitation_releases(track='ts')`` row), builds the
@@ -12,6 +12,11 @@ On success, POSTs the completion webhook with the per-recitation membership
 payload; Inspector's ``services.admin.jobs.cut_release.complete()`` inserts
 the ``gh_releases`` row + N ``gh_release_recitations`` rows and fires the
 public ``released`` event.
+
+Chapters whose linked upstream audio is now a different recording
+(``qua_shared.audio.upstream``) are left out of every release artifact; a
+recitation with no remaining chapters is held out. The completion webhook
+lists the exclusions under ``validation_summary.dropped_upstream_chapters``.
 
 The HF Job NEVER writes the inspector DB. Reads only.
 
@@ -45,7 +50,7 @@ import sys
 import urllib.error
 import urllib.request
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -53,12 +58,19 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from qua_shared.dataset_license import DATA_LICENSE_FILE, DATA_LICENSE_ID  # noqa: E402
+from qua_shared.audio import upstream  # noqa: E402
+from qua_shared.audio.sources import (  # noqa: E402
+    chapters_without_public_source,
+    public_source_url,
+)
 from qua_shared.digital_khatt import (  # noqa: E402
     DIGITAL_KHATT_FONT_FILENAME,
+    DIGITAL_KHATT_FONT_PATH,
     DIGITAL_KHATT_SCRIPT_FILENAME,
     DIGITAL_KHATT_SCRIPT_ID,
     UNICODE_INDEXING,
 )
+from qua_shared.inspector_notify import WEBHOOK_USER_AGENT  # noqa: E402
 from qua_shared.riwayat import (  # noqa: E402
     DEFAULT_SDK_RIWAYAH,
     UnsupportedRiwayah,
@@ -204,9 +216,11 @@ def _prior_release_members(conn: sqlite3.Connection) -> tuple[str | None, dict[s
 # ---------------------------------------------------------------------------
 
 
-def _load_occurrences(slug: str) -> list[dict]:
-    """Every recited occurrence of every verse, in audio order."""
-    return load_shard_occurrences(_bucket_root() / "reciters" / slug / "timestamps")
+def _load_occurrences(slug: str, excluded_chapters: frozenset[int] = frozenset()) -> list[dict]:
+    """Every recited occurrence from retained chapter shards, in audio order."""
+    return load_shard_occurrences(
+        _bucket_root() / "reciters" / slug / "timestamps", excluded_chapters=excluded_chapters
+    )
 
 
 def _occurrence_key(ref: str, layout: dict) -> tuple[int, int, int, int]:
@@ -215,9 +229,13 @@ def _occurrence_key(ref: str, layout: dict) -> tuple[int, int, int, int]:
     return chapter, int(layout["verse_start"]), int(layout["verse_end"]), ayah
 
 
-def _load_canonical_verses(slug: str) -> dict[str, dict]:
-    """Canonical verse map for ``slug`` (shared loader: project + dedup + merge)."""
-    return load_canonical_verses(_bucket_root() / "reciters" / slug / "timestamps")
+def _load_canonical_verses(
+    slug: str, excluded_chapters: frozenset[int] = frozenset()
+) -> dict[str, dict]:
+    """Canonical verse map from retained chapter shards (project + dedup + merge)."""
+    return load_canonical_verses(
+        _bucket_root() / "reciters" / slug / "timestamps", excluded_chapters=excluded_chapters
+    )
 
 
 def _build_tier_files(
@@ -345,7 +363,7 @@ def _build_tier_files(
 
 
 def _release_occurrences(
-    slug: str,
+    raw: list[dict],
     verses: dict[str, dict],
     layouts: dict[str, dict],
     digital_khatt_words: dict,
@@ -365,7 +383,7 @@ def _release_occurrences(
         for ref, layout in layouts.items()
         if not ref.startswith("_")
     ]
-    for occurrence in _load_occurrences(slug):
+    for occurrence in raw:
         ref = occurrence["ref"]
         if occurrence["canonical"] or ref not in verses:
             continue
@@ -381,9 +399,9 @@ def _verse_for_validate(layout: dict) -> dict:
     """Project one shared verse layout to the boundary-validator's input shape.
 
     Validates the SAME invariants the HF dataset does, against the SAME byte-
-    exact segments (gapless within a segment, gaps only across boundaries) — not
-    the VAD segment windows the release used to validate against. Bounds are the
-    padded clip window; all times source-relative ms.
+    exact segments (gapless within a segment except at shard-marked sakt
+    boundaries) — not the VAD segment windows the release used to validate
+    against. Bounds are the padded clip window; all times source-relative ms.
     """
     cs = int(layout["clip_start"])
     ce = int(layout["clip_end"])
@@ -392,6 +410,7 @@ def _verse_for_validate(layout: dict) -> dict:
         "verse_end_ms": ce,
         "duration_ms": ce - cs,
         "words": [(int(w[0]), int(w[1]), int(w[2])) for w in layout["words"]],
+        "sakt_after": layout.get("sakt_after") or [],
         "segments": [(int(s[0]), int(s[1]), int(s[2]), int(s[3])) for s in layout["segments"]],
     }
 
@@ -410,12 +429,28 @@ def _gzip_deterministic(doc: dict) -> bytes:
     return gzip.compress(payload, compresslevel=6, mtime=0)
 
 
-def _json_model_bytes(model) -> bytes:
+def _json_model_bytes(model, *, exclude_none: bool = False) -> bytes:
     """Serialize a Pydantic model as deterministic compact JSON bytes."""
-    body = model.model_dump(mode="json", by_alias=True)
+    body = model.model_dump(mode="json", by_alias=True, exclude_none=exclude_none)
     return json.dumps(body, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode(
         "utf-8"
     )
+
+
+def _build_specials_json(slug: str, chapters: set[int]) -> bytes | None:
+    """The recitation's public ``specials.json`` (openers before ayah 1), or ``None``
+    when the reciter has no bucket ``specials.json`` or no opener in a shipped
+    chapter. Absent keys mean "none" / "unknown" (``exclude_none``)."""
+    from qua_shared.schemas.bucket.specials import SpecialsDoc
+    from qua_shared.specials import project_release
+
+    path = _bucket_root() / "reciters" / slug / "specials.json"
+    if not path.exists():
+        return None
+    doc = project_release(SpecialsDoc.model_validate_json(path.read_bytes()), slug, chapters)
+    if not doc.chapters:
+        return None
+    return _json_model_bytes(doc, exclude_none=True)
 
 
 # ---------------------------------------------------------------------------
@@ -424,7 +459,7 @@ def _json_model_bytes(model) -> bytes:
 
 
 def _audio_sources_from_manifest(
-    slug: str, audio_manifest: dict | None
+    slug: str, audio_manifest: dict | None, *, excluded_chapters: frozenset[int] = frozenset()
 ) -> tuple[dict[str, str], dict[str, int]]:
     """Return ``(chapter_urls, chapter_offsets_ms)`` from
     ``catalog/audio_manifest/<slug>.json``.
@@ -438,20 +473,35 @@ def _audio_sources_from_manifest(
     only when > 0 (combined files, or a single file with a trimmed lead-in).
     Mirrors ``publish_hf.publish_slug``'s per-row resolution so the two adapters
     agree on provenance + offset.
+    Excluded chapters contribute neither URLs nor offsets and are not checked
+    for public-source validity.
     """
     if not audio_manifest:
         return {}, {}
     chapters = audio_manifest.get("chapters")
     if isinstance(chapters, dict):
+        chapters = {
+            key: chapter
+            for key, chapter in chapters.items()
+            if (key.isdigit() or ":" in key)
+            and isinstance(chapter, dict)
+            and _verse_sort_key(key)[0] not in excluded_chapters
+        }
+        unlinked = chapters_without_public_source(chapters)
+        if unlinked:
+            # A local path / bucket link must never ship (#285), and dropping
+            # the chapter would silently strand its timestamps — repair the
+            # manifest instead.
+            raise RuntimeError(
+                f"{slug}: audio_manifest chapters {unlinked[:10]} have no public "
+                f"source URL ({len(unlinked)} total)"
+            )
         urls: dict[str, str] = {}
         offsets: dict[str, int] = {}
         for key, chapter in sorted(chapters.items()):
-            if not (key.isdigit() or ":" in key) or not isinstance(chapter, dict):
-                continue
-            url = chapter.get("source_url") or chapter.get("url")
-            if not isinstance(url, str) or not url.strip():
-                continue
-            urls[key] = url.strip()
+            url = public_source_url(chapter)
+            assert url is not None
+            urls[key] = url
             offset = int(chapter.get("source_offset_ms") or 0)
             if offset > 0:
                 offsets[key] = offset
@@ -462,7 +512,10 @@ def _audio_sources_from_manifest(
     flat = {
         key: value.strip()
         for key, value in sorted(audio_manifest.items())
-        if (key.isdigit() or ":" in key) and isinstance(value, str) and value.strip()
+        if (key.isdigit() or ":" in key)
+        and isinstance(value, str)
+        and value.strip()
+        and _verse_sort_key(key)[0] not in excluded_chapters
     }
     return flat, {}
 
@@ -474,6 +527,7 @@ def _build_catalog_json(
     *,
     missing_surahs: str = "",
     missing_verses: str = "",
+    excluded_chapters: frozenset[int] = frozenset(),
 ) -> bytes:
     """Per-recitation catalog.json bytes (orjson-equivalent serialisation).
 
@@ -482,12 +536,18 @@ def _build_catalog_json(
     ``audio_category``. Plan §"GH release `catalog.json` schema": "fully
     populated for every chapter the recitation covers" — both shapes are
     "what the source audio actually serves" so this is the consumer-actionable
-    URL set without contraction.
+    URL set apart from ``excluded_chapters``, which are absent from the cut.
     """
-    audio_urls, audio_offsets = _audio_sources_from_manifest(rec["slug"], audio_manifest)
+    audio_urls, audio_offsets = _audio_sources_from_manifest(
+        rec["slug"], audio_manifest, excluded_chapters=excluded_chapters
+    )
     if not audio_urls:
         raise RuntimeError(f"{rec['slug']}: audio_manifest has no usable audio URLs")
     surahs = {key.split(":", 1)[0] for key in verses if not key.startswith("_")}
+    # A chapter the manifest serves but the recitation never timed ships no
+    # rows, so it gets no URL either.
+    audio_urls = {k: v for k, v in audio_urls.items() if k.split(":", 1)[0] in surahs}
+    audio_offsets = {k: v for k, v in audio_offsets.items() if k in audio_urls}
     coverage_ayahs = sum(1 for k in verses if not k.startswith("_"))
     catalog = ReleaseRecitationCatalog(
         schema_version=SCHEMA_VERSION,
@@ -749,6 +809,17 @@ def _gh_request(
         raise RuntimeError(f"GH API {method} {url} → {e.code}: {msg[:500]}{hint}") from e
 
 
+def _gh_release_exists(owner: str, repo: str, version: str, token: str) -> bool:
+    """True when a release tagged ``version`` already exists on GitHub."""
+    try:
+        _gh_request("GET", f"/repos/{owner}/{repo}/releases/tags/{version}", token)
+    except RuntimeError as exc:
+        if "→ 404" in str(exc):
+            return False
+        raise
+    return True
+
+
 def _gh_create_release(owner: str, repo: str, version: str, body: str, token: str) -> dict:
     """Create a draft-less release tag. Returns the release dict (with upload_url)."""
     return _gh_request(
@@ -819,7 +890,11 @@ def _post_webhook(
         url,
         data=data,
         method="POST",
-        headers={"Content-Type": "application/json", "X-Inspector-Job-Secret": secret},
+        headers={
+            "Content-Type": "application/json",
+            "X-Inspector-Job-Secret": secret,
+            "User-Agent": WEBHOOK_USER_AGENT,
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
@@ -835,9 +910,7 @@ def _post_webhook(
 # ---------------------------------------------------------------------------
 def _load_digital_khatt_assets(code_root: Path) -> tuple[bytes, bytes]:
     script = (code_root / "data" / DIGITAL_KHATT_SCRIPT_FILENAME).read_bytes()
-    font = (
-        code_root / "inspector" / "frontend" / "public" / "fonts" / DIGITAL_KHATT_FONT_FILENAME
-    ).read_bytes()
+    font = (code_root / DIGITAL_KHATT_FONT_PATH).read_bytes()
     try:
         DigitalKhattDoc.model_validate(json.loads(script))
     except Exception as exc:
@@ -1025,7 +1098,7 @@ def _preflight() -> int:
     for rel in (
         "data/surah_info.json",
         f"data/{DIGITAL_KHATT_SCRIPT_FILENAME}",
-        f"inspector/frontend/public/fonts/{DIGITAL_KHATT_FONT_FILENAME}",
+        DIGITAL_KHATT_FONT_PATH,
         ".github/config/repo.yml",
         "docs/templates/release_body.md",
         DATA_LICENSE_FILE,
@@ -1043,11 +1116,18 @@ def _preflight() -> int:
 # Per-recitation build — one worker per reciter, fanned out over a process pool.
 # ---------------------------------------------------------------------------
 
-#: Parallel build workers; unset = ``DEFAULT_BUILD_WORKERS`` (capped by CPU count).
-#: Set ``1`` to force serial. A reciter build peaks at several GB, so one worker
-#: per vCPU OOM-kills the 8-vCPU/32 GB ``cpu-upgrade`` flavor.
+#: Parallel build workers; unset = a default by whether letter tiers are built. Set
+#: ``1`` to force serial. A build mostly waits on bucket reads, so the pool may exceed
+#: the vCPU count: v4.0.0 on 3 workers held 19% CPU and ~1.7 GB per worker of the
+#: 8-vCPU/32 GB ``cpu-upgrade`` flavor; 12 workers built 102 recitations in 14 min.
+#: Letter tiers cost several GB more per build (8 workers with them once OOM-killed
+#: it), hence the smaller pool.
 BUILD_WORKERS_ENV = "CUT_BUILD_WORKERS"
-DEFAULT_BUILD_WORKERS = 3
+DEFAULT_BUILD_WORKERS = 12
+DEFAULT_BUILD_WORKERS_WITH_LETTERS = 6
+#: Reciters whose upstream recordings are probed at once (each probes its chapters
+#: on its own thread pool); serially, 102 reciters took 14 minutes.
+UPSTREAM_RECITER_WORKERS = 8
 
 
 @dataclass(frozen=True)
@@ -1059,6 +1139,25 @@ class _BuildContext:
     script_sha256: str
     prior_members: dict[str, dict]
     pads: PadParams
+    dropped_upstream_chapters: dict[str, dict[int, str]] = field(default_factory=dict)
+    include_letter_timestamps: bool = True
+
+
+def _upstream_changes(eligible: list[dict]) -> dict[str, dict[int, str]]:
+    """``{slug: {62: "ch62 recording (465s → 321s)", …}}`` for chapters
+    whose upstream recording differs from the audio used for alignment."""
+
+    def one(rec: dict) -> tuple[str, dict[int, str]]:
+        path = _bucket_root() / "catalog" / "audio_manifest" / f"{rec['slug']}.json"
+        try:
+            chapters = json.loads(path.read_bytes()).get("chapters") or {}
+        except (OSError, json.JSONDecodeError):
+            return rec["slug"], {}
+        blocking = upstream.blocking_changes(chapters)
+        return rec["slug"], {int(c.chapter.split(":", 1)[0]): c.describe() for c in blocking}
+
+    with concurrent.futures.ThreadPoolExecutor(UPSTREAM_RECITER_WORKERS) as pool:
+        return {slug: found for slug, found in pool.map(one, eligible) if found}
 
 
 class _FatalViolations(Exception):
@@ -1068,17 +1167,21 @@ class _FatalViolations(Exception):
         super().__init__(f"{slug}: {len(fatal)} fatal boundary violations")
         self.slug, self.fatal, self.summary = slug, fatal, summary
 
+    def __reduce__(self):
+        # Crosses the build pool's process boundary; the default reduce passes only the message.
+        return type(self), (self.slug, self.fatal, self.summary)
+
 
 #: Set once in the parent before the pool forks so workers inherit it without
 #: pickling the multi-MB DigitalKhatt word index per task.
 _BUILD_CTX: _BuildContext | None = None
 
 
-def _build_workers() -> int:
+def _build_workers(include_letters: bool = False) -> int:
     raw = os.environ.get(BUILD_WORKERS_ENV, "").strip()
     if raw.isdigit() and int(raw) > 0:
         return int(raw)
-    return max(1, min(DEFAULT_BUILD_WORKERS, os.cpu_count() or 1))
+    return DEFAULT_BUILD_WORKERS_WITH_LETTERS if include_letters else DEFAULT_BUILD_WORKERS
 
 
 def _build_members(eligible: list[dict], ctx: _BuildContext) -> list[dict]:
@@ -1087,7 +1190,7 @@ def _build_members(eligible: list[dict], ctx: _BuildContext) -> list[dict]:
     Raises ``_FatalViolations`` for the first reciter that fails hard."""
     global _BUILD_CTX  # noqa: PLW0603 — fork-inherited context, see above
     _BUILD_CTX = ctx
-    workers = min(_build_workers(), len(eligible))
+    workers = min(_build_workers(ctx.include_letter_timestamps), len(eligible))
     can_fork = "fork" in multiprocessing.get_all_start_methods()
     if workers <= 1 or not can_fork:
         results = [_build_member_task(rec) for rec in eligible]
@@ -1098,12 +1201,24 @@ def _build_members(eligible: list[dict], ctx: _BuildContext) -> list[dict]:
             mp_context=multiprocessing.get_context("fork"),
         ) as pool:
             results = list(pool.map(_build_member_task, eligible))
-    return [m for m in results if m is not None]
+    failed = [r for r in results if isinstance(r, _FatalViolations)]
+    for exc in failed:
+        log.error("  %s: %d fatal boundary violations", exc.slug, len(exc.fatal))
+        for v in exc.fatal[:5]:
+            log.error("    %s", v)
+    if failed:
+        raise failed[0]
+    return [m for m in results if isinstance(m, dict)]
 
 
-def _build_member_task(rec: dict) -> dict | None:
+def _build_member_task(rec: dict) -> dict | _FatalViolations | None:
+    """One reciter's build; a hard failure comes back as a value so every failing
+    reciter is reported once the pool drains, not just the first to finish."""
     assert _BUILD_CTX is not None
-    return _build_member(rec, _BUILD_CTX)
+    try:
+        return _build_member(rec, _BUILD_CTX)
+    except _FatalViolations as exc:
+        return exc
 
 
 def _verse_counts(riwayah: str, surah_info: dict) -> dict[int, int]:
@@ -1113,14 +1228,21 @@ def _verse_counts(riwayah: str, surah_info: dict) -> dict[int, int]:
     return verse_counts_from_surah_info(surah_info_for(riwayah, surah_info))
 
 
-def _validate_occurrences(slug: str, occurrences: list[dict], edition_counts: dict) -> dict:
+def _validate_occurrences(
+    slug: str, occurrences: list[dict], edition_counts: dict, raw: list[dict]
+) -> dict:
     """Boundary-validate the SAME invariants the dataset does, against the
-    byte-exact segments (gapless within a segment, gaps only across
+    byte-exact segments (gapless within a segment except at shard-marked sakt
     boundaries) — source-relative ms. Non-canonical takes are keyed
     ``ref#n`` so they skip the coverage check (a partial repeat is
     incomplete by definition) but still face the span invariants.
+    ``raw`` (the shipped refs' shard occurrences, each tagged with the chapter
+    whose audio timed it) faces the timeline invariants: no verse timed in
+    another chapter's audio, canonical rows in mushaf order.
     Raises ``_FatalViolations`` on any hard failure."""
     from qua_shared.dataset_validation import (
+        check_audio_chapter,
+        check_canonical_order,
         check_canonical_uniqueness,
         fatal_violations,
         validate_dataset,
@@ -1136,10 +1258,14 @@ def _validate_occurrences(slug: str, occurrences: list[dict], edition_counts: di
         for_validate,
         expected_words={f"{s_num}:{a_num}": n for (s_num, a_num), n in edition_counts.items()},
     )
-    uniqueness = check_canonical_uniqueness((o["ref"], o["canonical"]) for o in occurrences)
-    rec_summary["violations"].extend(uniqueness)
-    rec_summary["violation_count"] += len(uniqueness)
-    for v in uniqueness:
+    timeline = [
+        *check_canonical_uniqueness((o["ref"], o["canonical"]) for o in occurrences),
+        *check_audio_chapter((o["ref"], o["chapter"]) for o in raw),
+        *check_canonical_order((o["ref"], o["verse_start_ms"]) for o in raw if o["canonical"]),
+    ]
+    rec_summary["violations"].extend(timeline)
+    rec_summary["violation_count"] += len(timeline)
+    for v in timeline:
         rec_summary["by_kind"][v["violation"]] = rec_summary["by_kind"].get(v["violation"], 0) + 1
     fatal = fatal_violations(rec_summary["violations"])
     if fatal:
@@ -1149,24 +1275,31 @@ def _validate_occurrences(slug: str, occurrences: list[dict], edition_counts: di
 
 def _build_member(rec: dict, ctx: _BuildContext) -> dict | None:
     """One recitation's tier files + catalog.json + member row (``None`` when it
-    has no shards). Pure function of the bucket + ``ctx``; safe in a worker."""
+    has no retained shards). Upstream exclusions apply before shard audits,
+    projection, audio-source validation and coverage. Safe in a worker."""
     from qua_shared.coverage import missing_coverage
     from qua_shared.surah_words import word_counts_for
     from qua_shared.timestamps_native import select_complete_verses
 
     slug = rec["slug"]
     log.info("  building %s...", slug)
-    verses = _load_canonical_verses(slug)
+    excluded_chapters = frozenset(ctx.dropped_upstream_chapters.get(slug, {}))
+    verses = {
+        ref: verse
+        for ref, verse in _load_canonical_verses(slug, excluded_chapters).items()
+        if ref.startswith("_") or _verse_sort_key(ref)[0] not in excluded_chapters
+    }
     if not verses:
-        log.warning("  %s: no timestamps shards — skipping", slug)
+        log.warning("  %s: no retained timestamps shards — skipping", slug)
         return None
 
     # The shards say which edition and how deep their timings go; the
     # catalog row is not consulted here so a mislabelled row cannot make the
     # release claim letter timings a proxy-timed delivery does not have.
     shard_meta = verses.pop("_meta", {})
-    with_letters = shard_meta.get("profile", "native") == "native"
-    if not with_letters and not shard_meta.get("riwayah"):
+    native_profile = shard_meta.get("profile", "native") == "native"
+    with_letters = native_profile and ctx.include_letter_timestamps
+    if not native_profile and not shard_meta.get("riwayah"):
         raise ValueError(f"{slug}: word-profile shards name no riwayah")
     riwayah = shard_meta.get("riwayah") or DEFAULT_SDK_RIWAYAH
     _assert_riwayat_agree(slug, riwayah, rec.get("riwayah"))
@@ -1189,8 +1322,9 @@ def _build_member(rec: dict, ctx: _BuildContext) -> dict | None:
     # segments are all derived once. Each adapter selects its public view of
     # the SAME layout, so timing/token ownership cannot drift.
     layouts = build_verse_layouts(reshape_canonical(verses, ctx.digital_khatt_words), **ctx.pads)
-    occurrences = _release_occurrences(slug, verses, layouts, ctx.digital_khatt_words, ctx.pads)
-    rec_summary = _validate_occurrences(slug, occurrences, edition_counts)
+    raw = [o for o in _load_occurrences(slug, excluded_chapters) if o["ref"] in verses]
+    occurrences = _release_occurrences(raw, verses, layouts, ctx.digital_khatt_words, ctx.pads)
+    rec_summary = _validate_occurrences(slug, occurrences, edition_counts, raw)
 
     # Tier files: every recited occurrence in timeline order, one canonical
     # per verse.
@@ -1228,17 +1362,23 @@ def _build_member(rec: dict, ctx: _BuildContext) -> dict | None:
         verses,
         missing_surahs=missing_surahs,
         missing_verses=missing_verses,
+        excluded_chapters=excluded_chapters,
     )
 
     # content_hash — over the DEEPEST emitted tier + catalog bytes. The
     # shallower tiers are exact prefixes of it, so hashing the deepest one
     # still detects any timing change; naming it by tier keeps the hash
     # meaningful for a delivery that has no letter tier.
+    # specials.json — openers before ayah 1, only for the chapters this cut ships.
+    specials_bytes = _build_specials_json(slug, {s for s, _a in present_refs})
+
     deepest = f"{tiers[-1]}_timestamps.json.gz"
-    content_hash = _sha256_hex(tier_files[deepest] + catalog_bytes)
+    content_hash = _sha256_hex(tier_files[deepest] + catalog_bytes + (specials_bytes or b""))
 
     files = dict(tier_files)
     files["catalog.json"] = catalog_bytes
+    if specials_bytes is not None:
+        files["specials.json"] = specials_bytes
 
     coverage_ayahs = sum(1 for k in verses if not k.startswith("_"))
     change_kind = _classify_change_kind(rec, ctx.prior_members, content_hash)
@@ -1257,7 +1397,7 @@ def _build_member(rec: dict, ctx: _BuildContext) -> dict | None:
         "tiers": tiers,
         "shard_riwayah": riwayah,
         "coverage_ayahs": coverage_ayahs,
-        "coverage_surahs": rec.get("chapter_count"),
+        "coverage_surahs": len({s for s, _a in present_refs}),
         "missing_surahs": missing_surahs,
         "missing_verses": missing_verses,
         "content_hash": content_hash,
@@ -1305,6 +1445,42 @@ def main() -> int:
         log.error("no eligible recitations — aborting")
         return 3
 
+    dropped = _upstream_changes(eligible)
+    dropped_summary = {slug: list(chapters.values()) for slug, chapters in dropped.items()}
+    if dropped:
+        for slug, descriptions in dropped_summary.items():
+            log.warning("  %s: upstream chapters left out — %s", slug, ", ".join(descriptions[:10]))
+        retained = []
+        for rec in eligible:
+            ts_dir = _bucket_root() / "reciters" / rec["slug"] / "timestamps"
+            chapters = (
+                {
+                    int(p.name.split(".", 1)[0])
+                    for p in ts_dir.iterdir()
+                    if (p.name.endswith(".json") or p.name.endswith(".json.br"))
+                    and p.name.split(".", 1)[0].isdigit()
+                }
+                if ts_dir.exists()
+                else set()
+            )
+            if chapters and chapters <= dropped.get(rec["slug"], {}).keys():
+                log.warning("  %s held: every timestamp chapter was dropped", rec["slug"])
+            else:
+                retained.append(rec)
+        eligible = retained
+        if not eligible:
+            log.error("every eligible recitation is held — aborting")
+            _post_webhook(
+                version=version_override or "",
+                job_id=job_id,
+                external_uri="",
+                members=[],
+                launched_by=launched_by,
+                status="failed",
+                validation_summary={"dropped_upstream_chapters": dropped_summary},
+            )
+            return 3
+
     # 2. Build per-recitation artifacts and accumulate member rows.
     refs_dir = _code_root() / "data"
     surah_info = json.loads((refs_dir / "surah_info.json").read_bytes())
@@ -1336,13 +1512,13 @@ def main() -> int:
         script_sha256=script_sha256,
         prior_members=prior_members,
         pads=pads,
+        dropped_upstream_chapters=dropped,
+        include_letter_timestamps=os.environ.get("INCLUDE_LETTER_TIMESTAMPS", "1") == "1",
     )
     try:
         members = _build_members(eligible, ctx)
     except _FatalViolations as exc:
-        log.error("  %s: %d fatal boundary violations — aborting cut", exc.slug, len(exc.fatal))
-        for v in exc.fatal[:5]:
-            log.error("    %s", v)
+        log.error("aborting cut: fatal boundary violations (first: %s)", exc.slug)
         _post_webhook(
             version=version_override or "",
             job_id=job_id,
@@ -1350,7 +1526,11 @@ def main() -> int:
             members=[],
             launched_by=launched_by,
             status="failed",
-            validation_summary={"slug": exc.slug, "summary": exc.summary},
+            validation_summary={
+                "slug": exc.slug,
+                "summary": exc.summary,
+                "dropped_upstream_chapters": dropped_summary,
+            },
         )
         return 4
     for m in members:
@@ -1403,6 +1583,7 @@ def main() -> int:
             members=[],
             launched_by=launched_by,
             status="failed",
+            validation_summary={"dropped_upstream_chapters": dropped_summary},
         )
         return 6
     log.info("computed version: %s", version)
@@ -1455,7 +1636,28 @@ def main() -> int:
     if si_path.exists():
         static_files["surah_info.json"] = si_path.read_bytes()
 
-    # 8. Create the GH release + upload all assets.
+    # 8. Create the GH release + upload all assets. A tag that already exists
+    # means the ledger missed a prior cut (e.g. its webhook failed) — refuse
+    # rather than bump from a stale prior version.
+    if _gh_release_exists(owner, repo, version, gh_token):
+        log.error(
+            "release %s already exists on %s/%s — the Inspector ledger is behind GitHub; "
+            "record it with `admin_release.py complete %s --job-id <job>` and re-cut",
+            version,
+            owner,
+            repo,
+            version,
+        )
+        _post_webhook(
+            version=version,
+            job_id=job_id,
+            external_uri="",
+            members=[],
+            launched_by=launched_by,
+            status="failed",
+            validation_summary={"dropped_upstream_chapters": dropped_summary},
+        )
+        return 15
     log.info("creating GH release %s on %s/%s ...", version, owner, repo)
     rel = _gh_create_release(owner, repo, version, changelog_md.decode("utf-8"), token=gh_token)
     upload_url = rel["upload_url"]
@@ -1496,7 +1698,7 @@ def main() -> int:
         for m in members
     ]
 
-    _post_webhook(
+    recorded = _post_webhook(
         version=version,
         job_id=job_id,
         external_uri=release_html_url,
@@ -1505,10 +1707,21 @@ def main() -> int:
         validation_summary={
             "violation_count": validation_summary_total["violation_count"],
             "by_kind": validation_summary_total["by_kind"],
+            "dropped_upstream_chapters": dropped_summary,
         },
     )
 
     log.info("cut_release: done version=%s recitations=%d", version, len(members))
+    if not recorded and os.environ.get("INSPECTOR_WEBHOOK_URL", "").strip():
+        # The release is live on GitHub but the Inspector ledger never heard of
+        # it; fail the job loudly so the next preview doesn't re-propose this tag.
+        log.error(
+            "ledger NOT updated for %s — run `admin_release.py complete %s --job-id %s`",
+            version,
+            version,
+            job_id,
+        )
+        return 16
     return 0
 
 

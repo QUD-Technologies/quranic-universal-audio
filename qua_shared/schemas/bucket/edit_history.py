@@ -104,6 +104,7 @@ class EditOperation(BaseModel):
     snapshots: dict[str, Any] | None = None  # {before, after} mirror of targets_*
     targetSegmentIndex: dict[str, Any] | None = None  # {chapter, index} locator
     command: dict[str, Any] | None = None  # raw FE command payload
+    affected_chapters: list[int] | None = None
 
 
 class EditHistoryBatch(BaseModel):

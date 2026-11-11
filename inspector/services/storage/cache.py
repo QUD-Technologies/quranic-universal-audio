@@ -82,19 +82,21 @@ _seg: _KeyedCache[list[dict]] = _KeyedCache()
 _seg_meta: _KeyedCache[dict] = _KeyedCache()
 _seg_verses: _KeyedCache[tuple] = _KeyedCache()
 _seg_resolved_by_edit: _KeyedCache[dict[str, set[str]]] = _KeyedCache()
-# Low-Confidence v2 sidecar — uid set + meta dict (or None when sidecar absent).
-_seg_probe_v2: _KeyedCache[tuple[set[str], dict | None]] = _KeyedCache()
+# Low-Confidence v2 sidecar — uid set, meta dict (or None when sidecar absent),
+# and the flagged words per uid.
+ProbeV2 = tuple[set[str], dict | None, dict[str, list[dict]]]
+_seg_probe_v2: _KeyedCache[ProbeV2] = _KeyedCache()
 # Auto-Split sidecar — precomputed cursors/refs by uid, plus meta. Empty dict
 # tuple member when sidecar absent so callers don't re-stat on every lookup.
 _seg_auto_split: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
-# Boundary-review sidecars (hidden_pause_v1 / false_split_v1 / unmarked_wasl_v1)
-# — by-uid map plus meta; empty dict when the sidecar is absent.
+# Boundary-review sidecars (hidden_pause_v1 / missed_waqf_v1 / false_split_v1 /
+# unmarked_wasl_v1 / wasl_recheck_v1) — by-uid map plus meta; empty dict when
+# the sidecar is absent.
 _seg_hidden_pause: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
+_seg_missed_waqf: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
 _seg_false_split: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
 _seg_unmarked_wasl: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
-# pipeline_meta.json sidecar — extraction-time facts (deleted_basmala_chapters,
-# generated_at, ...). Immutable post-extraction; NEVER invalidated by save.
-_seg_pipeline_meta: _KeyedCache[dict] = _KeyedCache()
+_seg_wasl_recheck: _KeyedCache[tuple[dict[str, dict], dict | None]] = _KeyedCache()
 # Parsed edit_history.jsonl batches (list[dict]). Filled lazily on first read;
 # every save APPENDS the new batch (no full re-parse). Undo also appends a
 # revert batch. The cache slot itself is never popped on save/undo — only on
@@ -175,11 +177,11 @@ def set_seg_resolved_by_edit(reciter: str, index: dict[str, set[str]]) -> None:
     _seg_resolved_by_edit.set(reciter, index)
 
 
-def get_seg_probe_v2(reciter: str) -> tuple[set[str], dict | None] | None:
+def get_seg_probe_v2(reciter: str) -> ProbeV2 | None:
     return _seg_probe_v2.get(reciter)
 
 
-def set_seg_probe_v2(reciter: str, value: tuple[set[str], dict | None]) -> None:
+def set_seg_probe_v2(reciter: str, value: ProbeV2) -> None:
     _seg_probe_v2.set(reciter, value)
 
 
@@ -199,6 +201,14 @@ def set_seg_hidden_pause(reciter: str, value: tuple[dict[str, dict], dict | None
     _seg_hidden_pause.set(reciter, value)
 
 
+def get_seg_missed_waqf(reciter: str) -> tuple[dict[str, dict], dict | None] | None:
+    return _seg_missed_waqf.get(reciter)
+
+
+def set_seg_missed_waqf(reciter: str, value: tuple[dict[str, dict], dict | None]) -> None:
+    _seg_missed_waqf.set(reciter, value)
+
+
 def get_seg_false_split(reciter: str) -> tuple[dict[str, dict], dict | None] | None:
     return _seg_false_split.get(reciter)
 
@@ -215,6 +225,14 @@ def set_seg_unmarked_wasl(reciter: str, value: tuple[dict[str, dict], dict | Non
     _seg_unmarked_wasl.set(reciter, value)
 
 
+def get_seg_wasl_recheck(reciter: str) -> tuple[dict[str, dict], dict | None] | None:
+    return _seg_wasl_recheck.get(reciter)
+
+
+def set_seg_wasl_recheck(reciter: str, value: tuple[dict[str, dict], dict | None]) -> None:
+    _seg_wasl_recheck.set(reciter, value)
+
+
 def pop_seg_auto_split(reciter: str) -> None:
     """Pop the auto-split cache for *reciter*.
 
@@ -225,19 +243,6 @@ def pop_seg_auto_split(reciter: str) -> None:
     ``batch_changes_segment_set(batch)``.
     """
     _seg_auto_split.pop(reciter)
-
-
-def get_seg_pipeline_meta(reciter: str) -> dict | None:
-    return _seg_pipeline_meta.get(reciter)
-
-
-def set_seg_pipeline_meta(reciter: str, value: dict) -> None:
-    _seg_pipeline_meta.set(reciter, value)
-
-
-def pop_seg_pipeline_meta(reciter: str) -> None:
-    """Explicit eviction (e.g. for the backfill script when it rewrites)."""
-    _seg_pipeline_meta.pop(reciter)
 
 
 # ---------------------------------------------------------------------------
@@ -287,6 +292,15 @@ def pop_seg_split_group_index(reciter: str) -> None:
     _seg_split_group_index.pop(reciter)
 
 
+def pop_transient_history(reciter: str, *, edit_history: bool, batches: bool) -> None:
+    """Drop the parsed edit history a one-off reader (the review-signals sweep) filled,
+    so it does not evict an editor's entries from the LRUs."""
+    if edit_history:
+        _seg_edit_history.pop(reciter)
+    if batches:
+        _seg_history_batches.pop(reciter)
+
+
 def get_seg_edit_history(reciter: str) -> dict | None:
     return _seg_edit_history.get(reciter)
 
@@ -323,6 +337,32 @@ def set_seg_validate_cache(reciter: str, value: dict) -> None:
     _seg_validate_result.set(reciter, value)
 
 
+# Reciter-picker review signals: the loaded copy of ``catalog/review_signals.json``
+# (counts by slug) and when it was read. Fleet-wide and tiny, so not an LRU. Not popped
+# on save: the validate route rewrites the file when a reciter's counts change. See
+# ``services/validation/review_signals.py``.
+class _ReviewSignalsCache:
+    def __init__(self) -> None:
+        self.signals: dict[str, dict[str, int]] = {}
+        self.read_at: float | None = None
+
+    def clear(self) -> None:
+        self.signals = {}
+        self.read_at = None
+
+
+_review_signals = _ReviewSignalsCache()
+
+
+def get_review_signals_snapshot() -> tuple[dict[str, dict[str, int]], float | None]:
+    return _review_signals.signals, _review_signals.read_at
+
+
+def set_review_signals_snapshot(signals: dict[str, dict[str, int]], read_at: float) -> None:
+    _review_signals.signals = signals
+    _review_signals.read_at = read_at
+
+
 def get_seg_stats_cache(reciter: str) -> dict | None:
     return _seg_stats_result.get(reciter)
 
@@ -342,14 +382,9 @@ def invalidate_seg_caches(reciter: str) -> None:
       here would cost a ~500 ms cold miss on every autosave (every few
       seconds) for nothing. The LRU still naturally evicts under pressure
       (50-entry global ceiling) and on process restart.
-    - The **pipeline_meta sidecar cache** — extraction-time facts that no
-      user edit can change. Invalidating per save would burn the cache on
-      every autosave for zero benefit.
 
     Add an explicit ``pop_reciter_peaks_response_cache`` call wherever a
-    future code path actually rewrites peaks on the bucket; add an explicit
-    ``pop_seg_pipeline_meta`` call wherever extraction or backfill rewrites
-    the sidecar.
+    future code path actually rewrites peaks on the bucket.
     """
     _seg.pop(reciter)
     _seg_meta.pop(reciter)
@@ -357,8 +392,10 @@ def invalidate_seg_caches(reciter: str) -> None:
     _seg_resolved_by_edit.pop(reciter)
     _seg_probe_v2.pop(reciter)
     _seg_hidden_pause.pop(reciter)
+    _seg_missed_waqf.pop(reciter)
     _seg_false_split.pop(reciter)
     _seg_unmarked_wasl.pop(reciter)
+    _seg_wasl_recheck.pop(reciter)
     _seg_auto_split.pop(reciter)
     _seg_edit_history.pop(reciter)
     _seg_history_peaks.pop(reciter)
@@ -374,7 +411,6 @@ def pop_seg_caches_affected_by_segment_edit(reciter: str) -> None:
     """Surgical eviction of caches a segment edit invalidates.
 
     Excludes:
-    - ``_seg_pipeline_meta`` — extraction-time, immutable.
     - ``_seg_history_batches`` — appended in place (no re-parse).
     - ``_seg_split_group_index`` — extended in place on save; explicitly
       popped on undo via ``pop_seg_split_group_index``.
@@ -390,8 +426,10 @@ def pop_seg_caches_affected_by_segment_edit(reciter: str) -> None:
     _seg_resolved_by_edit.pop(reciter)
     _seg_probe_v2.pop(reciter)
     _seg_hidden_pause.pop(reciter)
+    _seg_missed_waqf.pop(reciter)
     _seg_false_split.pop(reciter)
     _seg_unmarked_wasl.pop(reciter)
+    _seg_wasl_recheck.pop(reciter)
     _seg_edit_history.pop(reciter)
     _seg_history_peaks.pop(reciter)
     _seg_history_peaks_response.pop(reciter)
@@ -532,10 +570,13 @@ def pop_audio_url_cache(slug: str) -> None:
 # ``services/audio/audio_meta._load_sidecar`` on first read. The inverse
 # index turns ``chapter_for_url`` / ``chapter_meta_for_url`` from O(N)
 # linear scans into O(1) dict lookups on the peaks fan-out hot path.
-# Lifecycle matches every other per-reciter cache: LRU-bounded, popped by
-# ``pop_audio_manifest_cache`` when a future probe-refresh path lands.
-_audio_manifest: _KeyedCache[dict] = _KeyedCache()
-_audio_manifest_url_index: _KeyedCache[dict[str, str]] = _KeyedCache()
+# LRU-bounded, popped by ``pop_audio_manifest_cache``. The bound must exceed the
+# released-reciter count: every TS manifest rebuild (each ``db_seq`` bump) walks
+# every released sidecar in a fixed order, which misses on every entry once the
+# set outgrows the cache. A parsed sidecar is ~60 KB.
+_AUDIO_MANIFEST_LRU_MAX = 512
+_audio_manifest: _KeyedCache[dict] = _KeyedCache(_AUDIO_MANIFEST_LRU_MAX)
+_audio_manifest_url_index: _KeyedCache[dict[str, str]] = _KeyedCache(_AUDIO_MANIFEST_LRU_MAX)
 
 
 def get_audio_manifest_cache(slug: str) -> dict | None:
@@ -600,45 +641,11 @@ def set_word_counts_cache(wc: dict[tuple[int, int], int]) -> None:
     _word_counts.set(wc)
 
 
-# Single-word verses — derived from word_counts, computed once and cached
-# alongside it. Used by the classifier's muqattaat / basmala_amin rules and
-# the save-time persisted-classifier-fields stamp. Three callsites used to
-# rebuild this O(6236) comprehension fresh each call; the singleton matches
-# the lifetime of ``_word_counts`` (immutable post-boot).
-_single_word_verses: _SingletonCache[set[tuple[int, int]]] = _SingletonCache()
-
-
-def get_single_word_verses_cache():
-    return _single_word_verses.get()
-
-
-def set_single_word_verses_cache(swv: set[tuple[int, int]]) -> None:
-    _single_word_verses.set(swv)
-
-
-# QPC / DK data
-_qpc: _SingletonCache[dict[str, dict]] = _SingletonCache()
-_dk: _SingletonCache[dict[str, dict]] = _SingletonCache()
-# Flat ``"surah:ayah:word" -> text`` projection of _dk, served to the FE so
-# it can resolve ref → display text locally instead of round-tripping. Built
-# once on first request.
+# Digital Khatt word map. The full script is cached by ``qua_shared.quran_text``;
+# this is its flat ``"surah:ayah:word" -> text`` projection (markers dropped),
+# served to the FE so it can resolve ref → display text locally. Built once on
+# first request.
 _dk_words_flat: _SingletonCache[dict[str, str]] = _SingletonCache()
-
-
-def get_qpc_cache():
-    return _qpc.get()
-
-
-def set_qpc_cache(data: dict) -> None:
-    _qpc.set(data)
-
-
-def get_dk_cache():
-    return _dk.get()
-
-
-def set_dk_cache(data: dict) -> None:
-    _dk.set(data)
 
 
 def get_dk_words_flat_cache():

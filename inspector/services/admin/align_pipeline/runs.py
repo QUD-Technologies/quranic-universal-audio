@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 
+from qua_shared.audio import upstream
 from qua_shared.riwayat import DEFAULT_RIWAYAH, UnsupportedRiwayah, resolve_sdk_slug
 from qua_shared.schemas import Actor, AlignRunStatus, ReciterState
 from services.audio import audio_meta
@@ -18,8 +19,8 @@ from services.state import state as state_service
 from services.storage import cache
 from utils.uuid7 import uuid7
 
+from . import limits, manifest, progress, sources, stage_acquire, staging
 from . import params as _params
-from . import progress, stage_acquire, staging
 from .params import AlignParams
 
 log = logging.getLogger("inspector")
@@ -46,7 +47,10 @@ def start(
     *,
     model_name: str = _params.MODEL_LARGE,
     device: str = _params.DEVICE_GPU,
+    exempt: bool = False,
 ) -> AlignRunStatus:
+    """``exempt``: the caller holds ``limits.EXEMPT_CAPABILITY`` — skips the shared
+    budget, and the run is stamped so it never counts toward it."""
     missing = _params.missing_config()
     if missing:
         raise AlignRunError(f"align pipeline not configured: {', '.join(missing)} unset", 503)
@@ -59,33 +63,46 @@ def start(
     if row is None or row.state not in STARTABLE_STATES:
         state = row.state.value if row else "none"
         raise AlignRunError(f"{slug}: state {state} is not awaiting alignment", 409)
-    chapters = audio_meta.chapter_numbers(slug)
-    if not chapters:
-        raise AlignRunError(f"{slug}: audio manifest lists no chapters", 400)
     if delivery.audio_category != "by_surah":
         raise AlignRunError(f"{slug}: only by_surah deliveries are supported", 400)
+    try:
+        groups = sources.groups_for(slug)
+    except ValueError as exc:
+        raise AlignRunError(f"{slug}: {exc}", 400) from exc
+    if not groups:
+        raise AlignRunError(f"{slug}: audio manifest lists no chapters or sources", 400)
+    # Nothing is aligned yet, so a source replaced since intake is adopted, not refused.
+    changed = upstream.blocking_changes(audio_meta.manifest_chapters(slug))
+    if changed:
+        manifest.adopt_upstream(slug, changed)
+        log.info("align: %s adopted upstream changes: %s", slug, [c.describe() for c in changed])
+    units = sum(g.weight for g in groups)
     try:
         riwayah = resolve_sdk_slug(delivery.riwayah or DEFAULT_RIWAYAH)
     except UnsupportedRiwayah as exc:
         raise AlignRunError(f"{slug}: {exc}", 400) from exc
 
-    params = AlignParams(model_name=model_name, riwayah=riwayah, device=device)
+    params = AlignParams(model_name=model_name, riwayah=riwayah, device=device, quota_exempt=exempt)
     run_id = uuid7()
+    # Check under the write lock so two concurrent clicks cannot both take the last slot.
     with durable_transaction():
+        _check_limit(limits.check_start, device, exempt=exempt)
         repo_align_runs.insert(
             run_id=run_id,
             slug=slug,
             requested_by=actor.hf_user_id,
             params_json=params.to_json(),
-            chapters_total=len(chapters),
+            chapters_total=units,
         )
+    if changed:
+        progress.set_detail(run_id, upstream_refreshed=[c.describe() for c in changed])
     cache.invalidate_admin_requests_cache()
     log.info(
-        "align: %s started run %s for %s (%d chapters, %s lane)",
+        "align: %s started run %s for %s (%d units, %s lane)",
         actor.hf_user_id,
         run_id,
         slug,
-        len(chapters),
+        units,
         device,
     )
     from . import runner
@@ -109,8 +126,14 @@ def retry(slug: str, actor: Actor) -> AlignRunStatus:
         raise AlignRunError(
             f"{slug}: run is {run['status']}, only a failed run can be retried", 409
         )
+    # A failed acquire job is terminal: keeping its id would make the runner
+    # re-read that failure instead of launching a fresh (idempotent) job.
+    fresh_acquire = {"acquire_job_id": None} if run["stage"] == "acquire" else {}
     with durable_transaction():
-        repo_align_runs.update(run["run_id"], status="pending", attempt=run["attempt"] + 1)
+        _check_limit(limits.check_retry, run)
+        repo_align_runs.update(
+            run["run_id"], status="pending", attempt=run["attempt"] + 1, **fresh_acquire
+        )
     cache.invalidate_admin_requests_cache()
     log.info(
         "align: %s retried run %s (attempt %d)", actor.hf_user_id, run["run_id"], run["attempt"] + 1
@@ -121,6 +144,13 @@ def retry(slug: str, actor: Actor) -> AlignRunStatus:
     return _status_required(slug)
 
 
+def _check_limit(check, *args, **kwargs) -> None:
+    try:
+        check(*args, **kwargs)
+    except limits.AlignLimitReached as exc:
+        raise AlignRunError(str(exc), exc.status) from exc
+
+
 def cancel(slug: str, actor: Actor) -> AlignRunStatus:
     run = repo_align_runs.active_for_slug(slug)
     if run is None:
@@ -128,6 +158,9 @@ def cancel(slug: str, actor: Actor) -> AlignRunStatus:
     progress.request_cancel(run["run_id"])
     if run["stage"] == "acquire" and run.get("acquire_job_id"):
         stage_acquire.cancel(run["acquire_job_id"])
+    split_job = staging.read_json(staging.run_file(slug, run["run_id"], staging.SPLIT_JOB_FILE))
+    if run["stage"] == "align" and split_job and split_job.get("job_id"):
+        stage_acquire.cancel(split_job["job_id"])
     from . import runner
 
     if run["status"] == "failed" or not runner.is_alive(run["run_id"]):

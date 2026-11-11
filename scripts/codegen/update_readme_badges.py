@@ -11,13 +11,14 @@ import argparse
 import json
 import os
 import sqlite3
+import sys
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
 
-PROD_BUCKET_ID = "hetchyy/quranic-inspector-bucket"
+PROD_BUCKET_ID = "QUD-Technologies/quranic-inspector-bucket"
 DB_BUCKET_PATH = "db/inspector.db"
 DEFAULT_README = Path(__file__).resolve().parents[2] / "README.md"
 DEFAULT_STATS = Path(__file__).resolve().parents[2] / "data" / "stats.json"
@@ -69,7 +70,12 @@ def download_db(bucket_id: str, *, token: str | None = None) -> Path:
 def _duration_from_manifest(doc: dict, slug: str) -> int:
     chapters = doc.get("chapters")
     if not isinstance(chapters, dict) or not chapters:
-        raise RuntimeError(f"{slug}: audio manifest has no chapters")
+        # Sources-only manifest = online-intake detect group awaiting align;
+        # durations are unknown until the playlist files are split per surah.
+        if doc.get("sources"):
+            print(f"{slug}: sources-only manifest, counting 0s until aligned", file=sys.stderr)
+            return 0
+        raise RuntimeError(f"{slug}: audio manifest has no chapters or sources")
 
     total = 0.0
     missing: list[str] = []

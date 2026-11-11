@@ -25,8 +25,8 @@ import {
 import { OWNER_ONLY_CATEGORIES } from '../../domain/registry';
 
 describe('mark-ready copy module', () => {
-    it('exports exactly six checklist keys', () => {
-        expect(CHECKLIST_ORDER).toHaveLength(6);
+    it('exports exactly five checklist keys', () => {
+        expect(CHECKLIST_ORDER).toHaveLength(5);
     });
 
     it('checklist keys match the codegen MarkReadyChecklist interface', () => {
@@ -38,7 +38,6 @@ describe('mark-ready copy module', () => {
             low_confidence: true,
             repetitions: true,
             splits_wasl_waqf: true,
-            basmala_amin_intros: true,
         };
         const expected = Object.keys(sample).sort();
         const actual = [...CHECKLIST_ORDER].sort();
@@ -81,14 +80,11 @@ describe('mark-ready copy module', () => {
     it('blocking count keys exactly match the backend list', () => {
         // The backend enforces the same keys via BLOCKING_COUNT_KEYS in
         // qua_shared/schemas/wire/mark_ready.py — these must stay aligned.
-        // `boundary_adj` is deliberately absent: it is an owner-only category
-        // (see the owner-only test below), so a reviewer can neither see nor
-        // resolve it.
+        // `cross_verse` is a review aid with nothing to do, so it never gates.
         expect([...BLOCKING_COUNT_KEYS].sort()).toEqual([
-            'basmala_amin',
-            'cross_verse',
             'low_confidence',
             'low_confidence_v2',
+            'missed_waqf',
             'repetitions',
         ]);
     });
@@ -108,8 +104,14 @@ describe('mark-ready copy module', () => {
             low_confidence: true,
             repetitions: true,
             splits_wasl_waqf: true,
-            basmala_amin_intros: true,
         };
         expect(isAllChecked(full)).toBe(true);
+    });
+
+    it('isAllChecked asks only for the shown boxes', () => {
+        const some = { ...emptyChecklist(), low_confidence: true };
+        expect(isAllChecked(some, ['low_confidence'])).toBe(true);
+        expect(isAllChecked(some, ['low_confidence', 'splits_wasl_waqf'])).toBe(false);
+        expect(isAllChecked(emptyChecklist(), [])).toBe(true);
     });
 });

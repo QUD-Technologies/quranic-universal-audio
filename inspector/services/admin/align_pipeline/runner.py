@@ -16,13 +16,23 @@ from __future__ import annotations
 import logging
 import threading
 
-from services.audio import audio_meta
 from services.db import repo_align_runs
 from services.db.sync import durable_transaction
 from services.storage import cache
 
-from . import progress, stage_acquire, stage_align, stage_assemble, stage_sidecars
+from . import (
+    manifest,
+    progress,
+    sources,
+    stage_acquire,
+    stage_align,
+    stage_assemble,
+    stage_sidecars,
+    stage_split,
+    staging,
+)
 from .params import AlignParams
+from .sources import SourceGroup
 
 log = logging.getLogger("inspector")
 
@@ -76,23 +86,24 @@ def _drive(run_id: str) -> None:
     slug = run["slug"]
     params = AlignParams.from_json(run.get("params_json"))
     try:
-        chapters = audio_meta.chapter_numbers(slug)
-        sources = audio_meta.chapter_urls(slug)
-        source_by_ch = {int(k): v for k, v in sources.items()}
+        groups = _groups(slug, run_id)
         stage = run["stage"]
         for name in STAGES[STAGES.index(stage) :]:
             progress.check_cancel(run_id)
             _mark(run_id, stage=name, status="running", last_error=None)
             run = repo_align_runs.get(run_id) or run
             if name == "acquire":
-                _acquire(run, chapters, sources)
+                _acquire(run, groups)
             elif name == "align":
-                stage_align.run(slug, run_id, params, chapters)
+                stage_align.run(slug, run_id, params, groups)
+                stage_split.run(slug, run_id, groups)
             elif name == "sidecars":
-                stage_sidecars.run(slug, run_id, params, chapters, source_by_ch)
+                chapters, sources = _chapters(slug)
+                stage_sidecars.run(slug, run_id, params, chapters, sources)
             else:
+                chapters, sources = _chapters(slug)
                 stage_assemble.run(
-                    slug, run_id, params, chapters, source_by_ch, started_at=run["started_at"]
+                    slug, run_id, params, chapters, sources, started_at=run["started_at"]
                 )
         _mark(run_id, stage="done", status="succeeded")
         progress.clear_detail(run_id)
@@ -109,33 +120,48 @@ def _drive(run_id: str) -> None:
         progress.clear_cancel(run_id)
 
 
-def _acquire(run: dict, chapters: list[int], sources: dict[str, str]) -> None:
+def _groups(slug: str, run_id: str) -> list[SourceGroup]:
+    """The run's source groups, frozen at its first start.
+
+    Split rewrites the manifest (drops, adoptions), which could renumber the
+    combined-file slots; freezing the grouping keeps a resumed run pointing at
+    the slot files and staged results it made."""
+    path = staging.run_file(slug, run_id, staging.GROUPS_FILE)
+    frozen = staging.read_json(path)
+    if frozen is not None:
+        return [
+            SourceGroup(url=g["url"], chapters=tuple(g["chapters"]), slot=g.get("slot"))
+            for g in frozen["groups"]
+        ]
+    groups = sources.groups_for(slug)
+    if not groups:
+        raise ValueError(f"{slug}: audio manifest lists no chapters or sources")
+    staging.write_json(
+        path,
+        {"groups": [{"url": g.url, "chapters": list(g.chapters), "slot": g.slot} for g in groups]},
+    )
+    return groups
+
+
+def _chapters(slug: str) -> tuple[list[int], dict[int, str]]:
+    """Chapters + their ``chapter_sources`` url, from the (post-split) manifest."""
+    by_chapter = sources.chapter_sources(slug)
+    return sorted(by_chapter), by_chapter
+
+
+def _acquire(run: dict, groups: list[SourceGroup]) -> None:
     slug, run_id = run["slug"], run["run_id"]
     job_id = run.get("acquire_job_id")
     if not job_id:
-        needs_ytdlp = any(_needs_ytdlp(u) for u in sources.values())
         from services.db import repo_catalog
 
         delivery = repo_catalog.find_delivery(slug)
         channels = delivery.channels if delivery else None
-        job_id = stage_acquire.launch(slug, run_id, needs_ytdlp=needs_ytdlp, channels=channels)
+        job_id = stage_acquire.launch(slug, run_id, groups=groups, channels=channels)
         _mark(run_id, acquire_job_id=job_id)
-    stage_acquire.wait(slug, run_id, job_id)
-    progress.set_detail(run_id, chapters_done=len(chapters))
-
-
-def _needs_ytdlp(url: str) -> bool:
-    from pathlib import Path
-
-    return Path(url.split("?")[0]).suffix.lower() not in (
-        ".mp3",
-        ".m4a",
-        ".wav",
-        ".flac",
-        ".ogg",
-        ".aac",
-        ".opus",
-    )
+    report = stage_acquire.wait(slug, run_id, job_id)
+    manifest.record_acquired(slug, report.get("chapters") or {})
+    progress.set_detail(run_id, chapters_done=sum(g.weight for g in groups))
 
 
 def _mark(run_id: str, **fields) -> None:

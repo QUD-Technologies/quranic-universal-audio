@@ -35,13 +35,19 @@ import logging
 import os
 import sqlite3
 import sys
+import tempfile
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from qua_shared.audio.sources import (  # noqa: E402
+    chapters_without_public_source,
+    public_source_url,
+)
 from qua_shared.catalog_visibility import is_everyayah_channel  # noqa: E402
+from qua_shared.inspector_notify import WEBHOOK_USER_AGENT  # noqa: E402
 from qua_shared.mp3_frames import (  # noqa: E402
     FrameIndex,
     MultiFrameSlice,
@@ -298,6 +304,7 @@ def build_rows(
                     "text_uthmani": layout["text"],
                     "segments": verse_segments,
                     "word_timestamps": verse_words,
+                    "sakt_after": layout["sakt_after"],
                     "source_url": chapter_urls.get(str(chapter), ""),
                     "chapter": chapter,
                     "clip_start": clip_start,
@@ -466,9 +473,29 @@ def _verses_for_validation(rows: list[dict]) -> dict[str, dict]:
             "verse_end_ms": r["clip_end"],
             "duration_ms": r["duration_ms"],
             "words": [(w[0], w[1] + cs, w[2] + cs) for w in r["word_timestamps"]],
+            "sakt_after": r.get("sakt_after") or [],
             "segments": [(s[0], s[1], s[2] + cs, s[3] + cs) for s in r["segments"]],
         }
     return out
+
+
+def _manifest_chapter_sources(audio_manifest: dict | None) -> tuple[dict[str, str], dict[str, int]]:
+    """``(chapter_urls, chapter_offsets)`` for the dataset rows. The URL is the
+    chapter's public source link; the offset is where the chapter starts inside
+    that source. Raises when any chapter has no public link (a local path or an
+    internal bucket URL, #285) — the manifest must be repaired before publish."""
+    chapters = (audio_manifest or {}).get("chapters") or {}
+    unlinked = chapters_without_public_source(chapters)
+    if unlinked:
+        raise RuntimeError(
+            f"audio_manifest chapters {unlinked[:10]} have no public source URL "
+            f"({len(unlinked)} total)"
+        )
+    urls = {str(ch): public_source_url(entry or {}) or "" for ch, entry in chapters.items()}
+    offsets = {
+        str(ch): int((entry or {}).get("source_offset_ms") or 0) for ch, entry in chapters.items()
+    }
+    return urls, offsets
 
 
 # ---------------------------------------------------------------------------
@@ -505,19 +532,22 @@ def _iter_hf_records(rows: list[dict], audio_bytes: list[bytes | None]):
         }
 
 
-def _push_to_hf(slug: str, riwayah: str, rows: list[dict], audio_bytes: list[bytes | None]) -> str:
-    """Build the parquet split and push to HF. Returns the dataset commit SHA.
+def _build_hf_dataset(
+    slug: str,
+    riwayah: str,
+    rows: list[dict],
+    audio_bytes: list[bytes | None],
+    *,
+    cache_dir: str,
+):
+    """Build one recitation's disk-backed parquet-ready ``Dataset``.
 
-    ``riwayah`` is the INSPECTOR slug. It becomes ``config_name``, which is the
-    dataset's top-level parquet folder — every published split already lives
-    under ``hafs_an_asim/``, and switching vocabularies here would strand them.
+    The explicit ``fingerprint`` REPLACES the gen_kwargs hash as the builder's
+    cache key, so it must name this recitation — a key shared across slugs
+    (e.g. the bare batch JOB_ID) makes ``from_generator`` hand back the first
+    slug's cached rows for every later slug (issue #279).
     """
     from datasets import Audio, Dataset, Features, Sequence, Value
-    from huggingface_hub import HfApi
-
-    repo_id = _resolve_dataset_repo_id()
-    api = HfApi(token=os.environ.get("HF_TOKEN"))
-    api.create_repo(repo_id=repo_id, repo_type="dataset", exist_ok=True)
 
     # Audio(decode=True) matches the existing splits on the hub (consumers
     # expect ``ds[i]["audio"]["array"]``). Torch + torchcodec are installed
@@ -535,28 +565,52 @@ def _push_to_hf(slug: str, riwayah: str, rows: list[dict], audio_bytes: list[byt
             "source_offset_ms": Value("int32"),
         }
     )
+    job_id = os.environ.get("JOB_ID") or "local"
     # Dataset.from_dict constructs each column as one Arrow array. Embedded
     # audio for a full mushaf can exceed Arrow binary's 32-bit offset ceiling
     # before push_to_hub gets a chance to shard it. Build disk-backed record
     # batches instead so each binary array stays comfortably below 2 GiB.
-    ds = Dataset.from_generator(
+    return Dataset.from_generator(
         _iter_hf_records,
         features=features,
         gen_kwargs={"rows": rows, "audio_bytes": audio_bytes},
+        cache_dir=cache_dir,
         keep_in_memory=False,
         writer_batch_size=64,
-        fingerprint=os.environ.get("JOB_ID") or slug,
+        fingerprint=f"{job_id}-{riwayah}-{slug}",
     )
 
-    log.info("pushing %d rows to %s/%s/%s", len(ds), repo_id, riwayah, slug)
-    ds.push_to_hub(
-        repo_id,
-        config_name=riwayah,
-        split=slug,
-        token=os.environ.get("HF_TOKEN"),
-        max_shard_size="500MB",
-        commit_message=f"publish {riwayah}/{slug}",
-    )
+
+def _push_to_hf(slug: str, riwayah: str, rows: list[dict], audio_bytes: list[bytes | None]) -> str:
+    """Build the parquet split and push to HF. Returns the dataset commit SHA.
+
+    ``riwayah`` is the INSPECTOR slug. It becomes ``config_name``, which is the
+    dataset's top-level parquet folder — every published split already lives
+    under ``hafs_an_asim/``, and switching vocabularies here would strand them.
+    """
+    from huggingface_hub import HfApi
+
+    repo_id = _resolve_dataset_repo_id()
+    api = HfApi(token=os.environ.get("HF_TOKEN"))
+    api.create_repo(repo_id=repo_id, repo_type="dataset", exist_ok=True)
+
+    # A private, throwaway Arrow cache per publish. A batch runs every slug in
+    # one container under one JOB_ID, so a shared ~/.cache would let a later
+    # slug load an earlier slug's prepared dataset (issue #279).
+    with tempfile.TemporaryDirectory(
+        prefix=f"hf_publish_{slug}_", ignore_cleanup_errors=True
+    ) as cache_dir:
+        ds = _build_hf_dataset(slug, riwayah, rows, audio_bytes, cache_dir=cache_dir)
+        log.info("pushing %d rows to %s/%s/%s", len(ds), repo_id, riwayah, slug)
+        ds.push_to_hub(
+            repo_id,
+            config_name=riwayah,
+            split=slug,
+            token=os.environ.get("HF_TOKEN"),
+            max_shard_size="500MB",
+            commit_message=f"publish {riwayah}/{slug}",
+        )
+        del ds
     # Resolve the dataset's HEAD commit sha — the version the row landed at.
     try:
         info = api.repo_info(repo_id=repo_id, repo_type="dataset")
@@ -583,6 +637,7 @@ def _sync_dataset_catalog_and_card(repo_id: str) -> None:
     from qua_shared.config_loader import template_path
     from qua_shared.digital_khatt import (
         DIGITAL_KHATT_FONT_FILENAME,
+        DIGITAL_KHATT_FONT_PATH,
         DIGITAL_KHATT_SCRIPT_FILENAME,
     )
     from qua_shared.hf_dataset_catalog import (
@@ -621,14 +676,7 @@ def _sync_dataset_catalog_and_card(repo_id: str) -> None:
             DIGITAL_KHATT_SCRIPT_FILENAME: (
                 code_root / "data" / DIGITAL_KHATT_SCRIPT_FILENAME
             ).read_bytes(),
-            DIGITAL_KHATT_FONT_FILENAME: (
-                code_root
-                / "inspector"
-                / "frontend"
-                / "public"
-                / "fonts"
-                / DIGITAL_KHATT_FONT_FILENAME
-            ).read_bytes(),
+            DIGITAL_KHATT_FONT_FILENAME: (code_root / DIGITAL_KHATT_FONT_PATH).read_bytes(),
         },
         remove=("letter_vocab_hafs_qpc.csv", "qpc_hafs.json"),
         token=token,
@@ -713,7 +761,11 @@ def _post_webhook(
         url,
         data=data,
         method="POST",
-        headers={"Content-Type": "application/json", "X-Inspector-Job-Secret": secret},
+        headers={
+            "Content-Type": "application/json",
+            "X-Inspector-Job-Secret": secret,
+            "User-Agent": WEBHOOK_USER_AGENT,
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -856,7 +908,9 @@ def publish_slug(
         log.error("riwayah unusable for %s: %s", slug, exc)
         return _result(slug, "failed", error=str(exc), exit_code=17)
     if delivery_riwayah != shard_riwayah:
-        log.error("riwayah mismatch: delivery says %s, shards are %s", config_riwayah, shard_riwayah)
+        log.error(
+            "riwayah mismatch: delivery says %s, shards are %s", config_riwayah, shard_riwayah
+        )
         return _result(
             slug,
             "failed",
@@ -893,15 +947,7 @@ def publish_slug(
     # provenance, not the internal bucket URL. ``source_offset_ms`` is where the
     # chapter begins inside that source — added to each clip's in-chapter start.
     detailed_by_ref = _detailed_by_ref(detailed)
-    _manifest_chapters = (audio_manifest or {}).get("chapters") or {}
-    chapter_urls = {
-        str(ch): ((entry or {}).get("source_url") or (entry or {}).get("url", ""))
-        for ch, entry in _manifest_chapters.items()
-    }
-    chapter_offsets = {
-        str(ch): int((entry or {}).get("source_offset_ms") or 0)
-        for ch, entry in _manifest_chapters.items()
-    }
+    chapter_urls, chapter_offsets = _manifest_chapter_sources(audio_manifest)
     rows = build_rows(
         timestamps,
         detailed_by_ref,

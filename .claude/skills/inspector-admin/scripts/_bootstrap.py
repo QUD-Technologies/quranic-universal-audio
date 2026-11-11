@@ -81,12 +81,12 @@ _ensure_inspector_runtime()
 
 # Bucket id table mirrors inspector/services/storage/hf_bucket.py.
 BUCKETS = {
-    "dev": "hetchyy/quranic-inspector-bucket-dev",
-    "prod": "hetchyy/quranic-inspector-bucket",
+    "dev": "QUD-Technologies/quranic-inspector-bucket-dev",
+    "prod": "QUD-Technologies/quranic-inspector-bucket",
 }
 
 # Deployed prod Space that holds the SQLite writer (single-writer invariant).
-PROD_SPACE_ID = os.environ.get("INSPECTOR_SPACE_ID", "hetchyy/quranic-universal-audio")
+PROD_SPACE_ID = os.environ.get("INSPECTOR_SPACE_ID", "QUD-Technologies/quranic-universal-audio")
 
 # Set True only while inside a ``prod_safe_setup`` window (Space paused). ``setup``
 # refuses a prod MUTATION when this is False, so a bare prod write can't slip
@@ -136,7 +136,7 @@ def add_common_args(parser: argparse.ArgumentParser, *, mutating: bool = True) -
 @dataclass
 class BootstrapCtx:
     repo_root: Path
-    bucket_id: str           # hetchyy/quranic-inspector-bucket{,-dev}
+    bucket_id: str           # QUD-Technologies/quranic-inspector-bucket{,-dev}
     actor: Optional[object]  # qua_shared.schemas.config.audit.Actor when need_actor=True
     db_path: Path
     db_synced: bool

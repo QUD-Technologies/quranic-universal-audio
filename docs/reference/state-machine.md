@@ -47,10 +47,11 @@ Invariants (`ReciterRow._check_state_invariants`): assignee fields legal ONLY on
 |---|---|---|---|
 | `visibility` | `delivery_states` | enum | `public` (default) / `discarded` (hidden, any state). `archived` is **deferred** — not in the enum. |
 | `visibility_reason` | `delivery_states` | str \| null | Reason set alongside `discarded` (or hard-reject). |
-| `timestamps_job_ids` | `delivery_states` | list[str] (JSON) | Append-only; every MFA timestamps job dispatched. Appended at launch (`record_timestamps_job`, no transition) and re-appended idempotently by `reciter.published` on success. |
+| `timestamps_job_ids` | `delivery_states` | list[str] (JSON) | Append-only; every timestamps run dispatched. Appended at launch (`record_timestamps_job`, no transition) and re-appended idempotently by `reciter.published` on success. |
 | `revision_in_progress` | `delivery_states` | `RevisionContext` \| null (JSON) | Set by `admin.unlocked_for_revision`, cleared by `reciter.published` / `reciter.unpublished`. Carries `unlocked_from_state` (`released`), `unlocked_at`, `unlocked_by_hf_id`, `original_assignee_hf_id` (currently always `None`). Only valid on `awaiting_review`. |
 | `last_save_at` | `delivery_states` | datetime \| null | Column exists on `delivery_states`/`ReciterRow`, but **no state-machine transition currently writes it** (carried through unchanged by `_persist_state`); maintainer direct-edit timestamping on published reciters is not implemented. |
 | `last_job_finished_at` | `delivery_states` | datetime \| null (ISO) | Stamped on a timestamps job's terminal state — success (alongside publish→released) and failure (no state change) — by `state.mark_timestamps_job_finished` (no transition; job bookkeeping). **Not on `ReciterRow`** (`repo_state._assemble` reads named columns only — no schema/codegen change). Audit-only since the Reviews-tab notification dot was retired (no current reader). |
+| `quality_status` | `delivery_states` | `QualityStatus` (`clean` / `almost_clean` / `needs_work`) \| null | Maintainer's manual recitation quality rating (migration `0035`); null = unrated. A human verdict made after reviewing flags + validation, not computed. Written only by `reciter.quality_set`; survives every other transition (never auto-reset). Surfaced on `PublicDelivery.quality_status` for the Segments picker pill + Quality rail axis. |
 | `created_by_transition_id` | `delivery_states` | str | FK to the `transitions` row that inserted the state row. |
 | `state_since` | `delivery_states` | datetime | Set on every state change. |
 | `assignee_hf_id` / `assignee_login` / `assignee_since` | `claims` (open row) | str / str / datetime | Claim holder. NOT on `delivery_states`. |
@@ -72,7 +73,7 @@ Force-claim columns (`force_assignee_*`, leases) do **not** exist — force-clai
 | `reciter.alignment_completed` | `awaiting_alignment` | `awaiting_review` | applies + clears pending catalog edits; if pending had `auto_claim`, folds a `reciter.claimed` into the same txn. Fired by `auto_detect` when `reciters/<slug>/detailed.json` exists (the folder alone is not enough — the native align pipeline persists `audio/`+`peaks/` hours earlier; see [align-pipeline.md](align-pipeline.md)) | system |
 | `reciter.claimed` | `awaiting_review` (`public`) | `under_review` | opens claim: `assignee_*`, `marked_ready=0` | contributor+ |
 | `reciter.released` | `under_review` (`not marked_ready` when actor is claim holder) | `awaiting_review` | closes claim | claim-holder OR maintainer+ |
-| `reciter.marked_ready` | `under_review` (+ all 5 checklist attestations True + 5 blocking validation counts == 0) | (same) | `marked_ready=1`; persists `mark_ready_checklist` + `mark_ready_comment_checks` + `mark_ready_comment_issues` onto the open claim | claim-holder |
+| `reciter.marked_ready` | `under_review` (+ every shown checklist attestation True + 5 blocking validation counts == 0) | (same) | `marked_ready=1`; persists `mark_ready_checklist` + `mark_ready_comment_checks` + `mark_ready_comment_issues` onto the open claim | claim-holder |
 | `reciter.unmarked_ready` | `under_review` | (same) | `marked_ready=0`; clears the three submission columns on the open claim | claim-holder |
 | `reciter.merge_rejected` | `under_review` (`marked_ready=1`) | (same) | `marked_ready=0` | maintainer+, reason ≥10 |
 | `reciter.published` | `under_review` (`marked_ready=1`) | `released` | closes claim; `marked_ready=0`; `revision_in_progress=None`; appends `job_id`→`timestamps_job_ids` | maintainer+ (gate `reciter.publish`); fired by the system (`SYSTEM_ACTOR`, role OWNER) on timestamps-job success |
@@ -81,6 +82,7 @@ Force-claim columns (`force_assignee_*`, leases) do **not** exist — force-clai
 | `reciter.undiscarded` | (any `discarded`) | (same) | `visibility=public`, `visibility_reason=None` | maintainer+ |
 | `claim.force_released` | `under_review` | `awaiting_review` | closes claim; `marked_ready=0` | owner, reason optional |
 | `claim.reassigned` | `under_review` | (same) | reassigns claim: new `assignee_*`, `marked_ready=0` (requires payload `new_assignee_hf_id`+`new_assignee_login`) | owner, reason optional |
+| `reciter.quality_set` | (any) | (same) | `quality_status` ← payload value (or null); handler stamps `payload.previous` for the audit row. Setting/changing needs `released` or `under_review`+`marked_ready` (`predicates.quality_settable`, else `STATE_PRECONDITION`); clearing works in any state. No edit-lock check | `reciter.set_quality_status` (maintainer+) |
 | `admin.unlocked_for_revision` | `released` | `awaiting_review` | `revision_in_progress={unlocked_from_state, unlocked_at, unlocked_by_hf_id, original_assignee_hf_id=None}` | maintainer+ |
 
 > **Automated launches.** The release-automation reconciler ([automation.md](automation.md)) is an alternate *launcher* of these same job paths (generate-timestamps, cut, publish, refresh) on the owner's schedule/rules. The job-completion transition still fires with `SYSTEM_ACTOR` as above; the automation records `SYSTEM_AUTOMATION` as the job's `launched_by` + on its config-change audit, so the rail distinguishes an owner-configured automation from a manual action.
@@ -89,7 +91,7 @@ Force-claim columns (`force_assignee_*`, leases) do **not** exist — force-clai
 - `reciter.ts_regenerated` — written by `complete_timestamps_job` when a timestamps job succeeds on an already-`released` reciter (regen). No state change (`from_state=to_state=released`); payload `{job_id}`. Classified `hidden` in `activity_classification`. Visibly distinct from the first publish's `reciter.published`.
 - `reciter.ts_refreshed` — written by `repo_releases.mark_ts_refreshed` when an **out-of-band** TS shard refresh (manual backfill / schema-bump re-stamp / local regen uploaded straight to the bucket) is reported via the internal endpoint `POST /api/admin/internal/ts-refreshed` (secret-gated, same `X-Inspector-Job-Secret` as the job-completion webhook). No state change (`from_state=to_state=released`); payload `{chapters, reason}`. Advances the current `ts` release `produced_at` (so `ts_stale_info` recomputes clean) and re-stamps HF/GH stale (`TS_REGEN`) — making a bucket-direct write no longer silent. Idempotent. Classified `hidden`. The shared `qua_shared.inspector_notify.notify_ts_refreshed` helper (best-effort POST) is what the backfill scripts call after a successful upload.
 - `reciter.auto_claim_skipped` — written inside the alignment txn when a non-owner auto-claim requester already holds another claim (`_maybe_auto_claim`).
-- `request.intake_{submitted,accepted,returned,discarded}` — slugless new-combo / new-reciter intake lifecycle (`services/admin/intake.py`). Slugless ⇒ silently dropped from both activity rails. **None of these fire a state-machine transition** — an unaccepted intake has no delivery/state row, and **accept doesn't create one either**: it just records the owner-confirmed `reciter_id` (new_reciter) and flips the request to `accepted`. The catalog reciter/delivery + state row + slug are minted later by the **offline ingest**, which alone knows the real source/channel/bitrate: the owner-authenticated `POST /api/admin/intake/<rid>/ingest` (`services/admin/intake.py::ingest`, audited `request.intake_ingested`) mints reciter+delivery+slug, writes the `audio_manifest` sidecar, and fires `reciter.requested` to seed `awaiting_alignment` — making ingest the **second caller** of that event, alongside the dashboard edit-request route. The seed ordering is load-bearing: `reciter.alignment_completed` is the sole `awaiting_alignment → awaiting_review` edge and fires **only** when `auto_detect` sees `reciters/<slug>/` for a slug already in `awaiting_alignment`, so ingest must seed the state row **before** the offline pipeline uploads the content folder — a folder that lands without the seeded row is silently ignored.
+- `request.intake_{submitted,accepted,returned,discarded}` — slugless new-combo / new-reciter intake lifecycle (`services/admin/intake.py`). Slugless ⇒ silently dropped from both activity rails. **None of these fire a state-machine transition** — an unaccepted intake has no delivery/state row, and **accept doesn't create one either**: it just records the owner-confirmed `reciter_id` (new_reciter) and flips the request to `accepted`. The catalog reciter/delivery + state row + slug are minted later by the **online intake mint**, once the plan has enumerated the source and the owner has reviewed chapters + identity: `POST /api/admin/intake/<rid>/align` (`services/admin/intake_plan/mint.py` → `services/admin/intake.py::ingest`, audited `request.intake_ingested`) mints reciter+delivery+slug, writes the `audio_manifest` sidecar, and fires `reciter.requested` to seed `awaiting_alignment` — making ingest the **second caller** of that event, alongside the dashboard edit-request route. The seed ordering is load-bearing: `reciter.alignment_completed` is the sole `awaiting_alignment → awaiting_review` edge and fires **only** when `auto_detect` sees `reciters/<slug>/` for a slug already in `awaiting_alignment`, so ingest must seed the state row **before** content lands — the mint always completes before `align_runs.start`, and the align pipeline's assemble writes `detailed.json` last; a folder that lands without the seeded row is silently ignored.
 
 ## Mark-ready submission
 
@@ -103,27 +105,26 @@ Wire shape (`qua_shared/schemas/wire/mark_ready.py::MarkReadyRequest`):
     "failed_alignments": true,
     "missing_words": true,
     "low_confidence": true,
-    "splits_wasl_waqf": true,
-    "basmala_amin_intros": true
+    "repetitions": true,
+    "splits_wasl_waqf": true
   },
   "comment_checks": "...",   // optional, ≤4000 chars
   "comment_issues": "..."    // optional, ≤4000 chars
 }
 ```
 
-The five checklist keys mirror to the FE copy module at `inspector/frontend/src/tabs/segments/copy/mark-ready/index.ts`. The labels themselves live in sibling `.md` files (`form.md`, `checklist.md`, `comments.md`) so wording edits don't require touching components. Parity is asserted by `inspector/frontend/src/tabs/segments/__tests__/parity/mark-ready-copy.test.ts` and by the schema codegen guard.
+The five checklist keys mirror to the FE copy module at `inspector/frontend/src/tabs/segments/copy/mark-ready/index.ts`. The labels themselves live in sibling `.md` files (`form.md`, `checklist.md`, `comments.md`) so wording edits don't require touching components. Claims marked ready before the `basmala_amin` category was retired store a sixth key, `basmala_amin_intros`; `services/admin/reviews.py::_build_submission` drops it on read so the Reviews drawer still validates them. Parity is asserted by `inspector/frontend/src/tabs/segments/__tests__/parity/mark-ready-copy.test.ts` and by the schema codegen guard.
 
 Two gates run inside `_h_marked_ready` before the transition is accepted:
 
-1. **Checklist completeness.** All five values MUST be `True`. Any `False` → `InvalidTransition("checklist incomplete", details={unchecked: [...]})`.
-2. **Blocking validation counts.** The handler calls `services.validation.validate_reciter_segments(slug)` and checks the five keys in `BLOCKING_COUNT_KEYS` (`qua_shared/schemas/wire/mark_ready.py`) against the live `category_counts` (`boundary_adj` is owner-only and deliberately absent; resolved cross-verse items are not counted):
+1. **Checklist completeness.** Every key in the live validate result's `checklist_keys` MUST be `True`; the others are not shown and may be `False`. A box is shown only when one of its categories (`CHECKLIST_CATEGORIES` in `qua_shared/schemas/wire/mark_ready.py`) ever had an item for the reciter — listed now (resolved included; low confidence only under the strict cutoff), in a segment's `ignored_categories`, or edited from its card (`op_context_category`; failed also counts an edit of a segment with no `matched_ref`) — see `services/validation/checklist_scope.py`. Any shown key `False` → `InvalidTransition("checklist incomplete", details={unchecked: [...]})`. `splits_wasl_waqf` now attests that every Low Confidence Waqf cut is tagged wasl or waqf.
+2. **Blocking validation counts.** The handler calls `services.validation.validate_reciter_segments(slug)` and checks the four keys in `BLOCKING_COUNT_KEYS` (`qua_shared/schemas/wire/mark_ready.py`) against the live `category_counts` — `missed_waqf` counts items with an unlabelled cut (`cross_verse` is a review aid and deliberately absent):
 
    | Key | Accordion |
    |---|---|
    | `low_confidence` | Low confidence |
    | `low_confidence_v2` | Low confidence v2 |
-   | `cross_verse` | Cross-verse |
-   | `basmala_amin` | Basmala + amin |
+   | `missed_waqf` | Low Confidence Waqf |
    | `repetitions` | Repetitions |
 
    Any non-zero count → `InvalidTransition("blocking validation counts must be zero before mark-ready", details={blocking_counts: {...}})`. The client mirrors the same gate via `$segValidation?.category_counts` as a UX guard, but the server is authoritative.

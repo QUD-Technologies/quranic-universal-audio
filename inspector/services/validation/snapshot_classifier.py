@@ -21,8 +21,6 @@ from services.validation.classifier import classify_segment
 def classify_snapshot(
     snap: dict,
     *,
-    single_word_verses: set | None = None,
-    canonical: dict | None = None,
     entry_ref: str = "",
     is_by_ayah: bool = False,
     probe_failed_uids: set | None = None,
@@ -54,8 +52,6 @@ def classify_snapshot(
         snap,
         entry_ref=entry_ref or snap.get("entry_ref", ""),
         is_by_ayah=is_by_ayah,
-        single_word_verses=single_word_verses,
-        canonical=canonical,
         probe_failed_uids=probe_failed_uids,
         riwayah=riwayah,
     )

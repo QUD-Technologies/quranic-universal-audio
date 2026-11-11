@@ -135,6 +135,13 @@ export class AudioPort {
     private readonly defaultPadMs: number;
     private readonly killSwitchEnabled: boolean;
     private desiredPlaybackRate = 1;
+    private _timelineVersion = 0;
+
+    /** Changes on seeks and transport replacement, never on playback ticks.
+     * Visual cursors use this to distinguish a discontinuity from clock jitter. */
+    get timelineVersion(): number {
+        return this._timelineVersion;
+    }
 
     /** Bumped on every src swap. Pending canplay handlers compare this
      *  against the gen they captured at attach-time; mismatched gens are
@@ -181,6 +188,7 @@ export class AudioPort {
      *  AbortError). Idempotent for the same element. */
     attachElement(el: HTMLAudioElement | null): void {
         if (el === this.el) return;
+        this._timelineVersion++;
         if (this.el) {
             this._detachDomListeners();
             this._abortPendingLoad();
@@ -257,6 +265,7 @@ export class AudioPort {
      *  detach the current source and clear the audio element's src. */
     setSource(src: AudioSource | null): void {
         if (this._sameSource(src)) return;
+        this._timelineVersion++;
         this._abortPendingLoad();
         this._window = null;
         this._source = src;
@@ -495,6 +504,7 @@ export class AudioPort {
         if (!this.el) return;
         const target = Math.max(0, this.toClipMs(fileMs));
         this.el.currentTime = target / 1000;
+        this._timelineVersion++;
     }
 
     /** Seek + play. Sync — issues `play()` via `safePlay` (which swallows
@@ -607,6 +617,7 @@ export class AudioPort {
 
     private _swapTo(url: string, win: LoadedWindow): LoadCoveringResult {
         if (!this.el) throw new Error('AudioPort._swapTo: no element');
+        this._timelineVersion++;
         this._abortPendingLoad();
         const gen = ++this.loadGen;
         // Sync update: `_window` reflects the INTENDED window from the
@@ -673,6 +684,7 @@ export class AudioPort {
         const onError = (): void => this._fanout(this.errorSubs, el.error);
         const onWaiting = (): void => this._fanout(this.waitingSubs);
         const onPlaying = (): void => this._fanout(this.playingSubs);
+        const onSeeking = (): void => { this._timelineVersion++; };
         el.addEventListener('play', onPlay);
         el.addEventListener('pause', onPause);
         el.addEventListener('ended', onEnded);
@@ -680,6 +692,7 @@ export class AudioPort {
         el.addEventListener('error', onError);
         el.addEventListener('waiting', onWaiting);
         el.addEventListener('playing', onPlaying);
+        el.addEventListener('seeking', onSeeking);
         this.domListeners = [
             ['play', onPlay],
             ['pause', onPause],
@@ -688,6 +701,7 @@ export class AudioPort {
             ['error', onError],
             ['waiting', onWaiting],
             ['playing', onPlaying],
+            ['seeking', onSeeking],
         ];
     }
 

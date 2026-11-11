@@ -22,6 +22,9 @@ import { get } from 'svelte/store';
 import { quranRefs } from '../../../../lib/refs/quran-refs';
 import type { Segment } from '../../../../lib/types/view-models';
 import { applyCommand } from '../../domain/apply-command';
+import { resolvedVerdicts } from '../../domain/join-verdict';
+import { segValidation } from '../../stores/validation';
+import { reviewBoundary } from '../validation/join-review';
 import type { CommandResult } from '../../domain/command';
 import {
     getChapterSegments,
@@ -46,7 +49,8 @@ export interface CommitSplitOptions {
      *  binary cross-verse suggestion (single-cursor case only). */
     refs?: readonly (string | undefined)[] | null;
     /** `is_wasl` for every non-last piece (`cursors.length`). */
-    wasls?: readonly boolean[] | null;
+    wasls?: readonly (boolean | undefined)[] | null;
+    joinVerdicts?: NonNullable<Segment['join_verdicts']>;
     /** Uids for pieces 1..N; fresh uuids when omitted. */
     newUids?: readonly string[] | null;
     /** Validation category the split was launched from (history pill). Used
@@ -87,6 +91,9 @@ export function commitSplit(
     const prePlayingUid = seg.segment_uid ?? null;
 
     const ctxCat = getPendingOp()?.op_context_category ?? opts.contextCategory ?? null;
+    const item = ctxCat === 'missed_waqf'
+        ? get(segValidation)?.missed_waqf?.find((it) => it.segment_uid === uid) : null;
+    const asked = item ? reviewBoundary(item) : null;
 
     const n = cursors.length + 1;
     const dk = get(quranRefs)?.dk_words;
@@ -119,6 +126,7 @@ export function commitSplit(
         },
         {
             type: 'split',
+            joinVerdicts: opts.joinVerdicts ?? (asked ? resolvedVerdicts(asked, cursors) : undefined),
             segmentUid: uid,
             splitMs: cursors.slice(),
             newUids,

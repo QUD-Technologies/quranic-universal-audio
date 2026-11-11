@@ -16,13 +16,20 @@ Plus a non-acting watchdog, below.
 | `stale_metadata` | Refresh the HF catalog once a metadata edit settles | An HF row stale for `catalog_edit` past the guard | guard-minutes |
 | `auto_release_inactive` | Force-release a reviewer's claim after prolonged inactivity (back to the awaiting-review pool; reviewer notified) | An open, not-yet-marked-ready under-review claim whose reviewer has been idle ≥ N days | inactive-days |
 | `hf_publish` | Batch-publish every fresh + stale HF candidate | Scheduled: every N days at HH:MM (owner tz) | interval-days, time-of-day, timezone |
-| `gh_cut` | Cut a global GH release when there are changes | Scheduled: every N days at HH:MM (owner tz) | interval-days, time-of-day, timezone, next-version override |
+| `gh_cut` | Cut a global GH release when there are changes | Scheduled: every N days at HH:MM (owner tz) | interval-days, time-of-day, timezone, next-version override, include-letter-timestamps |
 
 All default **disabled**. The engine reuses the manual job entrypoints verbatim
 (`timestamps_jobs.launch`, `cut_release.launch`, `hf_publish_batch.launch`,
 `refresh_catalog.launch`) — automation is a *decider*, not new job code. Automated
 launches therefore record into the same uniform `JobRecord` store as manual ones,
 so every automated run is visible in the admin **Jobs** tab ([admin-dashboard.md](admin-dashboard.md) § Jobs compartment).
+
+`gh_cut.include_letter_timestamps` defaults to **true**, including for existing
+saved configs. The Releases-tab checkbox applies to scheduled and manual cuts,
+even when the schedule is disabled. The launcher snapshots the choice into
+`INCLUDE_LETTER_TIMESTAMPS=1|0` for the HF job. When off, recitation ZIPs omit
+`letter_timestamps.json.gz`, manifests advertise only verse/word tiers, and content
+hashes use the word tier. Bucket timestamps and previously cut releases are unchanged.
 `refresh_catalog.launch`) — and the manual `claim.force_released` transition for
 `auto_release_inactive`. Automation is a *decider*, not new job code.
 
@@ -57,6 +64,14 @@ notifies the data-integrity recipients ([notifications.md](notifications.md)
   into an empty list, which here would read as "every shard is gone". A delivery
   whose listing fails is reported as *unreadable* in the run detail, never as
   findings.
+- **Busy deliveries are skipped.** A delivery with a pending/running align run
+  (`repo_align_runs.active_slugs`) or an in-flight timestamps run has audio for
+  every chapter but shards for only some while it writes them — progress, not a
+  loss. Before this guard each day's sweep flagged whichever reciter happened to
+  be mid-timestamps (up to 113 cards at once).
+- **Cards resolve themselves.** After notifying, the sweep archives every active
+  `shard.missing` card for a slug it just listed whose finding is gone
+  (`emit.resolve_shard_integrity`); skipped or unreadable slugs are left alone.
 
 ## Engine
 
@@ -87,26 +102,10 @@ Migration `0020_automation.sql`, repo `services/db/repo_automation.py`:
   `skipped`) because that row is also its cadence anchor — once a day, not once a
   tick.
 
-## Shared TS-generation defaults
+## Timestamps launches
 
-`AutomationConfig.ts_generation_defaults` (`TsGenerationDefaults`) is the single
-owner-wide source for the timestamps-generation knobs — beam, aligner
-model, workers, batch_size, download_workers, padding, method. It lives inside
-the same config blob (no separate table) and is the base every generation
-surface reads:
-
-- the manual launch form (`routes/admin/reviews.py::_parse_ts_settings`) takes
-  every TS tunable from it; the request body carries only the per-launch
-  `chapters` scope;
-- `eval_auto_gen_ts` / `eval_stale_ts_regen` build their `TsJobSettings` from it
-  via `evaluators._ts_settings` (only `chapters` is the automation's own scope);
-- both thread `padding` / `method` into the HF job env (`PADDING` / `METHOD`),
-  which the job reads with `DEFAULT_PADDING` / `DEFAULT_METHOD` fallbacks.
-
-Edited from the Releases-tab **Timestamps generation** card
-(`TsGenerationSettingsSection.svelte`) via
-`GET|POST /api/admin/releases/ts-generation-defaults`, same
-`release.manage_automation` gate.
+`eval_auto_gen_ts` / `eval_stale_ts_regen` launch with a `TsJobSettings` that
+carries only the automation's `chapters` scope; the aligner owns the model.
 
 ## Route + capability
 
@@ -127,10 +126,34 @@ owner-only under `ReleasesSummaryCard`); API in `lib/api/admin-releases.ts`.
   on) picks it up at its next window and the cut sees it at its window. The
   interval cadence (not instant) is the buffer; pause auto-publish to stop a
   manual regen propagating.
-- **Failed jobs are not retried.** `auto_gen_ts` + `stale_ts_regen` skip any slug
-  whose most-recent timestamps job ended non-success
-  (`timestamps_jobs.latest_terminal_failed_slugs`) — it stays in
-  `ready_to_generate` / `behind_edits` for a manual retry, exactly as today.
+- **Only infrastructure failures are retried — and never given up on.**
+  `auto_gen_ts` + `stale_ts_regen` skip any slug whose most-recent timestamps job
+  ended non-success (`timestamps_jobs.latest_terminal_failed_slugs`) — it stays in
+  `ready_to_generate` / `behind_edits` for a manual retry — **unless**
+  `timestamps_jobs.auto_retryable_slugs` admits it: the failure is infrastructure
+  (`INTERRUPTED_ERROR` from a restart, `aligner 5xx`, or an aligner call that never
+  got an answer — `aligner unreachable`, or the raw `Read timed out` /
+  `Max retries exceeded` of older records) and its backoff has passed. The backoff is
+  `AUTO_RETRY_BACKOFF` (15 min), doubled for each further aligner failure in a row,
+  capped at `AUTO_RETRY_BACKOFF_MAX` (6 h). **Restart interruptions never count**
+  toward that streak: prod restarts several times a day (deploys, inspector-admin
+  pause windows), a restart says nothing about the reciter, and the times an
+  interrupted run stored are kept by the next one. There is **no retry cap** — the
+  November 2026 stall was nine reciters stranded by a 3-strike cap (restart victims)
+  and by read timeouts classed as data failures. An admitted slug also bypasses the
+  relaunch watermark below (its failed job started after the mark). Retries still go
+  one at a time through the single-flight launch. A data failure (any other error,
+  e.g. `aligner 422`, failed segments, untimed words) waits for a human.
+- **A slug's align run comes first.** Both TS evaluators skip a slug with a pending
+  or running align run (`repo_align_runs.active_slugs`): a Katana-seeded delivery can
+  reach `under_review` while its assemble stage is still storing segment times, and a
+  timestamps run then would read half-stored times and compete with it for the aligner.
+- **Aligner calls queue in-process.** Every timing call (timestamps runs, the
+  assemble stage, post-save re-times) holds one of `INSPECTOR_ALIGNER_CALL_SLOTS`
+  (default 2 = the aligner's CPU-pool workers) while it is open
+  (`services/timing/aligner_timing.py`). Without it, ~34 resumed assemble runs each
+  had a call queued on the aligner at once, and a timestamps run's chapter waited
+  past the 1 h read timeout there.
 - **Single-flight.** Every launch already enforces per-slug + global single-flight
   (`running_job_for`); evaluators also pre-skip in-flight slugs and the
   cut/batch/refresh globals.

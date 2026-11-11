@@ -8,7 +8,8 @@
  *
  * camelCase mirrors of the Python fields:
  *   kind / cardType / severity / accordionOrder / canIgnore /
- *   autoSuppress / persistsIgnore / scope / displayTitle / description.
+ *   autoSuppress / persistsIgnore / scope / displayTitle / description /
+ *   ownerOnly.
  */
 
 import type { SortOption } from './sorting';
@@ -44,7 +45,7 @@ export interface IssueDefinition {
     sorts?: readonly SortOption[];
     /**
      * Offer the Unset · Wasl · Waqf boundary chips + filter in the accordion
-     * header (cross-verse only). FE-only presentation concern, absent from
+     * header (cross-verse and missed-waqf). FE-only presentation concern, absent from
      * the Python registry. See `utils/validation/boundary-state.ts`.
      */
     boundaryFilter?: boolean;
@@ -125,7 +126,7 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         persistsIgnore: true,
         scope: 'per_segment',
         displayTitle: 'Low Confidence v2',
-        description: 'MFA tight-beam probe disagreed with the DP alignment for these segments. Treat as a second-opinion warning.',
+        description: 'The neural timing head fits these segments poorly against their text (a wrong or shifted reference, noise, or a misread). Treat as a second-opinion warning.',
         sorts: [{ kind: 'quran_order', default: true }],
     },
     repetitions: {
@@ -145,27 +146,13 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         kind: 'audio_bleeding',
         cardType: 'generic',
         severity: 'warning',
-        accordionOrder: 7,
+        accordionOrder: 8,
         canIgnore: true,
         autoSuppress: true,
         persistsIgnore: true,
         scope: 'per_segment',
         displayTitle: 'Audio Bleeding',
         description: '',
-        sorts: [{ kind: 'quran_order', default: true }],
-    },
-    boundary_adj: {
-        kind: 'boundary_adj',
-        cardType: 'generic',
-        severity: 'warning',
-        accordionOrder: 8,
-        canIgnore: true,
-        autoSuppress: true,
-        persistsIgnore: true,
-        scope: 'per_segment',
-        displayTitle: 'May Require Boundary Adjustment',
-        description: '',
-        ownerOnly: true,
         sorts: [{ kind: 'quran_order', default: true }],
     },
     cross_verse: {
@@ -178,7 +165,7 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         persistsIgnore: false,
         scope: 'per_segment',
         displayTitle: 'Cross-verse',
-        description: 'Label each verse boundary WASL or WAQF — the split is pre-applied from the aligner and saves on the last label. Adjust a piece if the suggested cut is off.',
+        description: 'Nothing to do here: every verse end is either auto-classified WAQF / WASL or flagged in Low Confidence Waqf. Useful for checking and reviewing WASL / WAQF verdicts.',
         sorts: [{ kind: 'quran_order', default: true }, { kind: 'verse_count' }],
         boundaryFilter: true,
     },
@@ -209,24 +196,11 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         description: '',
         sorts: [{ kind: 'quran_order', default: true }],
     },
-    basmala_amin: {
-        kind: 'basmala_amin',
-        cardType: 'generic',
-        severity: 'info',
-        accordionOrder: 13,
-        canIgnore: true,
-        autoSuppress: true,
-        persistsIgnore: true,
-        scope: 'per_segment',
-        displayTitle: 'Basmala + Amin',
-        description: '',
-        sorts: [{ kind: 'quran_order', default: true }],
-    },
     hidden_pause: {
         kind: 'hidden_pause',
         cardType: 'generic',
         severity: 'info',
-        accordionOrder: 14,
+        accordionOrder: 13,
         canIgnore: true,
         autoSuppress: true,
         persistsIgnore: true,
@@ -235,11 +209,25 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         description: 'Re-segmentation found a pause inside this segment. Auto Split places the proposed cut; ignore if there is no pause.',
         sorts: [{ kind: 'score', default: true }, { kind: 'quran_order' }],
     },
+    missed_waqf: {
+        kind: 'missed_waqf',
+        cardType: 'generic',
+        severity: 'info',
+        accordionOrder: 7,
+        canIgnore: true,
+        autoSuppress: true,
+        persistsIgnore: true,
+        scope: 'per_segment',
+        displayTitle: 'Low Confidence Waqf',
+        description: 'The aligner heard a possible stop inside this segment. Label each proposed cut: WAQF if the reciter stopped (split there), WASL if they read through (keep it whole). The split saves on the last label; all WASL ignores the item.',
+        sorts: [{ kind: 'score', default: true }, { kind: 'quran_order' }],
+        boundaryFilter: true,
+    },
     false_split: {
         kind: 'false_split',
         cardType: 'generic',
         severity: 'info',
-        accordionOrder: 15,
+        accordionOrder: 14,
         canIgnore: true,
         autoSuppress: true,
         persistsIgnore: true,
@@ -252,7 +240,7 @@ export const IssueRegistry: Readonly<Record<string, IssueDefinition>> = Object.f
         kind: 'unmarked_wasl',
         cardType: 'generic',
         severity: 'info',
-        accordionOrder: 16,
+        accordionOrder: 15,
         canIgnore: true,
         autoSuppress: true,
         persistsIgnore: true,
@@ -281,9 +269,10 @@ export const PERSISTS_IGNORE_CATEGORIES: readonly string[] = _entries
 export const OWNER_ONLY_CATEGORIES: readonly string[] = _entries
     .filter(([, v]) => v.ownerOnly).map(([k]) => k);
 
-/** True iff `category` is owner-only and so must be hidden from this viewer. */
+/** True iff `category` is owner-only and the viewer is not an owner. */
 export function isCategoryHidden(category: string, isOwner: boolean): boolean {
-    return !isOwner && (IssueRegistry[category]?.ownerOnly ?? false);
+    const defn = IssueRegistry[category];
+    return !isOwner && (defn?.ownerOnly ?? false);
 }
 
 /**

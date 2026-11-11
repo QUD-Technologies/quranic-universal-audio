@@ -104,13 +104,39 @@ def load_expected():
     return _loader
 
 
+# The address werkzeug's test client connects from.
+_TEST_CLIENT_ADDR = "127.0.0.1"
+
+
+def _page_client(app):
+    """Test client that acts as the site's own page.
+
+    /api/ts/* refuses requests without browser Fetch Metadata, and chapter and
+    verse reads without an access token (services/auth/ts_access.py);
+    access-gate tests strip the headers. Each client starts with clean limits.
+    """
+    from routes.timestamps import access
+
+    from services.auth import ts_access, ts_rate_limit
+
+    access.limiter.reset()
+    access._bans_restored = False
+    client = app.test_client()
+    client.environ_base["HTTP_SEC_FETCH_SITE"] = "same-origin"
+    token, _ = ts_access.issue_token(
+        str(app.secret_key), ts_rate_limit.client_key(_TEST_CLIENT_ADDR)
+    )
+    client.environ_base["HTTP_X_QUA_ACCESS"] = token
+    return client
+
+
 @pytest.fixture
 def flask_client():
     """Flask test client over the module-level app in ``inspector/app.py``."""
     from app import app
 
     app.config["TESTING"] = True
-    return app.test_client()
+    return _page_client(app)
 
 
 # ---------------------------------------------------------------------------
@@ -329,7 +355,7 @@ def signed_in_client(monkeypatch):
         # _substrate_db fixture handles teardown.
         _seed_role(hf_user_id, login=login, role=role)
 
-        client = app.test_client()
+        client = _page_client(app)
         cookie = auth_service.encode_session(login=login, hf_user_id=hf_user_id)
         client.set_cookie(
             auth_service.SESSION_COOKIE_NAME,
@@ -373,9 +399,10 @@ _SEG_CACHE_NAMES = (
     "_seg_probe_v2",
     "_seg_auto_split",
     "_seg_hidden_pause",
+    "_seg_missed_waqf",
     "_seg_false_split",
     "_seg_unmarked_wasl",
-    "_seg_pipeline_meta",
+    "_seg_wasl_recheck",
     "_seg_history_batches",
     "_seg_split_group_index",
     "_seg_edit_history",
@@ -383,6 +410,7 @@ _SEG_CACHE_NAMES = (
     "_seg_history_peaks_response",
     "_seg_validate_result",
     "_seg_stats_result",
+    "_review_signals",
 )
 
 
@@ -437,8 +465,6 @@ def tmp_reciter_dir(tmp_path, monkeypatch):
     layout (``reciters/<slug>/segments.json``, etc.); the ``install`` helper
     drops fixtures there and seeds a state row for installed reciters.
     """
-    from datetime import datetime, timezone
-
     from services import hf_bucket as _hf_bucket
     from services import storage_paths as _storage_paths
 
@@ -492,23 +518,6 @@ def tmp_reciter_dir(tmp_path, monkeypatch):
                     _storage_paths.edit_history_path(reciter),
                     f.read(),
                 )
-
-        # pipeline_meta.json is required for validate (the basmala_amin rule
-        # reads ``deleted_basmala_chapters`` from this sidecar — see
-        # services/validation/__init__.py::_read_deleted_basmala_chapters).
-        # Fixtures don't ship a pipeline_meta; seed an empty one so tests
-        # exercise the post-migration code path without hitting hard-fail.
-        from qua_shared.schemas import PipelineMeta
-
-        pipeline_meta_doc = PipelineMeta(
-            schema_version=1,
-            generated_at=datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
-            deleted_basmala_chapters=[],
-        ).model_dump(mode="json")
-        backend.write_json_atomic(
-            _storage_paths.pipeline_meta_path(reciter),
-            pipeline_meta_doc,
-        )
 
         # Build a matching segments.json so consumers that read both files
         # see a consistent on-disk state for the fixture.

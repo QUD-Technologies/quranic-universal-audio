@@ -1,18 +1,10 @@
-"""Timestamps-generation job record — persisted per HF Job run.
+"""Timestamps run record — one per run, at ``reciters/<slug>/jobs/ts/<run_id>.json``.
 
-Written to ``jobs/ts/<job_id>.json`` on the bucket (top-level ``jobs/<type>/``
-namespace, future-proof for other job kinds). Two writers, one schema:
-
-- ``inspector/services/admin/timestamps_jobs.py`` writes the initial
-  ``running`` record at launch and backstops the terminal status on poll if
-  the job was hard-killed before self-writing.
-- ``qua_jobs/generate_timestamps.py`` (the job itself) overwrites the
-  record with the final status + full logs on completion/failure.
-
-The Reviews-tab side panel reads these so a job's settings + logs stay
-viewable any time after completion (HF log retention is limited). See
-``docs/planning/inspector-deploy/v2/phases/13-timestamps-job.md`` and the
-approved side-panel plan.
+``inspector/services/admin/ts_aligner_runner.py`` writes the ``running`` record
+at launch and stamps it ``succeeded`` / ``failed`` / ``canceled`` with its logs
+when the run ends; ``inspector/services/admin/timestamps_jobs.py`` reads it for
+status and rewrites it on cancel or after an interrupted boot. The Reviews-tab
+side panel reads these so a run's scope + logs stay viewable after it ends.
 """
 
 from __future__ import annotations
@@ -21,33 +13,19 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class TsJobSettings(BaseModel):
-    """Job parameters chosen by the admin in the launch form.
+    """A run's scope.
 
-    ``beams`` is the resolved list passed to ``align_batch_multi_beam`` —
-    ``[alignment_beam]`` — one beam per run. Canonical beam = ``max(beams)``.
+    ``extra="ignore"``: records written by the MFA engine also carry its
+    alignment knobs (``beams``, ``aligner_model``, ``workers`` …); they parse
+    and are dropped.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
-    beams: list[int] = Field(default_factory=lambda: [50])
-    #: Acoustic model to align with (catalog id). ``None`` = the store's default
-    #: model. Echoed into the durable record so a run's model stays auditable.
-    aligner_model: str | None = None
     #: Regenerate only these chapters (surah numbers). ``None`` = full reciter.
     #: Untouched chapters keep their existing shards; the run merges (not
     #: clobbers) the whole-reciter ``ts_validation.json``.
     chapters: list[int] | None = None
-    # Advanced (server-default when omitted by the form).
-    workers: int | None = None
-    flavor: str | None = None
-    timeout: str | None = None
-    batch_size: int | None = None
-    download_workers: int | None = None
-    #: Phoneme gap-padding strategy (``forward`` | ``symmetric`` | ``none``).
-    #: ``None`` = the job's ``DEFAULT_PADDING``.
-    padding: str | None = None
-    #: Alignment method (``kalpy`` | …). ``None`` = the job's ``DEFAULT_METHOD``.
-    method: str | None = None
 
 
 class TsJobRecord(BaseModel):

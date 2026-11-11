@@ -56,16 +56,9 @@ def test_every_edition_accessor_raises_rather_than_falling_back_to_hafs(absent, 
         lambda: editions.projection(riwayah),
         lambda: editions.stop_signs(riwayah),
         lambda: editions.surah(1, riwayah),
-        lambda: editions.basmala_is_numbered(riwayah),
     ):
         with pytest.raises(editions.EditionsUnavailable):
             call()
-
-
-def test_hafs_basmala_numbering_answers_without_the_package(absent):
-    # The one fact the validation engine needs on the Hafs path, which must not
-    # depend on an optional package.
-    assert editions.basmala_is_numbered("hafs") is True
 
 
 def test_disabling_the_flag_makes_the_runtime_hafs_only(monkeypatch):
@@ -139,15 +132,6 @@ def test_warsh_renumbers_fifty_surahs_so_a_hafs_verse_ref_can_be_out_of_range():
     assert (2, 286) in editions.word_counts("shuba")
     assert (2, 286) not in editions.word_counts("warsh")
     assert (2, 285) in editions.word_counts("warsh")
-
-
-@has_editions
-def test_basmala_numbering_splits_the_editions_the_way_validation_expects():
-    # basmala_amin's sounded-Basmala check fires only where 1:1 is a verse.
-    assert [r for r in editions.all_riwayat() if editions.basmala_is_numbered(r)] == [
-        "hafs",
-        "shuba",
-    ]
 
 
 @has_editions

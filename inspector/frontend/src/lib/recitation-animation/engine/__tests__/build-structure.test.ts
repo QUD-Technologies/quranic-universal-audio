@@ -8,7 +8,7 @@ const RUB = '۞'; // rub-el-hizb — non-recited, rendered in place (inert)
 const SAJDAH = '۩'; // place-of-sajdah — non-recited, rendered in place (inert)
 
 function word(display: string, letters: AnimSourceWord['letters'] = []): AnimSourceWord {
-    return { text: display, display_text: display, start: 0, end: 1, letters };
+    return { text: display, start: 0, end: 1, letters };
 }
 
 describe('buildAnimStructure decorators', () => {
@@ -66,7 +66,7 @@ describe('buildAnimStructure letter timing', () => {
         ];
         const display = 'حۧي';
         const [w] = buildAnimStructure([
-            { text: display, display_text: display, start: 0, end: 3, letters },
+            { text: display, start: 0, end: 3, letters },
         ]);
         const haa = w!.chars.find((c) => c.text.startsWith('ح'));
         expect(haa).toBeDefined();
@@ -85,7 +85,7 @@ describe('buildAnimStructure letter timing', () => {
         ];
         const display = 'بٰ';
         const [w] = buildAnimStructure([
-            { text: display, display_text: display, start: 0, end: 2, letters },
+            { text: display, start: 0, end: 2, letters },
         ]);
         const dagger = w!.chars.find((c) => c.text.includes('ٰ'));
         expect(dagger).toBeDefined();
@@ -113,7 +113,7 @@ describe('buildAnimStructure letter timing', () => {
             { char: String.fromCodePoint(0x627), start: 5.1, end: 6 }, // alef
         ];
         const [w] = buildAnimStructure([
-            { text: display, display_text: display, start: 0, end: 6, letters },
+            { text: display, start: 0, end: 6, letters },
         ]);
         const seen = w!.chars.find((c) => c.text.startsWith(SEEN));
         expect(seen!.start).toBe(0);
@@ -132,7 +132,7 @@ describe('buildAnimStructure letter timing', () => {
         ];
         const display = `فم${SAJDAH}`; // trailing sajdah has no MFA letter
         const [w] = buildAnimStructure([
-            { text: display, display_text: display, start: 0, end: 5, letters },
+            { text: display, start: 0, end: 5, letters },
         ]);
         const saj = w!.chars.find((c) => c.text.includes(SAJDAH));
         expect(saj?.inert).toBe(true);

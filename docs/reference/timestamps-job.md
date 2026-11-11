@@ -1,11 +1,35 @@
 # Timestamp generation
 
-Timestamps are produced on the batch timing Space (ADR 0002 slice B), not an
-in-container HF Job. The Inspector fires a run with a signed POST to the Space's
-`/internal/v1/timestamps` route (`services/admin/ts_space_client.py`); the Space
-aligns and writes native timestamp-shard v13 + `ts_validation.json` straight to
-the inspector bucket, plus a run-log record the Inspector polls every 120 seconds
-(`services/admin/timestamps_jobs.py`). QUA is a pure consumer of the shards. The
+Timestamps come from the neural timing head on the aligner Space. Each chapter's
+segment times are stored beside its shard, `reciters/<slug>/timing/<chapter>.json.br`
+(one entry per `segment_uid`: the ref and span it was timed with, words with their
+letters and sounds, the model). Every call goes through the aligner's
+`POST /api/v1/extraction/timing` (`services/timing/aligner_timing.py`): it receives a
+chapter's detailed.json entries, their bucket audio and the stored times, keeps every
+time whose segment is unchanged and times the rest.
+
+The Inspector explicitly sends `device: "CPU"` on every extraction timing request,
+so post-save/undo re-timing, timestamp generation and the final timing pass after
+Align run in the aligner's CPU pool without leasing ZeroGPU. The Align batch's
+GPU/CPU selection controls the alignment stage independently.
+
+- **Align** stores them: the run's assemble stage times every chapter's final segments.
+- **Saves and undos** re-time their chapter in the background
+  (`services/timing/retime_queue.py`); only the changed segments are timed.
+- **Segment cards** read them back (`GET /api/seg/word-times/<reciter>/<chapter>`) and
+  light the sounding word while a card plays.
+- **A timestamps run** (`services/admin/ts_aligner_runner.py`) calls twice per chapter:
+  first for its times (current already, normally, so nothing is timed), then for its native
+  shards, sending the madd lāzim lengths of the whole delivery as the basis of the shards'
+  reading-variant picks. A chapter with a failed segment keeps its previous shards and fails
+  the run; so does a failed call, before any shard is built. The run
+  writes a run-log record (`reciters/<slug>/jobs/ts/<run_id>.json`) that completion,
+  releases and the automations (`services/admin/timestamps_jobs.py`) read.
+
+Bulk re-timing for a new model is an offline Katana batch (qua `engines/timing-batch`,
+`qua_timing_batch.retime`) that writes the same two files.
+
+QUA is a pure consumer of the shards. The
 complete stored contract is [shards.md](shards.md).
 
 ## Responsibilities
@@ -14,7 +38,7 @@ The producer owns acoustic work only:
 
 - resolve recorded segments and their connected-wasl relationships;
 - obtain chapter audio;
-- run MFA with the pinned acoustic model and emphatic-fatha-only token inventory;
+- time each segment with the neural timing head (`timing.neural_head@v1`);
 - recover word, sound, and written-letter intervals;
 - pass timing occurrences to the SDK v13 builder;
 - validate and deterministically Brotli-compress each chapter;
@@ -24,13 +48,13 @@ It does not construct frontend cells, rename tajweed rules, synthesize bridges, 
 
 ## Native build
 
-The Space's whole-verse producer passes timing occurrences to the SDK v13 shard builder.
+The aligner's chapter route passes the stored times, as timing occurrences, to the SDK v13 shard builder.
 
 For each chapter the builder:
 
 1. Orders original occurrences by absolute audio time.
 2. Joins adjacent occurrences while the preceding occurrence carries `wasl`.
-3. Phonemizes each maximal connected reading once with quranic-phonemizer 3.0.
+3. Phonemizes each maximal connected reading once with the pinned quranic-phonemizer.
 4. Builds native schema-2 analysis, source, and transformed-cell documents using `emphatic_fatha`, `emphatic_ikhfaa`, `imala`, and `tashil` for display.
 5. Checks the recovered acoustic sound sequence against the acoustic native surface.
 6. Transfers word and sound intervals to native IDs and recuts written-letter intervals to source-unit IDs.
@@ -41,11 +65,12 @@ Cross-verse wasl is never split or rephonemized as pausal. Known chains such as 
 
 ## Version pinning
 
-The Space image bakes the same-commit QUA SDK + quranic-phonemizer `3.0`; a chapter's shard
-`_meta` records the schema version, native schema version, renderer codec
-version, and phonemizer version it was built with. MFA remains acoustic
-emphatic-fatha-only. The additional display phonemes are same-cardinality
-notation choices and never enter the acoustic model or redistribute intervals.
+The aligner Space installs the same-commit qua SDK and its quranic-phonemizer pin; a
+chapter's shard `_meta` records the schema version, native schema version, renderer
+codec version, phonemizer version and stop edition it was built with, and the stored
+times record the timing model and phonemizer they were decoded with (a change of either
+re-times the chapter). The additional display phonemes are same-cardinality notation
+choices and never enter the timing model or redistribute intervals.
 
 ## Inputs and outputs
 
@@ -62,21 +87,47 @@ after its complete replacement bytes pass validation. A chapter failure leaves
 the prior object intact. Affected-chapter regeneration does not rewrite other
 chapters.
 
+From the shards, the Inspector derives `reciters/<slug>/readings.json`: what a Hafs delivery reads
+wherever the riwayah allows a choice (`TsReadingsDoc`, built by
+`inspector/services/reference/readings.py`, served at `GET /api/ts/readings/<slug>`). An aligner
+run rebuilds it before closing its record, the `ts-refreshed` notice rebuilds it for offline
+publishes, `admin_readings.py` (inspector-admin skill) pre-builds it for released deliveries, and the
+route builds it on first request when it is missing or of an older `schema_version` (single-flight
+per slug; the build reads only the shard readings that carry variants). Each verse carries the
+`start_ms` of the part read that way, so a jump lands on that rendition. Non-Hafs deliveries get
+an empty summary.
+
+The batch re-time also publishes `reciters/<slug>/recitation_profile.json` for Hafs deliveries:
+per madd type the mean duration and, where Hafs allows a length choice, the length read, then
+ghunnah and silence (`RecitationProfileDoc`). `GET /api/ts/profile/<slug>` serves it without
+counts or shares (`TsRecitationProfile`, `inspector/services/reference/recitation_profile.py`),
+or `null` when the file is missing; the `ts-refreshed` notice drops its cached copy.
+
 ## Single-flight and stale runs
 
 Launching is gated on the reciter's newest `reciters/<slug>/jobs/ts/<run_id>.json`
 record: a `running` one refuses the next launch with 409 "a timestamps job is
-already running". The **Space** owns that record — it stamps `succeeded` /
-`failed` when the run ends — so a Space restart or rebuild mid-run leaves
-`running` behind with nothing left to finish it, and the slug can never be
-relaunched.
+already running". The run's thread stamps `succeeded` / `failed` when it ends;
+a run the process died under is stamped `failed` at the next deployed boot
+(`close_interrupted_runs`). A record still left `running` with nothing to
+finish it would block the slug from ever being relaunched.
 
-`timestamps_jobs.running_job_for` therefore applies a staleness ceiling: a
+`timestamps_jobs.running_job_for` therefore applies a staleness ceiling — but only
+to a record this process is not working: a run whose thread is alive here
+(`ts_aligner_runner.is_live`) is in flight however long it takes. Otherwise a
 `running` record whose `started_at` is older than `INSPECTOR_TS_STALE_RUN_HOURS`
-(default **6 h**; a full 114-chapter run lands in ~1-2 h) reads as dead, and both
-the launch guard and the in-flight jobs registry ignore it. The record itself is
-left alone — **Cancel** in the run drawer is still what rewrites it to
-`canceled` and keeps the history honest.
+(default **6 h**) reads as dead, and both the launch guard and the in-flight jobs
+registry ignore it. (The ceiling used to be 2 h and apply to live runs too: a
+Katana-seeded delivery waiting on a busy aligner ran past it, and automation
+launched a second run beside it.) The record itself is left alone — **Cancel** in
+the run drawer is still what rewrites it to `canceled` and keeps the history honest.
+
+Each aligner call holds one of `INSPECTOR_ALIGNER_CALL_SLOTS` (default 2) process-wide
+slots while it is open, so calls beyond the aligner's CPU-pool size wait in the
+Inspector rather than in the aligner's queue, where the wait counted against the 1 h
+read timeout. A call that times out or cannot connect fails as
+`chN: aligner unreachable: …`, which the automations retry
+([automation.md](automation.md) § Invariants).
 
 ## Failure policy
 
@@ -124,16 +175,10 @@ The cutover process and report migration are documented in [data-migrations.md](
 
 ## Multi-riwayah
 
-The run request names the delivery's edition: `ts_space_client.start_run` puts
-`riwayah` (SDK slug) in the signed body **only when it is not Hafs**. The JCS
-canonicaliser sorts keys and the field is omitted for Hafs, so every existing
-Hafs preimage stays byte-identical and the Space-side change need only ship
-before the first non-Hafs run, not in lockstep.
-
-The Space aligns against Hafs as a proxy, phonemizes Hafs phones, then projects
-onto the delivery's words. What comes back is a **word-profile** shard: words and
-pause boundaries, no cells, sounds or animation tokens. `low_confidence_v2.json`
-and `ts_validation.json` are not produced for it — both are tight-beam probes
-against Hafs proxy phones, so the signal degenerates to "this is not Hafs".
+Every timing call names the delivery's edition (`riwayah`, the SDK slug from
+`sdk_riwayah_for`). The aligner times against Hafs as a proxy, then projects onto
+the delivery's words. What comes back is a **word-profile** shard: words and
+pause boundaries, no cells, sounds or animation tokens. `recitation_profile.json`
+is built only for Hafs runs.
 
 Full detail: [`editions.md`](editions.md).

@@ -70,7 +70,6 @@ def test_seg_config_validation_categories_match_registry(flask_client):
     pinned_subset = {
         "failed",
         "low_confidence",
-        "boundary_adj",
         "cross_verse",
         "audio_bleeding",
         "repetitions",

@@ -34,6 +34,9 @@ export interface QuranRefs {
      * for the packaged QPC fonts, which decorate the digits themselves.
      */
     verse_marker_prefix: string;
+    /** Arabic text of each opener special (`Basmala`, `Isti'adha`) in this edition, keyed by
+     *  its `matched_ref` name — what a special row shows. */
+    special_texts: Record<string, string>;
 }
 
 const _store = writable<QuranRefs | null>(null);

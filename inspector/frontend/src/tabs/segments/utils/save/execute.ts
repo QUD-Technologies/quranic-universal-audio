@@ -43,6 +43,7 @@ interface SaveSegmentPayloadFull {
     wrap_word_ranges?: unknown;
     ignored_categories?: string[];
     is_wasl?: boolean;
+    join_verdicts?: Segment['join_verdicts'];
 }
 
 interface SaveSegmentPayloadPatch {
@@ -52,6 +53,7 @@ interface SaveSegmentPayloadPatch {
     confidence: number;
     ignored_categories?: string[];
     is_wasl?: boolean;
+    join_verdicts?: Segment['join_verdicts'];
 }
 
 interface SavePayloadFull {
@@ -180,7 +182,8 @@ export async function executeSave(isAutoSave = false): Promise<void> {
                             ignored_categories: s.ignored_categories ?? [],
                         };
                         if (s.wrap_word_ranges) o.wrap_word_ranges = s.wrap_word_ranges;
-                        if (s.is_wasl) o.is_wasl = true;
+                        o.is_wasl = s.is_wasl === true;
+                        o.join_verdicts = s.join_verdicts ?? [];
                         return o;
                     }),
                     operations: chOps,
@@ -196,8 +199,9 @@ export async function executeSave(isAutoSave = false): Promise<void> {
                             matched_ref: seg.matched_ref,
                             confidence: seg.confidence,
                             ignored_categories: seg.ignored_categories ?? [],
+                            is_wasl: seg.is_wasl === true,
+                            join_verdicts: seg.join_verdicts ?? [],
                         };
-                        if (seg.is_wasl) upd.is_wasl = true;
                         updates.push(upd);
                     }
                 }

@@ -15,7 +15,7 @@ describe('native animation tokens', () => {
                 sound_ids: [], policy: 'cohighlight_previous', target_token_id: 0, start_ms: 0, end_ms: 300 },
         ];
         const occasion = shardOccasions(nativeShard([reading]))[0]!;
-        const data = assembleOccasion('r', occasion, {}, {}, audio, '');
+        const data = assembleOccasion('r', occasion, {}, audio, '');
         expect(data.words[0]!.letters).toEqual([
             { char: 'ب', start: 0, end: 0.3, tokenId: 0,
                 sourceUnitIds: [10], characterIds: [0], paintCharacterIds: [0],

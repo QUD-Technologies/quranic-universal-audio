@@ -24,6 +24,7 @@
     let jsonFile = $state<File | null>(null);
     let busy = $state(false);
     let error = $state<string | null>(null);
+    let listError = $state<string | null>(null);
     let audioInput = $state<HTMLInputElement | null>(null);
     let jsonInput = $state<HTMLInputElement | null>(null);
 
@@ -32,12 +33,19 @@
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
     async function refresh(): Promise<void> {
-        const list = await listSamples();
-        samples.set(list);
-        if (pollTimer) clearTimeout(pollTimer);
-        pollTimer = list.some((s) => s.status === 'processing')
-            ? setTimeout(() => void refresh(), POLL_MS)
-            : null;
+        try {
+            const list = await listSamples();
+            samples.set(list);
+            listError = null;
+            if (pollTimer) clearTimeout(pollTimer);
+            pollTimer = list.some((s) => s.status === 'processing')
+                ? setTimeout(() => void refresh(), POLL_MS)
+                : null;
+        } catch (e) {
+            listError = e instanceof SampleApiError ? e.message : String(e);
+            if (pollTimer) clearTimeout(pollTimer);
+            pollTimer = null;
+        }
     }
 
     async function submit(ev: SubmitEvent): Promise<void> {
@@ -111,7 +119,9 @@
         {/if}
     </form>
 
-    {#if $samples.length === 0}
+    {#if listError}
+        <p class="load-error" role="alert">{listError}</p>
+    {:else if $samples.length === 0}
         <p class="empty">{m.segments_samples_empty()}</p>
     {:else}
         <div class="list" role="table">
@@ -149,6 +159,7 @@
     }
     .submit:disabled { opacity: 0.5; cursor: not-allowed; }
     .error { grid-column: 1 / -1; margin: 0; color: var(--state-error-fg); font-size: var(--fs-meta); }
+    .load-error { margin: 0; color: var(--state-error-fg); font-size: var(--fs-meta); }
     .empty { color: var(--text-faint); }
 
     .list { display: flex; flex-direction: column; border: 1px solid var(--border-quiet); border-radius: var(--r-2); overflow: hidden; }

@@ -14,10 +14,12 @@
     import { playerContext } from '../../../lib/stores/player-context';
     import { gotoSegments } from '../../../lib/utils/goto-segments';
     import { selectedVerse } from '../stores/verse';
+    import { isSpecialRef } from '../../../lib/recitation-data/specials';
 
     const slug = $derived($playerContext.delivery?.slug ?? '');
     const verseRef = $derived($selectedVerse);
-    const disabled = $derived(!slug || !verseRef);
+    // A recited opener (ref `0:x`) has no verse to open in the editor.
+    const disabled = $derived(!slug || !verseRef || isSpecialRef(verseRef));
 
     // Attribute labels gated on i18n.locale so they re-render on a locale switch.
     const ariaLabel = $derived(
@@ -29,7 +31,7 @@
     const openSegmentsTitle = $derived((i18n.locale, m.ts_footer_open_segments_title()));
 
     function openInSegments(): void {
-        if (!slug || !verseRef) return;
+        if (disabled) return;
         const [s, a] = verseRef.split(':');
         const chapter = Number(s);
         const verse = Number(a);

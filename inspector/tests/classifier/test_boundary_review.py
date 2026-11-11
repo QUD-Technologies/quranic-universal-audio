@@ -1,4 +1,5 @@
-"""Boundary-review categories (``hidden_pause`` / ``false_split`` / ``unmarked_wasl``).
+"""Boundary-review categories (``hidden_pause`` / ``missed_waqf`` / ``false_split`` /
+``unmarked_wasl``).
 
 Covers the classifier flags, the detail-list items (with the sidecar
 ``boundary`` payload round-tripping through ``SegValidateResponse``), and the
@@ -14,7 +15,88 @@ from services.validation import (
     classify_segment,
     strip_boundary_review,
 )
-from services.validation.detail import _build_detail_lists
+from services.validation.detail import _build_detail_lists, resolve_join_reviews
+
+ITEM = {
+    "segment_uid": "root",
+    "boundary": {"cursors": [300, 600], "refs": ["2:1:1-2:1:2", "2:1:3-2:1:5", "2:1:6-2:1:9"]},
+}
+
+
+def _resolve(pieces, recheck=(), groups=None):
+    item = {**ITEM}
+    resolve_join_reviews([item], [{"segments": pieces}], recheck, groups)
+    return item.get("resolved") is True
+
+
+def test_every_cut_word_needs_an_answer():
+    whole = {"segment_uid": "root", "time_start": 0, "time_end": 900, "matched_ref": "2:1:1-2:1:9"}
+    assert not _resolve([whole])
+    whole["join_verdicts"] = [{"at_ms": 300, "after_ref": "2:1:2", "verdict": "wasl"}]
+    assert not _resolve([whole])
+    whole["join_verdicts"].append({"at_ms": 600, "after_ref": "2:1:5", "verdict": "wasl"})
+    assert _resolve([whole])
+
+
+def test_a_piece_ending_on_the_cut_word_answers_it():
+    pieces = [
+        {"segment_uid": "root", "time_start": 0, "time_end": 280, "matched_ref": "2:1:1-2:1:2"},
+        {"segment_uid": "mid", "time_start": 280, "time_end": 610, "matched_ref": "2:1:3-2:1:5"},
+        {"segment_uid": "right", "time_start": 610, "time_end": 900, "matched_ref": "2:1:6-2:1:9"},
+    ]
+    groups = {"root": ["mid", "right"]}
+    assert not _resolve(pieces, ["mid"], groups)
+    assert _resolve(pieces, groups=groups)
+
+
+def test_answers_follow_the_word_not_the_lineage():
+    """A piece re-merged under a new uid still answers the words in the item's span."""
+    pieces = [
+        {"segment_uid": "root", "time_start": 0, "time_end": 100, "matched_ref": "2:1:1-2:1:1"},
+        {
+            "segment_uid": "other",
+            "time_start": 100,
+            "time_end": 610,
+            "matched_ref": "2:1:2-2:1:5",
+            "join_verdicts": [{"at_ms": 5, "after_ref": "2:1:2", "verdict": "wasl"}],
+        },
+        {"segment_uid": "right", "time_start": 610, "time_end": 900, "matched_ref": "2:1:6-2:1:9"},
+    ]
+    assert not _resolve(pieces)
+    pieces[0]["matched_ref"] = "2:1:1-2:1:2"
+    pieces[0]["is_wasl"] = True
+    assert _resolve(pieces, groups={"root": ["right"]})
+
+
+def test_another_rendition_never_answers():
+    """A repeated passage ending on the cut word elsewhere in the audio is not an answer."""
+    pieces = [
+        {"segment_uid": "earlier", "time_start": 0, "time_end": 200, "matched_ref": "2:1:1-2:1:2"},
+        {"segment_uid": "again", "time_start": 200, "time_end": 400, "matched_ref": "2:1:3-2:1:5"},
+        {"segment_uid": "root", "time_start": 500, "time_end": 1400, "matched_ref": "2:1:1-2:1:9"},
+    ]
+    assert not _resolve(pieces)
+
+
+def test_an_inner_waqf_record_is_not_an_answer():
+    whole = {
+        "segment_uid": "root",
+        "time_start": 0,
+        "time_end": 900,
+        "matched_ref": "2:1:1-2:1:9",
+        "join_verdicts": [
+            {"at_ms": 300, "after_ref": "2:1:2", "verdict": "waqf"},
+            {"at_ms": 600, "after_ref": "2:1:5", "verdict": "wasl"},
+        ],
+    }
+    assert not _resolve([whole])
+
+
+def test_history_resolution_stands_without_stored_answers():
+    item = {**ITEM, "resolved": True}
+    resolve_join_reviews([item], [{"segments": [{"segment_uid": "root"}]}])
+    assert item["resolved"] is True
+
 
 HIDDEN_ENTRY = {
     "kind": "hidden_pause",
@@ -33,6 +115,45 @@ HIDDEN_ENTRY = {
             "verse_end": False,
             "evidence": {"trio": {"end_ms": 1480, "next_start_ms": 1930, "gap_ms": 450}},
         }
+    ],
+}
+MISSED_ENTRY = {
+    "kind": "missed_waqf",
+    "chapter": 1,
+    "cursors": [1200, 2400],
+    "refs": ["1:1:1-1:1:1", "1:1:2-1:1:3", "1:1:4-1:1:4"],
+    "score": 1300,
+    "cuts": [
+        {
+            "cursor_ms": 1200,
+            "axes": ["phoneme"],
+            "gap_ms": 300,
+            "score": 1300,
+            "word": "بسم",
+            "final_class": "nasal",
+            "verse_end": False,
+            "evidence": {
+                "phoneme": {
+                    "gain": 4.2,
+                    "gain_pos": 3,
+                    "separability": 0.8,
+                    "silence_ms": 300,
+                    "dip_db": 14.0,
+                    "after_ref": "1:1:1",
+                    "next_ref": "1:1:2",
+                }
+            },
+        },
+        {
+            "cursor_ms": 2400,
+            "axes": ["phoneme"],
+            "gap_ms": 180,
+            "score": 1180,
+            "word": "الرحمن",
+            "final_class": "nasal",
+            "verse_end": False,
+            "evidence": {"phoneme": {"silence_ms": 180}},
+        },
     ],
 }
 FALSE_ENTRY = {
@@ -75,13 +196,24 @@ def _seg(uid: str, ref: str, **extra) -> dict:
         "time_start": 0,
         "time_end": 3000,
         "qalqala_letter": None,
-        "is_boundary_adj": False,
         **extra,
     }
 
 
+def _fitted(entry: dict, seg: dict) -> dict:
+    """``entry`` re-cut to ``seg``: its first/last pieces on the seg's ref ends and
+    its cursors spread inside the seg's audio, so the stale-entry gate keeps it."""
+    start, _, end = seg["matched_ref"].partition("-")
+    refs = [*entry["refs"]]
+    refs[0], refs[-1] = f"{start}-{start}", f"{end}-{end}"
+    n, t0, t1 = len(entry["cursors"]), seg["time_start"], seg["time_end"]
+    cursors = [t0 + (t1 - t0) * (i + 1) // (n + 1) for i in range(n)]
+    cuts = [{**c, "cursor_ms": at} for c, at in zip(entry.get("cuts", []), cursors, strict=False)]
+    return {**entry, "refs": refs, "cursors": cursors, "cuts": cuts}
+
+
 def _flags(seg: dict, **kw) -> dict:
-    return classify_flags(seg, "1", False, 1, 1, 1, 1, 4, set(), None, **kw)
+    return classify_flags(seg, "1", False, 1, 1, 1, 1, **kw)
 
 
 def test_flags_default_false_without_sidecars():
@@ -139,8 +271,6 @@ def _detail(entries, **kw):
         entries,
         is_by_ayah=False,
         word_counts={(1, 1): 4, (1, 2): 4},
-        canonical=None,
-        single_word_verses=set(),
         **kw,
     )
 
@@ -241,9 +371,11 @@ def test_validate_reciter_segments_gate(monkeypatch, tmp_reciter_dir):
 
     reciter = "fixture_reciter"
     tmp_reciter_dir.install(reciter, "112-ikhlas")
-    first = load_detailed(reciter)[0]["segments"][0]["segment_uid"]
+    seg0 = load_detailed(reciter)[0]["segments"][0]
+    first = seg0["segment_uid"]
+    hidden = _fitted(HIDDEN_ENTRY, seg0)
     monkeypatch.setattr(
-        val, "load_hidden_pause", lambda _r: ({first: HIDDEN_ENTRY}, {"kind": "hidden_pause"})
+        val, "load_hidden_pause", lambda _r: ({first: hidden}, {"kind": "hidden_pause"})
     )
     monkeypatch.setattr(
         val, "load_false_split", lambda _r: ({first: FALSE_ENTRY}, {"kind": "false_split"})
@@ -273,3 +405,90 @@ def test_validate_reciter_segments_gate(monkeypatch, tmp_reciter_dir):
     assert gated["category_counts"]["false_split"] == 0
     assert gated["category_counts"]["unmarked_wasl"] == 0
     assert gated["category_counts"]["cross_verse"] == full["category_counts"]["cross_verse"]
+
+
+def test_missed_waqf_flag_fires_on_uid_and_is_suppressible():
+    assert _flags(_seg("u1", "1:1:1-1:1:4"))["missed_waqf"] is False
+    assert _flags(_seg("u1", "1:1:1-1:1:4"), missed_waqf_uids={"u1"})["missed_waqf"] is True
+    ignored = _seg("u1", "1:1:1-1:1:4", ignored_categories=["missed_waqf"])
+    assert _flags(ignored, missed_waqf_uids={"u1"})["missed_waqf"] is False
+    edited = _seg("u1", "1:1:1-1:1:4", _resolved_by_edit=["missed_waqf"])
+    assert _flags(edited, missed_waqf_uids={"u1"})["missed_waqf"] is False
+
+
+def test_missed_waqf_items_carry_boundary_and_validate():
+    entries = [{"ref": "1", "segments": [_seg("u1", "1:1:1-1:1:4")]}]
+    detail = _detail(entries, missed_waqf_map={"u1": MISSED_ENTRY})
+    (mw,) = detail["missed_waqf"]
+    assert mw["segment_uid"] == "u1"
+    assert "missed_waqf" in mw["classified_issues"]
+    assert "resolved" not in mw
+    assert mw["boundary"]["cursors"] == [1200, 2400]
+    assert mw["boundary"]["refs"] == MISSED_ENTRY["refs"]
+    assert mw["boundary"]["cuts"][0]["evidence"]["phoneme"]["dip_db"] == 14.0
+    dumped = SegValidateResponse.model_validate({"missed_waqf": detail["missed_waqf"]}).model_dump(
+        mode="json", exclude_unset=True
+    )
+    assert dumped["missed_waqf"][0]["boundary"]["cuts"][1]["word"] == "الرحمن"
+
+
+def test_an_entry_with_collapsed_cursors_is_not_listed():
+    entries = [{"ref": "1", "segments": [_seg("u1", "1:1:1-1:1:4")]}]
+    collapsed = {**MISSED_ENTRY, "cursors": [1200, 1200]}
+    assert _detail(entries, missed_waqf_map={"u1": collapsed})["missed_waqf"] == []
+
+
+def test_labelled_missed_waqf_stays_listed_as_resolved():
+    """Ignored (all WASL) or resolved by an edit from the card (split) — the
+    item stays in the list with ``resolved: True`` so its labels are reviewable."""
+    entries = [
+        {
+            "ref": "1",
+            "segments": [
+                _seg("u1", "1:1:1-1:1:4", ignored_categories=["missed_waqf"]),
+                _seg("u2", "1:2:1-1:2:2", _resolved_by_edit=["missed_waqf"]),
+                _seg("u3", "1:2:3-1:2:4"),
+            ],
+        }
+    ]
+    detail = _detail(
+        entries, missed_waqf_map={"u1": MISSED_ENTRY, "u2": MISSED_ENTRY, "u3": MISSED_ENTRY}
+    )
+    by_uid = {it["segment_uid"]: it for it in detail["missed_waqf"]}
+    assert by_uid["u1"]["resolved"] is True
+    assert by_uid["u2"]["resolved"] is True
+    assert "resolved" not in by_uid["u3"]
+    SegValidateResponse.model_validate({"missed_waqf": detail["missed_waqf"]})
+
+
+def test_validate_counts_open_missed_waqf_only_for_every_viewer(monkeypatch, tmp_reciter_dir):
+    from services import validation as val
+    from services.storage.data_loader import load_detailed
+
+    reciter = "fixture_reciter"
+    tmp_reciter_dir.install(reciter, "112-ikhlas")
+    segs = load_detailed(reciter)[0]["segments"]
+    first, second = segs[0]["segment_uid"], segs[1]["segment_uid"]
+    segs[1]["ignored_categories"] = ["missed_waqf"]
+    monkeypatch.setattr(
+        val,
+        "load_missed_waqf",
+        lambda _r: (
+            {first: _fitted(MISSED_ENTRY, segs[0]), second: _fitted(MISSED_ENTRY, segs[1])},
+            {"kind": "missed_waqf"},
+        ),
+    )
+
+    full = val.validate_reciter_segments(reciter)
+    assert full is not None
+    assert full["category_counts"]["missed_waqf"] == 1
+    assert [it["segment_uid"] for it in full["missed_waqf"]] == [first, second]
+    assert full["missed_waqf"][1]["resolved"] is True
+    assert full["missed_waqf_meta"] == {"kind": "missed_waqf"}
+
+    assert "splits_wasl_waqf" in full["checklist_keys"]
+
+    gated = val.validate_reciter_segments(reciter, include_boundary_review=False)
+    assert gated is not None
+    assert [it["segment_uid"] for it in gated["missed_waqf"]] == [first, second]
+    assert gated["category_counts"]["missed_waqf"] == 1

@@ -31,6 +31,7 @@ function load(riwayah: string, counts: Record<string, number>) {
         dk_words: {},
         verse_word_counts: counts,
         verse_marker_prefix: riwayah === 'hafs' ? '۝' : '',
+        special_texts: {},
     });
 }
 

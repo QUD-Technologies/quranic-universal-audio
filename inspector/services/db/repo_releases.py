@@ -199,14 +199,22 @@ def _should_stamp(row: dict, incoming: StaleReason | str) -> bool:
     )
 
 
-def stamp_stale(slug: str, *, at: datetime, reason: StaleReason | str) -> int:
+def stamp_stale(
+    slug: str,
+    *,
+    at: datetime,
+    reason: StaleReason | str,
+    tracks: tuple[str, ...] = ("hf", "gh"),
+) -> int:
     """Mark the current ``hf`` row for ``slug`` (if any) and that slug's row in
     the most-recent ``gh_releases`` (if a member) stale with ``reason``. Returns
     the number of stamps applied (fresh or reason-upgrades).
 
     ``stale_since`` records *first* stale time (preserved on a reason upgrade
     via ``COALESCE``); ``stale_reason`` always reflects the most severe cause.
-    Runs inside the caller's ``durable_transaction``.
+    ``tracks`` limits the stamp to the tracks the change reaches (a change only
+    the GH cut ships passes ``("gh",)``). Runs inside the caller's
+    ``durable_transaction``.
     """
     iso = _serde.to_iso(at)
     rv = _reason_value(reason)
@@ -218,7 +226,7 @@ def stamp_stale(slug: str, *, at: datetime, reason: StaleReason | str) -> int:
         "WHERE track = 'hf' AND slug = ? AND superseded_at IS NULL",
         (slug,),
     ).fetchone()
-    if hf is not None and _should_stamp(dict(hf), reason):
+    if "hf" in tracks and hf is not None and _should_stamp(dict(hf), reason):
         conn.execute(
             "UPDATE per_recitation_releases "
             "SET stale_since = COALESCE(stale_since, ?), stale_reason = ? WHERE id = ?",
@@ -233,7 +241,7 @@ def stamp_stale(slug: str, *, at: datetime, reason: StaleReason | str) -> int:
         "ORDER BY gr.id DESC LIMIT 1",
         (slug,),
     ).fetchone()
-    if gh is not None and _should_stamp(dict(gh), reason):
+    if "gh" in tracks and gh is not None and _should_stamp(dict(gh), reason):
         conn.execute(
             "UPDATE gh_release_recitations "
             "SET stale_since = COALESCE(stale_since, ?), stale_reason = ? "

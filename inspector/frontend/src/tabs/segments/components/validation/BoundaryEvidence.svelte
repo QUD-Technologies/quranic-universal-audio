@@ -1,10 +1,12 @@
 <script lang="ts">
     /**
-     * BoundaryEvidence — the evidence strip on a Hidden Pause / False Split /
-     * Unmarked Wasl card. Reads the item's `boundary` payload (offline sidecar
-     * pass-through) and renders: the agreeing axes as chips, the proposed
-     * cursor(s) as m:ss.mmm, the gap, the word and its final-letter class, and
-     * the score. A False Split row also states that the merge target is the
+     * BoundaryEvidence — the evidence strip on a Hidden Pause / Missed Waqf /
+     * False Split / Unmarked Wasl card. Reads the item's `boundary` payload
+     * (offline sidecar pass-through) and renders: the agreeing axes as chips,
+     * the proposed cursor(s) as m:ss.mmm (one line per cut on Hidden Pause and
+     * Missed Waqf, which share the cuts shape), the gap, the word and its
+     * final-letter class, and the score. A Missed Waqf card shows the score
+     * alone. A False Split row also states that the merge target is the
      * next segment; an Unmarked Wasl row states the join was read through and
      * should be marked waṣl.
      */
@@ -89,6 +91,8 @@
     const isFalseSplit = $derived(category === 'false_split');
     const isUnmarkedWasl = $derived(category === 'unmarked_wasl');
     const isNextJoin = $derived(isFalseSplit || isUnmarkedWasl);
+    /** Missed Waqf cards show the pieces and the picker; the strip keeps only the score. */
+    const isScoreOnly = $derived(category === 'missed_waqf');
     const lines = $derived.by((): Line[] => {
         if (isNextJoin) return [nextJoinLine(item as NextJoinItem)];
         return hiddenPauseLines(item as SegValHiddenPauseItem);
@@ -103,6 +107,7 @@
 </script>
 
 <div class="bx" data-boundary-category={category}>
+    {#if !isScoreOnly}
     {#each lines as line (line.key)}
         <div class="bx-line">
             {#each line.axes as axis (axis)}
@@ -128,6 +133,7 @@
             {/if}
         </div>
     {/each}
+    {/if}
     <div class="bx-line bx-summary">
         {#if isFalseSplit}
             <span class="bx-fact">{mergeNextLabel}</span>

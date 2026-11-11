@@ -55,6 +55,7 @@ from qua_jobs.publish_hf import (  # noqa: E402
     _sync_dataset_catalog_and_card,
     publish_slug,
 )
+from qua_shared.inspector_notify import WEBHOOK_USER_AGENT  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("publish_hf_batch")
@@ -124,7 +125,11 @@ def _post_webhook(*, job_id: str, members: list[dict], launched_by: str | None) 
         url,
         data=data,
         method="POST",
-        headers={"Content-Type": "application/json", "X-Inspector-Job-Secret": secret},
+        headers={
+            "Content-Type": "application/json",
+            "X-Inspector-Job-Secret": secret,
+            "User-Agent": WEBHOOK_USER_AGENT,
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:

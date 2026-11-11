@@ -78,7 +78,7 @@ const MAX_SCALE = 1.8;
 const PROBE_PX = 200;
 
 const { values } = parseArgs({
-    options: { api: { type: 'string', default: 'https://hetchyy-quranic-universal-audio.hf.space' } },
+    options: { api: { type: 'string', default: 'https://qud-technologies-quranic-universal-audio.hf.space' } },
 });
 
 async function fontDataUri(slug) {

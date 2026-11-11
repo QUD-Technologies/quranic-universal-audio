@@ -21,6 +21,7 @@
     import type { TsVerseData } from '../../../lib/types/ts-client';
     import type { TsReport } from '../../../lib/types/generated/schemas';
     import { getVerseReports } from '../services/reports-client';
+    import { mushafActive } from '../stores/mushaf';
     import {
         enterPhonemes,
         enterSilence,
@@ -32,6 +33,7 @@
     import { currentVerseReports, loadReciterReports, openReportedVerseKeys } from '../stores/ts-reports';
     import { get } from 'svelte/store';
     import { focusWaslGroup, loadedVerse, selectedVerse } from '../stores/verse';
+    import { isSpecialRef } from '../../../lib/recitation-data/specials';
     import ReportIcon from './report/ReportIcon.svelte';
     import ReportMenu from './report/ReportMenu.svelte';
 
@@ -46,7 +48,8 @@
 
     const curSlug = $derived($playerContext.delivery?.slug ?? '');
     const curVerse = $derived($selectedVerse);
-    const disabled = $derived(!curSlug || !curVerse);
+    // A recited opener (Isti'adha/Basmala, ref `0:x`) is no verse to report on.
+    const disabled = $derived(!curSlug || !curVerse || isSpecialRef(curVerse));
     const isReported = $derived(!!curVerse && $openReportedVerseKeys.has(curVerse));
 
     // Reading i18n.locale makes these re-run on switch.
@@ -54,7 +57,9 @@
         (i18n.locale,
         curVerse ? m.ts_footer_report_aria_label({ verse: curVerse }) : m.ts_footer_report_aria_label_plain()),
     );
-    const reportTitle = $derived((i18n.locale, m.ts_footer_report_title()));
+    const reportTitle = $derived(
+        (i18n.locale, m.ts_footer_report_title()),
+    );
     const reportButtonLabel = $derived((i18n.locale, m.ts_footer_report_button()));
 
     // Keep the reciter-level reported-verse counts (button highlight) in sync
@@ -194,7 +199,8 @@
     }
 </script>
 
-{#if $canReport}
+<!-- Reporting works against the waveform + analysis grid, which the Mushaf view hides. -->
+{#if $canReport && !$mushafActive}
     <div class="report-wrap" use:clickOutside={() => (open = false)}>
         <button
             type="button"

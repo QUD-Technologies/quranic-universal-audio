@@ -2,14 +2,13 @@ import type { Locale } from '$lib/i18n/locale-store';
 
 import { IssueRegistry } from '../domain/registry';
 
-import basmalaAminGuide from './accordion/basmala_amin.guide';
-import boundaryAdjGuide from './accordion/boundary_adj.guide';
 import crossVerseGuide from './accordion/cross_verse.guide';
 import failedGuide from './accordion/failed.guide';
 import flaggingGuide from './accordion/flagging.guide';
 import generalEditingGuide from './accordion/general_editing.guide';
 import lowConfidenceGuide from './accordion/low_confidence.guide';
 import lowConfidenceV2Guide from './accordion/low_confidence_v2.guide';
+import missedWaqfGuide from './accordion/missed_waqf.guide';
 import missingVersesGuide from './accordion/missing_verses.guide';
 import missingWordsGuide from './accordion/missing_words.guide';
 import muqattaatGuide from './accordion/muqattaat.guide';
@@ -25,12 +24,11 @@ const accordionGuides: Readonly<Record<string, string>> = Object.freeze({
     missing_words: missingWordsGuide,
     low_confidence: lowConfidenceGuide,
     low_confidence_v2: lowConfidenceV2Guide,
-    boundary_adj: boundaryAdjGuide,
     repetitions: repetitionsGuide,
     cross_verse: crossVerseGuide,
+    missed_waqf: missedWaqfGuide,
     qalqala: qalqalaGuide,
     muqattaat: muqattaatGuide,
-    basmala_amin: basmalaAminGuide,
     flagging: flaggingGuide,
 });
 
@@ -52,7 +50,7 @@ const localeGuideModules = import.meta.glob<{ default: string }>(
 const accordionGuidesByLocale: Readonly<Record<string, Record<string, string>>> = Object.freeze(
     (() => {
         const byLocale: Record<string, Record<string, string>> = {};
-        const re = /\.\/accordion\/(.+)\.([a-z]{2})\.guide\.ts$/;
+        const re = /\.\/accordion\/(.+)\.([a-z]{2,3})\.guide\.ts$/;
         for (const [path, mod] of Object.entries(localeGuideModules)) {
             const match = re.exec(path);
             if (!match) continue;
@@ -114,25 +112,33 @@ export const ALL_GUIDE_KEYS: readonly string[] = Object.freeze([
     'missing_verses',
     'missing_words',
     'low_confidence',
-    'boundary_adj',
     'repetitions',
     'cross_verse',
+    'missed_waqf',
     'qalqala',
     'muqattaat',
-    'basmala_amin',
     'flagging',
 ]);
 
 /**
+ * Guides that are readable and recorded but never required before a first
+ * edit: `cross_verse` asks nothing (its verse ends are auto-classified or
+ * flagged in `missed_waqf`), and `missed_waqf` is new work for reviewers
+ * already mid-way, so it must not lock them out of editing.
+ */
+const REVIEW_ONLY_GUIDE_KEYS: ReadonlySet<string> = new Set(['cross_verse', 'missed_waqf']);
+
+/**
  * The distinct guides a reviewer must read once before editing — the gate set.
  * `ALL_GUIDE_KEYS` minus the guides for owner-only validation categories
- * (`IssueRegistry[cat].ownerOnly`), which are invisible to non-owners and so
- * must not gate anyone's first edit or show up in the guides checklist. A guide
- * that should NOT re-onboard established reviewers can be registered in
- * `accordionGuides` but left out of `ALL_GUIDE_KEYS` (badge-only).
+ * (`IssueRegistry[cat].ownerOnly`), which are invisible to non-owners, and
+ * minus the review-only guides: neither may gate anyone's first edit or show up
+ * in the guides checklist. A guide that should NOT re-onboard established
+ * reviewers can be registered in `accordionGuides` but left out of
+ * `ALL_GUIDE_KEYS` (badge-only).
  */
 export const REQUIRED_GUIDE_KEYS: readonly string[] = Object.freeze(
-    ALL_GUIDE_KEYS.filter((k) => !IssueRegistry[k]?.ownerOnly),
+    ALL_GUIDE_KEYS.filter((k) => !IssueRegistry[k]?.ownerOnly && !REVIEW_ONLY_GUIDE_KEYS.has(k)),
 );
 
 /** True iff this user has opened the guide for `category` (alias-aware). */

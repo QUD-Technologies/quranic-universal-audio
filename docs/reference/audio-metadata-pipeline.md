@@ -42,8 +42,13 @@ The authoritative writer path, in `.local/extraction/`:
 **Invariant: record DECODED duration, never bitrate-estimated.** `format.duration` (and a naive
 `size·8/bitrate`) lie on VBR. The pipeline reads duration from the decoded frame count (or the
 Xing frame-count header), which is why extracted reciters don't emit phantom-tail durations.
-Download-only (YouTube) sources can't be HTTP-frame-probed, so the canonical 192k CBR encode is
-produced first and the row+sidecar come from a **post-align reprobe** of those bytes.
+Download-only (YouTube / Drive / SoundCloud) sources can't be HTTP-frame-probed. They now arrive
+through the **online intake** (Requests-tab plan → mint → align; `align-pipeline.md`): the mint
+writes a URL-only manifest, the align pipeline's acquire job produces the canonical 192k CBR encode,
+and `services/admin/align_pipeline/manifest.py` fills the per-chapter `size_bytes` /
+`duration_sec` / `bitrate_*` (and, after a split, `source_offset_ms`) from those bytes, then
+rolls `chapter_count` / `total_duration_sec` / `bitrate_mode` / `sample_rate_hz` up to the row
+for fields still unknown. Probed fields are never overwritten.
 
 ## Serving (in-app reads — depth in the `inspector-audio` skill)
 
@@ -163,6 +168,7 @@ dry-run:
 | `diagnostics/audio_url_audit.py` | classify every source url **ok / fixable (canonical) / dead**; per-reciter valid-after-fix; cross-channel duplicate/keep-remove signal |
 | `qua_shared/mp3_probe.py` | pure-python multi-version mp3 source prober: cbr/vbr via whole-file linear-seek metric (`qua_shared/mp3_frames`), decoded duration off the frame grid, ID3v2 skip, archive canonicalization. `allow_full=True` downloads the file; `allow_full=False` → head duration only, mode `needs_full` |
 | `backfills/backfill_audio_manifest_meta.py` | fill null meta from bucket-decode / peaks / source-probe; `--fix-drift` corrects phantom tails from peaks; `--rewrite-urls` repairs stale archive urls; `--remove-dead <audit.json>` drops dead chapters; emits delivery-row rollup `UPDATE`s via `--sql-out` |
+| `backfills/canonicalize_mp3quran_urls.py` | rewrite legacy `serverN.mp3quran.net` chapter urls to the `cdn.mp3quran.net/audio/<reciter>/rN/` target each one 301s to (resolved per url, checked same file name + live 200; a slug with any failure is left untouched); restamps `_meta.checksum`; dry-run writes sidecars + `report.json` to `.local/mp3quran_cdn_urls/<bucket>/`, `--apply` batch-writes |
 
 ### Runbook — onboard a new source/channel, or re-audit the catalog
 

@@ -13,6 +13,13 @@
 */
 
 /**
+ * Maintainer's manual verdict on how clean a delivery's recitation is.
+ *
+ * A human judgement made after looking at the flags and validation results,
+ * not a computed score. Orthogonal to coverage (full/partial).
+ */
+export type QualityStatus = "clean" | "almost_clean" | "needs_work";
+/**
  * Why an artifact is stale — drives the remediation suggestion.
  *
  * Severity-ordered (``segments_edited`` > ``ts_regen`` > ``catalog_edit``):
@@ -46,15 +53,14 @@ export type SegValAnyItem =
   | SegValLowConfidenceItem
   | SegValLowConfidenceV2Item
   | SegValHiddenPauseItem
+  | SegValMissedWaqfItem
   | SegValFalseSplitItem
   | SegValUnmarkedWaslItem
-  | SegValBoundaryAdjItem
   | SegValCrossVerseItem
   | SegValAudioBleedingItem
   | SegValRepetitionItem
   | SegValMuqattaatItem
-  | SegValQalqalaItem
-  | SegValBasmalaAminItem;
+  | SegValQalqalaItem;
 export type AudioCategory = "by_surah" | "by_ayah";
 
 export interface AdminActiveClaim {
@@ -135,6 +141,9 @@ export interface AdminDiscardedDelivery {
   bitrate_kbps_nominal?: number | null;
   bitrate_mode: string;
   total_duration_sec?: number | null;
+  marked_ready?: boolean;
+  aligned_at?: string | null;
+  quality_status?: QualityStatus | null;
   bucket_dates?: {
     [k: string]: string[];
   } | null;
@@ -402,7 +411,24 @@ export interface AlignRunStatus {
 export interface AdminRequestsResponse {
   rows?: AdminRequestRow[];
   counts?: AdminRequestCounts;
+  align_quota?: AlignQuota | null;
   [k: string]: unknown;
+}
+/**
+ * The shared align budget as the Requests tab renders it.
+ *
+ * Maintainers share one budget: ``gpu_limit`` GPU starts per rolling 24 h and
+ * ``cpu_limit`` concurrent CPU runs. Runs started by a holder of
+ * ``intake.align_unlimited`` (the owner) never count; ``exempt`` tells the
+ * caller they bypass both limits.
+ */
+export interface AlignQuota {
+  gpu_used?: number;
+  gpu_limit?: number;
+  gpu_resets_at?: string | null;
+  cpu_running?: number;
+  cpu_limit?: number;
+  exempt?: boolean;
 }
 /**
  * One claim row (open or closed) for the reviewer-history table.
@@ -440,8 +466,9 @@ export interface MarkReadySubmission {
   [k: string]: unknown;
 }
 /**
- * The six attestation checkboxes. All MUST be True at submit time —
- * the handler raises ``InvalidTransition`` otherwise.
+ * The five attestation checkboxes. Every key the reciter's validation
+ * lists in ``checklist_keys`` MUST be True at submit time — the handler
+ * raises ``InvalidTransition`` otherwise; the rest are sent False.
  *
  * Keys are repeated in the FE copy module as a literal union; if you
  * add one here, update the copy module, the markdown file, and the
@@ -457,7 +484,6 @@ export interface MarkReadyChecklist {
   low_confidence: boolean;
   repetitions: boolean;
   splits_wasl_waqf: boolean;
-  basmala_amin_intros: boolean;
 }
 /**
  * Full per-recitation payload for the General drawer.
@@ -625,6 +651,9 @@ export interface AdminDelivery {
   bitrate_kbps_nominal?: number | null;
   bitrate_mode: string;
   total_duration_sec?: number | null;
+  marked_ready?: boolean;
+  aligned_at?: string | null;
+  quality_status?: QualityStatus | null;
   bucket_dates?: {
     [k: string]: string[];
   } | null;
@@ -671,12 +700,15 @@ export interface Announcement {
  * One chapter's playback metadata in the ``surahs`` map.
  *
  * ``duration_ms`` is ``None`` only when the manifest carries no duration and
- * the slim-peaks fallback also cannot provide one. Both keys are always
- * serialized.
+ * the slim-peaks fallback also cannot provide one. ``size_bytes`` is the
+ * manifest size of the source file the delivery was aligned on; the FE plays
+ * the CDN URL directly only when the live file still has that size. All keys
+ * are always serialized.
  */
 export interface AudioSurahEntry {
   url: string;
   duration_ms: number | null;
+  size_bytes: number | null;
 }
 /**
  * ``GET /api/audio/surahs/<category>/<source>/<slug>`` success body.
@@ -697,9 +729,8 @@ export interface AudioSurahsResponse {
  * written comment (``gate_by_comments``) or flagged any segment
  * (``gate_by_flags``). A checklist-bypass submission is always skipped.
  *
- * The TS tunables (beam/model/…) come from the shared
- * ``ts_generation_defaults``; ``extra="allow"`` tolerates older saved blobs that
- * still carry the retired per-automation ``beam`` / ``aligner_model`` keys.
+ * ``extra="allow"`` tolerates saved blobs that carry the MFA engine's
+ * ``beam`` / ``aligner_model`` keys.
  */
 export interface AutoGenTsConfig {
   enabled?: boolean;
@@ -711,10 +742,10 @@ export interface AutoGenTsConfig {
  * The owner's full automation configuration (one persisted blob).
  *
  * ``extra="allow"`` keeps an unknown automation key written by a newer FE from
- * being dropped when an older server re-serializes the blob (forward-compat).
+ * being dropped when an older server re-serializes the blob (forward-compat),
+ * and lets a saved blob's MFA-engine ``ts_generation_defaults`` key load.
  */
 export interface AutomationConfig {
-  ts_generation_defaults?: TsGenerationDefaults;
   auto_gen_ts?: AutoGenTsConfig;
   gh_cut?: GhCutConfig;
   hf_publish?: HfPublishConfig;
@@ -722,31 +753,6 @@ export interface AutomationConfig {
   stale_metadata?: StaleMetadataConfig;
   auto_release_inactive?: AutoReleaseInactiveConfig;
   [k: string]: unknown;
-}
-/**
- * Owner-wide default knobs for every timestamps-generation surface.
- *
- * The single shared source the Releases-tab "Timestamps generation" accordion
- * edits. It is the sole source of the TS tunables for every TS launch — the
- * manual form (``routes/admin/reviews.py::_parse_ts_settings``), the auto-gen /
- * stale-regen automations (``services/admin/automation/evaluators.py``) and,
- * through them, the HF job (``qua_jobs/generate_timestamps.py``). Every TS
- * tunable comes from here; the only per-launch input is the manual form's
- * ``chapters`` scope. A field unset here cedes to the job's ``DEFAULT_*``.
- *
- * ``beam`` is the single alignment beam. Probe beams are gone: a run aligns
- * once, under this beam, and nothing is re-aligned to cross-check it.
- * ``padding`` / ``method`` are the pipeline tunables (``None`` → the job's
- * ``DEFAULT_PADDING`` / ``DEFAULT_METHOD``).
- */
-export interface TsGenerationDefaults {
-  beam?: number;
-  aligner_model?: string | null;
-  workers?: number | null;
-  batch_size?: number | null;
-  download_workers?: number | null;
-  padding?: string | null;
-  method?: string | null;
 }
 /**
  * Cut a global GH release on a fixed cadence (owner timezone).
@@ -762,6 +768,7 @@ export interface GhCutConfig {
   time_of_day?: string;
   timezone?: string;
   next_version_override?: string | null;
+  include_letter_timestamps?: boolean;
 }
 /**
  * Batch-publish the HF dataset on a fixed cadence (owner timezone).
@@ -784,9 +791,8 @@ export interface HfPublishConfig {
  * consecutive edits coalesce into one regen. ``scope`` picks full-reciter vs
  * just the affected chapters.
  *
- * The TS tunables (beam/…) come from the shared
- * ``ts_generation_defaults``; ``extra="allow"`` tolerates older saved blobs that
- * still carry the retired per-automation ``beam`` / ``probe_beams`` keys.
+ * ``extra="allow"`` tolerates saved blobs that carry the MFA engine's
+ * ``beam`` / ``probe_beams`` keys.
  */
 export interface StaleTsRegenConfig {
   enabled?: boolean;
@@ -914,8 +920,6 @@ export interface DetailedEntry {
  * Persisted classifier optimisations (migrate_wip §2):
  *   - ``qalqala_letter`` — last Arabic letter when it's in the qalqala set
  *     (ق ط ب ج د), else ``None``. Default ``None`` for legacy data.
- *   - ``is_boundary_adj`` — pad-floor boundary flag (structural + phoneme
- *     tail). Default ``False`` for legacy data.
  *
  * Optional content fields:
  *   - ``confidence`` — DP alignment confidence in ``[0.0, 1.0]``. Failed
@@ -926,6 +930,11 @@ export interface DetailedEntry {
  *   - ``segment_uid`` — UUIDv7 stamped by save-flow merge / split / strip
  *     ops and by the ``/seg/all`` lazy backfill route. Absent on fresh
  *     extraction output.
+ *   - ``word_timings`` — optional historical word intervals retained by
+ *     imported review samples and exposed for playback highlighting.
+ *   - ``pauses`` — stops the aligner heard inside the segment
+ *     (``DetailedPause``). Kept only while the segment's time and ref are
+ *     unchanged; the source of the Low Confidence Waqf review.
  *   - ``ignored_categories`` — per-seg category-level ignore set written
  *     by the "ignore this issue" accordion action; consulted by
  *     ``services/validation/classifier.py::is_ignored_for`` to suppress
@@ -942,16 +951,51 @@ export interface DetailedSegment {
   time_end: number;
   matched_ref: string;
   qalqala_letter?: string | null;
-  is_boundary_adj?: boolean;
   confidence?: number;
   wrap_word_ranges?: string[][] | null;
   segment_uid?: string | null;
+  word_timings?: DetailedWordTiming[] | null;
+  pauses?: DetailedPause[] | null;
+  join_verdicts?: JoinVerdict[] | null;
   source_ref?: string | null;
   projection_support?: ("full" | "partial") | null;
   ignored_categories?: string[] | null;
   ignored?: boolean | null;
   is_wasl?: boolean;
   flag?: SegmentFlag | null;
+}
+/**
+ * One legacy/review word interval preserved inside ``detailed.json``.
+ */
+export interface DetailedWordTiming {
+  word: string;
+  location: string;
+  start_ms: number;
+  end_ms: number;
+}
+/**
+ * A stop the aligner's phoneme lattice heard inside a segment.
+ *
+ * ``after_ref`` is the last word before the stop (``s:a:w``); ``gain`` is how
+ * much the decode loses when that join may not pause, ``separability`` how far
+ * apart the stopped and continued voicings are. The aligner never cuts on it.
+ */
+export interface DetailedPause {
+  after_ref: string;
+  gain: number;
+  separability: number;
+}
+/**
+ * A reviewed word join: waqf at a boundary, wasl inside a segment.
+ *
+ * Owned by the segment containing the audio immediately before ``at_ms``.
+ * Cuts record waqf; resolving an item records wasl at its uncut cursors.
+ * The word reference and audio cursor together distinguish repeated words.
+ */
+export interface JoinVerdict {
+  after_ref: string;
+  at_ms: number;
+  verdict: "wasl" | "waqf";
 }
 /**
  * A flag on a single segment: a required root comment + reply thread.
@@ -1093,6 +1137,7 @@ export interface EditOperation {
   command?: {
     [k: string]: unknown;
   } | null;
+  affected_chapters?: number[] | null;
 }
 /**
  * Forward-change patch envelope attached to an op at finalize time.
@@ -1171,6 +1216,22 @@ export interface ErrorEnvelope {
   code?: string | null;
 }
 /**
+ * Body of ``POST /api/admin/intake/<id>/align``.
+ */
+export interface IntakeAlignRequest {
+  device?: "GPU" | "CPU";
+}
+/**
+ * The mint always lands before the run starts; a refused start (budget,
+ * config) is reported, not raised — Align on the new slug row retries it.
+ */
+export interface IntakeAlignResponse {
+  slug: string;
+  state?: string | null;
+  align_started?: boolean;
+  align_error?: string | null;
+}
+/**
  * Contributor confirmations recorded with the submission (audit trail).
  *
  * The first three are always required to submit — gated client-side and
@@ -1189,8 +1250,95 @@ export interface IntakeAttestations {
   [k: string]: unknown;
 }
 /**
+ * ``payload.plan`` of an intake request row.
+ */
+export interface IntakePlan {
+  status: "enumerating" | "ready" | "failed";
+  error?: string | null;
+  host?: "links" | "youtube" | "drive" | "soundcloud" | "archive" | "other";
+  source_url?: string | null;
+  uploader?: string | null;
+  uploader_url?: string | null;
+  entries?: PlanEntry[];
+  identity?: PlanIdentity;
+  created_at: string;
+  updated_at: string;
+}
+/**
+ * One fetchable media file of the source and the chapters it holds.
+ */
+export interface PlanEntry {
+  key: string;
+  url: string;
+  title?: string;
+  index?: number | null;
+  duration_sec?: number | null;
+  chapters?: number[];
+  include?: boolean;
+}
+/**
+ * The catalog identity the mint writes. Proposed on enumerate, owner-edited.
+ */
+export interface PlanIdentity {
+  slug?: string;
+  reciter_id?: string;
+  name_en?: string | null;
+  name_ar?: string | null;
+  country?: string | null;
+  channel?: string;
+  source?: string;
+  new_source_name?: string | null;
+  new_source_url?: string | null;
+  recording_year?: number | null;
+}
+/**
+ * Body of ``PUT /api/admin/intake/<id>/plan`` — the owner's review.
+ */
+export interface IntakePlanUpdate {
+  entries?: PlanEntryEdit[];
+  identity: PlanIdentity;
+}
+export interface PlanEntryEdit {
+  key: string;
+  include: boolean;
+}
+/**
+ * ``GET/POST/PUT /api/admin/intake/<id>/plan`` response: the plan plus the
+ * live check the Align button gates on and the catalog vocab to pick from.
+ */
+export interface IntakePlanView {
+  status: "enumerating" | "ready" | "failed";
+  error?: string | null;
+  host?: "links" | "youtube" | "drive" | "soundcloud" | "archive" | "other";
+  source_url?: string | null;
+  uploader?: string | null;
+  uploader_url?: string | null;
+  entries?: PlanEntry[];
+  identity?: PlanIdentity;
+  created_at: string;
+  updated_at: string;
+  coverage?: PlanCoverage;
+  errors?: string[];
+  warnings?: string[];
+  channel_options?: PlanOption[];
+  source_options?: PlanOption[];
+}
+export interface PlanCoverage {
+  files?: number;
+  included?: number;
+  total_duration_sec?: number | null;
+  chapters?: number[];
+  missing?: number[];
+  duplicates?: number[];
+  combined_entries?: number;
+}
+export interface PlanOption {
+  slug: string;
+  label: string;
+}
+/**
  * Normalised audio source. Typed links and dropped CSV/JSON files both feed
- * ``links``; ``playlist`` carries a single URL we enumerate offline (yt-dlp).
+ * ``links``; ``playlist`` carries a single URL the intake plan enumerates (yt-dlp / Drive).
  */
 export interface IntakeSource {
   method: "links" | "playlist";
@@ -1282,7 +1430,14 @@ export interface JobMember {
 export interface JobRecord {
   schema_version?: number;
   job_id: string;
-  kind?: "timestamps" | "hf_publish" | "hf_publish_batch" | "cut_release" | "refresh_catalog" | "acquire_audio";
+  kind?:
+    | "timestamps"
+    | "hf_publish"
+    | "hf_publish_batch"
+    | "cut_release"
+    | "refresh_catalog"
+    | "acquire_audio"
+    | "split_audio";
   slug?: string | null;
   status?: string;
   started_at?: string | null;
@@ -1304,22 +1459,14 @@ export interface JobRecord {
   [k: string]: unknown;
 }
 /**
- * Job parameters chosen by the admin in the launch form.
+ * A run's scope.
  *
- * ``beams`` is the resolved list passed to ``align_batch_multi_beam`` —
- * ``[alignment_beam]`` — one beam per run. Canonical beam = ``max(beams)``.
+ * ``extra="ignore"``: records written by the MFA engine also carry its
+ * alignment knobs (``beams``, ``aligner_model``, ``workers`` …); they parse
+ * and are dropped.
  */
 export interface TsJobSettings {
-  beams?: number[];
-  aligner_model?: string | null;
   chapters?: number[] | null;
-  workers?: number | null;
-  flavor?: string | null;
-  timeout?: string | null;
-  batch_size?: number | null;
-  download_workers?: number | null;
-  padding?: string | null;
-  method?: string | null;
 }
 /**
  * Payload for ``GET /api/admin/jobs`` — the unified list + a running tally.
@@ -1421,6 +1568,9 @@ export interface PublicDelivery {
   bitrate_kbps_nominal?: number | null;
   bitrate_mode: string;
   total_duration_sec?: number | null;
+  marked_ready?: boolean;
+  aligned_at?: string | null;
+  quality_status?: QualityStatus | null;
   bucket_dates?: {
     [k: string]: string[];
   } | null;
@@ -1462,6 +1612,9 @@ export interface PublicReciterPage {
   reciters: PublicReciter[];
   total: number;
   next_cursor?: number | null;
+}
+export interface QualityStatusRequest {
+  quality_status: QualityStatus | null;
 }
 /**
  * One supported riwayah and its two slug spellings.
@@ -1516,7 +1669,8 @@ export interface SamplesListResponse {
  * ``GET /api/seg/all/<reciter>`` success body.
  *
  * ``audio_by_chapter`` / ``chapter_duration_ms_by_chapter`` are chapter-keyed
- * string maps; ``duration_ms_by_url`` is URL-keyed. ``pad_ms`` is the legacy
+ * string maps; ``duration_ms_by_url`` and ``size_bytes_by_url`` (manifest size
+ * of the aligned source file, gating direct CDN play) are URL-keyed. ``pad_ms`` is the legacy
  * symmetric shim ``(pad_left_ms + pad_right_ms) // 2``.
  */
 export interface SegAllResponse {
@@ -1529,6 +1683,9 @@ export interface SegAllResponse {
     [k: string]: number;
   };
   duration_ms_by_url?: {
+    [k: string]: number;
+  };
+  size_bytes_by_url?: {
     [k: string]: number;
   };
   reciter_vbr_chapters?: number[];
@@ -1558,7 +1715,9 @@ export interface SegAllSegment {
   wrap_word_ranges?: unknown[] | null;
   ignored_categories?: string[] | null;
   is_wasl?: boolean | null;
+  join_verdicts?: JoinVerdict[] | null;
   flag?: SegmentFlagView | null;
+  word_timings?: SegWordTiming[] | null;
 }
 /**
  * A segment's flag thread: a root comment plus follow-up replies.
@@ -1593,6 +1752,15 @@ export interface FlagComment {
   mine: boolean;
 }
 /**
+ * A word interval exposed for sample-review highlighting.
+ */
+export interface SegWordTiming {
+  word: string;
+  location: string;
+  start_ms: number;
+  end_ms: number;
+}
+/**
  * ``GET /api/seg/config`` — display constants + validation vocab.
  *
  * ``seg_font_size`` / ``seg_word_spacing`` are CSS dimension STRINGS
@@ -1613,10 +1781,7 @@ export interface SegConfigResponse {
   low_conf_default_threshold: number;
   validation_categories: string[];
   riwayah: string;
-  muqattaat_verses: [unknown, unknown][];
   qalqala_letters: string[];
-  standalone_refs: [unknown, unknown, unknown][];
-  standalone_words: string[];
   muqattaat_words: [unknown, unknown, unknown][];
   low_confidence_threshold: number;
   accordion_context: {
@@ -1660,6 +1825,8 @@ export interface SegDataSegment {
   audio_url: string;
   ignored_categories?: string[] | null;
   is_wasl?: boolean | null;
+  join_verdicts?: JoinVerdict[] | null;
+  word_timings?: SegWordTiming[] | null;
 }
 /**
  * Per-chapter summary stats block inside ``GET /api/seg/data``.
@@ -1725,6 +1892,26 @@ export interface SegReciter {
   visibility: "public" | "discarded";
 }
 /**
+ * One delivery's open review items for the reciter picker's pill + filter.
+ *
+ * ``low_confidence`` counts segments under the delivery's riwayah threshold (the
+ * accordion's default slider position); ``low_confidence_v2`` the open neural sidecar
+ * items.
+ */
+export interface SegReviewSignal {
+  low_confidence?: number;
+  low_confidence_v2?: number;
+}
+/**
+ * ``GET /api/seg/review-signals`` — counts by slug for the deliveries with open items
+ * (from ``catalog/review_signals.json``).
+ */
+export interface SegReviewSignalsResponse {
+  signals?: {
+    [k: string]: SegReviewSignal;
+  };
+}
+/**
  * ``POST /api/seg/save/<reciter>/<chapter>`` request body.
  *
  * ``full_replace`` flags a structural save (segments are
@@ -1786,6 +1973,52 @@ export interface SegSegmentPeaks {
   end_ms: number;
   duration_ms: number;
   peaks?: [unknown, unknown][];
+}
+/**
+ * ``GET /api/seg/specials/<reciter>`` — the reciter's specials by chapter; empty when it has none.
+ */
+export interface SegSpecialsResponse {
+  chapters?: {
+    [k: string]: SpecialEntry[];
+  };
+}
+export interface SpecialEntry {
+  type: "Isti'adha" | "Basmala" | "Amin" | "Sadaqa" | "Takbir" | "Tahmeed" | "Tasleem";
+  position?: "pre" | "post";
+  start_ms: number;
+  end_ms: number;
+  words?: [unknown, unknown][];
+  confidence?: number | null;
+  source: "align" | "fatiha_verse" | "pipeline_strip" | "user_delete" | "in_detailed" | "aligner_backfill";
+  clipped?: boolean;
+  voice_z?: number | null;
+  voice_verdict?: ("same" | "different" | "needs_confirmation") | null;
+  voice_confirmed?: boolean | null;
+}
+/**
+ * ``POST /api/seg/specials/<reciter>/voice`` — a maintainer's call on whether
+ * the special starting at ``start_ms`` in ``chapter`` is the reciter's own voice.
+ */
+export interface SegSpecialsVoiceRequest {
+  chapter: number;
+  start_ms: number;
+  same_voice: boolean;
+}
+/**
+ * One segment's stored word intervals and the span they were timed on.
+ */
+export interface SegStoredTimes {
+  start_ms: number;
+  end_ms: number;
+  words: SegStoredWordTime[];
+}
+/**
+ * One word interval from the stored segment times, chapter-audio ms.
+ */
+export interface SegStoredWordTime {
+  location: string;
+  start_ms: number;
+  end_ms: number;
 }
 /**
  * ``POST /api/seg/undo-batch/<reciter>`` request body.
@@ -1874,8 +2107,9 @@ export interface SegValLowConfidenceItem {
   classified_issues?: string[];
 }
 /**
- * ``low_confidence_v2`` — a segment flagged by the extraction-time MFA
- * tight-beam probe. No confidence score; the signal is binary.
+ * ``low_confidence_v2`` — a segment the neural timing checks found fitting its
+ * text poorly (``low_confidence_v2.json``). No confidence score; ``words`` names
+ * the words that tripped the check (empty when the sidecar carries none).
  */
 export interface SegValLowConfidenceV2Item {
   ref: string;
@@ -1883,6 +2117,20 @@ export interface SegValLowConfidenceV2Item {
   seg_index: number;
   segment_uid?: string | null;
   classified_issues?: string[];
+  words?: SegValLowConfidenceWord[];
+}
+/**
+ * A word that made a segment Low Confidence. ``fit`` / ``sound_fit`` are
+ * log-posterior deficits of the word and of its worst sound (more negative =
+ * worse); absent on sidecars written before the scores existed. ``severity``
+ * rescales the worse of the two floor ratios to [0, 1] across every scored
+ * word of the reciter's sidecar (1 = most severe); absent without scores.
+ */
+export interface SegValLowConfidenceWord {
+  ref: string;
+  fit?: number | null;
+  sound_fit?: number | null;
+  severity?: number | null;
 }
 /**
  * ``hidden_pause`` — offline re-segmentation heard a pause inside this
@@ -1897,7 +2145,7 @@ export interface SegValHiddenPauseItem {
   boundary: SegValHiddenPauseBoundary;
 }
 /**
- * Sidecar payload on a ``hidden_pause`` item. ``refs`` is ``null`` when
+ * Sidecar payload on a ``hidden_pause`` / ``missed_waqf`` item. ``refs`` is ``null`` when
  * the offline pass could not assign per-section refs (Auto Split falls back
  * to plain Split). ``score`` = agreeing axes × 1000 + min(gap_ms, 999).
  */
@@ -1908,11 +2156,14 @@ export interface SegValHiddenPauseBoundary {
   cuts?: SegValHiddenPauseCut[];
 }
 /**
- * One proposed cut inside a segment (``hidden_pause_v1`` sidecar).
+ * One proposed cut inside a segment (``hidden_pause_v1`` /
+ * ``missed_waqf_v1`` sidecars).
  *
  * ``axes`` names the offline arms that agree on the cut (``trio`` = collar
  * boundary head, ``lite`` = lite student, ...). ``evidence`` is the
- * per-axis raw measurement block, passed through for the card.
+ * per-axis raw measurement block, passed through for the card. ``silence_*_ms``
+ * is the pause around the cursor (``timing_source`` ``neural``: the timing head's
+ * decoded pause): a WAQF answer splits with that gap.
  */
 export interface SegValHiddenPauseCut {
   cursor_ms?: number | null;
@@ -1925,6 +2176,28 @@ export interface SegValHiddenPauseCut {
   evidence?: {
     [k: string]: unknown;
   };
+  silence_start_ms?: number | null;
+  silence_end_ms?: number | null;
+  timing_source?: "neural" | null;
+}
+/**
+ * ``missed_waqf`` — an offline phoneme + silence detector heard the
+ * reciter stop inside this segment, which was not cut there. Review-only
+ * (owner / maintainer capability).
+ *
+ * ``resolved`` marks an item already labelled — split from the card (edit
+ * history carries the split) or ignored (every cut WASL). The accordion keeps
+ * it so the labels stay reviewable; resolved items are excluded from
+ * ``category_counts``. ``segment_uid`` is the split ROOT uid.
+ */
+export interface SegValMissedWaqfItem {
+  ref: string;
+  chapter: number;
+  seg_index: number;
+  segment_uid?: string | null;
+  classified_issues?: string[];
+  boundary: SegValHiddenPauseBoundary;
+  resolved?: boolean;
 }
 /**
  * ``false_split`` — offline re-segmentation heard continuous speech
@@ -1969,23 +2242,13 @@ export interface SegValUnmarkedWaslItem {
   boundary: SegValFalseSplitBoundary;
 }
 /**
- * ``boundary_adj`` — a segment whose boundary may need adjustment.
- */
-export interface SegValBoundaryAdjItem {
-  chapter: number;
-  seg_index: number;
-  segment_uid?: string | null;
-  ref: string;
-  verse_key: string;
-  classified_issues?: string[];
-}
-/**
  * ``cross_verse`` — a segment spanning a verse boundary.
  *
- * ``resolved`` marks an item that no longer spans a boundary because it was
- * split from the cross-verse card (edit history carries the split); the
- * accordion keeps it so the WASL/WAQF picks stay reviewable. Resolved items
- * are excluded from ``category_counts`` and never block mark-ready.
+ * ``verse_joins`` lists each verse end inside the segment with its stored
+ * ``join_verdicts`` answer. ``resolved`` marks an item whose joins are all
+ * answered, or one that no longer spans a boundary because it was split from
+ * the cross-verse card (edit history carries the split). Resolved items are
+ * excluded from ``category_counts`` and never block mark-ready.
  * ``segment_uid`` is the split ROOT uid (the live first piece).
  */
 export interface SegValCrossVerseItem {
@@ -1995,6 +2258,14 @@ export interface SegValCrossVerseItem {
   ref: string;
   classified_issues?: string[];
   resolved?: boolean;
+  verse_joins?: SegValVerseJoin[];
+}
+/**
+ * One verse end inside a cross-verse segment and its stored answer (``None`` = unanswered).
+ */
+export interface SegValVerseJoin {
+  after_ref: string;
+  verdict?: ("wasl" | "waqf") | null;
 }
 /**
  * ``audio_bleeding`` — a by_ayah segment matching a verse outside its
@@ -2049,33 +2320,22 @@ export interface SegValQalqalaItem {
   classified_issues?: string[];
 }
 /**
- * ``basmala_amin`` — a basmala/amin verse-boundary convention candidate.
- *
- * ``missed_basmala`` is stamped ``true`` on the augmented "possibly missed
- * Basmala" candidates (first seg of a chapter whose Basmala was not stripped);
- * absent on the canonical 1:1 / 1:7 candidates.
- */
-export interface SegValBasmalaAminItem {
-  chapter: number;
-  seg_index: number;
-  segment_uid?: string | null;
-  ref: string;
-  time?: string | null;
-  missed_basmala?: boolean | null;
-  classified_issues?: string[];
-}
-/**
  * ``GET /api/seg/validate/<reciter>`` — issues grouped by category.
  *
  * ``errors`` and ``structural_errors`` are the SAME list under two keys
  * (additive alias). ``category_counts`` mirrors the per-category lengths in
  * registry-declared order. ``split_group_index`` maps a root segment uid to
  * its transitive split-descendant uids. ``low_confidence_v2_meta`` /
- * ``hidden_pause_meta`` / ``false_split_meta`` / ``unmarked_wasl_meta`` are
- * present only when the sidecar carried a ``_meta`` block. ``hidden_pause``
- * / ``false_split`` / ``unmarked_wasl`` (and their metas) are omitted for
- * viewers without ``segments.view_boundary_review``. Each item carries a
- * ``classified_issues`` field.
+ * ``hidden_pause_meta`` / ``missed_waqf_meta`` / ``false_split_meta`` /
+ * ``unmarked_wasl_meta`` are present only when the sidecar carried a
+ * ``_meta`` block. ``hidden_pause`` / ``false_split`` /
+ * ``unmarked_wasl`` (and their metas) are omitted for
+ * viewers without ``segments.view_boundary_review``. ``wasl_recheck`` lists
+ * the left-piece uids of cross-verse boundaries whose WASL / WAQF answer is
+ * re-asked (open until answered after the sidecar was written); it is shown
+ * to every viewer. ``checklist_keys`` names the mark-ready attestations
+ * whose categories ever had an item for the reciter — the only boxes shown
+ * and required. Each item carries a ``classified_issues`` field.
  */
 export interface SegValidateResponse {
   errors?: SegValStructuralErrorItem[];
@@ -2086,15 +2346,14 @@ export interface SegValidateResponse {
   low_confidence?: SegValLowConfidenceItem[];
   low_confidence_v2?: SegValLowConfidenceV2Item[];
   hidden_pause?: SegValHiddenPauseItem[] | null;
+  missed_waqf?: SegValMissedWaqfItem[] | null;
   false_split?: SegValFalseSplitItem[] | null;
   unmarked_wasl?: SegValUnmarkedWaslItem[] | null;
-  boundary_adj?: SegValBoundaryAdjItem[];
   cross_verse?: SegValCrossVerseItem[];
   audio_bleeding?: SegValAudioBleedingItem[];
   repetitions?: SegValRepetitionItem[];
   muqattaat?: SegValMuqattaatItem[];
   qalqala?: SegValQalqalaItem[];
-  basmala_amin?: SegValBasmalaAminItem[];
   category_counts?: {
     [k: string]: number;
   };
@@ -2104,8 +2363,11 @@ export interface SegValidateResponse {
   };
   low_confidence_v2_meta?: SegValProbeMeta | null;
   hidden_pause_meta?: SegValBoundaryMeta | null;
+  missed_waqf_meta?: SegValBoundaryMeta | null;
   false_split_meta?: SegValBoundaryMeta | null;
   unmarked_wasl_meta?: SegValBoundaryMeta | null;
+  wasl_recheck?: string[];
+  checklist_keys?: ("failed_alignments" | "missing_words" | "low_confidence" | "repetitions" | "splits_wasl_waqf")[];
 }
 /**
  * ``stats`` — per-reciter structural segmentation statistics.
@@ -2127,21 +2389,33 @@ export interface SegValStats {
   pause_dur_max: number;
 }
 /**
- * ``low_confidence_v2_meta`` — provenance of the MFA tight-beam probe
- * sidecar. Open shape: the ``_meta`` block of ``low_confidence_v2.json`` is
- * passed through verbatim from the extraction stage.
+ * ``low_confidence_v2_meta`` — provenance of the Low Confidence sidecar.
+ * Open shape: the ``_meta`` block of ``low_confidence_v2.json`` is passed through
+ * verbatim from the extraction stage.
  */
 export interface SegValProbeMeta {
   [k: string]: unknown;
 }
 /**
- * ``hidden_pause_meta`` / ``false_split_meta`` / ``unmarked_wasl_meta`` —
+ * ``hidden_pause_meta`` / ``missed_waqf_meta`` / ``false_split_meta`` /
+ * ``unmarked_wasl_meta`` —
  * provenance of the offline boundary-review sidecars (arms, segment counts,
  * by-axes tallies). Open shape: the ``_meta`` block is passed through
  * verbatim.
  */
 export interface SegValBoundaryMeta {
   [k: string]: unknown;
+}
+/**
+ * ``GET /api/seg/word-times/<reciter>/<chapter>``: stored word intervals.
+ *
+ * ``segments`` maps a segment uid to its timed words; a segment whose stored
+ * times no longer match it (span or timed ref changed since timing) is absent.
+ */
+export interface SegWordTimesResponse {
+  segments: {
+    [k: string]: SegStoredTimes;
+  };
 }
 export interface TsCompactRender {
   v: 1;
@@ -2209,11 +2483,19 @@ export interface TsJobRecord {
   error?: string | null;
 }
 /**
+ * One madd type with occurrences; ``length`` only for the types with a length choice.
+ */
+export interface TsMaddRow {
+  kind: "tabii" | "munfasil" | "muttasil" | "lazim" | "arid" | "leen";
+  mean_ms: number;
+  length?: ("qasr" | "tawassut" | "ishbaa") | null;
+}
+/**
  * Decompressed body of ``GET /api/ts/manifest``.
  *
  * Built by ``_build_manifest_dict``. ``dataset_base_url`` is ``""`` in the
  * Inspector (resources resolve as absolute Flask paths); ``commit`` is ``""``.
- * ``resources`` maps a purpose key (``qpc_hafs`` / ``digital_khatt`` / …) to
+ * ``resources`` maps a purpose key (``digital_khatt`` / …) to
  * a ``/api/ts/resource/<key>`` URL. ``reciters`` is keyed by delivery slug.
  * ``editions`` carries the non-Hafs display assets, keyed by riwayah slug.
  */
@@ -2288,6 +2570,50 @@ export interface TsNativeProfile {
   };
   extra_phonemes: string[];
 }
+export interface TsReadingOption {
+  option: string;
+  verses?: TsReadingVerse[];
+}
+/**
+ * A verse an option was read at; ``label`` spans verses when the words cross one.
+ *
+ * ``start_ms`` is where the shard part holding the option's first word starts, so a jump
+ * lands on the rendition read that way when the verse is recited more than once.
+ */
+export interface TsReadingVerse {
+  surah: number;
+  ayah: number;
+  label: string;
+  start_ms?: number | null;
+}
+/**
+ * One selector at one word (two for a boundary selector), in mushaf order.
+ */
+export interface TsReadingRow {
+  selector: string;
+  key: string;
+  texts: string[];
+  options: TsReadingOption[];
+}
+/**
+ * The readings summary; ``rows`` is empty for a non-Hafs or pre-v15 delivery.
+ */
+export interface TsReadingsDoc {
+  schema_version?: number;
+  slug: string;
+  built_at?: string;
+  rows?: TsReadingRow[];
+}
+/**
+ * A Hafs recitation's madd, ghunnah and pause durations — the public projection.
+ *
+ * Madd rows in display order; a type, ghunnah or pauses with no occurrences is absent.
+ */
+export interface TsRecitationProfile {
+  madd?: TsMaddRow[];
+  ghunnah_ms?: number | null;
+  pause_ms?: number | null;
+}
 /**
  * Every reported verse for a reciter (``GET .../reports``).
  */
@@ -2338,7 +2664,7 @@ export interface TsReportTarget {
  */
 export interface TsReportSnapshot {
   native_schema_version?: 2 | null;
-  shard_schema_version?: 12 | 13 | 14;
+  shard_schema_version?: 12 | 13 | 14 | 15;
   shard_profile?: "native" | "word";
   native?: {
     [k: string]: unknown;
@@ -2424,26 +2750,74 @@ export interface TsShardDoc {
   readings: TsShardReading[];
 }
 export interface TsShardMeta {
-  schema_version: 13 | 14;
+  schema_version: 15;
   chapter: number;
   audio_category: string;
   phonemizer_version: string;
   native_schema_version: 2;
   renderer_codec_version: 1;
   native_profile: TsNativeProfile;
+  variant_catalogue?: {
+    [k: string]: TsVariantDefinition;
+  } | null;
+  variant_policy?: string | null;
   [k: string]: unknown;
+}
+export interface TsVariantDefinition {
+  name: string;
+  description: string | null;
+  /**
+   * @minItems 2
+   */
+  options: [string, string, ...string[]];
+  default: string;
 }
 export interface TsShardReading {
   id: string;
   parts: [unknown, unknown, unknown, unknown, unknown][];
   render: TsCompactRender;
   timing: TsShardTiming;
+  variants?: TsReadingVariant[] | null;
+  special?: ("Isti'adha" | "Basmala") | null;
 }
 export interface TsShardTiming {
   w: [unknown, unknown][];
   s: [unknown, unknown][];
   a: [unknown, unknown][];
   c: [unknown, unknown, unknown][];
+}
+/**
+ * One shown variant occurrence. ``words``/``targets`` are reading word ids,
+ * ``boundary`` a native boundary id (from 1); ``affected`` has one entry per
+ * option not chosen, in the rendered reading's ids.
+ */
+export interface TsReadingVariant {
+  id: string;
+  chosen: string;
+  /**
+   * @minItems 1
+   * @maxItems 2
+   */
+  words: [number] | [number, number];
+  /**
+   * @minItems 1
+   */
+  targets: [number, ...number[]];
+  anchor: "word" | "boundary";
+  boundary: number | null;
+  by: "scored" | "tie" | "length" | "majority" | "pause" | "default";
+  score: number | null;
+  affected: {
+    [k: string]: TsVariantCells;
+  };
+}
+/**
+ * Rendered-reading cells another option changes: column, sound and boundary ids.
+ */
+export interface TsVariantCells {
+  c: number[];
+  s: number[];
+  b: number[];
 }
 /**
  * The ``ts_validation.json`` document — meta + verse-keyed flags.
@@ -2494,7 +2868,7 @@ export interface TsWordShardMeta {
   riwayah: string;
   edition_id: string;
   words_sha256: string;
-  timing_provider: "hafs_proxy_mfa";
+  timing_provider: "hafs_proxy_mfa" | "hafs_proxy_neural";
   reference_riwayah: string;
   reference_id: string;
   projection_id?: string | null;
@@ -2506,4 +2880,5 @@ export interface TsWordShardReading {
   parts: [unknown, unknown, unknown, unknown, unknown][];
   words: [unknown, unknown, unknown, unknown][];
   boundaries: [unknown, unknown][];
+  special?: ("Isti'adha" | "Basmala") | null;
 }

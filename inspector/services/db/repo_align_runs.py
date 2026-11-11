@@ -37,6 +37,16 @@ def active_for_slug(slug: str) -> dict | None:
     return dict(row) if row else None
 
 
+def active_slugs() -> set[str]:
+    """Slugs with a pending or running run — their bucket content is mid-write."""
+    rows = (
+        get_conn()
+        .execute("SELECT DISTINCT slug FROM align_runs WHERE status IN ('pending','running')")
+        .fetchall()
+    )
+    return {r[0] for r in rows}
+
+
 def latest_for_slug(slug: str) -> dict | None:
     row = (
         get_conn()
@@ -85,3 +95,42 @@ def update(run_id: str, **fields) -> None:
         f"UPDATE align_runs SET {cols} WHERE run_id = ?",  # noqa: S608 — column names are ours
         (*fields.values(), run_id),
     )
+
+
+# ---------------------------------------------------------------------------
+# Usage-limit reads (``align_pipeline/limits.py``). Exempt runs — started by a
+# holder of the unlimited capability — never count against the shared budget.
+# ---------------------------------------------------------------------------
+
+_COUNTED = (
+    "json_extract(params_json, '$.device') = ? "
+    "AND COALESCE(json_extract(params_json, '$.quota_exempt'), 0) = 0"
+)
+
+
+def counted_starts_since(device: str, since_iso: str) -> list[str]:
+    """``started_at`` of every non-exempt ``device`` run started at/after ``since_iso``, oldest first."""
+    rows = (
+        get_conn()
+        .execute(
+            f"SELECT started_at FROM align_runs WHERE {_COUNTED} AND started_at >= ? "  # noqa: S608
+            "ORDER BY started_at",
+            (device, since_iso),
+        )
+        .fetchall()
+    )
+    return [r["started_at"] for r in rows]
+
+
+def counted_running(device: str, *, exclude_run_id: str | None = None) -> int:
+    """Non-exempt ``device`` runs currently executing (pending/running — a failed run holds no lane)."""
+    row = (
+        get_conn()
+        .execute(
+            f"SELECT COUNT(*) AS n FROM align_runs WHERE {_COUNTED} "  # noqa: S608
+            "AND status IN ('pending','running') AND run_id != ?",
+            (device, exclude_run_id or ""),
+        )
+        .fetchone()
+    )
+    return int(row["n"])

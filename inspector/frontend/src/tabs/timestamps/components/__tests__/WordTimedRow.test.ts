@@ -16,7 +16,7 @@ import WordTimedRow from '../WordTimedRow.svelte';
 function seedVerse() {
     const shard = decodeTimestampShard(WORD_SHARD) as TsWordShardResponse;
     const data = assembleOccasion(
-        'r', shardOccasions(shard)[0]!, {}, {},
+        'r', shardOccasions(shard)[0]!, {},
         { audio_category: 'by_surah' }, '',
     );
     loadedVerse.set({ data, tsSegOffset: 0, tsSegEnd: 3 });
@@ -99,7 +99,7 @@ describe('WordTimedRow', () => {
             ...WORD_SHARD, readings: [{ ...reading, words }],
         }) as TsWordShardResponse;
         const data = assembleOccasion(
-            'r', shardOccasions(shard)[0]!, {}, {}, { audio_category: 'by_surah' }, '',
+            'r', shardOccasions(shard)[0]!, {}, { audio_category: 'by_surah' }, '',
         );
         loadedVerse.set({ data, tsSegOffset: 0, tsSegEnd: 3 });
         deliveryRiwayah.set(shard._meta.riwayah);

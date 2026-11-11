@@ -33,7 +33,11 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel, StrictBool
+
+from ..bucket.segment import JoinVerdict
+from ..bucket.specials import SpecialEntry
+from .mark_ready import ChecklistKey
 
 # ===========================================================================
 # Shared scalar aliases (documentation-only; TS sees ``string`` / ``number``)
@@ -90,15 +94,9 @@ class SegConfigResponse(BaseModel):
     validation_categories: list[str]
     #: Inspector slug of the edition the vocabularies below describe.
     riwayah: str
-    #: Verses that OPEN with the disconnected letters. Verse-keyed because the
-    #: boundary-adjustment exemption covers the whole verse, not just the
-    #: opening word (13:1 runs on past the letters).
-    muqattaat_verses: list[tuple[int, int]]
     qalqala_letters: list[str]
-    standalone_refs: list[tuple[int, int, int]]
-    standalone_words: list[str]
-    #: Word refs that ARE a disconnected-letters opening. Distinct from
-    #: ``muqattaat_verses``: a Warsh verse can hold two of them.
+    #: Word refs that ARE a disconnected-letters opening; a Warsh verse can
+    #: hold two of them.
     muqattaat_words: list[tuple[int, int, int]]
     #: Confidence below which a segment is flagged; per edition (D19).
     low_confidence_threshold: float
@@ -130,6 +128,28 @@ class SegReciter(BaseModel):
 
 class SegRecitersResponse(RootModel[list[SegReciter]]):
     """``GET /api/seg/reciters`` — a bare JSON array of reciter rows."""
+
+
+class SegReviewSignal(BaseModel):
+    """One delivery's open review items for the reciter picker's pill + filter.
+
+    ``low_confidence`` counts segments under the delivery's riwayah threshold (the
+    accordion's default slider position); ``low_confidence_v2`` the open neural sidecar
+    items."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    low_confidence: int = 0
+    low_confidence_v2: int = 0
+
+
+class SegReviewSignalsResponse(BaseModel):
+    """``GET /api/seg/review-signals`` — counts by slug for the deliveries with open items
+    (from ``catalog/review_signals.json``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    signals: dict[str, SegReviewSignal] = Field(default_factory=dict)
 
 
 # ===========================================================================
@@ -170,6 +190,49 @@ class SegmentFlagView(FlagComment):
     follow_ups: list[FlagComment] = Field(default_factory=list)
 
 
+class SegWordTiming(BaseModel):
+    """A word interval exposed for sample-review highlighting."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    word: str
+    location: Ref
+    start_ms: int
+    end_ms: int
+
+
+class SegStoredWordTime(BaseModel):
+    """One word interval from the stored segment times, chapter-audio ms."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    location: Ref
+    start_ms: int
+    end_ms: int
+
+
+class SegStoredTimes(BaseModel):
+    """One segment's stored word intervals and the span they were timed on."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    start_ms: int
+    end_ms: int
+    words: list[SegStoredWordTime]
+
+
+class SegWordTimesResponse(BaseModel):
+    """``GET /api/seg/word-times/<reciter>/<chapter>``: stored word intervals.
+
+    ``segments`` maps a segment uid to its timed words; a segment whose stored
+    times no longer match it (span or timed ref changed since timing) is absent.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    segments: dict[str, SegStoredTimes]
+
+
 class SegDataSegment(BaseModel):
     """A segment row as emitted by ``GET /api/seg/data`` (chapter-scoped).
 
@@ -190,6 +253,8 @@ class SegDataSegment(BaseModel):
     audio_url: str
     ignored_categories: list[str] | None = None
     is_wasl: bool | None = None
+    join_verdicts: list[JoinVerdict] | None = None
+    word_timings: list[SegWordTiming] | None = None
 
 
 class SegAllSegment(BaseModel):
@@ -215,7 +280,9 @@ class SegAllSegment(BaseModel):
     wrap_word_ranges: list | None = None
     ignored_categories: list[str] | None = None
     is_wasl: bool | None = None
+    join_verdicts: list[JoinVerdict] | None = None
     flag: SegmentFlagView | None = None
+    word_timings: list[SegWordTiming] | None = None
 
 
 class SegmentsChapterSummary(BaseModel):
@@ -264,7 +331,8 @@ class SegAllResponse(BaseModel):
     """``GET /api/seg/all/<reciter>`` success body.
 
     ``audio_by_chapter`` / ``chapter_duration_ms_by_chapter`` are chapter-keyed
-    string maps; ``duration_ms_by_url`` is URL-keyed. ``pad_ms`` is the legacy
+    string maps; ``duration_ms_by_url`` and ``size_bytes_by_url`` (manifest size
+    of the aligned source file, gating direct CDN play) are URL-keyed. ``pad_ms`` is the legacy
     symmetric shim ``(pad_left_ms + pad_right_ms) // 2``.
     """
 
@@ -281,6 +349,7 @@ class SegAllResponse(BaseModel):
     audio_by_chapter: dict[str, str] = Field(default_factory=dict)
     chapter_duration_ms_by_chapter: dict[str, int] = Field(default_factory=dict)
     duration_ms_by_url: dict[str, int] = Field(default_factory=dict)
+    size_bytes_by_url: dict[str, int] = Field(default_factory=dict)
     reciter_vbr_chapters: list[int] = Field(default_factory=list)
     pad_ms: int
     pad_left_ms: int
@@ -297,7 +366,7 @@ class SegSavePatchSegment(BaseModel):
     """One segment in a ``patch`` (field-level) save payload.
 
     The patch path keys updates by chapter-local ``index`` and only rewrites
-    ``matched_ref`` / ``confidence`` / ``ignored_categories``.
+    ``matched_ref`` / ``confidence`` / ``ignored_categories`` / ``is_wasl``.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -308,6 +377,7 @@ class SegSavePatchSegment(BaseModel):
     confidence: float
     ignored_categories: list[str] | None = None
     is_wasl: bool | None = None
+    join_verdicts: list[JoinVerdict] | None = None
 
 
 class SegSaveFullSegment(BaseModel):
@@ -323,6 +393,7 @@ class SegSaveFullSegment(BaseModel):
     wrap_word_ranges: list | None = None
     ignored_categories: list[str] | None = None
     is_wasl: bool | None = None
+    join_verdicts: list[JoinVerdict] | None = None
 
 
 class SegSaveRequest(BaseModel):
@@ -366,6 +437,25 @@ class SegUndoOpsRequest(BaseModel):
 
     batch_id: str
     op_ids: list[str]
+
+
+class SegSpecialsResponse(BaseModel):
+    """``GET /api/seg/specials/<reciter>`` — the reciter's specials by chapter; empty when it has none."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    chapters: dict[str, list[SpecialEntry]] = Field(default_factory=dict)
+
+
+class SegSpecialsVoiceRequest(BaseModel):
+    """``POST /api/seg/specials/<reciter>/voice`` — a maintainer's call on whether
+    the special starting at ``start_ms`` in ``chapter`` is the reciter's own voice."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    chapter: int = Field(ge=1, le=114)
+    start_ms: int = Field(ge=0)
+    same_voice: StrictBool
 
 
 class SegUndoResponse(BaseModel):
@@ -473,9 +563,25 @@ class SegValLowConfidenceItem(BaseModel):
     classified_issues: list[str] = Field(default_factory=list)
 
 
+class SegValLowConfidenceWord(BaseModel):
+    """A word that made a segment Low Confidence. ``fit`` / ``sound_fit`` are
+    log-posterior deficits of the word and of its worst sound (more negative =
+    worse); absent on sidecars written before the scores existed. ``severity``
+    rescales the worse of the two floor ratios to [0, 1] across every scored
+    word of the reciter's sidecar (1 = most severe); absent without scores."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ref: Ref
+    fit: float | None = None
+    sound_fit: float | None = None
+    severity: float | None = None
+
+
 class SegValLowConfidenceV2Item(BaseModel):
-    """``low_confidence_v2`` — a segment flagged by the extraction-time MFA
-    tight-beam probe. No confidence score; the signal is binary."""
+    """``low_confidence_v2`` — a segment the neural timing checks found fitting its
+    text poorly (``low_confidence_v2.json``). No confidence score; ``words`` names
+    the words that tripped the check (empty when the sidecar carries none)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -484,14 +590,18 @@ class SegValLowConfidenceV2Item(BaseModel):
     seg_index: int
     segment_uid: str | None = None
     classified_issues: list[str] = Field(default_factory=list)
+    words: list[SegValLowConfidenceWord] = Field(default_factory=list)
 
 
 class SegValHiddenPauseCut(BaseModel):
-    """One proposed cut inside a segment (``hidden_pause_v1`` sidecar).
+    """One proposed cut inside a segment (``hidden_pause_v1`` /
+    ``missed_waqf_v1`` sidecars).
 
     ``axes`` names the offline arms that agree on the cut (``trio`` = collar
     boundary head, ``lite`` = lite student, ...). ``evidence`` is the
-    per-axis raw measurement block, passed through for the card."""
+    per-axis raw measurement block, passed through for the card. ``silence_*_ms``
+    is the pause around the cursor (``timing_source`` ``neural``: the timing head's
+    decoded pause): a WAQF answer splits with that gap."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -503,10 +613,13 @@ class SegValHiddenPauseCut(BaseModel):
     final_class: str | None = None
     verse_end: bool = False
     evidence: dict[str, Any] = Field(default_factory=dict)
+    silence_start_ms: int | None = None
+    silence_end_ms: int | None = None
+    timing_source: Literal["neural"] | None = None
 
 
 class SegValHiddenPauseBoundary(BaseModel):
-    """Sidecar payload on a ``hidden_pause`` item. ``refs`` is ``null`` when
+    """Sidecar payload on a ``hidden_pause`` / ``missed_waqf`` item. ``refs`` is ``null`` when
     the offline pass could not assign per-section refs (Auto Split falls back
     to plain Split). ``score`` = agreeing axes × 1000 + min(gap_ms, 999)."""
 
@@ -530,6 +643,28 @@ class SegValHiddenPauseItem(BaseModel):
     segment_uid: str | None = None
     classified_issues: list[str] = Field(default_factory=list)
     boundary: SegValHiddenPauseBoundary
+
+
+class SegValMissedWaqfItem(BaseModel):
+    """``missed_waqf`` — an offline phoneme + silence detector heard the
+    reciter stop inside this segment, which was not cut there. Review-only
+    (owner / maintainer capability).
+
+    ``resolved`` marks an item already labelled — split from the card (edit
+    history carries the split) or ignored (every cut WASL). The accordion keeps
+    it so the labels stay reviewable; resolved items are excluded from
+    ``category_counts``. ``segment_uid`` is the split ROOT uid.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    ref: Ref
+    chapter: int
+    seg_index: int
+    segment_uid: str | None = None
+    classified_issues: list[str] = Field(default_factory=list)
+    boundary: SegValHiddenPauseBoundary
+    resolved: bool = False
 
 
 class SegValFalseSplitBoundary(BaseModel):
@@ -578,26 +713,23 @@ class SegValUnmarkedWaslItem(BaseModel):
     boundary: SegValFalseSplitBoundary
 
 
-class SegValBoundaryAdjItem(BaseModel):
-    """``boundary_adj`` — a segment whose boundary may need adjustment."""
+class SegValVerseJoin(BaseModel):
+    """One verse end inside a cross-verse segment and its stored answer (``None`` = unanswered)."""
 
     model_config = ConfigDict(extra="forbid")
 
-    chapter: int
-    seg_index: int
-    segment_uid: str | None = None
-    ref: Ref
-    verse_key: VerseRef
-    classified_issues: list[str] = Field(default_factory=list)
+    after_ref: str
+    verdict: Literal["wasl", "waqf"] | None = None
 
 
 class SegValCrossVerseItem(BaseModel):
     """``cross_verse`` — a segment spanning a verse boundary.
 
-    ``resolved`` marks an item that no longer spans a boundary because it was
-    split from the cross-verse card (edit history carries the split); the
-    accordion keeps it so the WASL/WAQF picks stay reviewable. Resolved items
-    are excluded from ``category_counts`` and never block mark-ready.
+    ``verse_joins`` lists each verse end inside the segment with its stored
+    ``join_verdicts`` answer. ``resolved`` marks an item whose joins are all
+    answered, or one that no longer spans a boundary because it was split from
+    the cross-verse card (edit history carries the split). Resolved items are
+    excluded from ``category_counts`` and never block mark-ready.
     ``segment_uid`` is the split ROOT uid (the live first piece).
     """
 
@@ -609,6 +741,7 @@ class SegValCrossVerseItem(BaseModel):
     ref: Ref
     classified_issues: list[str] = Field(default_factory=list)
     resolved: bool = False
+    verse_joins: list[SegValVerseJoin] = Field(default_factory=list)
 
 
 class SegValAudioBleedingItem(BaseModel):
@@ -671,28 +804,6 @@ class SegValQalqalaItem(BaseModel):
     classified_issues: list[str] = Field(default_factory=list)
 
 
-class SegValBasmalaAminItem(BaseModel):
-    """``basmala_amin`` — a basmala/amin verse-boundary convention candidate.
-
-    ``missed_basmala`` is stamped ``true`` on the augmented "possibly missed
-    Basmala" candidates (first seg of a chapter whose Basmala was not stripped);
-    absent on the canonical 1:1 / 1:7 candidates.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    chapter: int
-    seg_index: int
-    segment_uid: str | None = None
-    ref: Ref
-    # ``time`` rides through only on the augmented "missed Basmala" candidates
-    # (``{**first_seg, ...}`` in detail.py — first_seg carries it); the
-    # canonical 1:1 / 1:7 candidates omit it. Optional, not required.
-    time: str | None = None
-    missed_basmala: bool | None = None
-    classified_issues: list[str] = Field(default_factory=list)
-
-
 # Plain union over every variant — NOT a Pydantic discriminator union (no
 # shared on-wire discriminator field exists). json2ts renders this as a named
 # TS union of the member interfaces.
@@ -704,15 +815,14 @@ SegValAnyItemUnion = (
     | SegValLowConfidenceItem
     | SegValLowConfidenceV2Item
     | SegValHiddenPauseItem
+    | SegValMissedWaqfItem
     | SegValFalseSplitItem
     | SegValUnmarkedWaslItem
-    | SegValBoundaryAdjItem
     | SegValCrossVerseItem
     | SegValAudioBleedingItem
     | SegValRepetitionItem
     | SegValMuqattaatItem
     | SegValQalqalaItem
-    | SegValBasmalaAminItem
 )
 
 
@@ -725,15 +835,16 @@ class SegValAnyItem(RootModel[SegValAnyItemUnion]):
 
 
 class SegValProbeMeta(BaseModel):
-    """``low_confidence_v2_meta`` — provenance of the MFA tight-beam probe
-    sidecar. Open shape: the ``_meta`` block of ``low_confidence_v2.json`` is
-    passed through verbatim from the extraction stage."""
+    """``low_confidence_v2_meta`` — provenance of the Low Confidence sidecar.
+    Open shape: the ``_meta`` block of ``low_confidence_v2.json`` is passed through
+    verbatim from the extraction stage."""
 
     model_config = ConfigDict(extra="allow")
 
 
 class SegValBoundaryMeta(BaseModel):
-    """``hidden_pause_meta`` / ``false_split_meta`` / ``unmarked_wasl_meta`` —
+    """``hidden_pause_meta`` / ``missed_waqf_meta`` / ``false_split_meta`` /
+    ``unmarked_wasl_meta`` —
     provenance of the offline boundary-review sidecars (arms, segment counts,
     by-axes tallies). Open shape: the ``_meta`` block is passed through
     verbatim."""
@@ -769,11 +880,16 @@ class SegValidateResponse(BaseModel):
     (additive alias). ``category_counts`` mirrors the per-category lengths in
     registry-declared order. ``split_group_index`` maps a root segment uid to
     its transitive split-descendant uids. ``low_confidence_v2_meta`` /
-    ``hidden_pause_meta`` / ``false_split_meta`` / ``unmarked_wasl_meta`` are
-    present only when the sidecar carried a ``_meta`` block. ``hidden_pause``
-    / ``false_split`` / ``unmarked_wasl`` (and their metas) are omitted for
-    viewers without ``segments.view_boundary_review``. Each item carries a
-    ``classified_issues`` field.
+    ``hidden_pause_meta`` / ``missed_waqf_meta`` / ``false_split_meta`` /
+    ``unmarked_wasl_meta`` are present only when the sidecar carried a
+    ``_meta`` block. ``hidden_pause`` / ``false_split`` /
+    ``unmarked_wasl`` (and their metas) are omitted for
+    viewers without ``segments.view_boundary_review``. ``wasl_recheck`` lists
+    the left-piece uids of cross-verse boundaries whose WASL / WAQF answer is
+    re-asked (open until answered after the sidecar was written); it is shown
+    to every viewer. ``checklist_keys`` names the mark-ready attestations
+    whose categories ever had an item for the reciter — the only boxes shown
+    and required. Each item carries a ``classified_issues`` field.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -786,22 +902,24 @@ class SegValidateResponse(BaseModel):
     low_confidence: list[SegValLowConfidenceItem] = Field(default_factory=list)
     low_confidence_v2: list[SegValLowConfidenceV2Item] = Field(default_factory=list)
     hidden_pause: list[SegValHiddenPauseItem] | None = None
+    missed_waqf: list[SegValMissedWaqfItem] | None = None
     false_split: list[SegValFalseSplitItem] | None = None
     unmarked_wasl: list[SegValUnmarkedWaslItem] | None = None
-    boundary_adj: list[SegValBoundaryAdjItem] = Field(default_factory=list)
     cross_verse: list[SegValCrossVerseItem] = Field(default_factory=list)
     audio_bleeding: list[SegValAudioBleedingItem] = Field(default_factory=list)
     repetitions: list[SegValRepetitionItem] = Field(default_factory=list)
     muqattaat: list[SegValMuqattaatItem] = Field(default_factory=list)
     qalqala: list[SegValQalqalaItem] = Field(default_factory=list)
-    basmala_amin: list[SegValBasmalaAminItem] = Field(default_factory=list)
     category_counts: dict[str, int] = Field(default_factory=dict)
     stats: SegValStats | None = None
     split_group_index: dict[str, list[str]] = Field(default_factory=dict)
     low_confidence_v2_meta: SegValProbeMeta | None = None
     hidden_pause_meta: SegValBoundaryMeta | None = None
+    missed_waqf_meta: SegValBoundaryMeta | None = None
     false_split_meta: SegValBoundaryMeta | None = None
     unmarked_wasl_meta: SegValBoundaryMeta | None = None
+    wasl_recheck: list[str] = Field(default_factory=list)
+    checklist_keys: list[ChecklistKey] = Field(default_factory=list)
 
 
 # ===========================================================================

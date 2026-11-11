@@ -13,6 +13,7 @@
       "coverage_kind": "full",
       "deliveries": [
         {
+          "aligned_at": null,
           "audio_category": "by_surah",
           "bitrate_kbps_nominal": null,
           "bitrate_mode": "unknown",
@@ -21,6 +22,8 @@
           "channel_name": "MP3 Quran",
           "chapter_count": 114,
           "coverage_kind": "full",
+          "marked_ready": false,
+          "quality_status": null,
           "recording_context": null,
           "recording_year": null,
           "riwayah": "hafs_an_asim",

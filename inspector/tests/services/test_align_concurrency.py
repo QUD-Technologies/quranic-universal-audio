@@ -3,7 +3,7 @@
 The aligner Space serializes the GPU half of an item internally, so the only
 thing these cover is the client side: how many chapter items the Inspector keeps
 in flight, that every chapter still lands exactly once, and that a chapter
-failure still fails the stage instead of being swallowed by a worker thread.
+failure is recorded and fails the stage only after every other chapter landed.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from typing import cast
 
 import pytest
 
+from qua_shared.audio.sources import SourceGroup
 from services.admin.align_pipeline import params as align_params
 from services.admin.align_pipeline import progress, stage_align
 from services.admin.align_pipeline.params import AlignParams
@@ -69,7 +70,9 @@ def staged(monkeypatch):
     lock = threading.Lock()
 
     monkeypatch.setattr(stage_align.staging, "staged_chapters", lambda slug, run: [])
+    monkeypatch.setattr(stage_align.staging, "staged_sources", lambda slug, run: [])
     monkeypatch.setattr(stage_align.staging, "chapter_path", lambda slug, run, ch: ch)
+
     def write_json(chapter, doc):
         with lock:
             written[chapter] = doc
@@ -83,7 +86,8 @@ def staged(monkeypatch):
 
 def _run(monkeypatch, client: _StubClient, chapters: list[int]) -> None:
     monkeypatch.setattr(stage_align, "AlignerClient", lambda: client)
-    stage_align.run(SLUG, RUN, AlignParams(), chapters)
+    groups = [SourceGroup(url=f"https://cdn/{ch}.mp3", chapters=(ch,)) for ch in chapters]
+    stage_align.run(SLUG, RUN, AlignParams(), groups)
 
 
 def test_default_pool_rolls_sixteen_chapter_streams(monkeypatch, staged):
@@ -108,12 +112,15 @@ def test_env_override_narrows_the_pool(monkeypatch, staged):
     assert sorted(staged) == [1, 2, 3]
 
 
-def test_one_chapter_failure_fails_the_stage(monkeypatch, staged):
-    monkeypatch.setenv("INSPECTOR_ALIGN_CONCURRENCY", "2")
-    client = _StubClient(expect=2, fail_on={2})
-    with pytest.raises(stage_align.AlignStageError, match="chapter 2"):
+@pytest.mark.parametrize("workers", ["1", "2"])
+def test_a_failed_chapter_is_recorded_while_the_rest_still_stage(monkeypatch, staged, workers):
+    monkeypatch.setenv("INSPECTOR_ALIGN_CONCURRENCY", workers)
+    client = _StubClient(expect=int(workers), fail_on={2})
+    with pytest.raises(stage_align.AlignStageError, match="1 of 4 file"):
         _run(monkeypatch, client, [1, 2, 3, 4])
-    assert 2 not in staged
+    assert sorted(staged) == [1, 3, 4]
+    assert progress.get_detail(RUN)["chapter_failures"] == ["chapter 2: boom"]
+    assert progress.get_detail(RUN)["chapters_done"] == 3
 
 
 def test_cancel_stops_the_pool(monkeypatch, staged):

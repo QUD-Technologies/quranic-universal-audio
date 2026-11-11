@@ -49,7 +49,7 @@ Symptom → likely root → first probe. Ordered by area, not severity. VBR-only
 
 | Symptom | Likely root | First probe |
 |---|---|---|
-| Audio/peaks never appear on bucket for a slug | Katana extraction didn't run / upload didn't finish (`_done.json` absent) | `hf bucket ls reciters/<slug>/audio/` — no `_done.json` ⇒ not fully uploaded. Re-run `.local/extraction/upload_to_bucket.py`. |
+| Audio/peaks never appear on bucket for a slug | The align run's acquire / split stage didn't finish | Check the run in Admin → Requests (`GET …/align/status`); retry the run. |
 
 ## Audio proxy / serving
 
@@ -62,6 +62,7 @@ Symptom → likely root → first probe. Ordered by area, not severity. VBR-only
 | Segment-clip 403 | `_is_known_chapter_url` rejected — URL not in the **manifest sidecar** | Confirm `audio_meta.chapter_for_url(reciter, url)` resolves (NOT `detailed.json` — its `audio` field is `""`). |
 | Segment-clip 200 / 0 bytes | ffmpeg cmd missing `-vn` → stripped ffmpeg chokes on embedded APIC cover-art (no png encoder) | Confirm `routes/audio/clip.py` cmd has `-vn`. |
 | Segments footer progress bar blank for ONE reciter (audio still plays) | Chapter audio not on the bucket → `_stream_cdn` serves a headerless MP3 → browser reports `el.duration` Infinity/NaN. The footer hides the bar when duration isn't finite. (Footer now listens for late `durationchange` + falls back to `segAllData.chapter_duration_ms_by_chapter`; also fix the data: `populate_bucket_audio.py --slug <s> --bucket prod`.) | `scripts/bucket/bucket_reciters.py --bucket prod` → compare `audio_n` vs manifest chapters. FE: `SegmentsFooter.svelte` + `footer-duration.ts::resolveChapterDurationMs`. |
+| One chapter seconds-to-minutes out of sync in BOTH Segments and Timestamps; bucket file and segments agree (e.g. husary mujawwad tarteel ch 62) | The source CDN replaced the file under the same URL with a different recording; direct CDN play skipped the bucket copy the delivery was aligned on. `play-url.ts` now plays direct only when the live size equals the manifest `size_bytes` (`Content-Range` total, else a 1-byte read at `size-1`); unsized or mismatched chapters stay proxied. | `curl -sI <cdn url>` Content-Length vs `catalog/audio_manifest/<slug>.json` `size_bytes`; `ffprobe` both copies. In the browser the `<audio>` src is the raw CDN URL instead of `/api/seg/audio-proxy/...`. |
 
 ## Peaks
 

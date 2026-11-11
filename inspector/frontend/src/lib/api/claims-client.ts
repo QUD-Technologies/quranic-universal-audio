@@ -1,5 +1,5 @@
 /**
- * Claim flow client. Wraps the four POST endpoints and translates the
+ * Claim flow client. Wraps the claim-family POST endpoints and translates the
  * backend's status code envelope into UI side effects:
  *
  *   - 200 → resolves with the new row.
@@ -18,10 +18,10 @@ import { SIGN_IN_MESSAGES } from '../sign-in-messages';
 import { loadCurrentUser } from '../stores/current-user';
 import { openSignInModal } from '../stores/sign-in-modal';
 import { pushToast } from '../stores/toast';
-import type { MarkReadyRequest } from '../types/generated/schemas';
+import type { MarkReadyRequest, QualityStatus } from '../types/generated/schemas';
 import type { ReciterRow } from './reciter-task';
 
-type RouteName = 'claim' | 'release' | 'mark-ready' | 'unmark-ready';
+type RouteName = 'claim' | 'release' | 'mark-ready' | 'unmark-ready' | 'quality-status';
 
 interface ErrorBody {
     error?: string;
@@ -97,3 +97,6 @@ export const markReady = (slug: string, payload: MarkReadyRequest) =>
  */
 export const markReadyBypass = (slug: string) => _post('mark-ready', slug, {});
 export const unmarkReady = (slug: string) => _post('unmark-ready', slug);
+/** Set (a status) or clear (`null`) the delivery's recitation quality rating. */
+export const setQualityStatus = (slug: string, status: QualityStatus | null) =>
+    _post('quality-status', slug, { quality_status: status });

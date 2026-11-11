@@ -51,7 +51,7 @@ def _clean_batch_line() -> str:
                 {
                     "op_id": "clean-op-1",
                     "op_type": "trim_segment",
-                    "op_context_category": "boundary_adj",
+                    "op_context_category": "repetitions",
                     "patch": {
                         "before": [
                             {
@@ -116,14 +116,14 @@ def test_op_context_category_survives_round_trip():
         {
             "op_id": "op-ctx-1",
             "op_type": "trim_segment",
-            "op_context_category": "boundary_adj",
+            "op_context_category": "repetitions",
             "targets_before": [],
             "targets_after": [],
         }
     )
-    assert op.op_context_category == "boundary_adj"
+    assert op.op_context_category == "repetitions"
     out = op.model_dump(exclude_none=True)
-    assert out["op_context_category"] == "boundary_adj"
+    assert out["op_context_category"] == "repetitions"
     assert (op.model_extra or {}) == {}
 
 
@@ -143,7 +143,7 @@ def test_fresh_batch_model_dump_has_no_save_mode():
             {
                 "op_id": "fresh-op-1",
                 "op_type": "trim_segment",
-                "op_context_category": "boundary_adj",
+                "op_context_category": "repetitions",
                 "patch": {
                     "before": [],
                     "after": [],
@@ -206,7 +206,7 @@ def test_dead_op_field_rejected():
                 {
                     "op_id": "dead-op-1",
                     "op_type": "trim_segment",
-                    "op_context_category": "boundary_adj",
+                    "op_context_category": "repetitions",
                     "targets_before": [],
                     "targets_after": [],
                     dead: "x",
@@ -275,12 +275,12 @@ def test_clean_op_validates_with_promoted_fields():
         {
             "op_id": "clean-op-2",
             "op_type": "trim_segment",
-            "op_context_category": "boundary_adj",
+            "op_context_category": "repetitions",
             "targets_before": [],
             "targets_after": [],
         }
     )
-    assert op.op_context_category == "boundary_adj"
+    assert op.op_context_category == "repetitions"
     assert op.patch is None
     assert (op.model_extra or {}) == {}
 
@@ -305,7 +305,7 @@ def test_wire_history_batch_derives_save_mode_and_is_revert():
                 {
                     "op_id": "wire-op-1",
                     "op_type": "merge_segments",
-                    "op_context_category": "boundary_adj",
+                    "op_context_category": "repetitions",
                     "targets_before": [],
                     "targets_after": [],
                 }

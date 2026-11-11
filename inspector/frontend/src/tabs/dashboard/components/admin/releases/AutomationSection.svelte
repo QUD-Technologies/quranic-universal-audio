@@ -13,6 +13,8 @@
      * payload back). Mounted only for holders of ``release.manage_automation``.
      */
     import { onMount } from 'svelte';
+    import { i18n } from '../../../../../lib/i18n/locale.svelte';
+    import * as m from '../../../../../lib/paraglide/messages';
 
     import {
         type AutomationConfigBody,
@@ -39,7 +41,10 @@
         stale_ts_regen: { enabled: boolean; guard_minutes: number; scope: 'full' | 'affected' };
         stale_metadata: { enabled: boolean; guard_minutes: number };
         hf_publish: SchedCfg;
-        gh_cut: SchedCfg & { next_version_override: string | null };
+        gh_cut: SchedCfg & {
+            next_version_override: string | null;
+            include_letter_timestamps: boolean;
+        };
         auto_release_inactive: { enabled: boolean; inactive_days: number };
     }
 
@@ -74,6 +79,7 @@
                 time_of_day: g.time_of_day ?? '09:00',
                 timezone: g.timezone ?? 'Australia/Sydney',
                 next_version_override: g.next_version_override ?? null,
+                include_letter_timestamps: g.include_letter_timestamps ?? true,
             },
             auto_release_inactive: {
                 enabled: ri.enabled ?? false,
@@ -340,6 +346,15 @@
                             </div>
                         </div>
                     {/if}
+
+                    <!-- Release contents also apply to manual cuts when the schedule is off. -->
+                    <div class="settings">
+                        <label class="check">
+                            <input type="checkbox" bind:checked={draft.gh_cut.include_letter_timestamps} />
+                            <span>{(i18n.locale, m.dashboard_release_include_letter_timestamps())}</span>
+                        </label>
+                        <span class="desc">{(i18n.locale, m.dashboard_release_letter_timestamps_hint())}</span>
+                    </div>
                 </div>
 
                 <!-- 6. Auto-release inactive reviewer claims -->

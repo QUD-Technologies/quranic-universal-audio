@@ -79,8 +79,8 @@ first-load badge.
 
 ## Emission
 
-`services/notifications/emit.py` has two entry points, one per source
-write-path. Both are **best-effort** — wrapped in try/except-log so a
+`services/notifications/emit.py` has entry points for each source
+write-path. They are **best-effort** — wrapped in try/except-log so a
 notification failure never rolls back the motivating transition or save.
 
 1. **`emit_for_event(conn, record, *, before, extra)`** — called from
@@ -91,6 +91,13 @@ notification failure never rolls back the motivating transition or save.
 2. **`notify_flag_reply(...)`** — called from `services/segments/save.py` after
    a successful save (segment saves write the bucket, not SQLite, so this opens
    its **own** `durable_transaction`).
+3. **`notify_owners_release_cut(...)`** — called from the successful cut's
+   `complete()` handler and the failed-cut webhook. Review-alert recipients
+   receive one card per job, deduped on `release:{job_id}`. A clean cut names
+   the published version and recitation count; a cut with exclusions names the
+   chapters left out because their upstream audio changed, grouped by recitation.
+   The payload carries `dropped_upstream_chapters`; callbacks also accept
+   `held_upstream_changes` from jobs launched before deployment.
 
 Every title names its reciter, resolved once via `catalog.display_name(slug)`
 (or the proposed name in the request payload for slugless intake).
@@ -124,6 +131,8 @@ watchdog), not from any transition. One card per (delivery, chapter, kind);
 that stays unrepaired notifies **once**, not on every sweep. The body says
 whether an interrupted-write temp still holds the payload (recoverable) or the
 chapter needs a re-align; `payload` carries `chapter` / `kind` / `orphan_path`.
+`emit.resolve_shard_integrity(scanned, findings)` archives a card (for every
+recipient) once a later sweep lists its slug and no longer finds the gap.
 
 ## Owner review alerts
 

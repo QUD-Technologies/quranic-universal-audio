@@ -41,6 +41,10 @@ function _segFromSnapshot(snap: Record<string, unknown>): Segment {
     if (snap.chapter != null) seg.chapter = snap.chapter as number;
     if (snap.entry_ref) seg.entry_ref = snap.entry_ref as string;
     if (snap.wrap_word_ranges) seg.wrap_word_ranges = snap.wrap_word_ranges;
+    if (typeof snap.is_wasl === 'boolean') seg.is_wasl = snap.is_wasl;
+    if (Array.isArray(snap.join_verdicts)) {
+        seg.join_verdicts = (snap.join_verdicts as NonNullable<Segment['join_verdicts']>).map((j) => ({ ...j }));
+    }
     if (Array.isArray(snap.ignored_categories) && snap.ignored_categories.length > 0) {
         seg.ignored_categories = [...(snap.ignored_categories as string[])];
     }

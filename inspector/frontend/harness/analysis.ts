@@ -3,7 +3,8 @@
  * `TimedAnalysisRow` for one reciter:verse straight from shards via the real
  * `ts-source` assembly — no SPA, no audio, no waveform, no progress-bar math.
  *
- * Driven by URL params: `?reciter=<slug>&ref=45:32[&words=1-3]`. `/api` is
+ * Driven by URL params: `?reciter=<slug>&ref=45:32[&words=1-3][&t=<audio ms>]`;
+ * `t` parks the playhead there so the active cells light. `/api` is
  * proxied to a backend (set `INSPECTOR_API_TARGET` to the dev Space so no local
  * Flask is needed). Because it imports the production component + assembly,
  * there is zero rendering drift — TypeScript fails the build if their API moves.
@@ -26,7 +27,6 @@ import {
     loadChapterShard,
     loadDk,
     loadManifest,
-    loadQpc,
     reciterAudioFromManifest,
     shardOccasions,
 } from '../src/lib/recitation-data/ts-source';
@@ -39,6 +39,7 @@ import {
     deliveryRiwayah,
     showLetters,
     showPhonemes,
+    tsWaveformHoverTime,
     wordProfile,
 } from '../src/tabs/timestamps/stores/display';
 import { setRuleEnabled } from '../src/tabs/timestamps/stores/tajweed-settings';
@@ -51,15 +52,15 @@ async function render(): Promise<void> {
     const reciter = p.get('reciter');
     const ref = p.get('ref'); // e.g. "45:32"
     if (!reciter || !ref) throw new Error('need ?reciter=<slug>&ref=<surah:verse>');
-    const chapter = parseInt(ref.split(':')[0] ?? '0', 10);
+    // An opener's ref (`0:2`) names no chapter: `&chapter=N` says which shard holds it.
+    const chapter = parseInt(p.get('chapter') ?? ref.split(':')[0] ?? '0', 10);
 
     const manifest = await loadManifest();
     const reciterAudio = reciterAudioFromManifest(manifest, reciter);
     if (!reciterAudio) throw new Error(`reciter not advertised by the TS manifest: ${reciter}`);
 
-    const [shard, qpc, dk] = await Promise.all([
+    const [shard, dk] = await Promise.all([
         loadChapterShard(reciter, chapter),
-        loadQpc(),
         loadDk(),
     ]);
 
@@ -98,10 +99,10 @@ async function render(): Promise<void> {
     if (p.get('wasl') === '1') {
         const g = waslGroupOf(occasions, focusIdx);
         const members = occasions.slice(g.fromIdx, g.toIdx + 1);
-        data = assembleWaslGroup(reciter, members, ref, qpc, dk, reciterAudio, '');
+        data = assembleWaslGroup(reciter, members, ref, dk, reciterAudio, '');
         group = { data, span: [g.startMs, g.endMs] as [number, number], refs: g.refs, focusRef: ref };
     } else {
-        data = assembleOccasion(reciter, occasions[focusIdx]!, qpc, dk, reciterAudio, '');
+        data = assembleOccasion(reciter, occasions[focusIdx]!, dk, reciterAudio, '');
     }
 
     // Both tiers ON by default (the phoneme row defaults OFF in the app) — the
@@ -116,14 +117,21 @@ async function render(): Promise<void> {
 
     loadedVerse.set({ data, tsSegOffset: 0, tsSegEnd: Number.MAX_SAFE_INTEGER });
     focusWaslGroup.set(group);
-    mount(wordShard ? WordTimedRow : TimedAnalysisRow, {
+    const row = mount(wordShard ? WordTimedRow : TimedAnalysisRow, {
         target: document.getElementById('app')!,
     });
+    const playhead = p.get('t');
 
     // Let web fonts + recomputeRowGap (ResizeObserver) settle before flagging ready.
     await (document as unknown as { fonts?: { ready: Promise<unknown> } }).fonts?.ready;
     requestAnimationFrame(() =>
-        requestAnimationFrame(() => { document.body.dataset.ready = '1'; }),
+        requestAnimationFrame(() => {
+            if (playhead !== null && 'updateHighlights' in row) {
+                tsWaveformHoverTime.set(Number(playhead) / 1000);
+                (row as { updateHighlights: () => void }).updateHighlights();
+            }
+            document.body.dataset.ready = '1';
+        }),
     );
 }
 

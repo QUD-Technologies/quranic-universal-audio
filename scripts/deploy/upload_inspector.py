@@ -2,10 +2,9 @@
 """Upload the Inspector to its target Hugging Face Space.
 
 Usage::
-https://huggingface.co/hetchyy
 
-    python scripts/deploy/upload_inspector.py dev   # → hetchyy/quranic-inspector-dev
-    python scripts/deploy/upload_inspector.py prod  # → hetchyy/quranic-universal-audio
+    python scripts/deploy/upload_inspector.py dev   # → QUD-Technologies/quranic-inspector-dev
+    python scripts/deploy/upload_inspector.py prod  # → QUD-Technologies/quranic-universal-audio
 
 Build steps:
 
@@ -14,8 +13,7 @@ Build steps:
    volumes), plus three Space-specific overlays (root ``Dockerfile``, frontmatter
    ``README.md``, and a version-verified local copy of the private renderer
    package). The image's contents are defined solely by
-   ``inspector/Dockerfile`` + ``.dockerignore`` (both tracked, both consumed
-   identically here and by ``docker-publish.yml``'s repo-root build), so there
+   ``inspector/Dockerfile`` + ``.dockerignore`` (both tracked), so there
    is no hand-maintained file allowlist to drift from the Dockerfile's ``COPY``
    set — ``.dockerignore`` prunes at build time. The frontend ``dist/`` is
    built inside the image (Dockerfile stage 1); nothing is pre-built here.
@@ -46,12 +44,11 @@ import tempfile
 import time
 from pathlib import Path
 
-# Files NOT pushed to the Space repo: the uncompressed qpc_hafs.json is >10 MB
-# and would be auto-LFS-promoted, leaving a 133-byte pointer in the Space build
-# context that defeats the Dockerfile COPY. The committed ``.gz`` (~1.5 MB) is
-# what the image and the HF Jobs consume; the uncompressed copy stays in the
-# repo for local-dev tools that read it directly.
-_SKIP_FROM_STAGE = ("data/qpc_hafs.json",)
+# Files NOT pushed to the Space repo. Large or binary data never rides the staged
+# tree (HF would LFS it into a pointer the Docker build cannot read): the Quran
+# data pack, its fonts and the TS SDK tarball are fetched by the image build itself
+# (Dockerfile stage 0).
+_SKIP_FROM_STAGE: tuple[str, ...] = ()
 _CELLS_PACKAGE = "@quranic-phonemizer/cells"
 _CELLS_VENDOR_PATH = "vendor/quran-cells"
 
@@ -75,8 +72,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from qua_shared._env import load_repo_env, repo_root  # noqa: E402
 
 SPACE_REPOS = {
-    "dev": "hetchyy/quranic-inspector-dev",
-    "prod": "hetchyy/quranic-universal-audio",
+    "dev": "QUD-Technologies/quranic-inspector-dev",
+    "prod": "QUD-Technologies/quranic-universal-audio",
 }
 
 # README frontmatter shipped to the Space. Mirrors the runbook §1 setup.
@@ -106,6 +103,7 @@ short_description: Visualize, edit & verify Qur'anic recitation timestamps
 sdk: docker
 app_port: 7860
 pinned: false
+thumbnail: https://qud.dev/og/audio.png
 ---
 """
 
@@ -257,6 +255,14 @@ def _stage(repo: Path, stage_root: Path, env: str, branch: str) -> None:
 
     _stage_cells_package(repo, stage_root)
 
+    # The Hub keeps binaries over about 100 KB as LFS pointers, which the Space build gets
+    # instead of their bytes: vendor/restore.mjs fetches them from GitHub at this commit.
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    deploy_commit = stage_root / "inspector" / "frontend" / "vendor" / "DEPLOY_COMMIT"
+    deploy_commit.write_text(commit + "\n", encoding="utf-8")
+
     _link_or_copy(repo / "inspector" / "Dockerfile", stage_root / "Dockerfile")
 
     suffix = " (dev)" if env == "dev" else ""
@@ -329,6 +335,7 @@ def _upload(
     token: str,
     commit_msg: str,
     private_repo_token: str,
+    talqeen_token: str,
 ) -> str:
     api = HfApi(token=token)
     # The prod/dev Spaces are permanent — skip the create_repo call (it 409s on
@@ -350,6 +357,15 @@ def _upload(
         repo_id=repo_id,
         key="PRIVATE_REPO_TOKEN",
         value=private_repo_token,
+    )
+    # Read access to QUD-Technologies/talqeen-ai-data for the image build's Quran
+    # data stage (Dockerfile stage 0). A build credential; nothing at runtime reads it.
+    _retry_on_429(
+        "add_space_secret",
+        api.add_space_secret,
+        repo_id=repo_id,
+        key="TALQEEN_DATA_READ_TOKEN",
+        value=talqeen_token,
     )
     _retry_on_429(
         "upload_folder",
@@ -414,6 +430,10 @@ def main(argv: list[str] | None = None) -> int:
     if not private_repo_token and not args.dry_run:
         print("ERROR: PRIVATE_REPO_TOKEN missing in env.", file=sys.stderr)
         return 2
+    talqeen_token = os.environ.get("TALQEEN_DATA_READ_TOKEN")
+    if not talqeen_token and not args.dry_run:
+        print("ERROR: TALQEEN_DATA_READ_TOKEN missing in env.", file=sys.stderr)
+        return 2
 
     repo = repo_root()
     repo_id = SPACE_REPOS[args.env]
@@ -454,6 +474,7 @@ def main(argv: list[str] | None = None) -> int:
             token,
             commit_msg,
             private_repo_token or "",
+            talqeen_token or "",
         )
         print(f"==> Done. Space: {url}")
 

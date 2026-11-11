@@ -4,16 +4,17 @@ All data is loaded once and cached via ``services.cache``. Functions here never
 import Flask -- they return plain dicts/lists.
 
 Per-reciter reads (``load_seg_verses``, ``load_detailed``, ``load_probe_v2``,
-``load_hidden_pause``, ``load_false_split``, ``load_unmarked_wasl``)
+``load_hidden_pause``, ``load_missed_waqf``, ``load_false_split``,
+``load_unmarked_wasl``, ``load_wasl_recheck``)
 go through the storage backend via ``services.data_dir`` — no direct
-filesystem access to ``RECITATION_SEGMENTS_PATH``. Static reference data
-(qpc_hafs, surah_info, digital_khatt) still lives in the image at
-``INSPECTOR_DATA_DIR`` and is read directly.
+filesystem access to ``RECITATION_SEGMENTS_PATH``. Hafs reference data (Digital
+Khatt words, surah metadata) comes from the talqeen-quran-data pack through
+``qua_shared.quran_text``.
 
-The four reference accessors — ``get_dk_words_flat``, ``get_word_counts``,
-``get_single_word_verses``, ``word_has_stop`` — take a riwayah, defaulting to
-Hafs. The Hafs branch reads the bundled files exactly as before (so every
-existing call site is byte-identical); every other edition is served from
+The three reference accessors — ``get_dk_words_flat``, ``get_word_counts``,
+``word_has_stop`` — take a riwayah, defaulting to
+Hafs. The Hafs branch rebuilds the retired bundled documents from the pack (so
+every existing call site sees the same data); every other edition is served from
 ``services.reference.editions``, which owns the optional ``qua_domain``
 dependency. Nothing here falls back to Hafs for a non-Hafs riwayah: it raises.
 """
@@ -23,23 +24,28 @@ import threading
 from adapters.detailed_json import (
     load_entries_from_bytes as _load_detailed_entries_from_bytes,
 )
-from config import (
-    DK_SCRIPT_PATH,
-    SURAH_INFO_PATH,
-)
 from constants import STOP_SIGNS
+from qua_shared import quran_text
 from qua_shared.riwayat import DEFAULT_SDK_RIWAYAH
-from services.storage import cache, data_dir, static_refs
+from services.storage import cache, data_dir
 
-_detailed_locks: dict[str, threading.Lock] = {}
+_detailed_locks: dict[str, threading.RLock] = {}
 _detailed_locks_guard = threading.Lock()
 
 
-def _detailed_lock(reciter: str) -> threading.Lock:
+def detailed_lock(reciter: str) -> threading.RLock:
+    """The per-reciter lock over ``detailed.json`` and its cached entries.
+
+    A cold :func:`load_detailed` holds it from the read to the cache fill, and
+    every writer (save, undo) holds it from its load to its cache eviction, so a
+    writer always edits the current document and no reader caches bytes read
+    before a write that has since landed. Re-entrant: a writer calls
+    :func:`load_detailed` while holding it.
+    """
     with _detailed_locks_guard:
         lock = _detailed_locks.get(reciter)
         if lock is None:
-            lock = threading.Lock()
+            lock = threading.RLock()
             _detailed_locks[reciter] = lock
         return lock
 
@@ -49,37 +55,9 @@ def _detailed_lock(reciter: str) -> threading.Lock:
 # ---------------------------------------------------------------------------
 
 
-def load_qpc() -> dict[str, dict]:
-    """Load and cache qpc_hafs.json.
-
-    Byte resolution (local image → bucket) lives in
-    ``services.storage.static_refs.load_qpc_bytes`` — on the deployed Space the
-    image's ``.gz`` is an LFS pointer, so the real bytes come from the bucket.
-    """
-    cached = cache.get_qpc_cache()
-    if cached is not None:
-        return cached
-    import orjson
-
-    raw = static_refs.load_qpc_bytes()
-    data = orjson.loads(raw) if raw else {}
-    cache.set_qpc_cache(data)
-    return data
-
-
 def load_dk() -> dict[str, dict]:
-    """Load and cache digital_khatt_v2_script.json."""
-    cached = cache.get_dk_cache()
-    if cached is not None:
-        return cached
-    if DK_SCRIPT_PATH.exists():
-        import orjson
-
-        data = orjson.loads(DK_SCRIPT_PATH.read_bytes())
-    else:
-        data = {}
-    cache.set_dk_cache(data)
-    return data
+    """The Digital Khatt v2 script: every Hafs word plus one ``۝`` marker per ayah."""
+    return quran_text.digital_khatt_script()
 
 
 def get_dk_words_flat(riwayah: str = DEFAULT_SDK_RIWAYAH) -> dict[str, str]:
@@ -89,7 +67,7 @@ def get_dk_words_flat(riwayah: str = DEFAULT_SDK_RIWAYAH) -> dict[str, str]:
     ``/api/static/quran-refs.json`` asset (see ``services/reference/quran_refs``).
     Still consumed in-process by save / auto-split / validation.
 
-    Hafs comes from ``digital_khatt_v2_script.json`` — end-of-verse markers
+    Hafs comes from the Digital Khatt script (:func:`load_dk`) — end-of-verse markers
     (``۝``) stripped, since ``dkTextForRef`` walks bounded by verse word counts
     and never indexes them. Every other edition comes from its packaged index,
     which carries no marker entries to begin with.
@@ -161,7 +139,7 @@ def load_detailed(reciter: str) -> list[dict]:
     cached = cache.get_seg_cache(reciter)
     if cached is not None:
         return cached
-    with _detailed_lock(reciter):
+    with detailed_lock(reciter):
         cached = cache.get_seg_cache(reciter)
         if cached is not None:
             return cached
@@ -208,69 +186,88 @@ def seg_meta(reciter: str) -> dict:
     return cache.get_seg_meta(reciter)
 
 
-def load_probe_v2(reciter: str) -> tuple[set[str], dict | None]:
+# Low Confidence v2 floors (log-posterior deficits): a word is poor under
+# ``WORD_FIT_FLOOR``, a sound under ``SOUND_FIT_FLOOR``.
+WORD_FIT_FLOOR = -4.0
+SOUND_FIT_FLOOR = -10.0
+
+
+def _low_confidence_word(raw: object) -> dict | None:
+    """One ``words`` entry as ``{ref, fit?, sound_fit?}``; ``None`` without a ref."""
+    if not isinstance(raw, dict) or not raw.get("ref"):
+        return None
+    word: dict = {"ref": str(raw["ref"])}
+    for key in ("fit", "sound_fit"):
+        value = raw.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            word[key] = float(value)
+    return word
+
+
+def _raw_severity(word: dict) -> float | None:
+    """How far past its floor a word falls: the worse of ``fit / WORD_FIT_FLOOR``
+    and ``sound_fit / SOUND_FIT_FLOOR``; ``None`` without scores."""
+    parts = []
+    if "fit" in word:
+        parts.append(word["fit"] / WORD_FIT_FLOOR)
+    if "sound_fit" in word:
+        parts.append(word["sound_fit"] / SOUND_FIT_FLOOR)
+    return max(parts) if parts else None
+
+
+def _low_confidence_words(by_uid: object) -> dict[str, list[dict]]:
+    """``uid -> flagged words`` from the sidecar's ``by_uid`` block. Items
+    without ``words`` (older sidecars, ``no path``) are left out.
+
+    Each scored word gets ``severity`` in [0, 1]: its raw severity rescaled
+    between the least and most severe scored word of the whole sidecar, so the
+    scale is fixed per delivery whatever is later ignored or resolved.
+    """
+    if not isinstance(by_uid, dict):
+        return {}
+    out: dict[str, list[dict]] = {}
+    for uid, item in by_uid.items():
+        raw_words = item.get("words") if isinstance(item, dict) else None
+        words = [w for w in map(_low_confidence_word, raw_words or []) if w]
+        if words:
+            out[str(uid)] = words
+    rated = [(w, _raw_severity(w)) for words in out.values() for w in words]
+    scored = [value for _, value in rated if value is not None]
+    if scored:
+        low, span = min(scored), max(scored) - min(scored)
+        for word, value in rated:
+            if value is not None:
+                word["severity"] = (value - low) / span if span > 0 else 1.0
+    return out
+
+
+def load_probe_v2(reciter: str) -> cache.ProbeV2:
     """Load ``low_confidence_v2.json`` sidecar for *reciter*.
 
-    Returns ``(failed_uid_set, meta_dict)``. When the sidecar is absent
-    returns ``(set(), None)`` and caches the empty result so repeated
-    lookups don't re-stat the filesystem. The sidecar is the source of
-    truth for the *Low Confidence v2* validation category and is never
-    written from the Inspector — it's emitted offline by the segments-stage
-    MFA probe (qua-aligner-offline).
+    Returns ``(failed_uid_set, meta_dict, words_by_uid)``. ``words_by_uid``
+    maps a flagged uid to the words that made it Low Confidence, each
+    ``{ref, fit?, sound_fit?, severity?}`` (scores absent on older sidecars;
+    ``severity`` is reciter-relative, see ``_low_confidence_words``). When the
+    sidecar is absent returns ``(set(), None, {})`` and caches the empty
+    result so repeated lookups don't re-stat the filesystem. The sidecar is
+    the source of truth for the *Low Confidence v2* validation category and
+    is never written from the Inspector — the neural timing checks emit it
+    (the align pipeline's sidecar stage, or ``qua_timing_batch.retime review``
+    offline).
     """
     cached = cache.get_seg_probe_v2(reciter)
     if cached is not None:
         return cached
     doc = data_dir.read_low_confidence_doc(reciter)
     if doc is None:
-        result: tuple[set[str], dict | None] = (set(), None)
+        result: cache.ProbeV2 = (set(), None, {})
         cache.set_seg_probe_v2(reciter, result)
         return result
     failures = doc.get("failures") or []
     meta = doc.get("_meta") or None
-    result = (set(failures), meta)
+    result = (set(failures), meta, _low_confidence_words(doc.get("by_uid")))
     cache.set_seg_probe_v2(reciter, result)
     return result
-
-
-def load_pipeline_meta(reciter: str) -> dict | None:
-    """Load ``pipeline_meta.json`` for *reciter* (immutable post-extraction).
-
-    Returns the validated ``PipelineMeta`` dict, or ``None`` if the sidecar
-    is missing. The cache is **never invalidated by save** — the sidecar
-    records extraction-time facts that no user edit can change.
-
-    Callers that depend on a field (e.g. ``deleted_basmala_chapters``) should
-    hard-fail on ``None`` rather than silently substituting an empty set;
-    missing sidecar means the backfill script hasn't run for this reciter.
-    """
-    from qua_shared.schemas import PipelineMeta
-
-    cached = cache.get_seg_pipeline_meta(reciter)
-    if cached is not None:
-        return cached
-    doc = data_dir.read_pipeline_meta_doc(reciter)
-    if doc is None:
-        return None
-    try:
-        # ``exclude_none`` so an optional field the sidecar doesn't carry
-        # (e.g. ``riwayah`` on a pre-multi-riwayah extraction) stays absent
-        # rather than being served as an explicit ``null``.
-        validated = PipelineMeta.model_validate(doc).model_dump(mode="json", exclude_none=True)
-    except Exception:  # noqa: BLE001 — a malformed/forward sidecar must not 500 the validation panel
-        # The sidecar is a hot read on /api/seg/validate; a single un-migrated
-        # or forward-compat field would otherwise raise ValidationError →
-        # HTTP 500 for the reciter's entire validation view. Degrade to the
-        # raw doc (consumers read declared keys like deleted_basmala_chapters)
-        # and surface the drift to the nightly bucket validator instead.
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "[%s] pipeline_meta failed PipelineMeta validation; serving raw doc", reciter
-        )
-        validated = doc
-    cache.set_seg_pipeline_meta(reciter, validated)
-    return validated
 
 
 def load_auto_split(reciter: str) -> tuple[dict[str, dict], dict | None]:
@@ -334,6 +331,20 @@ def load_hidden_pause(reciter: str) -> tuple[dict[str, dict], dict | None]:
     )
 
 
+def load_missed_waqf(reciter: str) -> tuple[dict[str, dict], dict | None]:
+    """Load the Low Confidence Waqf sidecar — cursors inside a segment where the
+    reciter may have stopped, keyed by ``segment_uid``: ``missed_waqf_v2.json``
+    (the align pipeline's lattice pauses) when present, else the lab's
+    ``missed_waqf_v1.json``, served as stored. Never written by the Inspector's
+    save flow."""
+    return _load_by_uid_sidecar(
+        reciter,
+        data_dir.read_missed_waqf_doc,
+        cache.get_seg_missed_waqf,
+        cache.set_seg_missed_waqf,
+    )
+
+
 def load_false_split(reciter: str) -> tuple[dict[str, dict], dict | None]:
     """Load ``false_split_v1.json`` — offline evidence of continuous speech
     across a segment's end, keyed by ``segment_uid``. Never written by the
@@ -358,6 +369,18 @@ def load_unmarked_wasl(reciter: str) -> tuple[dict[str, dict], dict | None]:
     )
 
 
+def load_wasl_recheck(reciter: str) -> tuple[dict[str, dict], dict | None]:
+    """Load ``wasl_recheck_v1.json`` — reviewer-settled verse-to-verse joins
+    whose WASL / WAQF answer must be re-asked, keyed by the left segment's
+    ``segment_uid``. Never written by the Inspector."""
+    return _load_by_uid_sidecar(
+        reciter,
+        data_dir.read_wasl_recheck_doc,
+        cache.get_seg_wasl_recheck,
+        cache.set_seg_wasl_recheck,
+    )
+
+
 # Audio URL maps remain cached via `cache._audio_url`, but the only
 # remaining caller is `routes/audio_metadata.py` (Audio tab), which now
 # loads them inline. The Timestamps tab's old `load_audio_urls` flow is
@@ -377,10 +400,7 @@ def get_word_counts(riwayah: str = DEFAULT_SDK_RIWAYAH) -> dict[tuple[int, int],
     (6,214 ayahs against Hafs's 6,236), so a Hafs verse key can be out of range
     there entirely.
 
-    The Hafs branch loads ``surah_info.json`` and also primes
-    ``cache.set_single_word_verses_cache`` with the derived
-    ``{(surah, ayah): wc == 1}`` set so classifier / save callers don't rebuild
-    it per call.
+    The Hafs branch reads the pack's surah metadata once and caches it.
     """
     if riwayah != DEFAULT_SDK_RIWAYAH:
         from services.reference import editions
@@ -390,39 +410,11 @@ def get_word_counts(riwayah: str = DEFAULT_SDK_RIWAYAH) -> dict[tuple[int, int],
     if cached is not None:
         return cached
     wc: dict[tuple[int, int], int] = {}
-    if SURAH_INFO_PATH.exists():
-        import orjson
-
-        si = orjson.loads(SURAH_INFO_PATH.read_bytes())
-        for surah_str, data in si.items():
-            for v in data["verses"]:
-                wc[(int(surah_str), v["verse"])] = v["num_words"]
+    for surah_str, data in quran_text.surah_info().items():
+        for v in data["verses"]:
+            wc[(int(surah_str), v["verse"])] = v["num_words"]
     cache.set_word_counts_cache(wc)
-    cache.set_single_word_verses_cache({k for k, v in wc.items() if v == 1})
     return wc
-
-
-def get_single_word_verses(riwayah: str = DEFAULT_SDK_RIWAYAH) -> set[tuple[int, int]]:
-    """``(surah, ayah)`` keys whose verse is exactly one word long.
-
-    Hafs has 28, Warsh/Qalun 3 — the muqattaat openings are standalone verses
-    in the Kufan count and swallowed into longer verses in the Medinan one. The
-    edition-aware set lives in ``services.reference.edition_tables``; this
-    accessor is the Hafs one the save/stamping paths already hold.
-
-    Derived from ``get_word_counts()`` once at first read; cached for the
-    process lifetime alongside word_counts (both immutable post-boot).
-    """
-    if riwayah != DEFAULT_SDK_RIWAYAH:
-        from services.reference import edition_tables
-
-        return set(edition_tables.single_word_verses(riwayah))
-    cached = cache.get_single_word_verses_cache()
-    if cached is not None:
-        return cached
-    # Force compute via get_word_counts (which primes the swv cache).
-    get_word_counts()
-    return cache.get_single_word_verses_cache() or set()
 
 
 def load_surah_info_lite() -> dict:
@@ -430,11 +422,8 @@ def load_surah_info_lite() -> dict:
     cached = cache.get_surah_info_lite_cache()
     if cached is not None:
         return cached
-    import orjson
-
-    raw = orjson.loads(SURAH_INFO_PATH.read_bytes())
     result = {}
-    for num, info in raw.items():
+    for num, info in quran_text.surah_info().items():
         result[num] = {
             "name_en": info.get("name_en", ""),
             "name_ar": info.get("name_ar", ""),
@@ -447,8 +436,9 @@ def load_surah_info_lite() -> dict:
 def word_has_stop(surah: int, ayah: int, word_num: int, riwayah: str = DEFAULT_SDK_RIWAYAH) -> bool:
     """True iff this edition writes a waqf stop sign on the given word.
 
-    Hafs reads ``qpc_hafs.json`` against ``constants.STOP_SIGNS`` (four signs,
-    deliberately excluding the paired stop and the sakt). Other editions read
+    Hafs reads the Digital Khatt word (the pack's default, modern stops) against
+    ``constants.STOP_SIGNS`` (four signs, deliberately excluding the paired stop and
+    the sakt) — the stops the Segments tab shows. Other editions read
     their own script against their own observed inventory — Warsh and Qalun
     carry only U+06D6, on 9,948 words.
     """
@@ -457,8 +447,5 @@ def word_has_stop(surah: int, ayah: int, word_num: int, riwayah: str = DEFAULT_S
 
         text = editions.word_map(riwayah).get(f"{surah}:{ayah}:{word_num}", "")
         return bool(editions.stop_signs(riwayah) & set(text))
-    qpc = load_qpc()
-    entry = qpc.get(f"{surah}:{ayah}:{word_num}")
-    if not entry:
-        return False
-    return bool(STOP_SIGNS & set(entry.get("text", "")))
+    text = get_dk_words_flat().get(f"{surah}:{ayah}:{word_num}", "")
+    return bool(STOP_SIGNS & set(text))

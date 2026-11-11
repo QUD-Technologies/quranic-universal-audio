@@ -62,6 +62,9 @@
     import TsValidationPanel from './components/TsValidationPanel.svelte';
     import TimedAnalysisRow from './components/TimedAnalysisRow.svelte';
     import WordTimedRow from './components/WordTimedRow.svelte';
+    import MushafView from './mushaf/MushafView.svelte';
+    import { nowRecitingSuppressed } from '../../lib/stores/now-reciting-suppressed';
+    import { mushafActive, mushafAvailable, mushafMode } from './stores/mushaf';
     import {
         assembleOccasion,
         assembleWaslGroup,
@@ -71,7 +74,6 @@
         loadConfig,
         loadDk,
         loadManifest,
-        loadQpc,
         loadTsValidation,
         loadVbrChapters,
         reciterAudioFromManifest,
@@ -82,6 +84,7 @@
     import { editionFontStack, ensureEditionFont } from '../../lib/refs/edition-font';
     import { DEFAULT_SDK_RIWAYAH, toInspectorSlug } from '../../lib/riwayat';
     import type { ChapterOccasion } from '../../lib/recitation-data/occasions';
+    import { isSpecialRef } from '../../lib/recitation-data/specials';
     import { isInWaslGroup, waslGroupOf } from '../../lib/recitation-data/wasl';
     import { findTsEntryBySlug, isTsCapable, resolveTsDeliveries } from './services/ts-published';
     import {
@@ -105,7 +108,8 @@
         type TsFocusWaslGroup,
         type TsLoadedVerse,
     } from './stores/verse';
-    import { occasionIndexAt, resolveShuffleTick, shouldFireShuffle } from './utils/shuffle-tick';
+    import { occasionIndexOfRef } from './utils/occasion-index';
+    import { occasionIndexAt, resolveShuffleTick, shouldFireShuffle, speechSpan } from './utils/shuffle-tick';
     import { setupZoomLifecycle } from './utils/zoom';
 
     // ---- Local display constants ----
@@ -129,6 +133,8 @@
         ref: string;
         startMs: number;
         endMs: number;
+        speechStartMs?: number;
+        speechEndMs?: number;
         lv: TsLoadedVerse;
         /** The raw occasion carries native connected-reading adjacency. */
         occ: ChapterOccasion;
@@ -150,6 +156,8 @@
     /** Set when a context switch should seek to a specific verse once the new
      *  chapter's data + audio are ready (shuffle / validation jump / entry). */
     let pendingSeekRef: string | null = null;
+    /** Chapter ms picking which occasion of `pendingSeekRef` to land on. */
+    let pendingSeekMs: number | null = null;
     let shuffleFiredForIdx = -1; // guard so the shuffle fires once per occasion
 
     /** Loop is anchored to the occasion that was in focus when the loop was
@@ -195,7 +203,6 @@
     // ---------------------------------------------------------------------
     async function init(): Promise<void> {
         loadConfig().then((c) => tsConfig.set(c as TsConfigResponse));
-        void loadQpc().catch(() => {});
         void loadDk().catch(() => {});
 
         // Display prefs (letters/phonemes) hydrate regardless of
@@ -294,6 +301,7 @@
         cacheReciter(delivery.slug);
         const chapter = target?.chapter ?? 1;
         pendingSeekRef = target?.verseRef ?? null;
+        pendingSeekMs = null;
         _autoplayPending = autoplay;
         playerContext.update((s) => ({
             ...s,
@@ -323,7 +331,8 @@
         _verseReportsKey = key;
         const ctx = get(reportContext);
         if (ctx && (ctx.slug !== slug || ctx.verseKey !== verseKey)) exitReportMode();
-        void loadVerseReports(slug, verseKey);
+        // A recited opener is no verse: it has no reports (an empty key clears them).
+        void loadVerseReports(slug, isSpecialRef(verseKey) ? '' : verseKey);
     }
 
     // Arm the whole-verse playback lock when a report session starts (exit clears
@@ -372,6 +381,7 @@
             const valid = blockChapters[0];
             if (valid && valid !== chapter) {
                 pendingSeekRef = null;
+                pendingSeekMs = null;
                 playerContext.update((s) => ({ ...s, surahNum: valid, positionMs: 0 }));
             }
             return;
@@ -381,9 +391,8 @@
             // Canonical per-chapter audio URL comes from /api/audio/surahs (the
             // audio-manifest sidecar) — same source playback uses, usually warm
             // from the player; fetched in parallel with the shard.
-            const [shard, qpc, dk, surahs] = await Promise.all([
+            const [shard, dk, surahs] = await Promise.all([
                 loadChapterShard(slug, chapter),
-                loadQpc(),
                 loadDk(),
                 fetchSurahsForDelivery(block.source ?? '', slug).catch(
                     (): Awaited<ReturnType<typeof fetchSurahsForDelivery>> => ({}),
@@ -402,17 +411,18 @@
             const chapterUrl = surahs[String(chapter)]?.url ?? '';
             const occasions: ChapOccasion[] = [];
             for (const occ of shardOccasions(shard)) {
-                const data = assembleOccasion(slug, occ, qpc, dk, reciterAudio, chapterUrl);
+                const data = assembleOccasion(slug, occ, dk, reciterAudio, chapterUrl);
                 occasions.push({
                     ref: occ.ref,
                     startMs: data.time_start_ms,
                     endMs: data.time_end_ms,
+                    ...speechSpan(data),
                     lv: { data, tsSegOffset: data.time_start_ms / 1000, tsSegEnd: data.time_end_ms / 1000 },
                     occ,
                 });
             }
             occasions.sort((a, b) => a.startMs - b.startMs);
-            attachWaslGroups(occasions, slug, qpc, dk, reciterAudio, chapterUrl);
+            attachWaslGroups(occasions, slug, dk, reciterAudio, chapterUrl);
             chapterOccasions = occasions;
             // New chapter's occasions just replaced the array — invalidate the
             // focus cursor so the focus pass below ALWAYS re-points `loadedVerse`.
@@ -452,8 +462,9 @@
             // Apply a queued seek (entry / shuffle / validation jump), else focus
             // the verse under the current playhead.
             if (pendingSeekRef) {
-                const i = firstOccasionIndexOfRef(pendingSeekRef);
+                const i = occasionIndexOfRef(chapterOccasions, pendingSeekRef, pendingSeekMs);
                 pendingSeekRef = null;
+                pendingSeekMs = null;
                 if (i >= 0) {
                     const v = chapterOccasions[i]!;
                     setFocusByIndex(i);
@@ -475,6 +486,13 @@
         } finally {
             tsLoading.set(false);
         }
+        // A switch that arrived mid-load was dropped by the guard above — catch
+        // up to where the player is now, or the tab stays on the old chapter.
+        const now = get(playerContext);
+        const nowKey = `${now.delivery?.slug ?? ''}:${now.surahNum ?? 0}`;
+        if (nowKey !== key && nowKey !== loadedChapterKey) {
+            void syncChapter(now.delivery?.slug ?? '', now.surahNum ?? 0);
+        }
     }
 
     /** Precompute the cross-verse waṣl group for each member occasion (by_surah
@@ -486,7 +504,6 @@
     function attachWaslGroups(
         occasions: ChapOccasion[],
         reciter: string,
-        qpc: Record<string, { text?: string }>,
         dk: Record<string, { text?: string }>,
         reciterAudio: TsReciterAudio,
         chapterUrl: string,
@@ -500,7 +517,7 @@
             // waveform key off `span[0]` as the display offset.
             const data = assembleWaslGroup(
                 reciter, raw.slice(grp.fromIdx, grp.toIdx + 1),
-                occasions[i]!.ref, qpc, dk, reciterAudio, chapterUrl,
+                occasions[i]!.ref, dk, reciterAudio, chapterUrl,
             );
             occasions[i]!.waslGroup = {
                 data, span: [grp.startMs, grp.endMs], refs: grp.refs, focusRef: occasions[i]!.ref,
@@ -521,7 +538,12 @@
         selectedVerse.set(v.ref);
         // Publish to the shell-level focus store so NowReciting's filmstrip
         // bookmark button can mirror the focus without running its own rAF.
-        // Verse refs are "surah:ayah"; parse defensively.
+        // A recited opener is no bookmarkable verse: clear rather than keep the
+        // previous verse. Verse refs are "surah:ayah"; parse defensively.
+        if (v.occ.special) {
+            recitationFocus.set(null);
+            return;
+        }
         const [s, a] = v.ref.split(':');
         const surah = Number(s);
         const ayah = Number(a);
@@ -630,10 +652,12 @@
             occasions: chapterOccasions,
             ms,
             swapInFlight: chapterSwapInFlight(),
-            armed: getActiveTab() === TAB_NAMES.TIMESTAMPS && !get(loopTarget) && get(shuffleAyah) && !get(reportModeActive),
+            armed: getActiveTab() === TAB_NAMES.TIMESTAMPS && !get(loopTarget) && get(shuffleAyah)
+                && !get(reportModeActive) && !get(mushafActive),
             focusEndMs: fv ? fv.tsSegEnd * 1000 : null,
             guardMs: SHUFFLE_END_GUARD_MS,
             firedForCurrentFocus: shuffleFiredForIdx === focusIdx,
+            focusSpecial: !!fv?.data.special,
         });
         // Mid-swap: freeze focus + display (no refresh) so the new playhead time
         // isn't drawn against the old chapter's occasion; syncChapter resumes us.
@@ -662,11 +686,12 @@
         if (chapterSwapInFlight()) return false;
         const fv = get(loadedVerse);
         const fire = shouldFireShuffle({
-            armed: !get(loopTarget) && get(shuffleAyah),
+            armed: !get(loopTarget) && get(shuffleAyah) && !get(mushafActive),
             ms,
             focusEndMs: fv ? fv.tsSegEnd * 1000 : null,
             guardMs: SHUFFLE_END_GUARD_MS,
             firedForCurrentFocus: shuffleFiredForIdx === focusIdx,
+            focusSpecial: !!fv?.data.special,
         });
         if (fire) {
             shuffleFiredForIdx = focusIdx;
@@ -752,6 +777,7 @@
         setIsPlaying(shouldPlay);
 
         pendingSeekRef = c.target.verseRef; // syncChapter focuses it once data lands
+        pendingSeekMs = null;
         _autoplayPending = false;           // already playing the adopted element
         playerContext.update((s) => ({
             ...s,
@@ -773,6 +799,7 @@
         clearShuffle();
         const mode = get(shuffleMode);
         if (mode === 0) return; // off → no look-ahead (no jump happens)
+        if (get(mushafActive)) return; // the Mushaf view reads on in order
         const randomReciter = mode === 2;
         const curSlug = get(playerContext).delivery?.slug ?? '';
         const target = await getRandomTarget(randomReciter ? {} : { reciter: curSlug }).catch(() => null);
@@ -797,16 +824,16 @@
         // Verse start (chapter-absolute seconds) → warm-seek position.
         let seekSec = 0;
         try {
-            const [shard, qpc, dk, manifest] = await Promise.all([
+            const [shard, dk, manifest] = await Promise.all([
                 loadChapterShard(target.reciter, target.chapter),
-                loadQpc(), loadDk(), loadManifest(),
+                loadDk(), loadManifest(),
             ]);
             const ra = reciterAudioFromManifest(manifest, target.reciter);
             const occs = ra ? shardOccasions(shard) : [];
             const idx = occs.findIndex((o) => o.ref === target.verseRef);
             const occ = idx >= 0 ? occs[idx] : undefined;
             const data = ra && occ
-                ? assembleOccasion(target.reciter, occ, qpc, dk, ra, rawUrl)
+                ? assembleOccasion(target.reciter, occ, dk, ra, rawUrl)
                 : null;
             if (data && ra) {
                 seekSec = data.time_start_ms / 1000;
@@ -839,17 +866,19 @@
         chapter: number,
         verseRef: string,
         autoplay = true,
+        timeMs: number | null = null,
     ): Promise<void> {
         const curSlug = get(playerContext).delivery?.slug ?? '';
         const curChapter = get(playerContext).surahNum ?? 0;
         if (slug === curSlug && chapter === curChapter) {
-            const i = firstOccasionIndexOfRef(verseRef);
+            const i = occasionIndexOfRef(chapterOccasions, verseRef, timeMs);
             if (i >= 0) seekFocus(i, autoplay);
             return;
         }
         const entry = findTsEntryBySlug(get(catalogData).reciters, manifestSlugs, slug);
         if (!entry) return;
         pendingSeekRef = verseRef;
+        pendingSeekMs = timeMs;
         _autoplayPending = autoplay || !dashPort.paused; // keep or create playback across the jump
         playerContext.update((s) => ({
             ...s,
@@ -921,12 +950,14 @@
         ayah: number;
         autoplay: boolean;
         slug?: string;
+        timeMs?: number;
     }): void {
         navHandled = true;
         pendingTsNavigation.set(null);
         if (nav.slug) {
-            // Flag-notification redirect — go to that exact reciter + verse.
-            void jumpToTarget(nav.slug, nav.surah, `${nav.surah}:${nav.ayah}`, nav.autoplay);
+            // Flag-notification / readings-panel redirect — that exact reciter + verse
+            // (and rendition, when `timeMs` is given).
+            void jumpToTarget(nav.slug, nav.surah, `${nav.surah}:${nav.ayah}`, nav.autoplay, nav.timeMs ?? null);
         } else {
             void loadBookmarkedVerse(nav.surah, nav.ayah, nav.autoplay);
         }
@@ -940,6 +971,7 @@
                 const shard = await loadChapterShard(e.delivery.slug, surah);
                 if (!chapterVerseRefs(shard).includes(verseRef)) continue;
                 pendingSeekRef = verseRef;
+                pendingSeekMs = null;
                 _autoplayPending = autoplay;
                 playerContext.update((s) => ({
                     ...s,
@@ -985,6 +1017,13 @@
         if (getActiveTab() !== TAB_NAMES.TIMESTAMPS) return;
         const cur = dashPort.currentTimeMs() / 1000;
         const lv = get(loadedVerse);
+        if (e.code === 'KeyM') {
+            if (get(mushafAvailable)) mushafMode.update((v) => !v);
+            return;
+        }
+        // The Mushaf view pages with ←/→ itself and has no shuffle, grid,
+        // letters or phonemes.
+        if (get(mushafActive) && ['ArrowLeft', 'ArrowRight', 'KeyR', 'KeyJ', 'KeyL', 'KeyP'].includes(e.code)) return;
         switch (e.code) {
             case 'Space':
                 e.preventDefault();
@@ -1051,6 +1090,10 @@
     // ---------------------------------------------------------------------
     $: if ($activeTabStore === TAB_NAMES.TIMESTAMPS) startTick(); else stopTick();
 
+    // The Mushaf view is the recitation surface on its own: the shared
+    // teleprompter + filmstrip bar steps aside while it's open here.
+    $: nowRecitingSuppressed.set($mushafActive && $activeTabStore === TAB_NAMES.TIMESTAMPS);
+
     let _primedOnce = false;
 
     onMount(() => {
@@ -1074,7 +1117,7 @@
         const unsubManualShuffle = manualShuffleRequest.subscribe((n) => {
             if (n === lastManualShuffle) return;
             lastManualShuffle = n;
-            if (!_primedOnce) return;
+            if (!_primedOnce || get(mushafActive)) return;
             void shuffleJump(true);
         });
         // Capture the loop's verse anchor on engage (null→set) and drop it on
@@ -1113,6 +1156,7 @@
         // Don't leak this tab's last focus to other surfaces (Dashboard's
         // NowReciting subscribes to it).
         recitationFocus.set(null);
+        nowRecitingSuppressed.set(false);
         resetShardEdition();
     });
 </script>
@@ -1133,6 +1177,9 @@
     style:--analysis-letter-font-size={cfg?.analysis_letter_font_size ?? ''}
 >
     <main>
+        {#if $mushafActive}
+            <MushafView />
+        {:else}
         {#if $tsValidation}
             <div class="ts-validation-row">
                 <TsValidationPanel
@@ -1155,6 +1202,7 @@
                 <TimedAnalysisRow bind:this={unifiedEl} />
             {/if}
         </div>
+        {/if}
     </main>
 </div>
 

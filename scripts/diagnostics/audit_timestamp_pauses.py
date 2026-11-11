@@ -32,7 +32,7 @@ import _bootstrap as bucket  # noqa: E402
 
 from qua_shared.timestamps_codec import decode_document  # noqa: E402
 
-DEFAULT_MANIFEST = "https://hetchyy-quranic-universal-audio.hf.space/api/ts/manifest"
+DEFAULT_MANIFEST = "https://qud-technologies-quranic-universal-audio.hf.space/api/ts/manifest"
 
 
 def _matched_ref_to_output_key(matched_ref: str) -> str | None:

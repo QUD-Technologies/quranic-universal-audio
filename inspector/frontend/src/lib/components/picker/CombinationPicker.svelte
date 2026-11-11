@@ -24,6 +24,7 @@
     // wins and others share the cached snapshot.
     import { catalogData, loadCatalog } from '../../../tabs/dashboard/stores/catalog-data';
     import { fetchAdminReviews } from '../../api/admin-reviews';
+    import { fetchReviewSignals } from '../../api/review-signals';
     import {
         type Axis,
         buildSchemaDescriptor,
@@ -31,13 +32,17 @@
     } from '../../catalog/schema-descriptor';
     import { hasCapability } from '../../stores/capabilities';
     import { currentUser } from '../../stores/current-user';
-    import type { BucketCounts, PublicDelivery, PublicReciter } from '../../types/generated/schemas';
+    import type { BucketCounts, PublicDelivery, PublicReciter, SegReviewSignal } from '../../types/generated/schemas';
     import type { PublicBucket } from '../../types/public-bucket';
     import { tagLabel } from '../../utils/axis-labels';
     import { compactCoverageLabel, compactHoursLabel } from '../../utils/delivery-label';
     import { type FacetSpec, recomputeFacets } from '../../utils/facets';
+    import { QUALITY_ORDER, QUALITY_UNRATED, qualityTag } from '../../utils/quality-status';
+    import { REVIEW_TAGS, reviewTags } from '../../utils/review-signals';
     import { filterByFields } from '../../utils/fuzzy-match';
     import Modal from '../Modal.svelte';
+    import QualityPill from '../QualityPill.svelte';
+    import ReviewSignalPills from '../ReviewSignalPills.svelte';
     import ReciterChip from '../ReciterChip.svelte';
     import SearchInput from '../SearchInput.svelte';
     import StatePill from '../StatePill.svelte';
@@ -46,6 +51,7 @@
     import PickerFooter from './PickerFooter.svelte';
     import PickerReviewStatus from './PickerReviewStatus.svelte';
     import PickerStateTabs from './PickerStateTabs.svelte';
+    import { alignedDateLabel, type PickerSort, sortByAligned } from './picker-sort';
 
     interface Combo {
         reciter: PublicReciter;
@@ -79,18 +85,33 @@
     let loading = true;
     let error: string | null = null;
 
-    // Per-slug claim/marked-ready overlay, populated only for callers who hold
-    // `reviews.view` — the same data the Admin → Reviews tab shows. Empty for
-    // everyone else; the picker renders nothing extra in that case.
+    // Per-slug claim overlay (claimer login + marked-ready), populated only for
+    // callers who hold `reviews.view` — the same data the Admin → Reviews tab
+    // shows. Empty for everyone else, who still get the READY badge via the
+    // public `delivery.marked_ready` flag but never the username.
     interface ReviewStatus {
         login: string | null;
         markedReady: boolean;
     }
     let reviewStatus = new Map<string, ReviewStatus>();
 
+    // Open Low Confidence / Low Confidence v2 counts per slug, from one small
+    // file the server keeps (/api/seg/review-signals; only slugs with items).
+    let reviewSignals = new Map<string, SegReviewSignal>();
+
+    // READY comes from the public catalog flag (visible to everyone); the
+    // claimer's login only from the `reviews.view` overlay above.
+    $: statusFor = (c: Combo): ReviewStatus | null => {
+        const admin = reviewStatus.get(c.delivery.slug);
+        const markedReady = (admin?.markedReady ?? false) || c.delivery.marked_ready === true;
+        const login = admin?.login ?? null;
+        return markedReady || login ? { login, markedReady } : null;
+    };
+
     let search = initialFilter.search ?? '';
     let activeBucket: PublicBucket | null = initialFilter.bucket ?? null;
     let activeFilters: Record<string, Set<string>> = {};
+    let sort: PickerSort = 'default';
     let focusedIdx = -1;
 
     let searchInputEl: SearchInput | null = null;
@@ -123,6 +144,8 @@
             for (const axis of descriptor.axes) {
                 activeFilters[axis.key] = new Set();
             }
+            activeFilters[QUALITY_AXIS.key] = new Set();
+            activeFilters[REVIEW_AXIS_KEY] = new Set();
             activeFilters = activeFilters;
             await tick();
             searchInputEl?.focus();
@@ -132,6 +155,17 @@
             loading = false;
         }
         void loadReviewStatus();
+        void loadReviewSignals();
+    }
+
+    // Best-effort like the claim overlay: a failure leaves rows without pills.
+    async function loadReviewSignals(): Promise<void> {
+        try {
+            const resp = await fetchReviewSignals();
+            reviewSignals = new Map(Object.entries(resp.signals ?? {}));
+        } catch {
+            /* review overlay is best-effort — picker works without it */
+        }
     }
 
     // Lazy claim/marked-ready overlay — fired only when the caller holds
@@ -156,11 +190,36 @@
         }
     }
 
-    // Filter axes to the three relevant for combinations (no status,
-    // no mushaf coverage, no recording context) — the state tabs already
-    // cover bucket; the rail keeps cross-cutting taxonomy axes only.
-    $: railAxes = (descriptor?.axes ?? []).filter((a) =>
-        a.key === 'riwayah' || a.key === 'style' || a.key === 'channel',
+    // Picker-only axis: the maintainer's manual recitation quality rating.
+    // Kept out of the shared schema descriptor so the Dashboard rail doesn't
+    // grow it. Pill labels resolve in PickerFilterRail on render.
+    const QUALITY_AXIS: Axis = {
+        key: 'quality',
+        label: m.common_quality_label(),
+        tagsOf: (d) => [qualityTag(d.quality_status)],
+        options: [...QUALITY_ORDER, QUALITY_UNRATED].map((key) => ({ key, label: key })),
+    };
+
+    // Picker-only axis: deliveries with open Low Confidence items (one
+    // combined signal: under the default threshold or Low Confidence v2).
+    // Reactive on `reviewSignals` (it arrives after open), so the facets
+    // recompute when it lands. Labels resolve in PickerFilterRail.
+    const REVIEW_AXIS_KEY = 'review';
+    $: REVIEW_AXIS = {
+        key: REVIEW_AXIS_KEY,
+        label: m.common_review_label(),
+        tagsOf: (d: PublicDelivery) => reviewTags(reviewSignals.get(d.slug)),
+        options: REVIEW_TAGS.map((key) => ({ key, label: key })),
+    } satisfies Axis;
+
+    // Rail axes for combinations, in this order: full/partial coverage, then
+    // quality, review, riwayah, style, channel (no status — the state tabs
+    // cover bucket; no recording context).
+    const RAIL_ORDER = ['coverage', 'quality', 'review', 'riwayah', 'style', 'channel'];
+    $: railAxes = RAIL_ORDER.flatMap((key) =>
+        [...(descriptor?.axes ?? []), ...(descriptor ? [QUALITY_AXIS, REVIEW_AXIS] : [])].filter(
+            (a) => a.key === key,
+        ),
     );
 
     // Flatten reciters into combos, keeping only deliveries whose own
@@ -183,10 +242,9 @@
 
     $: facetResult = recomputeFacets(bucketScoped, activeFilters, facetSpecs);
     $: facetVisible = bucketScoped.filter((_, i) => facetResult.rowVisibility[i]);
-    $: visible = filterByFields(
-        facetVisible,
-        search,
-        (c) => [c.reciter.name, c.reciter.name_ar],
+    $: visible = sortByAligned(
+        filterByFields(facetVisible, search, (c) => [c.reciter.name, c.reciter.name_ar]),
+        sort,
     );
 
     // Split into pinned (active claims) + groups by bucket.
@@ -223,6 +281,14 @@
     $: searchPlaceholder = tr($localeStore, m.common_picker_search_placeholder());
     $: loadingLabel = tr($localeStore, m.common_picker_loading());
     $: noMatchesLabel = tr($localeStore, m.common_picker_no_matches());
+    $: sortLabel = tr($localeStore, m.common_picker_sort_label());
+    $: sortOptions = [
+        { value: 'default', label: tr($localeStore, m.common_picker_sort_default()) },
+        { value: 'aligned_desc', label: tr($localeStore, m.common_picker_sort_aligned_newest()) },
+        { value: 'aligned_asc', label: tr($localeStore, m.common_picker_sort_aligned_oldest()) },
+    ];
+    $: alignedTitle = (iso: string | null | undefined): string =>
+        iso ? tr($localeStore, m.common_picker_aligned_title({ date: alignedDateLabel(iso, $localeStore) })) : '';
     $: mineSectionLabel = tr($localeStore, localizeDigits(m.common_picker_section_your_active_claims({ count: mineRows.length })));
 
     function toggleFacet(detail: { axis: string; tag: string }): void {
@@ -230,6 +296,11 @@
         if (set.has(detail.tag)) set.delete(detail.tag);
         else set.add(detail.tag);
         activeFilters = { ...activeFilters, [detail.axis]: set };
+        focusedIdx = -1;
+    }
+
+    function onSortChange(e: Event): void {
+        sort = (e.currentTarget as HTMLSelectElement).value as PickerSort;
         focusedIdx = -1;
     }
 
@@ -322,6 +393,13 @@
                     on:input={(e) => onSearchInput(e.detail)}
                 />
             </div>
+            <label class="picker-controls-sort">
+                <select value={sort} aria-label={sortLabel} on:change={onSortChange}>
+                    {#each sortOptions as o (o.value)}
+                        <option value={o.value}>{o.label}</option>
+                    {/each}
+                </select>
+            </label>
             <div class="picker-controls-tabs">
                 <PickerStateTabs
                     {activeBucket}
@@ -358,7 +436,7 @@
                         </div>
                         {#each mineRows as c (c.delivery.slug)}
                             {@const idx = orderedRows.indexOf(c)}
-                            {@const st = reviewStatus.get(c.delivery.slug)}
+                            {@const st = statusFor(c)}
                             <!-- svelte-ignore a11y-click-events-have-key-events -->
                             <div
                                 class="combo-row"
@@ -379,9 +457,14 @@
                                 {#if st}
                                     <PickerReviewStatus login={st.login} markedReady={st.markedReady} />
                                 {/if}
+                                <QualityPill status={c.delivery.quality_status} />
+                                <ReviewSignalPills signal={reviewSignals.get(c.delivery.slug)} />
                                 <div class="row-figures">
                                     <span class="coverage">{compactCoverageLabel(c.delivery)}</span>
                                     <span class="dur">{compactHoursLabel(c.delivery)}</span>
+                                    {#if c.delivery.aligned_at}
+                                        <span class="aligned" title={alignedTitle(c.delivery.aligned_at)}>{alignedDateLabel(c.delivery.aligned_at, $localeStore)}</span>
+                                    {/if}
                                 </div>
                             </div>
                         {/each}
@@ -393,7 +476,7 @@
                         </div>
                         {#each group.rows as c (c.delivery.slug)}
                             {@const idx = orderedRows.indexOf(c)}
-                            {@const st = reviewStatus.get(c.delivery.slug)}
+                            {@const st = statusFor(c)}
                             <!-- svelte-ignore a11y-click-events-have-key-events -->
                             <div
                                 class="combo-row"
@@ -417,9 +500,14 @@
                                 {#if st}
                                     <PickerReviewStatus login={st.login} markedReady={st.markedReady} />
                                 {/if}
+                                <QualityPill status={c.delivery.quality_status} />
+                                <ReviewSignalPills signal={reviewSignals.get(c.delivery.slug)} />
                                 <div class="row-figures">
                                     <span class="coverage">{compactCoverageLabel(c.delivery)}</span>
                                     <span class="dur">{compactHoursLabel(c.delivery)}</span>
+                                    {#if c.delivery.aligned_at}
+                                        <span class="aligned" title={alignedTitle(c.delivery.aligned_at)}>{alignedDateLabel(c.delivery.aligned_at, $localeStore)}</span>
+                                    {/if}
                                 </div>
                             </div>
                         {/each}
@@ -464,6 +552,22 @@
         width: 360px;
         flex-shrink: 0;
     }
+    .picker-controls-sort {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--s-2);
+        flex-shrink: 0;
+    }
+    .picker-controls-sort select {
+        padding: var(--s-2);
+        background: var(--panel);
+        border: 1px solid var(--border-quiet);
+        border-radius: var(--r-2);
+        color: var(--text-primary);
+        font-size: var(--fs-meta);
+        cursor: pointer;
+    }
+    .picker-controls-sort select:focus { border-color: var(--accent); outline: none; }
     .picker-controls-tabs {
         flex: 1;
         min-width: 0;

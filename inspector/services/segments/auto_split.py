@@ -12,16 +12,18 @@ extension::
 
     {"cursors": list[int] | None,        # absolute ms cuts (N-1 entries)
      "refs":    list[str] | None,        # N per-section refs
-     "kind":    "cross_verse" | "repetition" | "hidden_pause" | None,
+     "kind":    "cross_verse" | "repetition" | "missed_waqf" | "hidden_pause" | None,
      "source":  "sidecar" | "miss"}
 
-``hidden_pause_v1.json`` entries that carry per-section ``refs`` are merged
-into the map with ``kind="hidden_pause"`` (an ``auto_split_v1`` entry for the
-same uid wins); entries without refs are omitted so the row falls back to
-plain Split.
+``missed_waqf_v1.json`` and ``hidden_pause_v1.json`` entries that carry
+per-section ``refs`` are merged into the map with ``kind="missed_waqf"`` /
+``kind="hidden_pause"``. Precedence per uid: ``auto_split_v1``, then
+``missed_waqf``, then ``hidden_pause``; entries without refs are omitted so
+the row falls back to plain Split.
 
-When the sidecar has no entry for ``segment_uid`` (offline alignment
-failed, or this is a post-edit descendant the offline pass never saw) the
+A cross-verse piece an edit made (or reshaped) inherits its ancestor's cuts: each of its verse
+ends takes the cursor the sidecar holds for that word, when every one lies inside
+the piece. Otherwise (offline alignment failed, or no cut inside) the
 response is the ``"miss"`` envelope with all-null payload. The frontend
 flips the row's button label from *Auto Split* back to plain *Split* and
 falls back to manual single-cursor placement — same UX as a non-candidate
@@ -32,7 +34,13 @@ from __future__ import annotations
 
 import logging
 
-from services.storage.data_loader import load_auto_split, load_detailed, load_hidden_pause
+from services.storage.data_loader import (
+    load_auto_split,
+    load_detailed,
+    load_hidden_pause,
+    load_missed_waqf,
+)
+from services.validation.sidecar_fit import entry_fits_segment, fitting_entries
 from utils.references import chapter_from_ref
 
 logger = logging.getLogger(__name__)
@@ -65,16 +73,75 @@ def _find_segment_kind(reciter: str, chapter: int, segment_uid: str) -> str | No
     return None
 
 
-def _merged_by_uid(reciter: str) -> dict[str, dict]:
-    """``auto_split_v1`` entries plus ``hidden_pause_v1`` entries that have refs."""
-    by_uid, _meta = load_auto_split(reciter)
-    hidden, _hmeta = load_hidden_pause(reciter)
-    merged = dict(by_uid)
-    for uid, hit in hidden.items():
-        if uid in merged or not isinstance(hit, dict) or not hit.get("refs"):
+def _cursor_by_word(by_uid: dict[str, dict]) -> dict[str, int]:
+    """Every cross-verse cut in ``by_uid`` as ``{verse-end word: cursor ms}``."""
+    out: dict[str, int] = {}
+    for hit in by_uid.values():
+        if not isinstance(hit, dict) or hit.get("kind") != "cross_verse":
             continue
-        merged[uid] = {"cursors": hit.get("cursors"), "refs": hit["refs"], "kind": "hidden_pause"}
-    return merged
+        for ref, cursor in zip(hit.get("refs") or [], hit.get("cursors") or [], strict=False):
+            out[str(ref).rpartition("-")[2]] = cursor
+    return out
+
+
+def _inherited(seg: dict, cursors: dict[str, int], word_counts) -> dict | None:
+    """A cross-verse entry for a piece an edit made: its ancestor's cuts at its verse ends."""
+    from services.validation.detail import _verse_end_refs
+
+    ref = seg.get("matched_ref") or ""
+    ends = _verse_end_refs(ref, word_counts)
+    at = [cursors.get(end) for end in ends]
+    if not ends or any(c is None or not seg["time_start"] < c < seg["time_end"] for c in at):
+        return None
+    starts = [ref.partition("-")[0]] + [
+        f"{e.split(':')[0]}:{int(e.split(':')[1]) + 1}:1" for e in ends
+    ]
+    stops = [*ends, ref.rpartition("-")[2]]
+    return {
+        "cursors": at,
+        "refs": [f"{a}-{b}" for a, b in zip(starts, stops, strict=True)],
+        "kind": "cross_verse",
+    }
+
+
+def _with_inherited(reciter: str, by_uid: dict[str, dict]) -> dict[str, dict]:
+    """``by_uid`` with an inherited entry for every live cross-verse seg whose own entry
+    is missing or no longer fits it."""
+    from services.reference.delivery_edition import sdk_riwayah_for
+    from services.storage.data_loader import get_word_counts
+
+    cursors = _cursor_by_word(by_uid)
+    entries = load_detailed(reciter) if cursors else []
+    if not entries:
+        return by_uid
+    word_counts = get_word_counts(sdk_riwayah_for(reciter))
+    out = dict(by_uid)
+    for entry in entries:
+        for seg in entry.get("segments", []):
+            uid = seg.get("segment_uid")
+            if (
+                uid
+                and not entry_fits_segment(out.get(uid), seg)
+                and (hit := _inherited(seg, cursors, word_counts))
+            ):
+                out[uid] = hit
+    return out
+
+
+def _merged_by_uid(reciter: str) -> dict[str, dict]:
+    """``auto_split_v1`` entries (plus the entries pieces inherit from them) and the
+    ``missed_waqf_v1`` and ``hidden_pause_v1`` entries that have refs, first source
+    winning per uid. An entry that no longer fits its segment is dropped."""
+    by_uid, _meta = load_auto_split(reciter)
+    merged = _with_inherited(reciter, dict(by_uid))
+    for kind, loader in (("missed_waqf", load_missed_waqf), ("hidden_pause", load_hidden_pause)):
+        sidecar, _smeta = loader(reciter)
+        for uid, hit in sidecar.items():
+            if uid in merged or not isinstance(hit, dict) or not hit.get("refs"):
+                continue
+            merged[uid] = {"cursors": hit.get("cursors"), "refs": hit["refs"], "kind": kind}
+    entries = load_detailed(reciter) if merged else []
+    return fitting_entries(merged, entries) if entries else merged
 
 
 def compute_auto_split(reciter: str, chapter: int, segment_uid: str) -> dict:

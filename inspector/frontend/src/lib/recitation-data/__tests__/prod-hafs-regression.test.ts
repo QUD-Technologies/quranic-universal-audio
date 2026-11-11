@@ -1,5 +1,5 @@
 /**
- * E2E gate check: a REAL production schema-13 Hafs shard must decode unchanged
+ * E2E gate check: a REAL production Hafs shard (restamped 15) must decode unchanged
  * through the multi-riwayah decoder — same verse numbering, native profile,
  * phonemizer cells intact.
  */
@@ -9,10 +9,10 @@ import prodShard from './fixtures/prod-hafs-106.json';
 import { decodeTimestampShard } from '../compact-shards';
 import { isWordShard } from '../../types/ts-client';
 
-describe('prod Hafs schema-13 shard', () => {
+describe('prod Hafs native shard', () => {
     it('decodes as the native profile with Hafs verse numbering', () => {
         const meta = prodShard._meta as Record<string, unknown>;
-        expect(meta.schema_version).toBe(13);
+        expect(meta.schema_version).toBe(15);
         expect(meta.profile).toBeUndefined();
         expect(meta.riwayah).toBeUndefined();
 

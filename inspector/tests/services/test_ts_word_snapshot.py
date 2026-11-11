@@ -51,7 +51,7 @@ WORD_DOC = {
     ],
 }
 
-NATIVE_META = {"schema_version": 13, "chapter": 112, "audio_category": "by_surah"}
+NATIVE_META = {"schema_version": 15, "chapter": 112, "audio_category": "by_surah"}
 
 
 def _target(kind: str, target_id) -> dict:

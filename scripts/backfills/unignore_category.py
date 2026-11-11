@@ -41,8 +41,8 @@ from pathlib import Path
 log = logging.getLogger("unignore_category")
 
 _BUCKETS = {
-    "dev": "hetchyy/quranic-inspector-bucket-dev",
-    "prod": "hetchyy/quranic-inspector-bucket",
+    "dev": "QUD-Technologies/quranic-inspector-bucket-dev",
+    "prod": "QUD-Technologies/quranic-inspector-bucket",
 }
 
 # Owner identity baked in — this script is owner-only by intent. The audit

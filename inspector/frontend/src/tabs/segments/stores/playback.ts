@@ -2,7 +2,7 @@
  * Segments tab — playback control state.
  */
 
-import { writable } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 
 import { AudioPort } from '../../../lib/playback/audio-port';
 import { LS_KEYS } from '../../../lib/utils/constants';
@@ -142,28 +142,43 @@ export interface PlayingSegment {
 }
 export const playingSegmentIndex = writable<PlayingSegment | null>(null);
 
-/** Identity-guarded setter for `playingSegmentIndex` so the 60fps rAF tick
- *  does not allocate a fresh object when the active pair has not changed.
- *  Svelte's safe_not_equal returns true for any two object literals even
- *  when their contents match; this guard avoids the resulting subscriber
- *  wake-up storm on every frame.
+/** Word interval currently sounding inside the active review sample row. */
+export interface ActiveWordCursor {
+    chapter: number;
+    index: number;
+    wordIndex: number;
+}
+export const activeWordCursor = writable<ActiveWordCursor | null>(null);
+
+/** Sets the cursor only when it moves. Svelte stores notify on every object
+ *  write, even the same reference, so the playback rAF must not write unchanged. */
+export function setActiveWordCursor(next: ActiveWordCursor | null): void {
+    const cur = get(activeWordCursor);
+    if (next == null ? cur == null : (
+        cur != null
+        && cur.chapter === next.chapter
+        && cur.index === next.index
+        && cur.wordIndex === next.wordIndex
+    )) return;
+    activeWordCursor.set(next && { ...next });
+}
+
+/** Sets `playingSegmentIndex` only when the active pair changes: Svelte stores
+ *  notify on every object write, even the same reference, so the 60fps rAF
+ *  tick must not write an unchanged pair.
  *
  *  When `next` omits `origin`, the previous pair's origin is preserved —
  *  so updates from rAF / time-update / advance ticks don't accidentally
  *  reclassify an accordion play as a main-list one. */
 export function setPlayingSegment(next: PlayingSegment | null): void {
-    playingSegmentIndex.update((cur) => {
-        if (cur === next) return cur;
-        if (next == null) return null;
-        const origin = next.origin ?? cur?.origin ?? 'main';
-        if (
-            cur
-            && cur.chapter === next.chapter
-            && cur.index === next.index
-            && cur.origin === origin
-        ) return cur;
-        return { chapter: next.chapter, index: next.index, origin };
-    });
+    const cur = get(playingSegmentIndex);
+    if (next == null) {
+        if (cur != null) playingSegmentIndex.set(null);
+        return;
+    }
+    const origin = next.origin ?? cur?.origin ?? 'main';
+    if (cur && cur.chapter === next.chapter && cur.index === next.index && cur.origin === origin) return;
+    playingSegmentIndex.set({ chapter: next.chapter, index: next.index, origin });
 }
 
 /**

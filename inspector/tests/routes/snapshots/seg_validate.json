@@ -1,17 +1,14 @@
 {
   "audio_bleeding": [],
-  "basmala_amin": [],
-  "boundary_adj": [],
   "category_counts": {
     "audio_bleeding": 0,
-    "basmala_amin": 0,
-    "boundary_adj": 0,
     "cross_verse": 0,
     "failed": 0,
     "false_split": 0,
     "hidden_pause": 0,
     "low_confidence": 1,
     "low_confidence_v2": 0,
+    "missed_waqf": 0,
     "missing_verses": 0,
     "missing_words": 0,
     "muqattaat": 0,
@@ -20,6 +17,9 @@
     "structural_errors": 0,
     "unmarked_wasl": 0
   },
+  "checklist_keys": [
+    "low_confidence"
+  ],
   "cross_verse": [],
   "errors": [],
   "failed": [],
@@ -37,6 +37,7 @@
     }
   ],
   "low_confidence_v2": [],
+  "missed_waqf": [],
   "missing_verses": [],
   "missing_words": [],
   "muqattaat": [],
@@ -105,5 +106,6 @@
     "segments": 4,
     "single": 4
   },
-  "structural_errors": []
+  "structural_errors": [],
+  "wasl_recheck": []
 }

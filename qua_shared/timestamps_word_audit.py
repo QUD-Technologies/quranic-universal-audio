@@ -27,6 +27,8 @@ from qua_shared.schemas.bucket.ts_shard import TsWordShardDoc
 #: Unnumbered special ordinals — the recited Basmala / Isti'adha rows the SDK
 #: timing contract emits as ``0:0:N`` rather than inventing target coordinates.
 _SPECIAL_REF = re.compile(r"^0:0:[1-9]\d*$")
+#: A special reading's word refs: Isti'adha ``0:1:N``, Basmala ``0:2:N``.
+_SPECIAL_READING_REF = re.compile(r"^0:[12]:[1-9]\d*$")
 
 
 class WordAuditError(ValueError):
@@ -69,6 +71,8 @@ def _check_reading(reading, riwayah: str, index: dict[str, str] | None) -> None:
             )
         previous_end = end
         if _SPECIAL_REF.match(ref) or index is None:
+            continue
+        if reading.special is not None and _SPECIAL_READING_REF.match(ref):
             continue
         expected = index.get(ref)
         if expected is None:

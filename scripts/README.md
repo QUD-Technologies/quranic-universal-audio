@@ -40,6 +40,7 @@ no-op-or-error by design. Idempotent `backfill_*`/`purge_*`/`convert_*` stay in
 - `bootstrap_dev_env.py` — provision a contributor's personal bucket + Space
 - `seed_fixtures.py` — download the public fixtures → `.fixtures` (offline tier-0)
 - `make_fixtures_dataset.py` — maintainer: (re)build the PII-free public fixtures dataset
+- `install_quran_data.py` — install the pinned `talqeen-quran-data` SDK and fetch its `quran-core.qref` pack into `data/` (gitignored) from `QUD-Technologies/talqeen-ai-data` (`qua_shared/quran_data_pin.py`), via `TALQEEN_DATA_READ_TOKEN` / `GH_TOKEN` / `gh` login; required (the Hafs reference data); also the pack's fonts (`data/fonts/`) and the frontend's TS SDK tarball (`inspector/frontend/.quran-data/`, `--ts-only` before `npm ci`) from the data releases, sha256-pinned; `--wheel-dir` builds the wheel for the image
 - `install_qua_domain.py` — install the pinned `qua-domain` edition package from `QUD-Technologies/qua` via `PRIVATE_REPO_TOKEN` (with legacy SSH-key fallback); exits 0 having installed nothing when no credential exists (Hafs-only runtime)
 - `make_synthetic_delivery.py` — write a synthetic non-Hafs delivery (segs + optional word-profile shard, built from `qua_domain` itself) into a bucket, for multi-riwayah verification
 
@@ -56,14 +57,26 @@ no-op-or-error by design. Idempotent `backfill_*`/`purge_*`/`convert_*` stay in
 - `download_bucket_reciter.py` → `audit_bucket_reciter.py` → `upload_bucket_reciter.py` — reciter-folder round-trip (download → validate → upload)
 
 ### `backfills/`
+- `backfill_join_verdicts.py` — dry-run-first recovery of explicit join answers from a local review export; `--apply --output` stages reversible changes in a new local directory, with no bucket access.
 - `backfill_*` (5), `convert_peaks_v2_to_v3`, `derive_pipeline_meta`, `rollback_peaks_slim` — re-runnable artefact backfills / conversions
 - `purge_pad_migration`, `purge_stale_wraps` — strip stale records from `detailed.json` / `edit_history`
 - `unignore_category` — bulk-revert `ignore_issue` ops (re-runnable data-fix)
+- `regen_timestamps_offline` — runs the Inspector's own timestamps run from this machine (many reciters in parallel) against the bucket, then reports each success to the Space's `ts-refreshed` webhook so the release bookkeeping happens there; reads a private DB copy, never uploads it
+- `splice_opener_readings` — time each chapter's recorded openers alone and splice their readings into the existing shards (no full regen); `--export` / `--replies` run the timing on Katana via `katana_openers/` instead of the aligner; reports each reciter to `ts-refreshed`
+- `rebuild_specials_from_history` — a reciter's missing `specials.json` rebuilt from the align run's strip events in `edit_history.jsonl` (aligned before the run wrote one); dry run unless `--execute`, `--force` to overwrite
+- `restamp_source_refs` — re-derive `source_ref` / `projection_support` on every projected (non-Hafs) delivery's segments and print the chapters whose stamps moved for a TS regen (cross-verse spans stamped before the SDK projected across the verse boundary); dry run unless `--apply`
+- `clamp_opener_spans` — end every recorded opener at the next opener's or ayah 1's start (the opener backfill's padded scan spans reached into ayah 1), dropping its stale words; `--redo` lists the chapters for `splice_opener_readings --redo`, which re-times them; dry run unless `--apply`
+- `write_opener_voice` — every opener's same / different voice verdict to `specials.json` from `katana_openers/voice_job.py` (decided per audio source: Fatiha 1:1 twin, stock clip, reused clip, live opener); dry run unless `--execute`
+- `restore_fatiha_basmala` — dry-run-first undo of a deleted Hafs/Shu'ba Al-Fatiha 1:1 (voice is a `specials.json` flag, never a reason to drop the verse); re-labels its specials entry `fatiha_verse` (`--execute` writes; restart the Space after)
+- `replay_lost_edits` — dry-run-first write-back of segment edits logged in `edit_history.jsonl` but missing from `detailed.json` (`--execute` writes; restart the Space after)
+- `canonicalize_mp3quran_urls` — dry-run-first rewrite of legacy `serverN.mp3quran.net` manifest urls to their resolved `cdn.mp3quran.net` target (`--apply` writes; restart the Space after)
 - `patch_release_audio_sources` — rewrite a shipped GH release's `catalog.json` to native source URLs + `chapter_offsets_ms` (re-runnable; no-op once the `cut_release` fix shipped)
 
 ### `diagnostics/`
 - `bench_storage.py` — benchmark backend read/write hot paths
 - `check_eligibility_parity.py` — assert DB-backed eligibility == legacy git-tracked set
+- `quran_data_integrity.py` — `capture` / `compare` every output the Hafs reference data feeds (surah info, word counts, quran-refs, TS resources, cut_release refs, stop signs, fixture validation) across the bundled-JSON → `talqeen-quran-data` swap
+- `mushaf_look_parity.mjs` — `capture` the Timestamps Mushaf view (pages 1, 2, 50, 187, 582, 604 × 1405/1421/1441 × one and two pages, plus an active word + verse band) from a running stack, then `diff` two captures pixel by pixel; run FROM `inspector/frontend`
 
 ### `migrations/`
 Frozen one-shot schema moves — see [`../docs/reference/data-migrations.md`](../docs/reference/data-migrations.md).

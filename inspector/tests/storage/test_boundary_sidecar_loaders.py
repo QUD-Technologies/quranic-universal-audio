@@ -1,5 +1,5 @@
-"""``load_hidden_pause`` / ``load_false_split`` / ``load_unmarked_wasl`` —
-sidecar readers + cache."""
+"""``load_hidden_pause`` / ``load_missed_waqf`` / ``load_false_split`` /
+``load_unmarked_wasl`` / ``load_wasl_recheck`` — sidecar readers + cache."""
 
 from __future__ import annotations
 
@@ -11,7 +11,9 @@ from services.storage import cache
 from services.storage.data_loader import (
     load_false_split,
     load_hidden_pause,
+    load_missed_waqf,
     load_unmarked_wasl,
+    load_wasl_recheck,
 )
 
 SLUG = "loader_reciter"
@@ -32,7 +34,9 @@ def test_absent_sidecars_yield_empty_and_cache(reciter_dir):
     assert load_hidden_pause(SLUG) == ({}, None)
     assert load_false_split(SLUG) == ({}, None)
     assert load_unmarked_wasl(SLUG) == ({}, None)
+    assert load_missed_waqf(SLUG) == ({}, None)
     assert cache.get_seg_hidden_pause(SLUG) == ({}, None)
+    assert cache.get_seg_missed_waqf(SLUG) == ({}, None)
     assert cache.get_seg_false_split(SLUG) == ({}, None)
     assert cache.get_seg_unmarked_wasl(SLUG) == ({}, None)
 
@@ -81,3 +85,40 @@ def test_cache_hit_skips_disk(reciter_dir):
     assert load_false_split(SLUG)[0] == {"a": {}}
     cache.invalidate_seg_caches(SLUG)
     assert load_false_split(SLUG)[0] == {"b": {}}
+
+
+def test_missed_waqf_sidecar_parses_and_invalidates(reciter_dir):
+    _write(
+        reciter_dir,
+        "missed_waqf_v1.json",
+        {"_meta": {"kind": "missed_waqf"}, "by_uid": {"u5": {"cursors": [1200], "score": 1300}}},
+    )
+    assert load_missed_waqf(SLUG) == (
+        {"u5": {"cursors": [1200], "score": 1300}},
+        {"kind": "missed_waqf"},
+    )
+    cache.invalidate_seg_caches(SLUG)
+    assert cache.get_seg_missed_waqf(SLUG) is None
+
+
+def test_wasl_recheck_sidecar_parses_and_invalidates(reciter_dir):
+    meta = {"created_at": "2026-09-27T00:00:00Z", "reciter": SLUG, "kind": "wasl_recheck"}
+    _write(
+        reciter_dir,
+        "wasl_recheck_v1.json",
+        {"_meta": meta, "by_uid": {"u7": {"chapter": 2, "after_ref": "2:5:9"}}},
+    )
+    assert load_wasl_recheck(SLUG) == ({"u7": {"chapter": 2, "after_ref": "2:5:9"}}, meta)
+    cache.invalidate_seg_caches(SLUG)
+    assert cache.get_seg_wasl_recheck(SLUG) is None
+
+
+def test_missed_waqf_reads_v1_when_no_v2(reciter_dir):
+    _write(reciter_dir, "missed_waqf_v1.json", {"_meta": {"arms": "lab"}, "by_uid": {"a": {}}})
+    assert load_missed_waqf(SLUG) == ({"a": {}}, {"arms": "lab"})
+
+
+def test_missed_waqf_v2_shadows_v1(reciter_dir):
+    _write(reciter_dir, "missed_waqf_v1.json", {"_meta": {"arms": "lab"}, "by_uid": {"a": {}}})
+    _write(reciter_dir, "missed_waqf_v2.json", {"_meta": {"arms": "lattice"}, "by_uid": {"b": {}}})
+    assert load_missed_waqf(SLUG) == ({"b": {}}, {"arms": "lattice"})

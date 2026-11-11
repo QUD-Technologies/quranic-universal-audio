@@ -247,7 +247,7 @@ The autouse `_substrate_db` already gives every test a fresh migrated SQLite DB.
 | Flask client without auth | `flask_client` |
 | Inspect the FilesystemBackend root | `tmp_reciter_dir.backend` / `tmp_reciter_dir.data_dir` |
 
-`tmp_reciter_dir.install(reciter, fixture)` does four things: seeds a state row (default `AWAITING_REVIEW`, or `UNDER_REVIEW` if `under_review_for` is given), writes `detailed.json`, writes `edit_history.jsonl` if a sidecar fixture exists, and writes an empty `pipeline_meta.json` (the basmala_amin rule reads it). It also rebuilds `segments.json` to match.
+`tmp_reciter_dir.install(reciter, fixture)` does three things: seeds a state row (default `AWAITING_REVIEW`, or `UNDER_REVIEW` if `under_review_for` is given), writes `detailed.json`, and writes `edit_history.jsonl` if a sidecar fixture exists. It also rebuilds `segments.json` to match. (It no longer seeds `pipeline_meta.json`: validation stopped reading it when `basmala_amin` was retired.)
 
 `signed_in_client` seeds the role into the SQLite substrate then mints a signed cookie via `auth_service.encode_session`. Returns `(client, {"hf_user_id", "login", "role"})`. The same fixture works for owner / maintainer / contributor by passing `role=`.
 

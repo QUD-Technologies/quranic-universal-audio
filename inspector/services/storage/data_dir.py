@@ -97,6 +97,10 @@ def hidden_pause_path(slug: str) -> str:
     return storage_paths.hidden_pause_path(slug)
 
 
+def missed_waqf_path(slug: str, version: int = 1) -> str:
+    return storage_paths.missed_waqf_path(slug, version)
+
+
 def false_split_path(slug: str) -> str:
     return storage_paths.false_split_path(slug)
 
@@ -105,20 +109,8 @@ def unmarked_wasl_path(slug: str) -> str:
     return storage_paths.unmarked_wasl_path(slug)
 
 
-def pipeline_meta_path(slug: str) -> str:
-    return storage_paths.pipeline_meta_path(slug)
-
-
-def read_pipeline_meta_doc(slug: str) -> dict | None:
-    """Return the parsed ``pipeline_meta.json`` doc, or ``None`` if absent."""
-    try:
-        return get_backend().read_json(pipeline_meta_path(slug))  # type: ignore[return-value]
-    except StorageNotFound:
-        return None
-
-
-def write_pipeline_meta_doc(slug: str, doc: dict) -> None:
-    get_backend().write_json_atomic(pipeline_meta_path(slug), doc)
+def wasl_recheck_path(slug: str) -> str:
+    return storage_paths.wasl_recheck_path(slug)
 
 
 def has_reciter(slug: str) -> bool:
@@ -176,6 +168,17 @@ def read_hidden_pause_doc(slug: str) -> dict | None:
         return None
 
 
+def read_missed_waqf_doc(slug: str) -> dict | None:
+    """Return the parsed ``missed_waqf_v2.json`` doc, else ``missed_waqf_v1.json``,
+    or ``None`` if neither exists."""
+    for version in (2, 1):
+        try:
+            return get_backend().read_json(missed_waqf_path(slug, version))  # type: ignore[return-value]
+        except StorageNotFound:
+            continue
+    return None
+
+
 def read_false_split_doc(slug: str) -> dict | None:
     """Return the parsed ``false_split_v1.json`` doc, or ``None`` if absent."""
     try:
@@ -188,6 +191,14 @@ def read_unmarked_wasl_doc(slug: str) -> dict | None:
     """Return the parsed ``unmarked_wasl_v1.json`` doc, or ``None`` if absent."""
     try:
         return get_backend().read_json(unmarked_wasl_path(slug))  # type: ignore[return-value]
+    except StorageNotFound:
+        return None
+
+
+def read_wasl_recheck_doc(slug: str) -> dict | None:
+    """Return the parsed ``wasl_recheck_v1.json`` doc, or ``None`` if absent."""
+    try:
+        return get_backend().read_json(wasl_recheck_path(slug))  # type: ignore[return-value]
     except StorageNotFound:
         return None
 
@@ -240,3 +251,27 @@ def read_timestamps_chapter(slug: str, chapter: int) -> bytes | None:
     """
     compressed = read_timestamps_chapter_br(slug, chapter)
     return brotli.decompress(compressed) if compressed is not None else None
+
+
+def read_review_signals_doc() -> dict | None:
+    """Return the parsed ``catalog/review_signals.json``, or ``None`` if absent."""
+    try:
+        return get_backend().read_json(storage_paths.review_signals_path())  # type: ignore[return-value]
+    except StorageNotFound:
+        return None
+
+
+def write_review_signals_doc(doc: dict) -> None:
+    get_backend().write_json_atomic(storage_paths.review_signals_path(), doc)
+
+
+def read_specials_doc(slug: str) -> dict | None:
+    """Return the parsed ``specials.json`` doc, or ``None`` if the reciter has none."""
+    try:
+        return get_backend().read_json(storage_paths.specials_path(slug))  # type: ignore[return-value]
+    except StorageNotFound:
+        return None
+
+
+def write_specials_doc(slug: str, doc: dict) -> None:
+    get_backend().write_json_atomic(storage_paths.specials_path(slug), doc)

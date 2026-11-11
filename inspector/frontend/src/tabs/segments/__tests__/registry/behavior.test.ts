@@ -38,9 +38,8 @@ describe('registry behavior — parametrized', () => {
         cmd,
       );
       expect(result.operation).toBeTruthy();
-      // muqattaat is neutral (info-only). basmala_amin is a resolve-by-edit
-      // category, so its sourceCategory is persisted as op_context_category
-      // for the BE resolved-by-edit index.
+      // muqattaat is neutral (info-only); every other category persists its
+      // sourceCategory as op_context_category.
       const isNeutral = cat === 'muqattaat';
       expect(result.operation.op_context_category).toBe(isNeutral ? null : cat);
       const updated = result.nextState.byId[`uid-${cat}`];

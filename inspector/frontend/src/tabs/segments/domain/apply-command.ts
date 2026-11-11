@@ -41,6 +41,7 @@ import type {
     SplitCommand,
     TrimCommand,
 } from './command';
+import { containedVerdicts, edgeAnswer, endRef, movedEdgeVerdicts, pickedVerdicts, putVerdicts } from './join-verdict';
 import { IssueRegistry } from './registry';
 
 const HISTORY_NEUTRAL_CONTEXT_CATEGORIES = new Set(['muqattaat']);
@@ -183,6 +184,7 @@ function _reduceTrim(state: ApplyCommandState, cmd: TrimCommand, ctx?: ApplyComm
     const next = _cloneSeg(target);
     if (cmd.delta.time_start != null) next.time_start = cmd.delta.time_start;
     if (cmd.delta.time_end != null) next.time_end = cmd.delta.time_end;
+    if (next.join_verdicts) next.join_verdicts = containedVerdicts(next, movedEdgeVerdicts(target, next));
     next.confidence = 1.0;
     const resolved = _resolvedFromContext(cmd.sourceCategory ?? cmd.contextCategory);
 
@@ -273,6 +275,10 @@ function _reduceSplit(state: ApplyCommandState, cmd: SplitCommand, ctx?: ApplyCo
         ? cmd.wasls
         : null;
 
+    const answers = putVerdicts(putVerdicts(target.join_verdicts, cmd.joinVerdicts ?? []), pickedVerdicts(
+        cursors, refs.map((r) => r ?? ''),
+        refs.slice(0, cursors.length).map((r, i) => r && waslOverrides?.[i] !== true ? false : undefined),
+    ));
     const pieces: Segment[] = [];
     for (let i = 0; i < nPieces; i++) {
         const start = i === 0 ? target.time_start : cursors[i - 1]!;
@@ -298,6 +304,7 @@ function _reduceSplit(state: ApplyCommandState, cmd: SplitCommand, ctx?: ApplyCo
         } else {
             piece.is_wasl = parentWasl;
         }
+        if (answers.length) piece.join_verdicts = containedVerdicts(piece, answers);
         pieces.push(piece);
     }
 
@@ -381,6 +388,12 @@ function _reduceMerge(state: ApplyCommandState, cmd: MergeCommand, ctx?: ApplyCo
         matched_text: cmd.mergedText ?? [first.matched_text, second.matched_text].filter(Boolean).join(' '),
         confidence: 1.0,
     };
+    merged.is_wasl = second.is_wasl === true;
+    // Merging joins the two words: the seam is answered WASL.
+    merged.join_verdicts = containedVerdicts(merged, putVerdicts(
+        putVerdicts(first.join_verdicts, second.join_verdicts ?? []),
+        cmd.joinVerdicts ?? [edgeAnswer(first, true)],
+    ));
     merged.ignored_categories = mergedIc.size ? [...mergedIc] : undefined;
     // Merging changes the seg's matched_ref + geometry; any wrap that was
     // scoped to ``first`` may not apply to the merged span. Drop wrap for
@@ -450,6 +463,7 @@ function _reduceEditReference(
 
     const next = _cloneSeg(target);
     next.matched_ref = cmd.matched_ref;
+    if (next.join_verdicts) next.join_verdicts = containedVerdicts(next, movedEdgeVerdicts(target, next));
     if (cmd.matched_text !== undefined) next.matched_text = cmd.matched_text;
     next.confidence = 1.0;
     // Same reasoning as the split path: changing matched_ref invalidates any
@@ -547,6 +561,7 @@ function _reduceIgnoreIssue(
         next.ignored_categories.push(cmd.category);
     }
     next.confidence = 1.0;
+    if (cmd.joinVerdicts?.length) next.join_verdicts = containedVerdicts(next, putVerdicts(next.join_verdicts, cmd.joinVerdicts));
 
     const op = _baseOperation(cmd, target, chapter, target.index, ctx);
     op.op_context_category = cmd.category;
@@ -587,6 +602,11 @@ function _reduceSetIsWasl(
 
     const next = _cloneSeg(target);
     next.is_wasl = !!cmd.is_wasl;
+    // The edge answer follows the flag: WAQF is recorded, WASL is the flag alone.
+    next.join_verdicts = containedVerdicts(next, putVerdicts(
+        (target.join_verdicts ?? []).filter((j) => j.after_ref !== endRef(next.matched_ref)),
+        next.is_wasl ? [] : [edgeAnswer(next, false)],
+    ));
 
     const op = _baseOperation(cmd, target, chapter, target.index, ctx);
     op.fix_kind = cmd.fixKind ?? 'manual';
@@ -635,6 +655,8 @@ function _reduceFlagSegment(
     const next = _cloneSeg(target);
     if (cmd.intent === 'set') {
         next.flag = { comment, at: now, author, mine: true, follow_ups: [] };
+    } else if (cmd.intent === 'delete') {
+        next.flag = null;
     } else if (cmd.intent === 'edit') {
         if (!comment) {
             next.flag = null; // clearing the comment removes the flag
@@ -681,6 +703,7 @@ function _reduceAutoFixMissingWord(
 
     const next = _cloneSeg(target);
     next.matched_ref = cmd.matched_ref;
+    if (next.join_verdicts) next.join_verdicts = containedVerdicts(next, movedEdgeVerdicts(target, next));
     if (cmd.matched_text !== undefined) next.matched_text = cmd.matched_text;
     next.confidence = 1.0;
 

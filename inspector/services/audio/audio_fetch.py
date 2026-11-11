@@ -5,9 +5,9 @@ Used by:
 - ``routes/segments/peaks.py`` — slim-envelope peaks reader.
 
 No background worker. No CDN downloads. Bucket audio + slim peaks are written by
-the katana extraction pipeline (``.local/extraction/upload_to_bucket.py`` +
-``.local/extraction/segments/audio_persist.py``); the inspector only reads them,
-and they persist indefinitely.
+the align pipeline's HF jobs (``qua_jobs/acquire_audio.py``,
+``qua_jobs/split_audio.py``); the inspector only reads them, and they persist
+indefinitely.
 
 No Flask imports — callable from any thread.
 """

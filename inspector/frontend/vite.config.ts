@@ -21,7 +21,7 @@ const BACKEND_HOST = process.env.INSPECTOR_BACKEND_HOST || '127.0.0.1';
 const BACKEND_TARGET = `http://${BACKEND_HOST}:${BACKEND_PORT}`;
 // Render-harness / inspection mode: point the `/api` proxy at a remote origin
 // (e.g. the dev Space) so the analysis-render harness can fetch shards without a
-// local Flask. `INSPECTOR_API_TARGET=https://hetchyy-quranic-inspector-dev.hf.space`.
+// local Flask. `INSPECTOR_API_TARGET=https://qud-technologies-quranic-inspector-dev.hf.space`.
 const API_TARGET = process.env.INSPECTOR_API_TARGET || BACKEND_TARGET;
 const API_REMOTE = Boolean(process.env.INSPECTOR_API_TARGET);
 // Hybrid local-reports mode: serve the data-heavy endpoints (manifest/shard/

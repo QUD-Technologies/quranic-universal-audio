@@ -22,7 +22,7 @@ running + historical, in one place: the **Jobs** tab — [admin-dashboard.md](ad
 |---|---|---|---|
 | **Bucket canonical** | `reciters/<slug>/` | Internal (TS tab, the cut/publish jobs, future API) | Zero loss, full reproducibility, single source of truth |
 | **GH release** | `gh:releases/v{X.Y.Z}` → `<slug>.zip` assets | Mobile apps, offline kiosks, archives | One version-pinned, fully-offline snapshot of all reciters |
-| **HF dataset** | `hetchyy/quranic-universal-ayahs` | ML researchers, training, analysis | Parquet-native, queryable, embedded audio |
+| **HF dataset** | `QUD-Technologies/quranic-universal-ayahs` | ML researchers, training, analysis | Parquet-native, queryable, embedded audio |
 
 Every adapter starts from the same bucket inputs. A native v13 chapter stores every recorded
 occasion as connected readings and ordered `parts` (see [shards.md](shards.md) and
@@ -62,7 +62,7 @@ separate from publish status. Publish status lives in three tables, all written 
     update immediately from SQLite after the durable edit.
 
   A third reason — **`segments_edited`** — lives on the **`ts`** track and is **computed, never
-  stamped** (`services/segments/ts_staleness.py::ts_stale_info`, called from the status route). The
+  stamped** (`services/segments/ts_staleness.py::ts_stale_info`, called from the status route). An undo batch carries no ops of its own; it counts when the ops it reverted were timestamp-affecting. The
   generated timestamps go stale the moment a timestamp-affecting segment edit
   (`qua_shared/segment_edit_ops.py::TS_AFFECTING_OP_TYPES` = trim/split/merge/delete + edit_reference
   + auto_fix_missing_word — annotations like confirm_reference/ignore_issue/flag_segment/set_is_wasl
@@ -98,7 +98,7 @@ The same predicate drives the Releases-tab buckets and the cut job's member disc
 
 | Action | Eligibility |
 |---|---|
-| TS gen | `state == READY` + segments saved + `pipeline_meta.json` present |
+| TS gen | `state == READY` + segments saved |
 | HF publish (per-reciter) | current `ts` row (`release.publish_hf` cap) |
 | GH cut (global) | ≥1 eligible reciter (`release.cut_gh` cap, owner-only by default) |
 
@@ -115,10 +115,14 @@ The same predicate drives the Releases-tab buckets and the cut job's member disc
    (`verse_layout.load_shard_occurrences` → `timestamps_native.project_shard_occurrences`); each
    non-canonical span of a verse that survived the gate is laid out on its own
    (`_release_occurrences`) — a verse whose canonical take was gated drops all its repeats too.
-   `check_canonical_uniqueness` then hard-fails on any ref with ≠ 1 canonical row
+   `check_canonical_uniqueness` then hard-fails on any ref with ≠ 1 canonical row,
+   `check_audio_chapter` on any shipped verse timed inside another chapter's audio (an upstream
+   file cut that spilled verses into the next file — release rows carry no file of their own, so
+   they would ship with times into the wrong mp3), and `check_canonical_order` on any canonical row
+   that starts after a higher ayah of its surah (a stray lead-in take that won canonical, a stale shard)
    → builds the three
    tier files (verse/word/letter, top-down), `catalog.json`, a per-recitation `manifest.json`; packs
-   a deterministic `<slug>.zip`; computes `content_hash = SHA-256(letter_tier.gz || catalog.json)`.
+   a deterministic `<slug>.zip`; computes `content_hash = SHA-256(letter_tier.gz || catalog.json || specials.json)` (the last only when shipped).
    `catalog.json` is built from `catalog/audio_manifest/<slug>.json` — each chapter's native
    `source_url` (falling back to `url`) plus `source_offset_ms` → `chapter_offsets_ms` (see
    [Audio policy](#audio-policy-as-built)); legacy sidecar metadata is tolerated here because the GH
@@ -136,10 +140,13 @@ The same predicate drives the Releases-tab buckets and the cut job's member disc
 Global single-flight: only one cut in flight at a time; a publish landing mid-cut is rejected.
 
 Per-recitation builds (shard load, layout, validation, tier files, catalog.json) fan out over a
-forked process pool — 3 workers by default (a reciter build peaks at several GB; 8 workers OOM-kill
-the 32 GB `cpu-upgrade` flavor), `CUT_BUILD_WORKERS` overrides (`1` = serial;
-serial is also the fallback where `fork` is unavailable). Results keep catalog order; the first
-fatal-violation reciter aborts the cut. Job timeout defaults to 2h (`INSPECTOR_CUT_JOB_TIMEOUT`).
+forked process pool — 12 workers by default (102 recitations in 14 min), 6 when letter tiers are built (builds mostly wait on
+bucket reads, so the pool exceeds the vCPU count: 3 workers used 19% CPU and ~1.7 GB each on the
+8-vCPU/32 GB `cpu-upgrade` flavor; 8 workers with letter tiers once OOM-killed it),
+`CUT_BUILD_WORKERS` overrides (`1` = serial; serial is also the fallback where `fork` is
+unavailable). The upstream-recording check before it probes 8 reciters at once. Results keep
+catalog order; a fatal-violation reciter aborts the cut once the pool drains, after every failing reciter is logged with its first violations. Job timeout defaults to 4h
+(`INSPECTOR_CUT_JOB_TIMEOUT`); v4.0.0 (102 recitations) ran ~5.4 worker-minutes per recitation.
 
 ### Versioning
 
@@ -168,8 +175,8 @@ gh:releases/v{X.Y.Z}/
 ├── shard.py              # consumer helper (per-surah file splitter)
 ├── check_updates.py      # consumer helper (per-reciter update check)
 ├── download_audio.py     # consumer helper (fetch source audio @ aligned CBR encode)
-├── surah_info.json       # static reference
-├── digital_khatt_v2_script.json # exact Hafs presentation text
+├── surah_info.json       # static reference (built from the talqeen-quran-data pack at job staging)
+├── digital_khatt_v2_script.json # exact Hafs presentation text (same; reading-order keys)
 ├── DigitalKhattV2.otf    # matching OFL-1.1 font
 └── LICENSE               # QUA Dataset License 1.0 (repo LICENSE-DATA, uploaded as LICENSE)
 ```
@@ -181,6 +188,7 @@ verse_timestamps.json.gz   # tier 1: [ref,start,end,canonical,silence_after] per
 word_timestamps.json.gz    # tier 2: verse row + words
 letter_timestamps.json.gz  # tier 3: word row + exact DK text + paint tokens
 catalog.json               # this reciter's catalog projection (carries audio chapter_urls)
+specials.json              # openers before ayah 1 per shipped chapter + default_basmala (absent when none; see specials.md)
 ```
 
 The zip carries no per-reciter `manifest.json`: zip integrity is the release-level `manifest.json`'s
@@ -230,6 +238,26 @@ resolution) so the release never leaks an internal bucket URL. When one source s
 (or a single file has a trimmed lead-in), `audio.chapter_offsets_ms[ch]` carries that chapter's start
 offset inside its source — the same value the HF dataset persists as `source_offset_ms`. Map a release
 tier-file timestamp into the source file with `source_ms = chapter_offsets_ms.get(ch, 0) + tier_ms`.
+Both adapters resolve the link through `qua_shared.audio.sources.public_source_url`, which accepts only
+remote `http(s)` URLs outside the Inspector bucket. A chapter with no such link (a local path from an
+offline intake, #285, or a bare bucket URL) is **fatal**: the cut aborts and `publish_hf` refuses the slug,
+naming the chapters — repair the manifest, never ship the path. The manifest schema also rejects a local
+path at write time (see [catalog.md](catalog.md)).
+Before building, the cut range-reads every eligible chapter's upstream link
+(`qua_shared.audio.upstream`); a different recording than the one aligned (size changed,
+duration off by more than 2 s) leaves that chapter out of the cut; the remaining chapters of
+the recitation ship. Excluded chapters are skipped before shard auditing and projection,
+and contribute no occurrences, tier timestamps, audio URLs or offsets. Catalog coverage,
+chapter and ayah counts, the dataset manifest, changelog Missing column and zip contents
+derive from the retained chapters, exactly as for a chapter the recitation never had.
+A recitation with every timestamp chapter dropped is held out; every eligible recitation
+held → the cut fails. The completion webhook carries the exclusions in
+`validation_summary.dropped_upstream_chapters`; Inspector also accepts `held_upstream_changes`
+from jobs launched before deployment. Owners get a notification either way: published
+(listing recitations and chapters left out because their upstream audio changed), or
+failed. A clean cut sends the plain publication notification. `scripts/diagnostics/upstream_drift.py` reports the
+same check fleet-wide.
+`chapter_urls` (and `chapter_offsets_ms`) list only the chapters the recitation ships timestamps for: a chapter the audio manifest serves but that has no segments gets no URL.
 `chapter_offsets_ms` is **omitted from the JSON when empty** (model_serializer on `ReleaseCatalogAudio`),
 so CDN by-surah catalogs stay byte-stable and their `content_hash` doesn't churn.
 
@@ -325,6 +353,11 @@ aborts the batch) and re-renders the dataset catalog/card **once** at the end. T
    `per_recitation_releases(track='hf')` insert + `released` event) and leaves failures in the
    record. The 120 s poll fallback reconciles by reading the same record (no webhook payload).
 
+Every slug in a batch shares one container and one `JOB_ID`, so each publish builds its `Dataset` in
+a private temp `cache_dir` with a per-slug `fingerprint` (`<job>-<riwayah>-<slug>`). An explicit
+fingerprint replaces the `gen_kwargs` hash as the `from_generator` cache key — keyed on the bare job id,
+every later slug silently re-pushed the first slug's rows (issue #279).
+
 Global single-flight: one batch at a time; a single publish or a cut is rejected while a batch is in
 flight, and vice-versa (labels `task=hf_publish_batch`, `reciter=_batch`).
 
@@ -398,7 +431,7 @@ hub splits once via `hub_published_splits_by_config` (the just-pushed split is a
 (one `config_name` per riwayah + `mushafs`/`all` last) and fills the badges from the same
 `HfDatasetCatalogStats` (`_stats_from_published_splits`) used for the `mushafs` projection. So
 frontmatter, badges, and catalog stats can't drift from the published set. The GitHub repo README
-badges are a separate, broader metric maintained by `update-badges.yml` CI and are unaffected.
+badges are a separate, broader metric that `update-badges.yml` refreshes on each published GitHub release.
 
 ### Audio: preserve, don't normalize
 
@@ -452,8 +485,8 @@ trimmed.
 The **GH release** loses none of it: `project_shard_occurrences` emits every occasion as a row —
 other occasions whole and unflagged, the canonical occasion's trimmed leading/trailing ends as
 their own unflagged rows — so "lost" above means *not the canonical row*, not absent from the
-release. The one true drop is a verse whose canonical take is incomplete: it and all its repeats
-are gated out together.
+release. A verse whose canonical take is incomplete and all its repeats are gated out together.
+For GitHub cuts, chapters with changed upstream recordings are excluded in their entirety.
 
 ### Failed-alignment, no-match & deletes at publish
 
@@ -511,7 +544,13 @@ Each artifact runs a fail-blocking validation pass before it is produced; the su
 to the `gh_releases.validation_summary` / `per_recitation_releases.validation_summary` row.
 Block on the `HARD_FAIL_KINDS` in [dataset_validation.py](../../qua_shared/dataset_validation.py):
 `word_bleed_first`, `word_bleed_last`, `duration_arithmetic`, `intra_segment_gap`,
-`canonical_uniqueness` — `fatal_violations` aborts the cut on any of these. `coverage_gap` is
+`canonical_uniqueness`, `foreign_chapter`, `canonical_order` — `fatal_violations` aborts the cut
+on any of these. Words within a segment must be gapless except for a positive pause after a word
+whose following shard boundary is `sakt`; the exception follows each word occurrence, not its verse ref.
+The last two are timeline checks over the shipped refs' raw shard occurrences
+(`verse_layout.load_shard_occurrences` tags each with the `chapter` whose audio timed it). A hit is
+a data fix in the bucket — drop the spilled segments and trim the audio, or regenerate a stale
+shard — never a projection workaround. `coverage_gap` is
 reported but **non-fatal**, and incomplete verses are gated out by `select_complete_verses` *before*
 validation runs, so `coverage_gap` does not fire for emitted verses. In the cut, non-canonical
 occurrence rows are validated under `ref#n` keys: they face the span invariants but not

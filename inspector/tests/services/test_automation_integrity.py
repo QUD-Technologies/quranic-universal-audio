@@ -33,20 +33,28 @@ def _state() -> dict:
 def sweep(monkeypatch):
     """Stub the sweep + the emitter; return the recorded notify calls."""
     calls: list[list] = []
+    scanned: list[list[str]] = []
     monkeypatch.setattr(integrity, "_delivery_slugs", lambda: ["r"])
+    monkeypatch.setattr(integrity, "_busy_slugs", lambda: set())
     monkeypatch.setattr(
         integrity.notifications_emit,
         "notify_owners_shard_integrity",
         lambda findings: calls.append(list(findings)) or len(findings),
     )
 
+    monkeypatch.setattr(
+        integrity.notifications_emit, "resolve_shard_integrity", lambda scanned, findings: 0
+    )
+
     def _set(findings, unreadable=()):
-        monkeypatch.setattr(
-            integrity.shard_integrity, "scan", lambda slugs: (list(findings), list(unreadable))
-        )
+        def _scan(slugs):
+            scanned.append(list(slugs))
+            return list(findings), list(unreadable)
+
+        monkeypatch.setattr(integrity.shard_integrity, "scan", _scan)
 
     _set([])
-    return type("S", (), {"calls": calls, "set": staticmethod(_set)})
+    return type("S", (), {"calls": calls, "scanned": scanned, "set": staticmethod(_set)})
 
 
 def test_clean_sweep_records_a_run_and_notifies_nobody(sweep):
@@ -112,3 +120,25 @@ def test_watchdog_needs_no_config_and_is_registered(sweep):
 
     assert _state()["last_run_at"] is not None
     assert integrity.eval_shard_integrity in evaluators.EVALUATORS
+
+
+def test_deliveries_still_being_aligned_or_timestamped_are_not_swept(sweep, monkeypatch):
+    """Mid-run, a delivery has audio for every chapter but shards for only some —
+    that is progress, not a lost shard."""
+    monkeypatch.setattr(integrity, "_delivery_slugs", lambda: ["busy", "idle"])
+    monkeypatch.setattr(integrity, "_busy_slugs", lambda: {"busy"})
+
+    integrity.eval_shard_integrity(AutomationConfig(), _now())
+
+    assert sweep.scanned == [["idle"]]
+
+
+def test_busy_slugs_joins_running_timestamps_and_active_align_runs(monkeypatch):
+    monkeypatch.setattr(
+        integrity.jobs_base,
+        "list_in_flight_jobs",
+        lambda kinds: [{"slug": "ts"}, {"slug": None}],
+    )
+    monkeypatch.setattr(integrity.repo_align_runs, "active_slugs", lambda: {"aligning"})
+
+    assert integrity._busy_slugs() == {"ts", "aligning"}

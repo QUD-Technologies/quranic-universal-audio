@@ -5,10 +5,11 @@ Launches an HF Job that runs ``qua_jobs/cut_release.py``. The job:
   1. Reads the bucket catalog to discover every recitation whose channel is
      ``gh_release_eligible`` AND has a current ``per_recitation_releases(track='ts')``.
   2. Builds per-recitation tier files (verse / word / letter — top-down
-     projection) + catalog.json + per-recitation manifest.json.
+     projection) + catalog.json from chapters whose upstream audio still
+     matches the alignment; holds out recitations with every chapter dropped.
   3. Packs each recitation into a ``<slug>.zip`` (store-only for `.gz` entries,
      deflate-9 for JSON; deterministic mtime=0).
-  4. Computes ``content_hash`` = SHA-256(letter_tier.json.gz_bytes ||
+  4. Computes ``content_hash`` = SHA-256(deepest_tier.json.gz_bytes ||
      catalog.json_bytes) per recitation.
   5. Builds the dataset-level ``manifest.json`` + ``CHANGELOG.md`` (diff
      against the previous gh_release).
@@ -16,8 +17,11 @@ Launches an HF Job that runs ``qua_jobs/cut_release.py``. The job:
      uploads every asset.
 
 On webhook completion (with ``version`` in the payload), ``complete()`` here
-inserts a ``gh_releases`` row + N ``gh_release_recitations`` rows and fires
-``released({track:'gh', version, recitation_count})``.
+inserts a ``gh_releases`` row + N ``gh_release_recitations`` rows, fires
+``released({track:'gh', version, recitation_count})`` and notifies owners —
+including chapters the job left out for changed upstream recordings. The
+summary accepts ``dropped_upstream_chapters`` and ``held_upstream_changes``
+from jobs launched before deployment.
 
 Global single-flight: only one cut at a time across the system.
 """
@@ -41,7 +45,7 @@ log = logging.getLogger("inspector")
 KIND = "cut_release"
 
 JOB_FLAVOR = os.environ.get("INSPECTOR_CUT_JOB_FLAVOR", "cpu-upgrade")
-JOB_TIMEOUT = os.environ.get("INSPECTOR_CUT_JOB_TIMEOUT", "2h")
+JOB_TIMEOUT = os.environ.get("INSPECTOR_CUT_JOB_TIMEOUT", "4h")
 
 
 def launch(
@@ -50,6 +54,7 @@ def launch(
     launched_by: str | None = None,
     settings=None,
     webhook_base: str | None = None,
+    include_letter_timestamps: bool | None = None,
 ) -> dict:
     """Launch a cut-release job. Returns ``{job_id, url}``.
 
@@ -58,8 +63,16 @@ def launch(
     job as ``PUBLISH_PAD_START`` / ``PUBLISH_PAD_END`` / ``PUBLISH_MIN_GAP`` —
     the SAME env the HF publish reads, so the release verse bounds match the
     dataset's clip windows.
+
+    ``include_letter_timestamps`` defaults to the saved GH-cut contents setting
+    for manual launches; automation passes its config snapshot explicitly.
     """
     from huggingface_hub import Volume, get_token, run_job
+
+    if include_letter_timestamps is None:
+        from services.admin.automation.config import load_config
+
+        include_letter_timestamps = load_config().gh_cut.include_letter_timestamps
 
     busy = base.running_job_for(kind=KIND)
     if busy is not None:
@@ -70,6 +83,7 @@ def launch(
     env = {
         "INSPECTOR_BUCKET_MOUNT": "/data",
         "PYTHONPATH": "/aux/code",
+        "INCLUDE_LETTER_TIMESTAMPS": "1" if include_letter_timestamps else "0",
     }
     if version:
         env["RELEASE_VERSION"] = version
@@ -229,6 +243,17 @@ def complete(
     from services.storage import cache as _cache
 
     _cache.invalidate_in_flight_jobs_cache()
+
+    from services.notifications import emit as _notify
+
+    _notify.notify_owners_release_cut(
+        job_id=job_id,
+        version=version,
+        recitation_count=len(members),
+        dropped=(validation_summary or {}).get(
+            "dropped_upstream_chapters", (validation_summary or {}).get("held_upstream_changes")
+        ),
+    )
 
     # Email subscribers opted into release notifications (best-effort). Past the
     # idempotency guard above, so a webhook retry can't double-send.

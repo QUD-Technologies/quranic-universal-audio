@@ -182,3 +182,22 @@ def test_no_mounted_path_falls_through_to_history_read(monkeypatch):
     info = ts_staleness.ts_stale_info("slug", produced_at=_GEN_AT)
     assert info is not None
     assert info["edits_since"] == 1
+
+
+def _revert(saved_at: str, reverts: str, op_ids: list[str] | None = None) -> dict:
+    return {"saved_at_utc": saved_at, "chapter": 1, "reverts_batch_id": reverts,
+            "reverts_op_ids": op_ids, "operations": []}  # fmt: skip
+
+
+def test_undoing_a_structural_edit_after_generation_is_stale(monkeypatch):
+    deleted = {**_batch("2026-02-01T09:00:00Z", "delete_segment", chapter=1), "batch_id": "b1"}
+    deleted["operations"][0]["op_id"] = "o1"
+    _patch_history(monkeypatch, [deleted, _revert("2026-03-02T09:00:00Z", "b1", ["o1"])])
+    info = ts_staleness.ts_stale_info("slug", produced_at=_GEN_AT)
+    assert info is not None and info["affected_chapters"] == [1]
+
+
+def test_undoing_an_annotation_edit_is_not_stale(monkeypatch):
+    flagged = {**_batch("2026-02-01T09:00:00Z", "flag_segment", chapter=1), "batch_id": "b1"}
+    _patch_history(monkeypatch, [flagged, _revert("2026-03-02T09:00:00Z", "b1")])
+    assert ts_staleness.ts_stale_info("slug", produced_at=_GEN_AT) is None

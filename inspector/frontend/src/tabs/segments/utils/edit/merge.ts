@@ -37,6 +37,7 @@ export function mergeAdjacent(
     direction: 'prev' | 'next',
     contextCategory: string | null = null,
     mountId: symbol | null = null,
+    joinVerdicts?: NonNullable<Segment['join_verdicts']>,
 ): void {
     const chStr = get(selectedChapter);
     const chapter = seg.chapter || parseInt(chStr);
@@ -107,6 +108,7 @@ export function mergeAdjacent(
         },
         {
             type: 'merge',
+            joinVerdicts,
             fromUid: segUid,
             toUid: otherUid,
             direction,

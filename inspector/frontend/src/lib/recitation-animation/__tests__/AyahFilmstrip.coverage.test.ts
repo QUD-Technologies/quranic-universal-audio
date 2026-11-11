@@ -115,9 +115,9 @@ describe('AyahFilmstrip active-cell reporting', () => {
         await tick();
         // Playing verse 1 (incomplete) → the pill source must read 'words'.
         await step(500);
-        expect(calls.at(-1)).toEqual({ ayah: 1, missing: 'words' });
+        expect(calls.at(-1)).toEqual({ ayah: 1, missing: 'words', special: null });
         // Travel to verse 3 (complete) → status clears to 'none'.
         await step(5500);
-        expect(calls.at(-1)).toEqual({ ayah: 3, missing: 'none' });
+        expect(calls.at(-1)).toEqual({ ayah: 3, missing: 'none', special: null });
     });
 });

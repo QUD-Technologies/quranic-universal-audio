@@ -144,16 +144,23 @@ def test_gh_cut_skips_empty_cut_and_advances_cadence(monkeypatch):
     assert st["last_run_at"] is not None  # cadence advanced so we don't re-check every tick
 
 
-def test_gh_cut_launches_when_changes_exist(monkeypatch):
+@pytest.mark.parametrize("include_letters", [True, False])
+def test_gh_cut_launches_when_changes_exist(monkeypatch, include_letters):
     launched: list[dict] = []
     monkeypatch.setattr(evaluators, "is_due", lambda **k: True)
     monkeypatch.setattr(evaluators, "current_auto_version", lambda: ("v1.2.0", 3))
     monkeypatch.setattr(evaluators.jobs_base, "running_job_for", lambda **k: None)
     monkeypatch.setattr(evaluators.cut_release_jobs, "launch", lambda **k: launched.append(k))
 
-    evaluators.eval_gh_cut(AutomationConfig(gh_cut=GhCutConfig(enabled=True)), _now())
+    evaluators.eval_gh_cut(
+        AutomationConfig(
+            gh_cut=GhCutConfig(enabled=True, include_letter_timestamps=include_letters)
+        ),
+        _now(),
+    )
 
     assert len(launched) == 1
+    assert launched[0]["include_letter_timestamps"] is include_letters
     gh_cut_state = repo_automation.get_state("gh_cut")
     assert gh_cut_state is not None
     assert gh_cut_state["last_status"] == "launched"
@@ -262,6 +269,117 @@ def test_stale_ts_regen_launches_when_edits_are_newer_than_last_job(monkeypatch)
     stale_ts_state = repo_automation.get_state("stale_ts_regen")
     assert stale_ts_state is not None
     assert stale_ts_state["last_status"] == "launched"
+
+
+def test_stale_ts_regen_waits_while_any_timestamps_run_is_in_flight(monkeypatch):
+    """The timing Space runs one at a time: another reciter's run blocks launching."""
+    launched: list[str] = []
+    _seed_stale_slug(monkeypatch, last_edit="2026-06-09T10:00:00Z", watermark={})
+    monkeypatch.setattr(evaluators, "_in_flight_slugs", lambda kinds: {"rec_other"})
+    monkeypatch.setattr(
+        evaluators.timestamps_jobs, "launch", lambda slug, **k: launched.append(slug)
+    )
+
+    evaluators.eval_stale_ts_regen(
+        AutomationConfig(stale_ts_regen=StaleTsRegenConfig(enabled=True)), _now()
+    )
+
+    assert launched == []
+
+
+def test_stale_ts_regen_skips_a_slug_whose_align_run_is_active(monkeypatch):
+    launched: list[str] = []
+    _seed_stale_slug(monkeypatch, last_edit="2026-06-09T10:00:00Z", watermark={})
+    monkeypatch.setattr(evaluators.repo_align_runs, "active_slugs", lambda: {"rec_a"})
+    monkeypatch.setattr(
+        evaluators.timestamps_jobs, "launch", lambda slug, **k: launched.append(slug)
+    )
+
+    evaluators.eval_stale_ts_regen(
+        AutomationConfig(stale_ts_regen=StaleTsRegenConfig(enabled=True)), _now()
+    )
+
+    assert launched == []
+
+
+def _marked_ready(seed_state, monkeypatch, *slugs: str) -> list[str]:
+    for slug in slugs:
+        seed_state(slug, state="under_review", assignee_hf_id="u1", marked_ready=True)
+    monkeypatch.setattr(evaluators, "load_detailed", lambda slug: [])
+    monkeypatch.setattr(evaluators, "count_flagged", lambda entries: 0)
+    monkeypatch.setattr(evaluators.repo_releases, "current_release", lambda track, slug: None)
+    monkeypatch.setattr(evaluators.repo_align_runs, "active_slugs", lambda: set())
+    monkeypatch.setattr(evaluators, "_in_flight_slugs", lambda kinds: set())
+    monkeypatch.setattr(evaluators.timestamps_jobs, "latest_terminal_failed_slugs", lambda: set())
+    monkeypatch.setattr(evaluators.timestamps_jobs, "latest_job_started_by_slug", lambda: {})
+    launched: list[str] = []
+    monkeypatch.setattr(
+        evaluators.timestamps_jobs, "launch", lambda slug, **k: launched.append(slug)
+    )
+    return launched
+
+
+def test_auto_gen_waits_for_the_slugs_align_run(seed_state, monkeypatch):
+    """A Katana-seeded delivery under review while its assemble stage still stores times:
+    a timestamps run now would read half-stored times and compete for the aligner."""
+    launched = _marked_ready(seed_state, monkeypatch, "rec_busy", "rec_free")
+    monkeypatch.setattr(evaluators.repo_align_runs, "active_slugs", lambda: {"rec_busy"})
+
+    evaluators.eval_auto_gen_ts(AutomationConfig(auto_gen_ts=AutoGenTsConfig(enabled=True)), _now())
+
+    assert launched == ["rec_free"]
+
+
+def test_auto_gen_retries_a_slug_failed_by_restarts(seed_state, monkeypatch):
+    """The 2026-11 stall: four restart interruptions in a row stranded the reciter."""
+    launched = _marked_ready(seed_state, monkeypatch, "rec_a")
+    monkeypatch.setattr(
+        evaluators.timestamps_jobs, "latest_terminal_failed_slugs", lambda: {"rec_a"}
+    )
+    monkeypatch.setattr(evaluators.timestamps_jobs, "auto_retryable_slugs", lambda s, now: s)
+    monkeypatch.setattr(
+        evaluators.timestamps_jobs,
+        "latest_job_started_by_slug",
+        lambda: {"rec_a": _now()},  # after mark-ready: the retry must bypass the watermark
+    )
+
+    evaluators.eval_auto_gen_ts(AutomationConfig(auto_gen_ts=AutoGenTsConfig(enabled=True)), _now())
+
+    assert launched == ["rec_a"]
+
+
+def test_stale_ts_regen_launches_only_the_longest_stale(monkeypatch):
+    launched: list[tuple[str, list[int] | None]] = []
+    _seed_stale_slug(monkeypatch, last_edit="2026-06-09T10:00:00Z", watermark={})
+    monkeypatch.setattr(evaluators, "_delivery_slugs", lambda: ["rec_a", "rec_b", "rec_c"])
+    since = {
+        "rec_a": "2026-06-09T10:00:00Z",
+        "rec_b": "2026-06-09T08:00:00Z",
+        "rec_c": "2026-06-09T09:00:00Z",
+    }
+    monkeypatch.setattr(
+        evaluators.ts_staleness,
+        "ts_stale_info",
+        lambda slug, produced_at: {
+            "stale_since": since[slug],
+            "last_edit_at": since[slug],
+            "edits_since": 1,
+            "affected_chapters": [2],
+        },
+    )
+    monkeypatch.setattr(
+        evaluators.timestamps_jobs,
+        "launch",
+        lambda slug, settings, **k: launched.append((slug, settings.chapters)),
+    )
+
+    evaluators.eval_stale_ts_regen(
+        AutomationConfig(stale_ts_regen=StaleTsRegenConfig(enabled=True)), _now()
+    )
+
+    assert launched == [("rec_b", [2])]
+    state = repo_automation.get_state("stale_ts_regen")
+    assert state is not None and "2 waiting" in state["last_detail"]
 
 
 # --- auto-release inactive claims -------------------------------------------
@@ -381,3 +499,52 @@ def test_auto_release_inactive_keeps_recently_claimed_real_row(seed_state, monke
     claimed_row = state_service.get_row(slug)
     assert claimed_row is not None
     assert claimed_row.state.value == "under_review"
+
+
+# --- timestamps automations: infra-failure auto-retry -------------------------
+
+
+def test_stale_ts_regen_retries_an_infra_failure_past_its_watermark(monkeypatch):
+    """A regen that died on the aligner (restart / 5xx) is relaunched even though
+    its start sits after the edit watermark."""
+    launched: list[str] = []
+    _seed_stale_slug(
+        monkeypatch,
+        last_edit="2026-06-09T10:00:00Z",
+        watermark={"rec_a": datetime(2026, 6, 9, 11, 0, tzinfo=UTC)},
+    )
+    monkeypatch.setattr(
+        evaluators.timestamps_jobs, "latest_terminal_failed_slugs", lambda: {"rec_a"}
+    )
+    monkeypatch.setattr(
+        evaluators.timestamps_jobs, "auto_retryable_slugs", lambda slugs, now: {"rec_a"}
+    )
+    monkeypatch.setattr(
+        evaluators.timestamps_jobs, "launch", lambda slug, **k: launched.append(slug)
+    )
+
+    evaluators.eval_stale_ts_regen(
+        AutomationConfig(stale_ts_regen=StaleTsRegenConfig(enabled=True)), _now()
+    )
+
+    assert launched == ["rec_a"]
+
+
+def test_stale_ts_regen_leaves_a_non_retryable_failure(monkeypatch):
+    launched: list[str] = []
+    _seed_stale_slug(monkeypatch, last_edit="2026-06-09T10:00:00Z", watermark={})
+    monkeypatch.setattr(
+        evaluators.timestamps_jobs, "latest_terminal_failed_slugs", lambda: {"rec_a"}
+    )
+    monkeypatch.setattr(
+        evaluators.timestamps_jobs, "auto_retryable_slugs", lambda slugs, now: set()
+    )
+    monkeypatch.setattr(
+        evaluators.timestamps_jobs, "launch", lambda slug, **k: launched.append(slug)
+    )
+
+    evaluators.eval_stale_ts_regen(
+        AutomationConfig(stale_ts_regen=StaleTsRegenConfig(enabled=True)), _now()
+    )
+
+    assert launched == []

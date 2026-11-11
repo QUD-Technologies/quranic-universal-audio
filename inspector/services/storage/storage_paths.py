@@ -73,6 +73,11 @@ def catalog_path() -> str:
     return "catalog/reciter_catalog.json"
 
 
+def review_signals_path() -> str:
+    """Fleet-wide reciter-picker review counts (``ReviewSignalsDoc``)."""
+    return "catalog/review_signals.json"
+
+
 def audio_durations_path() -> str:
     return "catalog/audio_durations.json"
 
@@ -156,12 +161,32 @@ def low_confidence_path(slug: str) -> str:
 def ts_validation_path(slug: str) -> str:
     """Verse-level timestamps-validation sidecar — ``ts_validation.json``.
 
-    Written by the batch timing Space's multi-beam whole-verse alignment pass;
-    flags verses whose alignment disagrees under tighter probe beams. Served owner-gated to
+    MFA runs flag verses whose alignment disagrees under tighter probe beams
+    (``verses``); aligner runs list the segments they could not time
+    (``failed_segments``). Served owner-gated to
     the Timestamps-tab "ts-validation" accordion (preview of unreleased
     reciters). Schema: ``qua_shared/schemas/ts_validation.py``.
     """
     return reciter_file(slug, "ts_validation.json")
+
+
+def readings_path(slug: str) -> str:
+    """Readings summary — ``readings.json``: what a Hafs delivery reads wherever the riwayah
+    allows a choice, folded from its v15 shards by ``services/reference/readings.py``.
+
+    Beside the shards rather than in ``timestamps/``, which holds only per-chapter shards.
+    Schema: ``qua_shared/schemas/bucket/ts_readings.py``.
+    """
+    return reciter_file(slug, "readings.json")
+
+
+def recitation_profile_path(slug: str) -> str:
+    """Recitation profile — ``recitation_profile.json``: a Hafs delivery's madd, ghunnah and
+    silence durations, published by the batch re-time beside its shards.
+
+    Schema: ``qua_shared/schemas/bucket/recitation_profile.py``.
+    """
+    return reciter_file(slug, "recitation_profile.json")
 
 
 def auto_split_path(slug: str) -> str:
@@ -182,6 +207,15 @@ def hidden_pause_path(slug: str) -> str:
     return reciter_file(slug, "hidden_pause_v1.json")
 
 
+def missed_waqf_path(slug: str, version: int = 1) -> str:
+    """Low Confidence Waqf sidecar — per-seg cursors where the reciter may have
+    stopped inside the segment. ``version=2`` is the align pipeline's, built
+    from the aligner's lattice pauses; ``1`` the offline phoneme + silence
+    detector's. Keyed by ``segment_uid``; read (v2 first) by
+    ``services/data_loader.load_missed_waqf``."""
+    return reciter_file(slug, f"missed_waqf_v{version}.json")
+
+
 def false_split_path(slug: str) -> str:
     """Boundary-review sidecar — per-seg evidence that offline re-segmentation
     heard continuous speech across the segment's end. Keyed by ``segment_uid``;
@@ -197,15 +231,11 @@ def unmarked_wasl_path(slug: str) -> str:
     return reciter_file(slug, "unmarked_wasl_v1.json")
 
 
-def pipeline_meta_path(slug: str) -> str:
-    """Per-reciter immutable extraction-time facts.
-
-    Schema: ``qua_shared/schemas/pipeline_meta.py::PipelineMeta``. Written
-    once by extraction (or the backfill script for legacy reciters); read
-    by ``services/storage/data_loader.load_pipeline_meta``. Immutable
-    post-extraction — never invalidated by save.
-    """
-    return reciter_file(slug, "pipeline_meta.json")
+def wasl_recheck_path(slug: str) -> str:
+    """Boundary-review sidecar — reviewer-settled verse-to-verse joins whose
+    WASL / WAQF answer is doubtful and must be re-asked. Keyed by the left
+    segment's ``segment_uid``; read by ``services/data_loader.load_wasl_recheck``."""
+    return reciter_file(slug, "wasl_recheck_v1.json")
 
 
 def timestamps_path_br(slug: str, chapter: str | int) -> str:
@@ -213,9 +243,29 @@ def timestamps_path_br(slug: str, chapter: str | int) -> str:
     return reciter_file(slug, f"timestamps/{chapter}.json.br")
 
 
+def timing_path_br(slug: str, chapter: str | int) -> str:
+    """Brotli stored segment times of one audio chapter (written by the aligner)."""
+    return reciter_file(slug, f"timing/{chapter}.json.br")
+
+
+def specials_path(slug: str) -> str:
+    """Per-reciter timed specials (Isti'adha / Basmala before ayah 1, …).
+
+    Schema: ``qua_shared/schemas/bucket/specials.py::SpecialsDoc``. Written by
+    the align pipeline at promote time and by the specials backfill; word
+    timings and voice verdicts are merged in by the timestamps run.
+    """
+    return reciter_file(slug, "specials.json")
+
+
 def prefetched_audio_path(slug: str, chapter: str | int) -> str:
     """MP3 written by the katana extraction pipeline for in-review reciters."""
     return reciter_file(slug, f"audio/{chapter}.mp3")
+
+
+def audio_frames_path(slug: str, chapter: str | int) -> str:
+    """Frame index of a chapter mp3 (byte offset of each frame, written by the aligner)."""
+    return reciter_file(slug, f"audio_frames/{chapter}.bin")
 
 
 def prefetched_peaks_dir(slug: str) -> str:
@@ -259,7 +309,11 @@ PER_RECITER_FILES: tuple[str, ...] = (
     "ts_validation.json",
     "auto_split_v1.json",
     "hidden_pause_v1.json",
+    "missed_waqf_v1.json",
+    "missed_waqf_v2.json",
     "false_split_v1.json",
     "unmarked_wasl_v1.json",
+    "wasl_recheck_v1.json",
     "pipeline_meta.json",
+    "specials.json",
 )

@@ -42,7 +42,6 @@ def _entries(matched_ref: str) -> list[dict]:
                     "source_ref": "2:4:1-2:4:12",
                     "projection_support": "full",
                     "qalqala_letter": None,
-                    "is_boundary_adj": False,
                 }
             ],
         }
@@ -96,7 +95,6 @@ def test_an_undone_ref_edit_gets_its_hafs_span_back_from_the_new_ref():
     # the wrong verse's audio; an absent one would have refused the whole run.
     assert seg["source_ref"] == "2:3:1-2:3:8"
     assert seg["projection_support"] == "full"
-    assert seg["is_boundary_adj"] is False
 
 
 @has_editions

@@ -12,6 +12,7 @@
 import { themeColor } from '../../../../lib/utils/canvas-theme';
 import type { SegCanvas } from '../../types/segments-waveform';
 import { drawEditPeakBase } from './draw-seg';
+import { readback2d } from '../../../../lib/utils/canvas-2d';
 
 // ---------------------------------------------------------------------------
 // _ensureTrimBaseCache
@@ -19,7 +20,7 @@ import { drawEditPeakBase } from './draw-seg';
 
 export function _ensureTrimBaseCache(canvas: SegCanvas): boolean {
     if (canvas._trimBaseCache) return true;
-    const ctx = canvas.getContext('2d');
+    const ctx = readback2d(canvas);
     if (!ctx) return false;
     const tw = canvas._trimWindow;
     if (!tw) return false;
@@ -41,7 +42,7 @@ export function _ensureTrimBaseCache(canvas: SegCanvas): boolean {
 export function drawTrimWaveform(canvas: SegCanvas): void {
     const c = canvas;
     if (!_ensureTrimBaseCache(c)) return;
-    const ctx = c.getContext('2d');
+    const ctx = readback2d(c);
     if (!ctx) return;
     const width = c.width;
     const height = c.height;

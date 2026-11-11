@@ -27,6 +27,7 @@ from typing import Any, TypedDict
 from qua_shared.catalog_visibility import is_everyayah_channel
 from qua_shared.schemas import (
     Actor,
+    QualityStatus,
     ReciterRow,
     ReciterState,
     ReciterStateFile,
@@ -35,6 +36,7 @@ from qua_shared.schemas import (
 )
 from services import db as _db
 from services.auth import permissions
+from services.auth.predicates import quality_settable
 from services.db import _serde, repo_access, repo_claims, repo_state, repo_transitions
 from services.db import sync as _sync
 from services.errors import Codes
@@ -335,6 +337,7 @@ _EVENT_CAPABILITY: dict[str, str] = {
     "claim.force_released": "claim.force_release",
     "claim.reassigned": "claim.reassign",
     "admin.unlocked_for_revision": "reciter.unlock_for_revision",
+    "reciter.quality_set": "reciter.set_quality_status",
 }
 
 
@@ -554,6 +557,7 @@ def _persist_state(before: ReciterRow | None, new_row: ReciterRow, *, tid: str) 
         "last_save_at",
         "timestamps_job_ids",
         "revision_in_progress",
+        "quality_status",
     ):
         if getattr(new_row, col) != getattr(before, col):
             updates[col] = getattr(new_row, col)
@@ -700,6 +704,29 @@ def _h_catalog_edited(slug, before, actor, payload, reason):
         raise UnknownReciter(slug)
     _require_capability(actor, "catalog.edit")
     return before  # unchanged
+
+
+def _h_quality_set(slug, before, actor, payload, reason):
+    """Set (``payload.quality_status`` = a ``QualityStatus`` value) or clear
+    (``None``) the delivery's quality status. Audit-only for the lifecycle:
+    state, claim and visibility are untouched; the transitions row records the
+    actor plus ``previous`` → ``quality_status``."""
+    if before is None:
+        raise UnknownReciter(slug)
+    _require_capability(actor, "reciter.set_quality_status")
+    raw = payload.get("quality_status")
+    try:
+        new_status = QualityStatus(raw) if raw is not None else None
+    except ValueError:
+        raise InvalidTransition(f"unknown quality status {raw!r}") from None
+    if new_status is not None and not quality_settable(before):
+        raise _state_precondition(
+            "quality_set",
+            before,
+            "A quality status can only be set on a published or marked-ready recitation.",
+        )
+    payload["previous"] = before.quality_status.value if before.quality_status else None
+    return _replace(before, quality_status=new_status)
 
 
 def _h_alignment_completed(slug, before, actor, payload, reason):
@@ -931,8 +958,9 @@ def _h_marked_ready(slug, before, actor, payload, reason):
     """Reviewer mark-ready handler.
 
     Validates the submission payload (well-formed ``MarkReadyRequest`` with
-    all six checklist values True) and re-computes the six gated validation
-    category counts against the on-disk segs. Either gate raises
+    every applicable checklist value True) and re-computes the gated
+    validation category counts (``BLOCKING_COUNT_KEYS``) against the on-disk
+    segs. Either gate raises
     ``InvalidTransition`` so the reviewer sees a structured 400.
 
     Holders of ``claim.mark_ready_skip_gates`` (owners by default) skip
@@ -985,14 +1013,6 @@ def _h_marked_ready(slug, before, actor, payload, reason):
                 details={"validation_errors": e.errors()},
             ) from e
 
-        unchecked = [k for k, v in submission.checklist.model_dump().items() if not v]
-        if unchecked:
-            raise InvalidTransition(
-                "Please check every box in the list before marking ready.",
-                code=Codes.MARK_READY_CHECKLIST,
-                details={"unchecked": unchecked},
-            )
-
         # Authoritative: re-compute live category counts against on-disk segs.
         # The FE applies the same gate as a UX layer, but the server is the
         # source of truth — a race against unsaved edits or a stale snapshot
@@ -1006,6 +1026,17 @@ def _h_marked_ready(slug, before, actor, payload, reason):
             raise InvalidTransition(
                 "Can't mark ready — this reciter has no saved segments yet.",
                 code=Codes.MARK_READY_NO_SEGMENTS,
+            )
+
+        # Only the boxes whose categories ever had an item are shown, so only
+        # those are required.
+        checked = submission.checklist.model_dump()
+        unchecked = [k for k in result.get("checklist_keys") or [] if not checked.get(k)]
+        if unchecked:
+            raise InvalidTransition(
+                "Please check every box in the list before marking ready.",
+                code=Codes.MARK_READY_CHECKLIST,
+                details={"unchecked": unchecked},
             )
 
         # ``category_counts.low_confidence`` is the length of the DETAIL list
@@ -1255,6 +1286,7 @@ _HANDLERS: dict[str, Any] = {
     "claim.force_released": _h_force_released,
     "claim.reassigned": _h_reassigned,
     "admin.unlocked_for_revision": _h_unlocked_for_revision,
+    "reciter.quality_set": _h_quality_set,
 }
 
 

@@ -49,7 +49,7 @@ def _document() -> dict:
         }
 
     return {
-        "_meta": {"schema_version": 13},
+        "_meta": {"schema_version": 15},
         "readings": [
             {
                 "id": "r1",
@@ -246,7 +246,7 @@ def test_prepares_every_legacy_target_then_migration_preserves_rows(tmp_path, mo
 
     assert prepare_native_report_map(conn, load_document=loader) == 6
     assert prepare_native_report_map(conn, load_document=loader) == 6
-    assert migrate.run_migrations(conn) == 31
+    assert migrate.run_migrations(conn) == migrate._discover()[-1][0]
     assert_native_report_schema(conn)
 
     rows = {

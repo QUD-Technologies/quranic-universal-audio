@@ -10,6 +10,8 @@ picks its own cache discipline:
   app boot to learn the current hash and cache-bust the payload URL.
 - ``/edition/<riwayah>/font.<ext>`` — immutable + digest-ETagged; the paired
   font for a non-Hafs edition, served out of the packaged ``qua_domain`` asset.
+- ``/quran-data/<name>`` — digest-ETagged, revalidated; the Talqeen pack and its fonts
+  (``quran-core.qref``, ``DigitalKhattV2.otf``, ...), fetched at build time.
 
 The two ``quran-refs`` routes take an optional ``?riwayah=`` (an **Inspector**
 slug, the vocabulary the catalog stores on a delivery). Omitted, they serve
@@ -140,6 +142,62 @@ def edition_font(riwayah: str) -> Response:
     response.headers["ETag"] = f'"{asset.sha256}"'
     response.headers["Content-Disposition"] = f'inline; filename="{asset.filename}"'
     return response
+
+
+# The Talqeen Quran data the browser reads: the pack the Mushaf view opens with the TS
+# SDK, and the fonts its ``fonts()`` names (Digital Khatt v1/v2 text, surah-name ligatures,
+# surah-header frame). Fetched next to each other at build time by
+# ``scripts/devenv/install_quran_data.py`` (sha256-pinned in ``qua_shared.quran_data_pin``),
+# so no binary rides the Space's LFS handling. Whitelisted by the pin; the ETag is the pinned
+# digest and the browser revalidates, so a pin bump reaches every viewer.
+_QURAN_DATA_MEDIA = {
+    ".qref": "application/octet-stream",
+    ".otf": "font/otf",
+    ".woff2": "font/woff2",
+    ".json": "application/json",  # ornaments.json: the ayah markers and page frames
+}
+_QURAN_DATA_CACHE_CONTROL = "public, no-cache"
+
+
+@static_bp.route("/quran-data/<name>")
+def quran_data_file(name: str) -> Response:
+    """Serve the pinned pack or one of its fonts (404 if unpinned or not fetched)."""
+    from qua_shared import quran_text
+    from qua_shared.quran_data_pin import FONT_SHA256, PACK_NAME, PACK_SHA256
+
+    if name == PACK_NAME:
+        path, digest = quran_text.pack_path(), PACK_SHA256
+    elif name in FONT_SHA256:
+        path, digest = quran_text.font_path(name), FONT_SHA256[name]
+    else:
+        abort(404)
+    if not path.is_file():
+        abort(404)
+    resp = send_file(path, mimetype=_QURAN_DATA_MEDIA[path.suffix], etag=digest, conditional=True, max_age=None)
+    resp.headers["Cache-Control"] = _QURAN_DATA_CACHE_CONTROL
+    return resp
+
+
+@static_bp.route("/quran-data/justify/<name>")
+def quran_data_justify(name: str) -> Response:
+    """Serve a pinned justify file (``<layout>.bin``, ``outlines-<sha8>.bin``) brotli-encoded.
+
+    The Mushaf view asks for ``<name>.bin``; the pin holds ``<name>.bin.br``, sent as is with
+    ``Content-Encoding: br`` so the browser decodes it (404 if unpinned or not fetched).
+    """
+    from qua_shared import quran_text
+    from qua_shared.quran_data_pin import JUSTIFY_DIR_NAME, JUSTIFY_SHA256
+
+    stored = f"{name}.br"
+    if not name.endswith(".bin") or stored not in JUSTIFY_SHA256:
+        abort(404)
+    path = quran_text.pack_path().parent / JUSTIFY_DIR_NAME / stored
+    if not path.is_file():
+        abort(404)
+    resp = send_file(path, mimetype="application/octet-stream", etag=JUSTIFY_SHA256[stored], conditional=True, max_age=None)
+    resp.headers["Content-Encoding"] = "br"
+    resp.headers["Cache-Control"] = _QURAN_DATA_CACHE_CONTROL
+    return resp
 
 
 # Segments-guide example clips. Served here (not as a plain dist static asset)

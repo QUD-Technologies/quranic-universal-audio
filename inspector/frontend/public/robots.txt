@@ -1,0 +1,11 @@
+# Quranic Universal Audio
+#
+# The website is for people. Its /api/ endpoints serve this website only:
+# automated, programmatic or bulk access to them is not licensed and not allowed.
+# The data is available through its official release formats:
+#   https://huggingface.co/datasets/QUD-Technologies/quranic-universal-ayahs
+#   https://github.com/QUD-Technologies/quranic-universal-audio/releases
+# Agents and AI assistants: see /llms.txt.
+
+User-agent: *
+Disallow: /api/

@@ -12,6 +12,7 @@ Layers, slug convention, schema, audio-metadata split, naming guide, and add/pro
 | Read model (`ReciterCatalog`) | `repo_catalog.snapshot()` → cached on `db_seq` by `services/state/catalog.py::snapshot()` | — |
 | Pydantic shapes (runtime authority) | `qua_shared/schemas/bucket/catalog.py` | — |
 | Per-delivery audio sidecar | `catalog/audio_manifest/<slug>.json` (bucket JSON) | offline probe `scripts/audio/probe_audio_meta.py` |
+| Reciter-picker review counts | `catalog/review_signals.json` (bucket JSON, `ReviewSignalsDoc`) | validate route on a count change + offline `scripts/backfills/review_signals.py` — see validation.md |
 | Public read endpoint | `/api/static/catalog.json` (`routes/public/static.py`) — serializes the viewer projection of `snapshot()` | — |
 
 `repo_catalog.snapshot()` reassembles the full `ReciterCatalog` so the public JSON stays byte-identical to the pre-migration file (migration parity gate diffs `model_dump(by_alias=True)`). Sidecars are 5–20 KB each for `by_surah` (114 chapters), larger for `by_ayah` (6236 ayahs).
@@ -47,11 +48,11 @@ The `(source, channel)` pair on each delivery row is **authoritative** — vocab
 
 Some audio isn't a CDN of direct `.mp3` URLs — it's a **playlist** on YouTube (or any yt-dlp-supported host: SoundCloud, archive.org, Spreaker). These map onto the same model:
 
-- **`channel`** = `youtube` (the host). Surfaces in the public dashboard filters like any channel. Added on first ingest via `vocab_additions` (idempotent) — not a migration, since channel vocab is data, not schema; the canonical definition lives in `BUILTIN_CHANNELS` (`.local/extraction/intake/channel_match.py`).
-- **`source`** = the *uploader* (per-uploader provenance, e.g. a specific YouTube channel). **Not** surfaced in public filters (there is no `source` filter axis — only `channel`); supplied per-request at ingest (`--source` + `--proposed`).
-- **`source_url`** = the originating playlist URL, stored on the delivery row (§4); the reciter-detail modal renders the channel cell as a hyperlink to it.
+- **`channel`** = the host (e.g. `youtube`). Surfaces in the public dashboard filters like any channel. The intake plan proposes it by matching the source URL against the catalog channels' `host_patterns` (`services/admin/intake_plan/identity.py::channel_for`); the channel must already exist in vocab — the online mint adds sources, not channels (channel vocab is data, not schema; §10).
+- **`source`** = the *uploader* (per-uploader provenance, e.g. a specific YouTube channel). **Not** surfaced in public filters (there is no `source` filter axis — only `channel`). Proposed by the plan: an existing generic source for Drive / SoundCloud / archive.org (`google_drive` / `soundcloud` / `archive_org`), else for YouTube a new `<uploader>_youtube` source built from the playlist's channel name + URL. The owner edits it in the Requests-tab identity form; minting adds a missing source via `vocab_additions` (idempotent).
+- **`source_url`** = the originating playlist / folder URL, stored on the delivery row (§4); the reciter-detail modal renders the channel cell as a hyperlink to it. Per chapter, a file holding several chapters is kept as the manifest chapter's `source_url` while its `url` is the bucket chapter mp3.
 
-Download-only deliveries are **bucket-served only**: their per-chapter `audio/<ch>.mp3` is created during extraction (YouTube serves opus/m4a, never mp3 — see §5). The watch-page URL in the sidecar is provenance, not a streamable fallback — the audio-proxy never streams it; playback always uses the persisted bucket mp3.
+Download-only deliveries are **bucket-served only**: their per-chapter `audio/<ch>.mp3` is created by the align pipeline's acquire (and, for combined files, split) HF job (YouTube serves opus/m4a, never mp3 — see §5). The watch-page URL in the sidecar is provenance, not a streamable fallback — the audio-proxy never streams it; playback always uses the persisted bucket mp3.
 
 ## 3. Slug convention
 
@@ -90,7 +91,7 @@ Fixed ordering (left to right): reciter, riwayah, style, year, channel, disambig
 | `surah-quran/abbadi_houssem_eddine.json` (→ archive.org) | `abbadi_houssem_eddine_archive` |
 | `by_ayah/qul/ahmad_al_nufais.json` (tarteel, by_surah sibling exists) | `ahmad_al_nufais_tarteel_byayah` |
 
-Renames are free for a bare catalog row — URLs are preserved per-delivery in the sidecar; nothing about the audio depends on the slug. **But once a lifecycle state row exists** (`delivery_states`/`transitions`, `reciters/<slug>/`, the audio manifest sidecar all key on the slug), a rename becomes a real cross-table migration. This is why slug minting for admin-dashboard **intake** contributions is deferred to the offline ingest pipeline (`services/admin/intake.py` accept records only the owner's canonical `reciter_id`): the slug's mandatory `channel_short` suffix needs the channel, which is only known after the audio is fetched + probed. Minting the slug at ingest — when source/channel/bitrate are all known — gets it right on the first try rather than guessing at accept and migrating later.
+Renames are free for a bare catalog row — URLs are preserved per-delivery in the sidecar; nothing about the audio depends on the slug. **But once a lifecycle state row exists** (`delivery_states`/`transitions`, `reciters/<slug>/`, the audio manifest sidecar all key on the slug), a rename becomes a real cross-table migration. This is why slug minting for admin-dashboard **intake** contributions is deferred to the online intake plan's mint (`services/admin/intake_plan/`), not taken at submit: the slug's mandatory `channel_short` suffix needs the channel, which is only known once the source is enumerated. The plan's `identity.py` proposes `<reciter_id>[_<riwayah>][_<style>][_<year>]_<channel_short>` with a `_v2`… disambiguator on collision, the owner reviews it, and minting gets it right on the first try rather than guessing at submit and migrating later.
 
 ## 4. Schema
 
@@ -208,6 +209,15 @@ is never eligible for a public HF dataset split or GitHub release member.
 
 Chapter keys: `"1"`–`"114"` (by_surah) or `"<surah>:<ayah>"` (by_ayah). Per-chapter metric fields nullable until probed. `ChapterEntry` fields: `url` (required), `size_bytes`, `duration_sec`, `bitrate_kbps`, `bitrate_mode` (`cbr`/`vbr` per chapter), and `max_linear_seek_err_ms` (probe verdict evidence).
 
+**Cross-channel chapter fill.** A chapter's `url` may point at another channel's copy of the *same recording* when the delivery's own file is defective (e.g. `salman_al_sadeiq_mp3quran` ch42 is silent on mp3quran, so it points at way2quran's). Fill every field of that entry from the new file (`size_bytes` is the pre-cut drift check's baseline), recompute `_meta.checksum`, and delete the old `audio/<ch>.mp3` + `peaks/<ch>.json.gz` before re-aligning — acquire skips a chapter whose file already exists. Releases then name that host for that chapter only; the delivery row's `source`/`channel` stay the main channel.
+
+**URL hygiene (#285).** `ChapterEntry.url` is a remote URL or a bucket-relative key (fixtures mode) — the
+schema rejects an absolute filesystem path / `file:` URI; `ChapterEntry.source_url` and `ManifestSource.url`
+must be `http(s)`. Every manifest writer round-trips through `AudioManifestSidecar`, so a machine-local
+download path can no longer reach the bucket; `scripts/diagnostics/validate_bucket.py` flags any legacy one.
+
+`sources` (`list[ManifestSource]`, `{url, title}`) holds playlist files whose surahs are not known yet: an online playlist intake mints with `chapters: {}` and every included file here. The align run detects each file's surahs, writes the chapters (bucket `url` + original `source_url` + `source_offset_ms`) and clears `sources`. The key is omitted from the dump when empty, so every other manifest keeps its on-disk shape.
+
 `AudioManifestSidecar` (`qua_shared/schemas/bucket/catalog.py`) is a bucket artefact with pure `extra="forbid"`: any unknown/legacy sidecar field raises `ValidationError` on parse (writer-drift signal), never silently stripped — the same external-file strictness the bucket-validation harness surfaces.
 
 **Checksum** (`_meta.checksum`): `sha256(normalized_urls_sorted.joined_by_newline)` at build time. Normalization: lowercase hostname, strip trailing slashes, drop fragment; query order + path case preserved (CDN-sensitive). Lives only in the sidecar; re-probe jobs compute + compare.
@@ -249,7 +259,7 @@ Per-chapter `ChapterEntry.bitrate_mode` (sidecar) is `cbr`/`vbr` only — the `m
 
 Detection — **whole-file linear byte→time seek error** (`qua_shared/mp3_frames.py::classify_bitrate_mode`, mirrored inline in `probe_audio_meta.py`): walk every audio frame, measure how far a browser's linear `time→byte` seek would land from each frame's true time; `≤ 200 ms` ⇒ `cbr`, else `vbr`. This is the only reliable signal — it is exactly what the playback transport needs to know (can the browser seek this natively?). The two shortcuts this replaced both produced systematic mislabels: mutagen's header `bitrate_mode` calls every Xing-tagged file VBR (incl. CBR audio our pipeline tagged Xing) and `len(set(bitrates))==1` / head-only uniformity is fooled by a stray frame or by VBR whose variation starts past the head (whole tvquran/archive reciters slipped through as CBR and stalled on seek). Because the metric needs every frame, source probing (`probe_audio_meta.classify`, `mp3_probe.probe_source(allow_full=True)`) downloads the full file. Per-chapter results land in the sidecar, rolled up to the row at build.
 
-**Download-only sources create their own encode.** Unlike CDN audio (publisher mp3 bytes preserved verbatim, with only a Xing seek header injected via `-c:a copy`), a YouTube/yt-dlp source is opus/m4a — so extraction produces the canonical mp3 once: **192 kbps CBR, 44.1 kHz, mono**, cover-art stripped (`segments/audio_io.py::_download_via_ytdlp`). Because the watch URL can't be HTTP-frame-probed, the row + sidecar audio fields come from a **post-align reprobe** of the produced files (`ingest_intake.py::reprobe_persisted_audio`). Forced-CBR ⇒ these deliveries never hit the VBR playback path.
+**Download-only sources create their own encode.** Unlike CDN audio (publisher mp3 bytes preserved verbatim, with only a Xing seek header injected via `-c:a copy`), a YouTube/yt-dlp or Drive source is opus/m4a/arbitrary — so the acquire job produces the canonical mp3 once: **192 kbps CBR, 44.1 kHz, source channel count** (or the delivery's `channels` override), cover-art stripped (`qua_jobs/audio_io.py::encode`). Because the watch URL can't be HTTP-frame-probed, the manifest is minted with URLs only and the per-chapter size / duration / source offset are written back from the produced files by the align pipeline (`services/admin/align_pipeline/manifest.py`). Forced-CBR ⇒ these deliveries never hit the VBR playback path.
 
 ### Style vs recording_context
 
@@ -322,14 +332,16 @@ There is no separate validate-then-rebuild step: the SQLite FKs + `Delivery`/`Re
 
 **Channel host migration** (CDN relocates, e.g. `download.tvquran.com` → `cdn.tvquran.net`): add the new pattern to `channels.host_patterns` alongside the old (keep old for historical sidecars); re-scrape affected manifests (row identity stable, sidecar URLs change → `_meta.checksum` changes, invalidating downstream caches); re-probe; audit-log the date + host shift + delivery count.
 
+*mp3quran (2026-09).* Every moshaf moved to `https://cdn.mp3quran.net/audio/<reciter>/rN/<ch>.mp3`, where `rN` is the reciter's Nth moshaf (one per riwayah/style), **not** a revision. The `serverN.mp3quran.net` hosts only 301 there, except a file the current moshaf no longer lists, which 302s to a kept copy under `cdn.mp3quran.net/audio/legacy/<old host>/<dir>/` (rachid_ifrad_warsh ch2). There is no versioning: a corrected file is re-uploaded under the same url (raad_al_kurdi ch24/ch55 on 2026-10-13), so drift shows only as a new size / `Last-Modified`; the CDN `ETag` is the file's MD5. Migration `0033_mp3quran_cdn_host` adds `cdn.mp3quran.net` to the channel's `host_patterns`; `scripts/backfills/canonicalize_mp3quran_urls.py` rewrites the sidecar urls (see [`audio-metadata-pipeline.md`](audio-metadata-pipeline.md)). After the rewrite, the next GitHub cut marks every released mp3quran recitation `refresh` because its `catalog.json` `chapter_urls` changed.
+
 ### Registering a download-only (yt-dlp) source
 
-YouTube, SoundCloud, archive.org, Spreaker, Bandcamp, … all flow through the offline intake's enumerate + download path (`ingest_intake.py` → `intake/playlist.py` + `segments/audio_io.py`). Registering one is **data, not code**:
+YouTube, Google Drive, SoundCloud, archive.org and other yt-dlp hosts all flow through the **online intake** in the Requests tab: plan (enumerate + identity; surahs detected from the audio when aligning) → mint → align ([align-pipeline.md § Online intake](align-pipeline.md#online-intake-plan--mint--align)). Registering one is **data, not code**:
 
-1. Add a `Channel` to `BUILTIN_CHANNELS` (`.local/extraction/intake/channel_match.py`) with its `host_patterns` and `gh_release_eligible=False` (not a public CDN — its source URLs can't go in a public GH release; the bucket mp3 is the distributed artifact). The driver detects it out of the box and auto-adds it to the catalog via `vocab_additions` on first ingest (idempotent).
-2. The per-uploader `source` is supplied per-request: `ingest_intake.py --source <uploader_slug> --proposed <vocab.json>` (a `Source` with `name`/`url`/`audio_categories`).
+1. The catalog needs a `Channel` whose `host_patterns` match the host, with `gh_release_eligible=False` (not a public CDN — its source URLs can't go in a public GH release; the bucket mp3 is the distributed artifact). If none matches, the plan's identity comes back with no channel and the check blocks the mint until the owner picks one.
+2. The per-uploader `source` is proposed by the plan (a new `<uploader>_youtube` source for a YouTube channel, else the host's generic source) and edited in the identity form; minting adds a new one via `vocab_additions` (a `Source` with `name`/`url`/`audio_categories`).
 
-No new download/encode/probe code is needed — yt-dlp handles enumeration + fetch, and the canonical encode (§5) + post-align reprobe are source-agnostic. Full workflow: the `segments-extraction` skill's `references/playlist_intake.md`.
+No new download/encode code is needed: enumeration is `services/admin/intake_plan/enumerate.py` (yt-dlp flat listing; Drive via `drive.py`), fetch + canonical encode (§5) is `qua_jobs/audio_io.py`, and the post-acquire manifest write-back is source-agnostic. YouTube downloads need the `INSPECTOR_YTDLP_COOKIES` Space secret ([config-deploy.md](config-deploy.md)).
 
 ## 11. Removing a delivery / reciter
 

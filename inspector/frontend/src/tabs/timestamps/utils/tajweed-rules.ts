@@ -76,7 +76,7 @@ function policyOf(id: string): Policy {
 export function ruleLabel(id: string): string {
     const rule = metadata.get(id);
     if (!rule) throw new Error(`Unknown producer rule: ${id}`);
-    return i18n.locale === 'ar' ? rule.arabic_name : rule.name;
+    return ['ar', 'ckb'].includes(i18n.locale) ? rule.arabic_name : rule.name;
 }
 
 export function defineInspectorRule(id: string): RuleDefinition {

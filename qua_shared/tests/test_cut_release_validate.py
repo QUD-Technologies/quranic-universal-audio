@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import pickle
 from pathlib import Path
 
 import pytest
@@ -315,7 +316,7 @@ def test_digital_khatt_assets_validate_and_hash(tmp_path):
     (tmp_path / "surah_info.json").write_bytes(b'{"surahs": []}')
     script = b'{"1:1:1":{"id":1,"surah":"1","ayah":"1","word":"1","location":"1:1:1","text":"x"}}'
     script_dir = tmp_path / "data"
-    font_dir = tmp_path / "inspector" / "frontend" / "public" / "fonts"
+    font_dir = tmp_path / "data" / "fonts"
     script_dir.mkdir()
     font_dir.mkdir(parents=True)
     (script_dir / "digital_khatt_v2_script.json").write_bytes(script)
@@ -422,6 +423,42 @@ def test_combined_source_surfaces_native_url_and_offset():
     assert offsets == {"2": 215000}  # only the non-zero offset is emitted
 
 
+def test_combined_source_link_wins_over_local_or_bucket_url():
+    sidecar = {
+        "_meta": {"checksum": "abc", "chapter_count": 2, "category": "by_surah"},
+        "chapters": {
+            "1": {"url": "/srv/scratch/x/001.mp3", "source_url": "https://youtu.be/AAA"},
+            "2": {
+                "url": "https://huggingface.co/buckets/o/b/resolve/reciters/x/audio/2.mp3",
+                "source_url": "https://youtu.be/BBB",
+            },
+        },
+    }
+
+    urls, _ = cut_release._audio_sources_from_manifest("x", sidecar)
+    assert urls == {"1": "https://youtu.be/AAA", "2": "https://youtu.be/BBB"}
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        # Offline-intake leftover (issue #285): a scratch path, no source link.
+        {"url": "/srv/scratch/qua_offline/intake/audio/x/001.mp3"},
+        {"url": "reciters/x/audio/1.mp3", "source_url": r"C:\tmp\001.mp3"},
+        # An internal bucket link is not a consumer source either.
+        {"url": "https://huggingface.co/buckets/o/b/resolve/reciters/x/audio/1.mp3"},
+    ],
+)
+def test_a_chapter_without_a_public_link_aborts_the_build(entry):
+    sidecar = {
+        "_meta": {"checksum": "abc", "chapter_count": 2, "category": "by_surah"},
+        "chapters": {"1": entry, "2": {"url": "https://cdn.example/2.mp3"}},
+    }
+
+    with pytest.raises(RuntimeError, match=r"offline_reciter: .*\['1'\]"):
+        cut_release._audio_sources_from_manifest("offline_reciter", sidecar)
+
+
 def test_single_file_offset_emitted_without_source_url():
     # A unique-per-chapter source whose recitation starts after a lead-in: the
     # URL is already native (no ``source_url``) but the offset must still ship.
@@ -452,6 +489,26 @@ def test_empty_audio_urls_are_fatal_for_catalog_build():
 
     with pytest.raises(RuntimeError, match="no usable audio URLs"):
         cut_release._build_catalog_json(rec, sidecar, verses)
+
+
+def test_catalog_lists_audio_only_for_chapters_with_timestamps():
+    # The manifest serves ch45, but the recitation has no segments there: a URL
+    # for it would promise timings the zip does not carry.
+    rec = {"slug": "example_reciter", "audio_category": "by_surah"}
+    verses = {"44:1": {"words": [[1, 0, 100]]}}
+    sidecar = {
+        "schema_version": 1,
+        "slug": "example_reciter",
+        "_meta": {"checksum": "abc", "chapter_count": 2, "category": "by_surah"},
+        "chapters": {
+            "44": {"url": "https://cdn.example.org/044.mp3", "source_offset_ms": 300},
+            "45": {"url": "https://cdn.example.org/045.mp3", "source_offset_ms": 500},
+        },
+    }
+
+    audio = json.loads(cut_release._build_catalog_json(rec, sidecar, verses))["audio"]
+    assert audio["chapter_urls"] == {"44": "https://cdn.example.org/044.mp3"}
+    assert audio["chapter_offsets_ms"] == {"44": 300}
 
 
 # ---------------------------------------------------------------------------
@@ -544,8 +601,65 @@ def test_build_members_propagates_fatal_violations(monkeypatch):
         cut_release._build_members([{"slug": "a"}], _ctx())
 
 
+def test_fatal_violations_survive_the_build_pool_boundary():
+    sent = cut_release._FatalViolations("a", [{"violation": "foreign_chapter"}], {"n": 1})
+    got = pickle.loads(pickle.dumps(sent))
+    assert (got.slug, got.fatal, got.summary) == ("a", [{"violation": "foreign_chapter"}], {"n": 1})
+
+
+def test_build_members_logs_every_failing_reciter_before_aborting(monkeypatch, caplog):
+    monkeypatch.setenv(cut_release.BUILD_WORKERS_ENV, "1")
+
+    def build(rec, ctx):
+        if rec["slug"] == "ok":
+            return {"slug": "ok"}
+        raise cut_release._FatalViolations(rec["slug"], [{"violation": "x"}], {})
+
+    monkeypatch.setattr(cut_release, "_build_member", build)
+    with pytest.raises(cut_release._FatalViolations, match="a: 1 fatal"):
+        cut_release._build_members([{"slug": "a"}, {"slug": "ok"}, {"slug": "b"}], _ctx())
+    failing = [
+        r.getMessage().split(":")[0].strip() for r in caplog.records if "fatal" in r.getMessage()
+    ]
+    assert failing == ["a", "b"]
+
+
 def test_build_workers_env_override(monkeypatch):
     monkeypatch.setenv(cut_release.BUILD_WORKERS_ENV, "3")
     assert cut_release._build_workers() == 3
     monkeypatch.setenv(cut_release.BUILD_WORKERS_ENV, "")
-    assert 1 <= cut_release._build_workers() <= cut_release.DEFAULT_BUILD_WORKERS
+    assert cut_release._build_workers() == cut_release.DEFAULT_BUILD_WORKERS
+    assert (
+        cut_release._build_workers(include_letters=True)
+        == cut_release.DEFAULT_BUILD_WORKERS_WITH_LETTERS
+    )
+
+
+def test_validate_occurrences_aborts_on_a_verse_timed_in_another_chapters_audio():
+    raw = [{"ref": "88:16", "canonical": True, "verse_start_ms": 160, "chapter": 89}]
+    with pytest.raises(cut_release._FatalViolations) as exc:
+        cut_release._validate_occurrences("slug", [], {}, raw)
+    assert [v["violation"] for v in exc.value.fatal] == ["foreign_chapter"]
+
+
+def test_validate_occurrences_aborts_on_canonical_rows_out_of_order():
+    raw = [
+        {"ref": "112:2", "canonical": True, "verse_start_ms": 1905, "chapter": 112},
+        {"ref": "112:1", "canonical": True, "verse_start_ms": 10746, "chapter": 112},
+        {"ref": "112:2", "canonical": False, "verse_start_ms": 13445, "chapter": 112},
+    ]
+    with pytest.raises(cut_release._FatalViolations) as exc:
+        cut_release._validate_occurrences("slug", [], {}, raw)
+    assert [v["violation"] for v in exc.value.fatal] == ["canonical_order"]
+
+
+def test_cut_request_refuses_a_malformed_version_before_launch():
+    from pydantic import ValidationError
+
+    from qua_shared.schemas.wire.release import AdminCutReleaseRequest
+
+    for ok in ("v4.0.0", "4.0.0", "", None):
+        AdminCutReleaseRequest(version=ok)
+    for bad in ("v4.0", "v4", "4.0.0.1"):
+        with pytest.raises(ValidationError):
+            AdminCutReleaseRequest(version=bad)

@@ -26,6 +26,7 @@ locking lives consistently in one place. Multi-worker scale-out is deferred
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import shutil
@@ -45,10 +46,10 @@ logger = logging.getLogger(__name__)
 # The production bucket holds live state. The SQLite substrate syncs
 # full-file (see services/db/sync.py), so a single stray write from a
 # local/dev process clobbers production — there is no row-level merge.
-PROD_BUCKET_REPO = "hetchyy/quranic-inspector-bucket"
+PROD_BUCKET_REPO = "QUD-Technologies/quranic-inspector-bucket"
 # Default for every NON-deployed process: local dev, scripts, the dev Space
 # image. Prod is opt-in only (see ``resolve_bucket_repo``).
-DEV_BUCKET_REPO = "hetchyy/quranic-inspector-bucket-dev"
+DEV_BUCKET_REPO = "QUD-Technologies/quranic-inspector-bucket-dev"
 
 
 def is_deployed() -> bool:
@@ -591,7 +592,8 @@ class BucketBackend:
         if self._mount is not None:
             mp = self._mount if path == "" else self._mount / PurePosixPath(path)
             if mp.is_dir():
-                return sorted(child.name for child in mp.iterdir())
+                with contextlib.suppress(FileNotFoundError):  # dropped since is_dir()
+                    return sorted(child.name for child in mp.iterdir())
 
         from huggingface_hub import list_bucket_tree  # type: ignore[import-not-found]
 
@@ -672,14 +674,19 @@ class BucketBackend:
                 logger.warning("BucketBackend.delete(%s) errored: %s", path, e)
 
     def delete_strict(self, path: str) -> None:
-        """Delete one object and propagate non-not-found API failures."""
+        """Delete one object and propagate non-not-found API failures.
+
+        hf-mount drops a directory once its last file is gone, so a path seen a
+        moment ago may already be absent; that is the outcome asked for, and the
+        caller's verify (``delete_tree_verified``) still checks it."""
         _ensure_posix(path)
         if self._mount is not None:
             mp = self._mount / PurePosixPath(path)
-            if mp.is_dir():
-                shutil.rmtree(mp)
-            elif mp.exists():
-                mp.unlink()
+            with contextlib.suppress(FileNotFoundError):
+                if mp.is_dir():
+                    shutil.rmtree(mp)
+                elif mp.exists():
+                    mp.unlink()
         from huggingface_hub import batch_bucket_files  # type: ignore[import-not-found]
 
         try:
@@ -772,7 +779,7 @@ def get_backend() -> StorageBackend:
     - ``INSPECTOR_BACKEND`` — ``bucket`` (default) | ``filesystem``
     - ``INSPECTOR_FILESYSTEM_ROOT`` — root path for ``FilesystemBackend``
     - ``INSPECTOR_BUCKET_REPO`` — HF repo id. Defaults to the **dev** bucket
-      (``hetchyy/quranic-inspector-bucket-dev``) for every non-deployed
+      (``QUD-Technologies/quranic-inspector-bucket-dev``) for every non-deployed
       process; the prod bucket is refused locally unless
       ``INSPECTOR_ALLOW_PROD_BUCKET=1`` (see ``resolve_bucket_repo``). The
       prod Space sets this var explicitly and runs behind the proxy.

@@ -86,10 +86,8 @@ def test_seg_config_serves_each_editions_own_coordinate_vocabulary(flask_client,
     assert warsh["riwayah"] == "warsh_an_nafi"
     # 30 muqattaat words in both, but Warsh merges two of them into one verse.
     assert len(warsh["muqattaat_words"]) == len(hafs["muqattaat_words"]) == 30
-    assert len(warsh["muqattaat_verses"]) == 29
-    assert len(hafs["muqattaat_verses"]) == 30
-    assert warsh["standalone_refs"] != hafs["standalone_refs"]
-    assert warsh["standalone_words"] != hafs["standalone_words"]
+    assert [42, 1, 2] in warsh["muqattaat_words"]
+    assert [42, 1, 2] not in hafs["muqattaat_words"]
 
 
 def test_seg_config_rejects_an_unsupported_riwayah(flask_client, tmp_reciter_dir):

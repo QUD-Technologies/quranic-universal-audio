@@ -8,12 +8,13 @@
  * `isWordShard` (or, in shared `lib/` components that must not know the tab's
  * edition, on the absence of letters) and hide those surfaces entirely.
  *
- * Word text comes from the shard row, never from `qpc_hafs` / `digital_khatt`:
+ * Word text comes from the shard row, never from `digital_khatt`:
  * those two files are the Hafs script, and rendering Warsh coordinates through
  * them would produce plausible-looking words with the wrong spelling.
  */
 
 import type {
+    SpecialKind,
     TsVerseData,
     TsWord,
     TsWordShardReading,
@@ -27,6 +28,9 @@ export interface WordAssembleOptions {
     reciter: string;
     members: ChapterOccasion[];
     verseRef: string;
+    /** The shard's chapter — never parsed from `verseRef` (an opener's is `0:x`). */
+    chapter: number;
+    special: SpecialKind | null;
     audioCategory: 'by_surah' | 'by_ayah';
     audioUrl: string;
 }
@@ -75,7 +79,6 @@ function buildWordRows(
             words.push({
                 location: row.ref,
                 text: row.text,
-                display_text: row.text,
                 start: row.start_ms / 1000 - offset,
                 end: row.end_ms / 1000 - offset,
                 phoneme_indices: [],
@@ -177,7 +180,7 @@ export function assembleWord(options: WordAssembleOptions): TsVerseData {
     const selected = selectedWords(options.members);
     return {
         reciter: options.reciter,
-        chapter: Number(options.verseRef.split(':')[0]),
+        chapter: options.chapter,
         verse_ref: options.verseRef,
         audio_url: options.audioUrl,
         audio_category: options.audioCategory === 'by_surah' ? 'by_surah_audio' : 'by_ayah_audio',
@@ -187,5 +190,6 @@ export function assembleWord(options: WordAssembleOptions): TsVerseData {
         words: buildWordRows(readings, selected, offset),
         native: [],
         wordReadings: buildReadingViews(readings, selected, offset),
+        special: options.special,
     };
 }

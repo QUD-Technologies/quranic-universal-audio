@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # Inspector — three-stage build targeting a small runtime image.
+# Stage 0 fetches the pinned Talqeen data (SDKs, pack, fonts).
 # Stage 1 builds the Vite frontend with Node.
 # Stage 2 compiles a minimal static ffmpeg (mp3→PCM only) so the runtime
 #   doesn't ship the ~130MB video codec chain (x265/aom/SvtAv1Enc/jxl/vpx)
@@ -14,6 +15,28 @@
 # Build:    docker build -t inspector:dev -f inspector/Dockerfile .   # from repo root
 # Run dev:  docker run --rm -p 5000:5000 -v "$PWD/data:/data" inspector:dev
 
+# --- Stage 0: talqeen-quran-data SDK wheel, pack, fonts + TS SDK tarball (required) ---
+# The Hafs words (Digital Khatt v2), ayah-end markers and surah metadata come from
+# the Talqeen data pack through its SDK, both fetched from the PRIVATE
+# QUD-Technologies/talqeen-ai-data repo at qua_shared/quran_data_pin.py's revision
+# (the installer reads the pin, so there is no second copy of it here). Unlike
+# qua-domain this is not optional: the Inspector has no Hafs text without it, so a
+# build without the TALQEEN_DATA_READ_TOKEN secret fails here. The same installer
+# fetches the release assets the frontend needs: the pack's fonts (/pack/fonts,
+# served by /api/static/quran-data/) and the TS SDK tarball (/ts, installed by
+# the frontend stage's npm ci), each sha256-checked against the pin. This stage
+# comes first because the frontend stage copies from it.
+FROM python:3.11-alpine AS quran-data-build
+RUN apk add --no-cache git
+WORKDIR /build
+COPY qua_shared/__init__.py qua_shared/quran_data_pin.py ./qua_shared/
+COPY scripts/devenv/install_quran_data.py ./scripts/devenv/
+RUN --mount=type=secret,id=TALQEEN_DATA_READ_TOKEN,required=true \
+    TALQEEN_DATA_READ_TOKEN="$(cat /run/secrets/TALQEEN_DATA_READ_TOKEN)" \
+      python scripts/devenv/install_quran_data.py --wheel-dir /wheels --pack-dir /pack --ts-dir /ts && \
+    rm -rf /root/.cache
+
+
 # --- Stage 1: build frontend ---
 FROM node:24-alpine AS frontend-build
 WORKDIR /app
@@ -21,19 +44,16 @@ RUN apk add --no-cache git openssh-client
 # Copy the full frontend before `npm ci`: the root `postinstall` hook runs
 # `paraglide:compile`, which needs `project.inlang/` + the message sources.
 COPY inspector/frontend ./
-# HF Spaces leaves binary font transports as unsmudged Git-LFS pointers in the
-# Docker context. The compressed font is therefore committed as base64 text.
-# Strip certutil's two envelope lines, decode, and require real OpenType bytes
-# before Vite copies public/ into dist/.
-RUN sed '1d;$d' public/fonts/DigitalKhattV2.otf.gz.b64 | \
-      base64 -d | gzip -dc > public/fonts/DigitalKhattV2.otf && \
-    [ "$(head -c 4 public/fonts/DigitalKhattV2.otf)" = "OTTO" ]
+# @qud-technologies/quran-data (the Mushaf view's data SDK) installs from the
+# release tarball stage 0 fetched; package.json points at .quran-data/.
+COPY --from=quran-data-build /ts/ ./.quran-data/
 RUN --mount=type=secret,id=PRIVATE_REPO_TOKEN,required=false \
     if [ -s /run/secrets/PRIVATE_REPO_TOKEN ]; then \
       TOKEN="$(cat /run/secrets/PRIVATE_REPO_TOKEN)" && \
       AUTH="$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)" && \
       git config --global http.https://github.com/.extraheader "AUTHORIZATION: basic $AUTH"; \
     fi && \
+    node vendor/restore.mjs && \
     npm ci && \
     rm -f /root/.gitconfig
 RUN npm run build
@@ -108,7 +128,12 @@ RUN curl -fsSL "https://downloads.sourceforge.net/project/lame/lame/${LAME_VERSI
     cd / && rm -rf /tmp/lame-${LAME_VERSION}
 
 ARG FFMPEG_VERSION=7.1
-RUN curl -fsSL "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" | tar -xJ -C /tmp
+# ffmpeg.org resets connections from the HF builders; the GitHub mirror of the
+# release tag is the same source tree.
+RUN mkdir -p /tmp/ffmpeg-${FFMPEG_VERSION} && \
+    curl -fsSL --retry 5 --retry-all-errors \
+      "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz" \
+    | tar -xz -C /tmp/ffmpeg-${FFMPEG_VERSION} --strip-components=1
 WORKDIR /tmp/ffmpeg-${FFMPEG_VERSION}
 # --disable-everything then whitelist only what services/peaks.py +
 # routes/audio/clip.py use:
@@ -158,7 +183,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     INSPECTOR_DATA_DIR=/app/data \
     INSPECTOR_QUA_DATA_PATH=/app/data \
     INSPECTOR_BUCKET_MOUNT=/data/inspector-bucket \
-    INSPECTOR_BUCKET_REPO=hetchyy/quranic-inspector-bucket-dev \
+    INSPECTOR_BUCKET_REPO=QUD-Technologies/quranic-inspector-bucket-dev \
     INSPECTOR_PARSED_CACHE_BYTES=134217728 \
     INSPECTOR_BEHIND_PROXY=1 \
     INSPECTOR_AUTO_DETECT=1 \
@@ -182,7 +207,12 @@ COPY inspector/requirements.txt ./inspector/requirements.txt
 # and every job pip-installs it — a non-Hafs publish/cut needs the same
 # projection the Space uses. INSPECTOR_QUA_DOMAIN_WHEEL_DIR points there.
 COPY --from=qua-domain-build /wheels/ /opt/wheels/
+# talqeen-quran-data (stage 0), installed with its dependencies (flatbuffers,
+# brotli) from PyPI; the built wheel needs no credentials.
+COPY --from=quran-data-build /wheels/ /opt/talqeen/
 RUN pip install --no-cache-dir -r ./inspector/requirements.txt && \
+    pip install --no-cache-dir /opt/talqeen/talqeen_quran_data-*.whl && \
+    rm -rf /opt/talqeen && \
     if ls /opt/wheels/qua_domain-*.whl >/dev/null 2>&1; then \
       pip install --no-cache-dir --no-deps /opt/wheels/qua_domain-*.whl; \
     else \
@@ -219,34 +249,21 @@ COPY .github/config/ ./.github/config/
 COPY docs/templates/ ./docs/templates/
 COPY LICENSE ./LICENSE
 COPY LICENSE-DATA ./LICENSE-DATA
-# Linguistic data read by services/data_loader.py via config.py's _QUA_DATA,
-# plus surah_info.json read by services/data_loader.py at startup. These four
-# files are the entire on-disk data surface in deployed mode — everything else
-# (state, catalog, audit, per-reciter reciters/) lives in the bucket
-# mounted at /data/inspector-bucket. INSPECTOR_QUA_DATA_PATH=/app/data tells
-# config.py to look here instead of the default sibling-project path.
-# qpc_hafs.json (~12 MB) still serves the Inspector's internal Quran-data path
-# and ships gzipped because HF Spaces auto-LFS-promote
-# files >10 MB at push time and the Space build doesn't smudge LFS — the
-# uncompressed source would land as a 133-byte pointer. upload_inspector.py
-# pre-gzips at stage time; the runtime data loader gunzips it on read.
-COPY data/surah_info.json \
-     data/qpc_hafs.json.gz \
-     data/digital_khatt_v2_script.json \
-     data/phoneme_sub_costs.json \
-     ./data/
-# The release jobs publish this exact font and stage_job_code validates the
-# source path before launch. Keep it alongside the built frontend asset.
-COPY --chmod=0644 inspector/frontend/public/fonts/DigitalKhattV2.otf.gz.b64 \
-     ./inspector/frontend/public/fonts/DigitalKhattV2.otf.gz.b64
-# Decode the text transport and fail if it is missing/malformed. stage_job_code
-# must upload the real font bytes before an HF publish can launch.
-RUN sed '1d;$d' ./inspector/frontend/public/fonts/DigitalKhattV2.otf.gz.b64 | \
-      base64 -d | gzip -dc > ./inspector/frontend/public/fonts/DigitalKhattV2.otf && \
-    rm ./inspector/frontend/public/fonts/DigitalKhattV2.otf.gz.b64 && \
-    test -s ./inspector/frontend/public/fonts/DigitalKhattV2.otf && \
-    [ "$(head -c 4 ./inspector/frontend/public/fonts/DigitalKhattV2.otf)" = "OTTO" ] && \
-    ! head -c 40 ./inspector/frontend/public/fonts/DigitalKhattV2.otf | grep -q "version https://git-lfs"
+# The on-disk data surface in deployed mode: phoneme_sub_costs.json (read via
+# config.py's _QUA_DATA; INSPECTOR_QUA_DATA_PATH=/app/data) and the Quran data
+# pack from stage 0, which qua_shared.quran_text opens at /app/data. Everything
+# else (state, catalog, audit, per-reciter reciters/) lives in the bucket mounted
+# at /data/inspector-bucket. The pack comes from the build stage, not the build
+# context, so no binary has to survive the Space's LFS handling.
+COPY data/phoneme_sub_costs.json ./data/
+COPY --from=quran-data-build /pack/quran-core.qref ./data/quran-core.qref
+# The pack's fonts (stage 0): served to the browser by /api/static/quran-data/;
+# DigitalKhattV2.otf is also the font the release jobs publish (stage_job_code
+# checks data/fonts/DigitalKhattV2.otf before a launch).
+COPY --from=quran-data-build /pack/fonts/ ./data/fonts/
+# The justified-line drawings and glyph outlines (stage 0): served brotli-encoded by
+# /api/static/quran-data/justify/; without them the Mushaf view falls back to plain lines.
+COPY --from=quran-data-build /pack/justify/ ./data/justify/
 COPY --from=frontend-build /app/dist ./inspector/frontend/dist
 # Cross-stage COPY preserves the source modes; cached Vite output can contain
 # owner-only directories on the HF builder. The runtime user must be able to
@@ -272,11 +289,13 @@ EXPOSE 7860
 #
 # --threads 16: thread pool sized for CPU-basic. The parsed-cache + bucket-
 #   read workload is mostly I/O-bound.
-# --max-requests + jitter: rolling worker recycle bounds slow memory leaks.
+# No --max-requests: a recycle kills the in-process background threads
+#   (timestamps runs, align pipeline), and one bulk client can trip it in
+#   minutes. Watch the Space's memory if a slow leak ever shows up.
 # --timeout 60: peaks computation can take ~30 s on cold cache.
 # --graceful-timeout 30: allows in-flight saves to finish on SIGTERM.
 CMD ["gunicorn", "-k", "gthread", "-w", "1", "--threads", "16", \
-     "--max-requests", "5000", "--max-requests-jitter", "500", \
+\
      "--timeout", "60", "--graceful-timeout", "30", \
      "--bind", "0.0.0.0:7860", \
      "--access-logfile", "-", "--error-logfile", "-", \

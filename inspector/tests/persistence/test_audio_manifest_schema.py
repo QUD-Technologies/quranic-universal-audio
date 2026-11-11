@@ -144,3 +144,36 @@ def test_chapters_default_empty():
     m = AudioManifestSidecar.model_validate(raw)
     assert m.chapters == {}
     assert m.model_dump(by_alias=True)["chapters"] == {}
+
+
+# -- URL hygiene (issue #285) -------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "/srv/scratch/z5344896/qua_offline/intake/audio/x/001.mp3",
+        r"C:\Users\me\audio\001.mp3",
+        "file:///tmp/001.mp3",
+        "~/audio/001.mp3",
+    ],
+)
+def test_chapter_url_rejects_local_paths(url):
+    raw = _canonical_sidecar()
+    raw["chapters"]["1"]["url"] = url
+    with pytest.raises(ValueError, match="local filesystem path"):
+        AudioManifestSidecar.model_validate(raw)
+
+
+def test_chapter_url_accepts_a_bucket_relative_key():
+    # Fixtures mode seeds prefetched chapters by bucket key, not URL.
+    raw = _canonical_sidecar()
+    raw["chapters"]["1"]["url"] = "reciters/abdul_basit_murattal/audio/1.mp3"
+    assert AudioManifestSidecar.model_validate(raw).chapters["1"].url.startswith("reciters/")
+
+
+def test_chapter_source_url_must_be_remote():
+    raw = _canonical_sidecar()
+    raw["chapters"]["1"]["source_url"] = "/srv/scratch/x/001.mp3"
+    with pytest.raises(ValueError, match="http"):
+        AudioManifestSidecar.model_validate(raw)

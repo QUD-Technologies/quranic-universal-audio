@@ -21,6 +21,7 @@
     import { can } from '../../../../lib/stores/capabilities';
     import { isOwner } from '../../../../lib/stores/current-user';
     import AlignProgress from './AlignProgress.svelte';
+    import IntakePlanPanel from './intake/IntakePlanPanel.svelte';
     import type {
         AdminRequestRow,
         AdminRequestsResponse,
@@ -56,11 +57,37 @@
 
     // Native align pipeline (slug rows): one in-flight call at a time.
     const canAlign = can('intake.align');
+    //: Slugless intake rows: build / review the plan, then mint + align.
+    const canIngest = can('intake.ingest');
     let alignBusyId = $state<string | null>(null);
     //: Lane the next started run is sent to. GPU leases ZeroGPU per chapter and
     //: falls back to CPU when the quota runs out; CPU skips the quota entirely.
     const ALIGN_DEVICES: AlignDevice[] = ['GPU', 'CPU'];
     let alignDevice = $state<AlignDevice>('GPU');
+
+    // Shared align budget (all maintainers together; the owner bypasses it).
+    const quota = $derived(resp?.align_quota ?? null);
+    const laneBlocked = $derived<Record<AlignDevice, boolean>>({
+        GPU: !!quota && !quota.exempt && (quota.gpu_used ?? 0) >= (quota.gpu_limit ?? 0),
+        CPU: !!quota && !quota.exempt && (quota.cpu_running ?? 0) >= (quota.cpu_limit ?? 0),
+    });
+    const MS_PER_MINUTE = 60_000;
+    function untilLabel(iso: string | null | undefined): string {
+        if (!iso) return '';
+        const mins = Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / MS_PER_MINUTE));
+        const h = Math.floor(mins / 60);
+        return h > 0 ? `${h}h ${mins % 60}m` : `${mins}m`;
+    }
+    function laneTitle(dev: AlignDevice): string {
+        if (dev === 'GPU') {
+            return laneBlocked.GPU
+                ? `Shared GPU budget spent — next run frees in ${untilLabel(quota?.gpu_resets_at)}`
+                : 'ZeroGPU lease per chapter; falls back to CPU when the quota runs out';
+        }
+        return laneBlocked.CPU
+            ? 'A CPU run is already going — one at a time for all maintainers'
+            : 'The aligner Space CPU worker pool — slower, no GPU quota';
+    }
 
     // Intake-only: reachability probe.
     let probeBusyId = $state<string | null>(null);
@@ -90,6 +117,15 @@
         });
         return () => teardown();
     });
+
+    /** Refetch the active facet (e.g. after an intake was minted into a slug). */
+    async function refresh(): Promise<void> {
+        try {
+            applyResult(await fetchRequests(status));
+        } catch (e) {
+            error = (e as Error).message ?? 'Failed to load requests';
+        }
+    }
 
     function toggle(row: AdminRequestRow): void {
         if (expandedId === row.id) {
@@ -450,20 +486,39 @@
                                                                     class:on={alignDevice === dev}
                                                                     aria-pressed={alignDevice === dev}
                                                                     disabled={alignBusyId === row.id}
-                                                                    title={dev === 'GPU'
-                                                                        ? 'ZeroGPU lease per chapter; falls back to CPU when the quota runs out'
-                                                                        : 'The aligner Space CPU worker pool — slower, no GPU quota'}
+                                                                    class:blocked={laneBlocked[dev]}
+                                                                    title={laneTitle(dev)}
                                                                     onclick={() => (alignDevice = dev)}
                                                                 >{dev}</button>
                                                             {/each}
                                                         </div>
                                                         <button
                                                             class="btn primary"
-                                                            disabled={alignBusyId === row.id}
+                                                            disabled={alignBusyId === row.id || laneBlocked[alignDevice]}
+                                                            title={laneBlocked[alignDevice] ? laneTitle(alignDevice) : undefined}
                                                             onclick={() => align(row, 'start')}
                                                         >{alignBusyId === row.id ? 'Starting…' : 'Align'}</button>
                                                     </div>
                                                 </div>
+                                            {/if}
+                                            {#if quota && !row.align}
+                                                <p class="align-quota">
+                                                    {#if quota.exempt}
+                                                        <span>No limits for you</span> ·
+                                                    {/if}
+                                                    <span class:spent={laneBlocked.GPU}>
+                                                        GPU {quota.gpu_used}/{quota.gpu_limit} in 24 h{#if quota.gpu_resets_at}
+                                                            &nbsp;(next frees in {untilLabel(quota.gpu_resets_at)}){/if}
+                                                    </span>
+                                                    ·
+                                                    <span class:spent={laneBlocked.CPU}>
+                                                        CPU {quota.cpu_running}/{quota.cpu_limit} running
+                                                    </span>
+                                                    · shared by all maintainers
+                                                </p>
+                                                {#if laneBlocked[alignDevice]}
+                                                    <p class="align-blocked">{laneTitle(alignDevice)}.</p>
+                                                {/if}
                                             {/if}
                                             {#if actionError && alignBusyId === null}
                                                 <p class="action-error">{actionError}</p>
@@ -474,13 +529,6 @@
                                     {#if status === 'open'}
                                         {#if $isOwner}
                                             <div class="resolve">
-                                                {#if isIntake(row)}
-                                                    <p class="ingest-note">
-                                                        Ingested offline by the alignment pipeline — aligning
-                                                        this submission is the acceptance; no action needed here.
-                                                        Send back or discard below to reject it.
-                                                    </p>
-                                                {/if}
                                                 <textarea
                                                     bind:value={reason}
                                                     rows="2"
@@ -530,6 +578,15 @@
                                     {/if}
                                 </div>
                             </div>
+                            {#if status === 'open' && isIntake(row) && $canIngest}
+                                <IntakePlanPanel
+                                    requestId={row.id}
+                                    kind={row.kind}
+                                    canAlign={$canAlign}
+                                    {quota}
+                                    onMinted={refresh}
+                                />
+                            {/if}
                         </div>
                     {/if}
                 </li>
@@ -680,16 +737,6 @@
     .ln-reach.none { color: var(--text-faint); font-weight: 400; }
 
     .btn.tiny { padding: 3px 9px; font-size: 10.5px; }
-    .ingest-note {
-        margin: 0 0 var(--s-2);
-        padding: var(--s-2) var(--s-3);
-        background: var(--accent-tint);
-        border: 1px solid var(--border-quiet);
-        border-radius: var(--r-2);
-        font-size: var(--fs-meta);
-        line-height: var(--lh-normal);
-        color: var(--text-secondary);
-    }
 
     .review-side { display: flex; flex-direction: column; gap: var(--s-4); }
     .submitted-by { margin: 0; font-size: var(--fs-meta); color: var(--text-muted); }
@@ -709,6 +756,10 @@
     .lane-opt:hover:not(:disabled) { color: var(--text-secondary); }
     .lane-opt.on { background: var(--canvas-inset); color: var(--accent); }
     .lane-opt:disabled { opacity: 0.5; cursor: default; }
+    .lane-opt.blocked { text-decoration: line-through; }
+    .align-quota { margin: 0; font-size: var(--fs-meta); color: var(--text-faint); font-variant-numeric: tabular-nums; }
+    .align-quota .spent { color: var(--state-error-fg); }
+    .align-blocked { margin: 0; font-size: var(--fs-meta); color: var(--text-muted); }
     .btn.primary { color: var(--accent); border-color: var(--accent); }
     .btn.primary:hover { background: var(--accent-soft, transparent); }
     .notice { margin: 0; padding: var(--s-3); background: var(--state-requested-bg); color: var(--state-requested-fg); border-radius: var(--r-2); font-size: var(--fs-meta); line-height: var(--lh-normal); }
