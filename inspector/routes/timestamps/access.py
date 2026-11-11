@@ -210,6 +210,7 @@ def _challenge_refusal():
     passed = turnstile.verify(
         response,
         secret=secret,
+        verify_url=config.TS_TURNSTILE_VERIFY_URL,
         remote_ip=request.remote_addr,
         host_allowed=lambda host: ts_access.trusted_host(host, request.host),
     )

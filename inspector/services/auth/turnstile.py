@@ -14,7 +14,6 @@ import requests
 
 logger = logging.getLogger("inspector")
 
-SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 SITEVERIFY_TIMEOUT_S = 5
 
 
@@ -22,12 +21,15 @@ def verify(
     response: str | None,
     *,
     secret: str,
+    verify_url: str,
     remote_ip: str | None,
     host_allowed: Callable[[str | None], bool],
 ) -> bool:
     """True when ``response`` is a fresh pass solved on one of this site's pages.
 
-    Fails closed: an unreachable siteverify refuses the token.
+    ``verify_url`` is Cloudflare's siteverify or a relay to it (a Hugging Face
+    Space cannot connect to ``challenges.cloudflare.com``). Fails closed: an
+    unreachable siteverify refuses the token.
     """
     if not response:
         return False
@@ -35,7 +37,7 @@ def verify(
     if remote_ip:
         form["remoteip"] = remote_ip
     try:
-        result = requests.post(SITEVERIFY_URL, data=form, timeout=SITEVERIFY_TIMEOUT_S).json()
+        result = requests.post(verify_url, data=form, timeout=SITEVERIFY_TIMEOUT_S).json()
     except (requests.RequestException, ValueError):
         logger.exception("turnstile: siteverify failed")
         return False
