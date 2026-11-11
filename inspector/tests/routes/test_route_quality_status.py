@@ -14,17 +14,30 @@ from tests.conftest import _seed_state
 _ORIGIN = {"Origin": "http://localhost"}
 
 
-def _seed(slug: str = "test_slug", **kw) -> None:
-    spec = dict(
+def _seed(
+    slug: str = "test_slug",
+    *,
+    state: str = "released",
+    assignee_hf_id: str | None = None,
+    assignee_login: str = "test_user",
+    marked_ready: bool = False,
+) -> None:
+    _seed_state(
         slug=slug,
-        state="released",
-        assignee_hf_id=None,
-        assignee_login="test_user",
-        marked_ready=False,
+        state=state,
+        assignee_hf_id=assignee_hf_id,
+        assignee_login=assignee_login,
+        marked_ready=marked_ready,
         visibility="public",
     )
-    spec.update(kw)
-    _seed_state(**spec)
+
+
+def _stored(slug: str = "test_slug") -> str | None:
+    from services.db import repo_state
+
+    row = repo_state.get_row(slug)
+    assert row is not None
+    return row.quality_status.value if row.quality_status else None
 
 
 def _post(client, value, slug: str = "test_slug"):
@@ -53,9 +66,7 @@ def test_maintainer_sets_on_released_row(signed_in_client, state_persistence):
     assert resp.status_code == 200
     assert json.loads(resp.data)["quality_status"] == "almost_clean"
 
-    from services import state as state_service
-
-    assert state_service.get_row("test_slug").quality_status.value == "almost_clean"
+    assert _stored() == "almost_clean"
 
 
 def test_maintainer_sets_on_marked_ready_row(signed_in_client, state_persistence):
@@ -77,11 +88,9 @@ def test_clear_allowed_in_any_state(signed_in_client, state_persistence):
     client, _ = signed_in_client(role="maintainer")
     assert _post(client, "clean").status_code == 200
 
-    from services.db import repo_state
-
     # Back in review since: the rating survives, and can still be cleared.
     _seed(state="awaiting_review")
-    assert repo_state.get_row("test_slug").quality_status.value == "clean"
+    assert _stored() == "clean"
     resp = _post(client, None)
     assert resp.status_code == 200
     assert json.loads(resp.data)["quality_status"] is None
