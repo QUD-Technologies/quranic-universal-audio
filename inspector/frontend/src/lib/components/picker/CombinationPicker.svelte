@@ -346,8 +346,7 @@
                 />
             </div>
             <label class="picker-controls-sort">
-                <span class="sort-label">{sortLabel}</span>
-                <select value={sort} on:change={onSortChange}>
+                <select value={sort} aria-label={sortLabel} on:change={onSortChange}>
                     {#each sortOptions as o (o.value)}
                         <option value={o.value}>{o.label}</option>
                     {/each}
@@ -506,12 +505,6 @@
         align-items: center;
         gap: var(--s-2);
         flex-shrink: 0;
-    }
-    .sort-label {
-        font-size: var(--fs-meta);
-        color: var(--text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
     }
     .picker-controls-sort select {
         padding: var(--s-2);
