@@ -209,6 +209,8 @@ is never eligible for a public HF dataset split or GitHub release member.
 
 Chapter keys: `"1"`–`"114"` (by_surah) or `"<surah>:<ayah>"` (by_ayah). Per-chapter metric fields nullable until probed. `ChapterEntry` fields: `url` (required), `size_bytes`, `duration_sec`, `bitrate_kbps`, `bitrate_mode` (`cbr`/`vbr` per chapter), and `max_linear_seek_err_ms` (probe verdict evidence).
 
+**Cross-channel chapter fill.** A chapter's `url` may point at another channel's copy of the *same recording* when the delivery's own file is defective (e.g. `salman_al_sadeiq_mp3quran` ch42 is silent on mp3quran, so it points at way2quran's). Fill every field of that entry from the new file (`size_bytes` is the pre-cut drift check's baseline), recompute `_meta.checksum`, and delete the old `audio/<ch>.mp3` + `peaks/<ch>.json.gz` before re-aligning — acquire skips a chapter whose file already exists. Releases then name that host for that chapter only; the delivery row's `source`/`channel` stay the main channel.
+
 **URL hygiene (#285).** `ChapterEntry.url` is a remote URL or a bucket-relative key (fixtures mode) — the
 schema rejects an absolute filesystem path / `file:` URI; `ChapterEntry.source_url` and `ManifestSource.url`
 must be `http(s)`. Every manifest writer round-trips through `AudioManifestSidecar`, so a machine-local
