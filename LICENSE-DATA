@@ -124,11 +124,15 @@ agree, You may not do any of those things.
 
    The Work may be obtained only through the Licensor's published channels:
    the GitHub releases, the Hugging Face dataset, the Licensor's alignment
-   services, and any documented public API. Obtaining timing data from the
-   Licensor's websites or their internal interfaces by automated means, or by
-   circumventing any access control, rate limit or challenge, is not permitted
-   and grants no rights. Data obtained in that way is nonetheless subject to
-   every obligation of this License as if it were the Work.
+   services, and any public API the Licensor expressly designates as a
+   distribution channel for the Work in its published license notices.
+   Documentation of the Licensor's websites or internal interfaces, including
+   in source code or repositories, does not make them a published channel.
+   Obtaining timing data from the Licensor's websites or their internal
+   interfaces by automated means, or by circumventing any access control, rate
+   limit or challenge, is not permitted and grants no rights. Data obtained in
+   that way is nonetheless subject to every obligation of this License as if
+   it were the Work.
 
 
 3. FREE ACCESS CONDITIONS
