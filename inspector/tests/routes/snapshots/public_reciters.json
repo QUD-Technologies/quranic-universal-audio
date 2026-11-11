@@ -13,6 +13,7 @@
       "coverage_kind": "full",
       "deliveries": [
         {
+          "aligned_at": null,
           "audio_category": "by_surah",
           "bitrate_kbps_nominal": null,
           "bitrate_mode": "unknown",

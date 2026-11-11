@@ -140,6 +140,23 @@ def get_by_content_hash(ch: str) -> dict | None:
     return _row_to_record(row) if row else None
 
 
+#: Transitions that mean "alignment finished": the pipeline's completion event,
+#: plus an owner force-move straight out of awaiting_alignment. Re-entries into
+#: awaiting_review from a released claim or a revision unlock are NOT alignments.
+_ALIGNED_SQL = (
+    "SELECT slug, MAX(ts) AS ts FROM transitions "
+    "WHERE to_state = 'awaiting_review' AND slug IS NOT NULL AND ("
+    "event = 'reciter.alignment_completed' "
+    "OR (event = 'admin.force_set_state' AND from_state = 'awaiting_alignment')) "
+    "GROUP BY slug"
+)
+
+
+def aligned_at_by_slug() -> dict[str, str]:
+    """``{slug: iso}`` — when each delivery last finished alignment."""
+    return {r["slug"]: r["ts"] for r in get_conn().execute(_ALIGNED_SQL).fetchall()}
+
+
 def for_slug(slug: str) -> list[dict]:
     """Chronological timeline for one delivery."""
     rows = (

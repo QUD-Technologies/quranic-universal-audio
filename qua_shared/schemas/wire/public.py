@@ -92,6 +92,9 @@ class PublicDelivery(BaseModel):
     #: Claimer marked it ready for review. Public flag only — the claimer's
     #: identity stays admin-gated (``reviews.view``).
     marked_ready: bool = False
+    #: When alignment last finished (ISO) — the pipeline's completion event or an
+    #: owner force-move out of awaiting_alignment. None when never aligned.
+    aligned_at: str | None = None
 
     # Modal-only (detail / admin-view) — absent on the list payload.
     bucket_dates: dict[str, list[str]] | None = None

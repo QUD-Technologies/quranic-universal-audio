@@ -119,3 +119,38 @@ def test_for_slug_timeline(fresh_db):
         "reciter.alignment_completed",
     ]
     assert timeline[0]["from_state"] == "catalogued"
+
+
+def test_aligned_at_by_slug_counts_only_alignment_events(fresh_db):
+    """Only a real alignment completion (or an owner force-move out of
+    awaiting_alignment) dates a delivery; a claim force-released back to
+    awaiting_review is not an alignment."""
+    from tests.conftest import _seed_delivery_chain
+
+    _seed_user()
+    with db.transaction() as conn:
+        for slug in ("s1", "s2", "s3"):
+            _seed_delivery_chain(conn, slug)
+    a = _actor()
+    first = repo_transitions.append(
+        event="reciter.alignment_completed", actor=a, slug="s1",
+        from_state="awaiting_alignment", to_state="awaiting_review",
+    )
+    repo_transitions.append(
+        event="claim.force_released", actor=a, slug="s1",
+        from_state="under_review", to_state="awaiting_review",
+    )
+    forced = repo_transitions.append(
+        event="admin.force_set_state", actor=a, slug="s2",
+        from_state="awaiting_alignment", to_state="awaiting_review",
+    )
+    repo_transitions.append(
+        event="claim.force_released", actor=a, slug="s3",
+        from_state="under_review", to_state="awaiting_review",
+    )
+
+    got = repo_transitions.aligned_at_by_slug()
+
+    assert set(got) == {"s1", "s2"}
+    assert got["s1"] == repo_transitions.get(first.request_id)["ts"]
+    assert got["s2"] == repo_transitions.get(forced.request_id)["ts"]

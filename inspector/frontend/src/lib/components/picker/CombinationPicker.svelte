@@ -46,6 +46,7 @@
     import PickerFooter from './PickerFooter.svelte';
     import PickerReviewStatus from './PickerReviewStatus.svelte';
     import PickerStateTabs from './PickerStateTabs.svelte';
+    import { alignedDateLabel, type PickerSort, sortByAligned } from './picker-sort';
 
     interface Combo {
         reciter: PublicReciter;
@@ -101,6 +102,7 @@
     let search = initialFilter.search ?? '';
     let activeBucket: PublicBucket | null = initialFilter.bucket ?? null;
     let activeFilters: Record<string, Set<string>> = {};
+    let sort: PickerSort = 'default';
     let focusedIdx = -1;
 
     let searchInputEl: SearchInput | null = null;
@@ -166,12 +168,11 @@
         }
     }
 
-    // Filter axes to the three relevant for combinations (no status,
-    // no mushaf coverage, no recording context) — the state tabs already
-    // cover bucket; the rail keeps cross-cutting taxonomy axes only.
-    $: railAxes = (descriptor?.axes ?? []).filter((a) =>
-        a.key === 'riwayah' || a.key === 'style' || a.key === 'channel',
-    );
+    // Rail axes for combinations, in this order: full/partial coverage, then
+    // riwayah, style, channel (no status — the state tabs cover bucket; no
+    // recording context).
+    const RAIL_ORDER = ['coverage', 'riwayah', 'style', 'channel'];
+    $: railAxes = RAIL_ORDER.flatMap((key) => (descriptor?.axes ?? []).filter((a) => a.key === key));
 
     // Flatten reciters into combos, keeping only deliveries whose own
     // bucket is in allowedBuckets — a reciter can show up twice if its
@@ -193,10 +194,9 @@
 
     $: facetResult = recomputeFacets(bucketScoped, activeFilters, facetSpecs);
     $: facetVisible = bucketScoped.filter((_, i) => facetResult.rowVisibility[i]);
-    $: visible = filterByFields(
-        facetVisible,
-        search,
-        (c) => [c.reciter.name, c.reciter.name_ar],
+    $: visible = sortByAligned(
+        filterByFields(facetVisible, search, (c) => [c.reciter.name, c.reciter.name_ar]),
+        sort,
     );
 
     // Split into pinned (active claims) + groups by bucket.
@@ -233,6 +233,14 @@
     $: searchPlaceholder = tr($localeStore, m.common_picker_search_placeholder());
     $: loadingLabel = tr($localeStore, m.common_picker_loading());
     $: noMatchesLabel = tr($localeStore, m.common_picker_no_matches());
+    $: sortLabel = tr($localeStore, m.common_picker_sort_label());
+    $: sortOptions = [
+        { value: 'default', label: tr($localeStore, m.common_picker_sort_default()) },
+        { value: 'aligned_desc', label: tr($localeStore, m.common_picker_sort_aligned_newest()) },
+        { value: 'aligned_asc', label: tr($localeStore, m.common_picker_sort_aligned_oldest()) },
+    ];
+    $: alignedTitle = (iso: string | null | undefined): string =>
+        iso ? tr($localeStore, m.common_picker_aligned_title({ date: alignedDateLabel(iso, $localeStore) })) : '';
     $: mineSectionLabel = tr($localeStore, localizeDigits(m.common_picker_section_your_active_claims({ count: mineRows.length })));
 
     function toggleFacet(detail: { axis: string; tag: string }): void {
@@ -240,6 +248,11 @@
         if (set.has(detail.tag)) set.delete(detail.tag);
         else set.add(detail.tag);
         activeFilters = { ...activeFilters, [detail.axis]: set };
+        focusedIdx = -1;
+    }
+
+    function onSortChange(e: Event): void {
+        sort = (e.currentTarget as HTMLSelectElement).value as PickerSort;
         focusedIdx = -1;
     }
 
@@ -332,6 +345,14 @@
                     on:input={(e) => onSearchInput(e.detail)}
                 />
             </div>
+            <label class="picker-controls-sort">
+                <span class="sort-label">{sortLabel}</span>
+                <select value={sort} on:change={onSortChange}>
+                    {#each sortOptions as o (o.value)}
+                        <option value={o.value}>{o.label}</option>
+                    {/each}
+                </select>
+            </label>
             <div class="picker-controls-tabs">
                 <PickerStateTabs
                     {activeBucket}
@@ -392,6 +413,9 @@
                                 <div class="row-figures">
                                     <span class="coverage">{compactCoverageLabel(c.delivery)}</span>
                                     <span class="dur">{compactHoursLabel(c.delivery)}</span>
+                                    {#if c.delivery.aligned_at}
+                                        <span class="aligned" title={alignedTitle(c.delivery.aligned_at)}>{alignedDateLabel(c.delivery.aligned_at, $localeStore)}</span>
+                                    {/if}
                                 </div>
                             </div>
                         {/each}
@@ -430,6 +454,9 @@
                                 <div class="row-figures">
                                     <span class="coverage">{compactCoverageLabel(c.delivery)}</span>
                                     <span class="dur">{compactHoursLabel(c.delivery)}</span>
+                                    {#if c.delivery.aligned_at}
+                                        <span class="aligned" title={alignedTitle(c.delivery.aligned_at)}>{alignedDateLabel(c.delivery.aligned_at, $localeStore)}</span>
+                                    {/if}
                                 </div>
                             </div>
                         {/each}
@@ -474,6 +501,28 @@
         width: 360px;
         flex-shrink: 0;
     }
+    .picker-controls-sort {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--s-2);
+        flex-shrink: 0;
+    }
+    .sort-label {
+        font-size: var(--fs-meta);
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+    .picker-controls-sort select {
+        padding: var(--s-2);
+        background: var(--panel);
+        border: 1px solid var(--border-quiet);
+        border-radius: var(--r-2);
+        color: var(--text-primary);
+        font-size: var(--fs-meta);
+        cursor: pointer;
+    }
+    .picker-controls-sort select:focus { border-color: var(--accent); outline: none; }
     .picker-controls-tabs {
         flex: 1;
         min-width: 0;

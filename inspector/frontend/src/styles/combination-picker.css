@@ -104,6 +104,9 @@
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
+.combo-row .row-figures .aligned {
+    color: var(--text-faint);
+}
 .combo-row .name-ar {
     color: var(--text-muted);
     font-size: var(--fs-meta);

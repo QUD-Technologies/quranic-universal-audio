@@ -21,3 +21,22 @@ import { toArabicNumeral } from '$lib/utils/arabic-text';
 export function localizeDigits(value: string | number, locale: string = getLocale()): string {
     return ['ar', 'ckb'].includes(locale) ? toArabicNumeral(value) : String(value);
 }
+
+/** Gregorian month names in Sorani — browser ICU builds may not ship them,
+ *  so `ckb` dates are spelled from this list instead of `toLocaleDateString`. */
+export const SORANI_MONTHS = [
+    'کانوونی دووەم', 'شوبات', 'ئازار', 'نیسان', 'ئایار', 'حوزەیران',
+    'تەممووز', 'ئاب', 'ئەیلوول', 'تشرینی یەکەم', 'تشرینی دووەم', 'کانوونی یەکەم',
+] as const;
+
+/** Short calendar date ("12 Nov 2026"; Sorani month names + localized digits
+ *  under `ckb`). Empty string for a missing or unparsable ISO value. */
+export function formatShortDate(iso: string | null | undefined, locale: string = getLocale()): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    if (locale === 'ckb') {
+        return localizeDigits(`${d.getDate()} ${SORANI_MONTHS[d.getMonth()]} ${d.getFullYear()}`, 'ckb');
+    }
+    return d.toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' });
+}

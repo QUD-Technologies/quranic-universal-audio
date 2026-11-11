@@ -1,4 +1,4 @@
-import { localizeDigits } from '$lib/i18n/format';
+import { localizeDigits, SORANI_MONTHS } from '$lib/i18n/format';
 import { getLocale } from '$lib/paraglide/runtime';
 import * as m from '../../../../lib/paraglide/messages';
 import type { EditOp, GenerationBoundary, HistoryBatch } from '../../../../lib/types/view-models';
@@ -116,10 +116,6 @@ export function countVersesFromItems(items: OpFlatItem[]): number {
     return verses.size;
 }
 
-const SORANI_MONTHS = [
-    'کانوونی دووەم', 'شوبات', 'ئازار', 'نیسان', 'ئایار', 'حوزەیران',
-    'تەممووز', 'ئاب', 'ئەیلوول', 'تشرینی یەکەم', 'تشرینی دووەم', 'کانوونی یەکەم',
-] as const;
 
 export function formatHistDate(isoStr: string | null | undefined): string {
     if (!isoStr) return m.segments_history_date_pending();
