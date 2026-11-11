@@ -13,6 +13,7 @@
 
     import type { Axis, AxisOption } from '../../catalog/schema-descriptor';
     import { PUBLIC_BUCKET_LABELS, type PublicBucket } from '../../types/public-bucket';
+    import { qualityTagLabel } from '../../utils/quality-status';
     import FilterPill from '../FilterPill.svelte';
 
     export let axes: Axis[];
@@ -30,6 +31,7 @@
         coverage: m.dashboard_facet_axis_coverage,
         recording_context: m.dashboard_facet_axis_recording_context,
         channel: m.dashboard_facet_axis_channel,
+        quality: m.common_quality_label,
     };
     const VOCAB_AXIS: Record<string, VocabKind> = {
         riwayah: 'riwayah',
@@ -46,6 +48,7 @@
     function pillLabelOf(axis: Axis, option: AxisOption): string {
         const kind = VOCAB_AXIS[axis.key];
         if (kind) return vocabLabel(kind, option.key);
+        if (axis.key === 'quality') return qualityTagLabel(option.key);
         if (axis.key === 'status') return PUBLIC_BUCKET_LABELS[option.key as PublicBucket]?.() ?? option.label;
         return option.label;
     }

@@ -99,6 +99,7 @@ class PublicDelivery(TypedDict):
     total_duration_sec: int | None
     marked_ready: bool  # public READY flag; the claimer's identity stays admin-only.
     aligned_at: str | None  # ISO; when alignment last finished. None = never aligned here.
+    quality_status: str | None  # maintainer's manual rating; None = not rated.
     # Per-bucket entry timestamps: {bucket: [iso, ...]} chronological, one entry
     # per *distinct* visit to that bucket. Modal-only — attached by the detail /
     # admin-view paths (NOT the cached list), so it's absent on list payloads.
@@ -205,6 +206,9 @@ def _to_public_delivery(
         total_duration_sec=d.total_duration_sec,
         marked_ready=bool(row is not None and row.marked_ready),
         aligned_at=(aligned_index or {}).get(d.slug),
+        quality_status=(
+            row.quality_status.value if row is not None and row.quality_status else None
+        ),
     )
 
 

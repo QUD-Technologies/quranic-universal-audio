@@ -620,6 +620,7 @@
         on:unclaim={_unclaim}
         on:markReady={_markReady}
         on:claimed={_refreshTask}
+        on:qualityChanged={_refreshTask}
     />
 
     <!-- Guide modal host: a single instance driven by the `guideModal` store.

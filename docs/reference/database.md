@@ -95,7 +95,7 @@ Note: `assignee_*` / `marked_ready` are **not** columns on `delivery_states` —
 - Each script is wrapped `BEGIN; <sql> PRAGMA user_version = NNNN; COMMIT;` and run via `executescript` — DDL + version bump are atomic. Failure rolls back and **aborts boot** (fail-fast → `/healthz` 503), never half-applies.
 - Non-conforming filenames are logged and skipped.
 
-**Adding a migration:** create `NNNN_<desc>.sql` (next 4-digit number) in `migrations/`. Write raw DDL/DML only — do NOT add `BEGIN`/`COMMIT`/`PRAGMA user_version` (the runner wraps it). It applies on next boot. Current head: `0034_ts_bans.sql`. Migration 28 is preceded at boot by the strict legacy-target map preparer and followed by a native-schema assertion.
+**Adding a migration:** create `NNNN_<desc>.sql` (next 4-digit number) in `migrations/`. Write raw DDL/DML only — do NOT add `BEGIN`/`COMMIT`/`PRAGMA user_version` (the runner wraps it). It applies on next boot. Current head: `0035_quality_status.sql` (adds `delivery_states.quality_status`). Migration 28 is preceded at boot by the strict legacy-target map preparer and followed by a native-schema assertion.
 
 > **Never edit an already-applied migration to change schema.** Existing DBs (every deployed/dev/local one is pulled from the bucket already past `user_version 1`) re-run nothing ≤ their version, so edits to `0001` etc. reach fresh DBs only and silently miss live data. New columns/tables ALWAYS go in a new `NNNN_*.sql` with an additive `ALTER`/`CREATE`. (0007 exists precisely because the `claims.mark_ready_*` columns were first inlined into `0001` and never reached the live `claims` table — the Reviews drawer detail query 500'd with `no such column`.)
 

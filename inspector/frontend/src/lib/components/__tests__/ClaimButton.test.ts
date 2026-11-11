@@ -29,6 +29,8 @@ function makeTask(canClaim: boolean): ReciterTask {
             can_skip_mark_ready_gates: false,
             can_unmark_ready: false,
             can_release: false,
+            can_set_quality_status: false,
+            can_clear_quality_status: false,
         },
     } as ReciterTask;
 }

@@ -13,6 +13,13 @@
 */
 
 /**
+ * Maintainer's manual verdict on how clean a delivery's recitation is.
+ *
+ * A human judgement made after looking at the flags and validation results,
+ * not a computed score. Orthogonal to coverage (full/partial).
+ */
+export type QualityStatus = "clean" | "almost_clean" | "needs_work";
+/**
  * Why an artifact is stale — drives the remediation suggestion.
  *
  * Severity-ordered (``segments_edited`` > ``ts_regen`` > ``catalog_edit``):
@@ -136,6 +143,7 @@ export interface AdminDiscardedDelivery {
   total_duration_sec?: number | null;
   marked_ready?: boolean;
   aligned_at?: string | null;
+  quality_status?: QualityStatus | null;
   bucket_dates?: {
     [k: string]: string[];
   } | null;
@@ -645,6 +653,7 @@ export interface AdminDelivery {
   total_duration_sec?: number | null;
   marked_ready?: boolean;
   aligned_at?: string | null;
+  quality_status?: QualityStatus | null;
   bucket_dates?: {
     [k: string]: string[];
   } | null;
@@ -1561,6 +1570,7 @@ export interface PublicDelivery {
   total_duration_sec?: number | null;
   marked_ready?: boolean;
   aligned_at?: string | null;
+  quality_status?: QualityStatus | null;
   bucket_dates?: {
     [k: string]: string[];
   } | null;
@@ -1602,6 +1612,9 @@ export interface PublicReciterPage {
   reciters: PublicReciter[];
   total: number;
   next_cursor?: number | null;
+}
+export interface QualityStatusRequest {
+  quality_status: QualityStatus | null;
 }
 /**
  * One supported riwayah and its two slug spellings.

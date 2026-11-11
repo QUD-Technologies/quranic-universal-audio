@@ -134,6 +134,7 @@ from .wire.public import (
     PublicReciter,
     PublicReciterPage,
 )
+from .wire.quality_status import QualityStatusRequest
 from .wire.release import (
     AdminCutReleaseRequest,
     AdminGhReleaseMember,
@@ -342,6 +343,7 @@ __all__ = [
     "JobsListResponse",
     "MarkReadyChecklist",
     "MarkReadyRequest",
+    "QualityStatusRequest",
     "MarkReadySubmission",
     "OkAck",
     "PeaksRecord",

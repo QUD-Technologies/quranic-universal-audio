@@ -20,7 +20,7 @@ import logging
 from flask import Blueprint, jsonify, request
 from pydantic import ValidationError
 
-from qua_shared.schemas import MarkReadyRequest
+from qua_shared.schemas import MarkReadyRequest, QualityStatusRequest
 from routes._admin_helpers import (
     actor_for as _actor_for,
 )
@@ -169,6 +169,37 @@ def unmark_ready(slug: str):
         slug,
         "reciter.unmarked_ready",
         actor=_actor_for(user),
+    )
+    return jsonify(_row_to_dict(new_row))
+
+
+@claims_bp.route("/quality-status/<slug>", methods=["POST"])
+@require_same_origin
+def set_quality_status(slug: str):
+    """Set or clear the delivery's manual recitation quality rating. The
+    handler owns the capability + state gate (published or marked ready to
+    set; any state to clear)."""
+    user, err = _require_user_or_401()
+    if err is not None:
+        return err
+    if not state_service.is_delivery_visible(slug, user):
+        return jsonify({"error": "unknown reciter"}), 404
+    try:
+        body = QualityStatusRequest.model_validate(request.get_json(silent=True) or {})
+    except ValidationError as e:
+        return jsonify(
+            error_body(
+                "Pick a valid quality status.",
+                code=Codes.QUALITY_STATUS_PAYLOAD,
+                details={"validation_errors": e.errors()},
+            )
+        ), 400
+    status = body.quality_status
+    new_row = state_service.transition(
+        slug,
+        "reciter.quality_set",
+        actor=_actor_for(user),
+        payload={"quality_status": status.value if status else None},
     )
     return jsonify(_row_to_dict(new_row))
 
