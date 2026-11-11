@@ -1,5 +1,8 @@
-/** Hardcoded confidence coloring cutoffs (not user-adjustable). */
-export const CONF_HIGH_THRESHOLD = 0.80;
+/** Hardcoded confidence coloring cutoffs (not user-adjustable). The high cutoff
+ *  matches the Low Confidence default (`LOW_CONFIDENCE_THRESHOLD` in
+ *  `inspector/config.py`), so a segment that is listed as low confidence is
+ *  never coloured green. */
+export const CONF_HIGH_THRESHOLD = 0.85;
 export const CONF_MID_THRESHOLD = 0.60;
 
 /** Virtualized list: extra rows rendered above/below the visible viewport. */
