@@ -336,9 +336,9 @@
         min-width: 0;
     }
     .search {
-        width: 210px;
-        min-width: 120px;
-        max-width: 210px;
+        width: 250px;
+        min-width: 160px;
+        max-width: 250px;
     }
     .sort {
         margin-inline-start: auto;
