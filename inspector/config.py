@@ -291,3 +291,26 @@ AUDIO_MIME_TYPES = {
 # loudly. Silently substituting Hafs coordinates under another edition's
 # script would let a reviewer save wrong refs.
 MULTI_RIWAYAH_ENABLED = os.getenv("INSPECTOR_MULTI_RIWAYAH", "1") not in ("0", "false", "False")
+
+# ── Timestamps data routes: per-client limits (services/auth/ts_rate_limit.py) ──
+# `enforce` bans a client that goes over, `log` only logs what would have been
+# banned (to calibrate), `off` skips the counting.
+TS_RATE_LIMIT_MODE = os.environ.get("INSPECTOR_TS_RATE_LIMIT", "enforce").strip().lower()
+# Distinct chapters one client may open. The site opens one at a time (short
+# surahs played back to back are 3-4 a minute, the Random button one a click);
+# a bulk pull of the catalog needs tens of thousands.
+TS_LIMIT_CHAPTERS_PER_MINUTE = int(os.environ.get("INSPECTOR_TS_LIMIT_CHAPTERS_PER_MINUTE", "12"))
+TS_LIMIT_CHAPTERS_PER_HOUR = int(os.environ.get("INSPECTOR_TS_LIMIT_CHAPTERS_PER_HOUR", "80"))
+TS_LIMIT_CHAPTERS_PER_DAY = int(os.environ.get("INSPECTOR_TS_LIMIT_CHAPTERS_PER_DAY", "200"))
+# Chapter + verse reads in total (stepping through verses re-reads one chapter).
+TS_LIMIT_REQUESTS_PER_MINUTE = int(os.environ.get("INSPECTOR_TS_LIMIT_REQUESTS_PER_MINUTE", "150"))
+# Access-token mints; a page mints one every ~5 minutes.
+TS_LIMIT_TOKENS_PER_HOUR = int(os.environ.get("INSPECTOR_TS_LIMIT_TOKENS_PER_HOUR", "30"))
+# Cloudflare Turnstile for /api/ts/access-token. With the secret set, a token is
+# issued only for a passed challenge; the site key is handed to the page.
+TS_TURNSTILE_SITE_KEY = os.environ.get("INSPECTOR_TS_TURNSTILE_SITE_KEY", "").strip()
+TS_TURNSTILE_SECRET = os.environ.get("INSPECTOR_TS_TURNSTILE_SECRET", "").strip()
+# Shared secret the Cloudflare zone adds as `X-QUA-Edge` on /api/ts requests.
+# Set: anonymous requests without it (the direct *.hf.space origin) are refused.
+# Unset: no check.
+TS_EDGE_SECRET = os.environ.get("INSPECTOR_TS_EDGE_SECRET", "").strip()

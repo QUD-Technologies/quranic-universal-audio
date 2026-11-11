@@ -35,7 +35,7 @@ def _patterns(conn: sqlite3.Connection, slug: str) -> list[str]:
 def test_appends_the_cdn_host_and_keeps_the_legacy_pattern(tmp_path):
     conn = _db_at_v32(tmp_path, ["server*.mp3quran.net"])
 
-    assert migrate.run_migrations(conn) == 33
+    assert migrate.run_migrations(conn) == 34
     assert _patterns(conn, "mp3quran") == ["server*.mp3quran.net", "cdn.mp3quran.net"]
     assert _patterns(conn, "tvquran") == ["download.tvquran.com"]
 
@@ -43,5 +43,5 @@ def test_appends_the_cdn_host_and_keeps_the_legacy_pattern(tmp_path):
 def test_a_channel_that_already_lists_the_cdn_host_is_left_as_is(tmp_path):
     conn = _db_at_v32(tmp_path, ["cdn.mp3quran.net", "server*.mp3quran.net"])
 
-    assert migrate.run_migrations(conn) == 33
+    assert migrate.run_migrations(conn) == 34
     assert _patterns(conn, "mp3quran") == ["cdn.mp3quran.net", "server*.mp3quran.net"]

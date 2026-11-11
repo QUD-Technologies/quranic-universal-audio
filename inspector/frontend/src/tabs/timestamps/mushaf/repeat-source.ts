@@ -2,8 +2,20 @@
  * The Mushaf app's repeat plans (`@qud-technologies/mushaf-core/app` `repeatSteps`) over this
  * reciter's chapters: a `PlaySource` whose verses are each verse's canonical take (`canonical.ts`),
  * so a repeat never replays the reciter's re-dos. Pure: `repeat.svelte.ts` owns the audio.
+ *
+ * `RepeatQueue` hands the plan's steps out one surah at a time, so a chapter's timing is fetched
+ * when the plan reaches it and never for the whole range up front.
  */
-import { type PlaySource, type Span, type SurahTiming, surahTiming, type VerseSpan } from '@qud-technologies/mushaf-core/app';
+import {
+    type PlaySource,
+    type RepeatPlan,
+    repeatSteps,
+    type Span,
+    type SurahStep,
+    type SurahTiming,
+    surahTiming,
+    type VerseSpan,
+} from '@qud-technologies/mushaf-core/app';
 
 import type { AnimUnit } from '../../../lib/recitation-animation/types';
 import { canonicalTakes } from './canonical';
@@ -31,6 +43,62 @@ export function playSource(surahs: readonly number[], chapters: ReadonlyMap<numb
         hasOpeners: false,
         surah: (s) => chapters.get(s) ?? surahTiming(s, [], []),
     };
+}
+
+/** What a `RepeatQueue` needs before it can go on: this surah's timing. */
+export interface NeedsSurah {
+    load: number;
+}
+
+/**
+ * A repeat plan's steps in play order (rounds, then surahs, then the core's verse repeats), read
+ * one surah at a time. `next()` answers `{ load }` when it reaches a surah whose timing has not
+ * been given yet; `provide()` it and ask again.
+ */
+export class RepeatQueue {
+    private readonly timings = new Map<number, SurahTiming>();
+    private steps: Iterator<SurahStep> | null = null;
+    private round = 0;
+    private index = 0;
+    /** Whether the round in progress has played anything (a plan that plays nothing must end). */
+    private roundPlayed = false;
+
+    /** `surahs`: the plan's surahs this reciter has, in order (`planSurahs` ∩ the reciter's). */
+    constructor(
+        private readonly plan: RepeatPlan,
+        private readonly surahs: readonly number[],
+    ) {}
+
+    provide(surah: number, timing: SurahTiming): void {
+        this.timings.set(surah, timing);
+    }
+
+    next(): SurahStep | NeedsSurah | null {
+        for (;;) {
+            if (this.steps) {
+                const step = this.steps.next();
+                if (!step.done) {
+                    this.roundPlayed = true;
+                    const at = step.value.repeatAt;
+                    return at ? { ...step.value, repeatAt: { ...at, round: this.round } } : step.value;
+                }
+                this.steps = null;
+                this.index++;
+            }
+            if (this.index >= this.surahs.length) {
+                if (!this.roundPlayed) return null;
+                this.round++;
+                this.index = 0;
+                this.roundPlayed = false;
+            }
+            if (this.round >= this.plan.rangeTimes) return null;
+            const surah = this.surahs[this.index]!;
+            const timing = this.timings.get(surah);
+            if (!timing) return { load: surah };
+            const source = playSource([surah], new Map([[surah, timing]]));
+            this.steps = repeatSteps(source, { ...this.plan, rangeTimes: 1 })[Symbol.iterator]();
+        }
+    }
 }
 
 /** The surahs a plan from `from` to `to` (`s:a`) crosses. */

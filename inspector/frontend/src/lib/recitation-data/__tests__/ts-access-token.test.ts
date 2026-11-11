@@ -71,4 +71,43 @@ describe('fetchWithAccess', () => {
         const shardCalls = fetchMock.mock.calls.filter((c) => c[0] === SHARD);
         expect(shardCalls.map(sentToken)).toEqual(['old', 'new']);
     });
+
+    it('passes the Turnstile challenge the server asks for, then solves one up front', async () => {
+        const passes = ['pass-1', 'pass-2'];
+        const rendered: string[] = [];
+        vi.stubGlobal('turnstile', {
+            render: (_el: HTMLElement, opts: { sitekey: string; callback: (t: string) => void }) => {
+                rendered.push(opts.sitekey);
+                opts.callback(passes.shift() ?? 'none-left');
+                return 'widget';
+            },
+            remove: () => undefined,
+        });
+        const asked = new Response(JSON.stringify({ turnstile_site_key: 'site-key' }), {
+            status: 403,
+        });
+        fetchMock
+            .mockResolvedValueOnce(asked)
+            .mockResolvedValueOnce(tokenResponse('t1', 10))
+            .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+            .mockResolvedValueOnce(tokenResponse('t2', 300))
+            .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+
+        await fetchWithAccess(SHARD);
+        await fetchWithAccess(SHARD);
+
+        const tokenBodies = fetchMock.mock.calls
+            .filter((c) => c[0] === '/api/ts/access-token')
+            .map((c) => JSON.parse((c[1] as RequestInit).body as string) as unknown);
+        expect(tokenBodies).toEqual([{}, { turnstile: 'pass-1' }, { turnstile: 'pass-2' }]);
+        expect(rendered).toEqual(['site-key', 'site-key']);
+    });
+
+    it('fails the fetch when the server refuses the token without naming a challenge', async () => {
+        fetchMock.mockImplementation(() =>
+            Promise.resolve(new Response('{"reason":"challenge_failed"}', { status: 403 })),
+        );
+
+        await expect(fetchWithAccess(SHARD)).rejects.toThrow('access token request failed: 403');
+    });
 });

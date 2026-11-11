@@ -10,9 +10,10 @@
  * The Mushaf view calls `tick()` every frame (and on `timeupdate`, so a hidden tab still honours
  * step ends). A seek the driver didn't make (a footer skip, a scrub, a word click) ends the repeat.
  * A plan may span surahs: the driver asks its host to switch chapter and resumes once that
- * chapter's audio and data are live.
+ * chapter's audio and data are live. A surah's timing is fetched when the plan reaches it
+ * (`RepeatQueue`), never for the whole range up front; the audio is held while it loads.
  */
-import { type RepeatAt, type RepeatPlan, repeatSteps, stepEnded, type SurahStep, type SurahTiming } from '@qud-technologies/mushaf-core/app';
+import { type RepeatAt, type RepeatPlan, stepEnded, type SurahStep, surahTiming } from '@qud-technologies/mushaf-core/app';
 import { get } from 'svelte/store';
 
 import { ensureDashCovering } from '../../../lib/playback/dash-covering';
@@ -20,7 +21,7 @@ import { signalDashSeekIntent } from '../../../lib/playback/dash-buffering';
 import { dashPort } from '../../../lib/playback/dash-port';
 import { loadChapterRecitation } from '../../../lib/recitation-data/load-chapter';
 import { playerContext } from '../../../lib/stores/player-context';
-import { chapterTiming, planSurahs, playSource } from './repeat-source';
+import { chapterTiming, planSurahs, RepeatQueue } from './repeat-source';
 
 /** A next step starting within this of where the audio is plays on without a seek (ms). */
 const ADJACENT_MS = 400;
@@ -48,7 +49,10 @@ class MushafRepeat {
     readonly running = $derived(this.plan !== null);
 
     private host: Host | null = null;
-    private steps: Iterator<SurahStep> | null = null;
+    private queue: RepeatQueue | null = null;
+    private slug = '';
+    /** Bumped by every start and stop: a chapter load that outlives its run is dropped. */
+    private run = 0;
     private step: SurahStep | null = null;
     private waiting = false;
     private pendingChapter = 0;
@@ -63,21 +67,18 @@ class MushafRepeat {
         };
     }
 
-    /** Load the plan's chapters (`surahs`: the reciter's) and start; false when nothing of it is recited. */
+    /** Start the plan at its first verse (`surahs`: the reciter's); false when nothing of it is recited. */
     async start(slug: string, plan: RepeatPlan, surahs: readonly number[]): Promise<boolean> {
         this.stop();
+        const run = this.run;
         this.loading = true;
+        this.slug = slug;
+        this.queue = new RepeatQueue(plan, planSurahs(plan.from, plan.to).filter((n) => surahs.includes(n)));
         try {
-            const chapters = new Map<number, SurahTiming>();
-            for (const s of planSurahs(plan.from, plan.to).filter((n) => surahs.includes(n))) {
-                const data = await loadChapterRecitation(slug, s);
-                if (data) chapters.set(s, chapterTiming(s, data.units));
-            }
-            this.steps = repeatSteps(playSource(surahs, chapters), plan)[Symbol.iterator]();
-            const first = this.steps.next();
-            if (first.done) return false;
+            const first = await this.pull(run);
+            if (!first || run !== this.run) return false;
             this.plan = plan;
-            this.play(first.value);
+            this.play(first);
             return true;
         } catch (e) {
             console.error('Mushaf repeat: failed to load the plan', e);
@@ -88,11 +89,12 @@ class MushafRepeat {
     }
 
     stop(): void {
+        this.run++;
         if (this.gapTimer) clearTimeout(this.gapTimer);
         this.gapTimer = null;
         this.waiting = false;
         this.pendingChapter = 0;
-        this.steps = null;
+        this.queue = null;
         this.step = null;
         this.plan = null;
         this.at = null;
@@ -118,14 +120,45 @@ class MushafRepeat {
         if (stepEnded(step, ms)) this.advance(step, ms);
     }
 
+    /** The plan's next step, fetching each surah's timing as the plan reaches it; null at its end. */
+    private async pull(run: number): Promise<SurahStep | null> {
+        for (;;) {
+            const next = this.queue?.next() ?? null;
+            if (next === null || 'kind' in next) return next;
+            const data = await loadChapterRecitation(this.slug, next.load);
+            if (run !== this.run) return null;
+            this.queue?.provide(next.load, data ? chapterTiming(next.load, data.units) : surahTiming(next.load, [], []));
+        }
+    }
+
     private advance(done: SurahStep, ms: number): void {
-        const next = this.steps?.next();
-        if (!next || next.done) {
+        const next = this.queue?.next() ?? null;
+        if (next === null || 'kind' in next) {
+            this.proceed(done, ms, next);
+            return;
+        }
+        // The plan reached a surah not read yet: hold the audio while its timing loads.
+        const run = this.run;
+        dashPort.pauseAndFlush();
+        this.waiting = true;
+        void this.pull(run)
+            .then((step) => {
+                if (run !== this.run) return;
+                this.waiting = false;
+                this.proceed(done, ms, step);
+            })
+            .catch((e: unknown) => {
+                console.error('Mushaf repeat: failed to load the next surah', e);
+                if (run === this.run) this.stop();
+            });
+    }
+
+    private proceed(done: SurahStep, ms: number, step: SurahStep | null): void {
+        if (!step) {
             dashPort.pauseAndFlush();
             this.stop();
             return;
         }
-        const step = next.value;
         if (this.plan!.pauseMs > 0) {
             this.step = step;
             this.at = step.repeatAt ?? null;
