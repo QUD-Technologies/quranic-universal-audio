@@ -38,11 +38,11 @@
 
 ## Highlights
 
-- **Unified Qur'anic audio hub:** A single consistent schema with comprehensive metadata for reciters and recitations instead of scattered websites, CDN APIs, YouTube playlists, and raw files with different formats.
+- **Unified Qur'anic audio hub:** A single consistent schema with comprehensive metadata for reciters and recitations instead of scattered websites, CDNs, YouTube playlists, and raw files with different formats.
 
-- **Large-scale, multi-riwayah, multi-style:** Full Qur'an coverage across many recitations and hours of audio, spanning mujawwad, murattal, muallim, taraweeh and children repeat styles.
+- **Large-scale, multi-riwayah, multi-style:** Full Qur'an coverage across many recitations and hours of audio, spanning mujawwad, murattal, muallim and taraweeh styles.
 
-- **Phoneme-based alignment:** 20ms phoneme-level precision yields maximum accuracy, eliminates ambiguity at word boundaries and disambiguates tajweed effects where sounds merge across words.
+- **Precise alignment:** 20ms timing precision yields maximum accuracy, eliminates ambiguity at word boundaries and disambiguates tajweed effects where sounds merge across words.
 
 - **Repetition-aware, gap-free timestamps:** The pipeline transcribes each silence-based segment independently, so repeated words are detected and timestamped correctly. See the [comparison with QUL timestamps](docs/qul_timestamp_comparison.md).
 
@@ -57,8 +57,7 @@
 - **Verse playback** — play or seek any ayah or ayah range straight from the original surah audio.
 - **Follow-along** — word-by-word highlighting synced to the recitation.
 - **Word study** — replay the sound of individual words for learners.
-- **Tajweed research** — measure ghunnah and madd durations from letter timestamps, study cross-word effects and silent-letter interactions, and support tajweed teaching.
-- **ML research** — a large, diverse corpus (reciters, paces, styles, riwayat) for speech recognition, tajweed, recitation start/stop detection, and reciter identification.
+- **ML research** — a large, diverse corpus (reciters, paces, styles, riwayat) for speech recognition, tajweed and reciter identification.
 
 ## Data Access
 
@@ -77,22 +76,6 @@ Audio, timestamps and metadata ship in two open formats — pick by your use cas
 Visit the [website](https://audio.qud.dev/) and read the overview info and editing guide to get started in contributing recitations and fixing alignment errors.
 
 Issues and pull requests are welcome. If you've found a bug or have a feature idea, open an [issue](https://github.com/QUD-Technologies/quranic-universal-audio/issues) or jump into the Discord.
-
-To contribute code to the repo directly, fork the repo and see [inspector/README.md](inspector/README.md) for setup instructions.
-
-## Roadmap
-
-**Access**
-
-- [ ] **Unified API/SDKs** — typed Python/JS client (`pip`/`npm`) over the published QUA artifacts: fetches and caches only requested data, defaults to latest with optional pinning and offline vendoring, and exposes the schemas for type consistency. Complements the Releases + HF dataset.
-- [ ] **Global CDN** — mirror all recitations and audio across regions, prewarmed with demand-based routing for low-latency delivery everywhere.
-- [ ] **Rich Metadata** — Comprehensive metadata for reciters (personal information, images, links, etc.) and recitations (year, tajweed conventions/turuq, mistakes, audio issues, etc.) ensuring consistency and easier developer integration.
-
-**Coverage + Quality**
-
-- [x] **100+ recitations** — reach 100+ fully aligned and verified recitations.
-- [x] **Letter-level precision** — word and letter timestamps are both high quality; close the few minor systematic and timing differences in letter timestamps that depend on context, tajweed, and reciter.
-- [x] **Riwayah** — extend beyond Hafs. Each riwayah has its own unique sounds, tajweed, symbols, and ayah orderings, with fewer and less reliable digital assets than Hafs.
 
 ## Acknowledgements
 
