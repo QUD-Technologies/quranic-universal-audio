@@ -23,9 +23,6 @@ TOKEN_HEADER = "X-QUA-Access"
 EDGE_HEADER = "X-QUA-Edge"
 UNLIMITED_CAPABILITY = "timestamps.unlimited_access"
 
-MODE_ENFORCE = "enforce"
-MODE_OFF = "off"
-
 limiter = ts_rate_limit.TsRateLimiter(
     ts_rate_limit.Limits(
         chapters_per_minute=config.TS_LIMIT_CHAPTERS_PER_MINUTE,
@@ -116,8 +113,6 @@ def _restore_bans() -> None:
 
 
 def _ban_check():
-    if config.TS_RATE_LIMIT_MODE != MODE_ENFORCE:
-        return None
     _restore_bans()
     seconds = limiter.ban_remaining(_client())
     if not seconds or _unlimited():
@@ -126,26 +121,23 @@ def _ban_check():
 
 
 def _over_limit(broken: str | None):
-    """Log a broken limit; refuse when limits are enforced."""
+    """Log a broken limit, persist the ban and refuse."""
     if broken is None:
         return None
     client = _client()
     logger.warning(
-        "ts rate limit (%s, mode=%s): %s banned for %ss ua=%r",
+        "ts rate limit (%s): %s banned for %ss ua=%r",
         broken,
-        config.TS_RATE_LIMIT_MODE,
         client,
         limiter.ban_remaining(client),
         request.headers.get("User-Agent", ""),
     )
-    if config.TS_RATE_LIMIT_MODE != MODE_ENFORCE:
-        return None
     ts_bans.save(limiter, client, broken)
     return _refuse_banned(limiter.ban_remaining(client))
 
 
 def _counted() -> bool:
-    return config.TS_RATE_LIMIT_MODE != MODE_OFF and not _unlimited()
+    return not _unlimited()
 
 
 def _notice_headers(resp):
