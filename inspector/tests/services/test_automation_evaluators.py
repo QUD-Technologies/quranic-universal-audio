@@ -305,6 +305,10 @@ def test_stale_ts_regen_skips_a_slug_whose_align_run_is_active(monkeypatch):
 def _marked_ready(seed_state, monkeypatch, *slugs: str) -> list[str]:
     for slug in slugs:
         seed_state(slug, state="under_review", assignee_hf_id="u1", marked_ready=True)
+    monkeypatch.setattr(evaluators, "load_detailed", lambda slug: [])
+    monkeypatch.setattr(evaluators, "count_flagged", lambda entries: 0)
+    monkeypatch.setattr(evaluators.repo_releases, "current_release", lambda track, slug: None)
+    monkeypatch.setattr(evaluators.repo_align_runs, "active_slugs", lambda: set())
     monkeypatch.setattr(evaluators, "_in_flight_slugs", lambda kinds: set())
     monkeypatch.setattr(evaluators.timestamps_jobs, "latest_terminal_failed_slugs", lambda: set())
     monkeypatch.setattr(evaluators.timestamps_jobs, "latest_job_started_by_slug", lambda: {})
