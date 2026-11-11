@@ -43,6 +43,8 @@ Can access from `HF_TOKEN` in `.env`
 | Backend tests | `cd inspector && python -m pytest tests/ -v` |
 | Deploy dev Space | push to `dev` → `inspector-deploy.yml` |
 
+**Scope local tests to the diff — never run the full suites locally.** The full backend suite takes ~5 min and CI runs it anyway. Locally, run only the test files covering what you changed (`python -m pytest tests/<area>/test_x.py`, `npm run test -- <path>`), plus `npm run check` / pyright on the changed files when the task calls for them.
+
 ## Repo shape
 
 Top level — code that is neither the app nor the frontend:
