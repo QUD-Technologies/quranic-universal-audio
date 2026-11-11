@@ -40,7 +40,7 @@ def save(limiter: TsRateLimiter, client: str, reason: str) -> None:
 
 def load_into(limiter: TsRateLimiter) -> int:
     """Restore every remembered ban into ``limiter``. Returns how many."""
-    rows = repo_ts_bans.remembered(struck_after=time.time() - STRIKE_MEMORY_S)
+    rows = _remembered()
     for row in rows:
         limiter.restore(
             row["client"], BanState(row["banned_until"], row["strikes"], row["last_strike"])
@@ -50,7 +50,12 @@ def load_into(limiter: TsRateLimiter) -> int:
 
 def listing() -> list[dict]:
     """Every remembered ban, for the owner's view."""
-    return repo_ts_bans.remembered(struck_after=time.time() - STRIKE_MEMORY_S)
+    return _remembered()
+
+
+def _remembered() -> list[dict]:
+    now = time.time()
+    return repo_ts_bans.remembered(now=now, struck_after=now - STRIKE_MEMORY_S)
 
 
 def lift(limiter: TsRateLimiter, client: str) -> bool:

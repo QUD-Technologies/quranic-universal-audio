@@ -171,7 +171,7 @@ def test_a_chapter_sweep_gets_the_client_banned(flask_client, shard_body, tight_
 def test_a_ban_is_persisted_and_survives_a_restart(flask_client, shard_body, tight_limits):
     _sweep(flask_client, 4)
 
-    rows = repo_ts_bans.remembered(struck_after=0)
+    rows = repo_ts_bans.remembered(now=0, struck_after=0)
     assert [(r["client"], r["strikes"], r["reason"]) for r in rows] == [
         (CLIENT, 1, "chapters_per_hour")
     ]
@@ -192,7 +192,7 @@ def test_holder_of_the_capability_can_list_and_lift_a_ban(
     lifted = owner.post("/api/ts/bans/lift", json={"client": CLIENT}, headers=SAME_ORIGIN)
 
     assert lifted.status_code == 200
-    assert repo_ts_bans.remembered(struck_after=0) == []
+    assert repo_ts_bans.remembered(now=0, struck_after=0) == []
     assert flask_client.get(CONFIG).status_code == 200
 
 

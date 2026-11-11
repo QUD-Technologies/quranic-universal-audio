@@ -3,7 +3,8 @@
 A reader opens the chapters of one or two recitations; a bulk pull opens
 thousands. Each client (an IPv4 address, or an IPv6 /64) may open a bounded
 number of *distinct* chapters an hour and a day, and mint a bounded number of
-access tokens; going over bans the client for a day, then a week, then a month.
+access tokens; going over bans the client for a week, and for good the second
+time.
 
 There is no per-minute chapter limit on purpose: the site's own Repeat loads
 every chapter of the chosen range at once (a whole juz is ~40 in a few
@@ -31,10 +32,12 @@ MINUTE_S = 60
 HOUR_S = 3600
 DAY_S = 24 * HOUR_S
 
-# Ban length for a client's 1st, 2nd and later offences.
-BAN_STEPS_S = (DAY_S, 7 * DAY_S, 30 * DAY_S)
-# Offences older than this no longer lengthen the next ban.
-STRIKE_MEMORY_S = 90 * DAY_S
+# "For good": long enough that only an owner lifting the ban ends it.
+PERMANENT_BAN_S = 100 * 365 * DAY_S
+# Ban length for a client's 1st offence, then every later one.
+BAN_STEPS_S = (7 * DAY_S, PERMANENT_BAN_S)
+# A first offence older than this is forgotten: the next one is a first again.
+STRIKE_MEMORY_S = 365 * DAY_S
 # Forget idle clients every this many calls.
 _SWEEP_EVERY = 2000
 _IPV6_CLIENT_PREFIX = 64

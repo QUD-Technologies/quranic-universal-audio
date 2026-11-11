@@ -25,14 +25,15 @@ def upsert(
     )
 
 
-def remembered(*, struck_after: float) -> list[dict]:
-    """Every ban whose offence still counts (``last_strike`` after ``struck_after``)."""
+def remembered(*, now: float, struck_after: float) -> list[dict]:
+    """Every ban still running at ``now``, plus every expired one whose offence
+    still counts (``last_strike`` after ``struck_after``)."""
     rows = (
         get_conn()
         .execute(
             "SELECT client, banned_until, strikes, last_strike, reason "
-            "FROM ts_bans WHERE last_strike > ? ORDER BY client",
-            (struck_after,),
+            "FROM ts_bans WHERE banned_until > ? OR last_strike > ? ORDER BY client",
+            (now, struck_after),
         )
         .fetchall()
     )

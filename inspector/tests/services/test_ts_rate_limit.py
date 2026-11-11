@@ -5,7 +5,14 @@ from __future__ import annotations
 import pytest
 
 from services.auth import ts_rate_limit
-from services.auth.ts_rate_limit import BAN_STEPS_S, DAY_S, HOUR_S, STRIKE_MEMORY_S, BanState
+from services.auth.ts_rate_limit import (
+    BAN_STEPS_S,
+    DAY_S,
+    HOUR_S,
+    PERMANENT_BAN_S,
+    STRIKE_MEMORY_S,
+    BanState,
+)
 
 CLIENT = "198.51.100.4"
 OTHER_CLIENT = "198.51.100.5"
@@ -69,14 +76,14 @@ def test_token_mints_are_limited(limiter):
     assert [limiter.record_token(CLIENT) for _ in range(3)] == [None, None, "tokens_per_hour"]
 
 
-def test_bans_grow_with_each_offence_and_cap(limiter, clock):
-    lengths = []
-    for _ in range(len(BAN_STEPS_S) + 1):
-        _open(limiter, 4)
-        lengths.append(limiter.ban_remaining(CLIENT))
-        clock.now += lengths[-1]
+def test_second_offence_is_banned_for_good(limiter, clock):
+    _open(limiter, 4)
+    first = limiter.ban_remaining(CLIENT)
+    clock.now += first
+    _open(limiter, 4)
 
-    assert lengths == [*BAN_STEPS_S, BAN_STEPS_S[-1]]
+    assert first == 7 * DAY_S
+    assert limiter.ban_remaining(CLIENT) == PERMANENT_BAN_S
 
 
 def test_an_old_offence_is_forgotten(limiter, clock):
