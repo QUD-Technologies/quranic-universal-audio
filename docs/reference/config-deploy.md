@@ -113,6 +113,8 @@ The image bakes the **dev** bucket as default (`INSPECTOR_BUCKET_REPO=QUD-Techno
 | Var | Default | Purpose |
 |---|---|---|
 | `INSPECTOR_QUA_DOMAIN_WHEEL_DIR` | `/opt/wheels` | Where the runtime image keeps the `qua_domain` wheel from stage 1b. `stage_job_code` uploads it to `aligner-bucket/code/wheels/` so HF Jobs (non-Hafs publish / cut) install the same edition projection the Space runs; absent = Hafs-only jobs, warned at launch. |
+| `INSPECTOR_TS_RATE_LIMIT` | `enforce` | Per-client limits on the timestamps data routes (`services/auth/ts_rate_limit.py`): `enforce` bans, `log` only logs, `off` skips counting. Thresholds: `INSPECTOR_TS_LIMIT_CHAPTERS_PER_MINUTE` (30), `INSPECTOR_TS_LIMIT_CHAPTERS_PER_HOUR` (150), `INSPECTOR_TS_LIMIT_REQUESTS_PER_MINUTE` (240), `INSPECTOR_TS_LIMIT_TOKENS_PER_HOUR` (60). → `auth-permissions.md` |
+| `INSPECTOR_TS_EDGE_SECRET` | unset | Space **secret**. When set, anonymous `/api/ts/*` requests must carry it as `X-QUA-Edge` (added by a Cloudflare Transform Rule on the custom domain); the direct `*.hf.space` origin is refused. Set the Cloudflare rule first, then this. |
 | `INSPECTOR_MULTI_RIWAYAH` | `1` | Kill-switch for the non-Hafs editions (`config.MULTI_RIWAYAH_ENABLED`). `0` makes `services/reference/editions.py` behave as if `qua_domain` were absent — a 60-second rollback via a Space **variable** + restart, where a rebuild is ten minutes. It does NOT render non-Hafs as Hafs; those deliveries fail loudly. |
 
 ## Image build — `inspector/Dockerfile`

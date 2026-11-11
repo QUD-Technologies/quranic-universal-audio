@@ -484,6 +484,15 @@ CAPABILITIES: tuple[Capability, ...] = (
         maintainer=True,
     ),
     _c(
+        "timestamps.unlimited_access",
+        G_ADMIN,
+        "Unlimited timestamps reads",
+        "Read timestamps without the per-visitor chapter limit and temporary "
+        "ban that stop bulk downloads, and from the direct Space address.",
+        contributor=False,
+        maintainer=True,
+    ),
+    _c(
         "segments.view_boundary_review",
         G_ADMIN,
         "View boundary-review flags",

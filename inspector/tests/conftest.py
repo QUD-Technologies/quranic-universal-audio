@@ -104,14 +104,27 @@ def load_expected():
     return _loader
 
 
+# The address werkzeug's test client connects from.
+_TEST_CLIENT_ADDR = "127.0.0.1"
+
+
 def _page_client(app):
     """Test client that acts as the site's own page.
 
-    /api/ts/* refuses requests without browser Fetch Metadata
-    (services/auth/ts_access.py); access-gate tests strip the header.
+    /api/ts/* refuses requests without browser Fetch Metadata, and chapter and
+    verse reads without an access token (services/auth/ts_access.py);
+    access-gate tests strip the headers. Each client starts with clean limits.
     """
+    from routes.timestamps import access
+    from services.auth import ts_access, ts_rate_limit
+
+    access.limiter.reset()
     client = app.test_client()
     client.environ_base["HTTP_SEC_FETCH_SITE"] = "same-origin"
+    token, _ = ts_access.issue_token(
+        str(app.secret_key), ts_rate_limit.client_key(_TEST_CLIENT_ADDR)
+    )
+    client.environ_base["HTTP_X_QUA_ACCESS"] = token
     return client
 
 

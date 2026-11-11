@@ -42,7 +42,7 @@ access.guard(ts_bp)
 
 @ts_bp.route("/access-token")
 def ts_access_token():
-    """Short-lived token the page sends as ``X-QUA-Access`` on shard fetches."""
+    """Short-lived token the page sends as ``X-QUA-Access`` on chapter and verse reads."""
     return access.issue_token_response()
 
 
@@ -122,7 +122,7 @@ def ts_manifest():
 @ts_bp.route("/shard/<reciter>/<int:chapter>")
 def ts_shard(reciter, chapter):
     """Serve a per-chapter Brotli compact v13 shard (byte pass-through)."""
-    refused = access.require_token()
+    refused = access.admit(reciter, chapter)
     if refused is not None:
         return refused
     # Owner preview: holders of ``timestamps.view_unreleased`` may read shards
@@ -163,6 +163,9 @@ def ts_verse(reciter, chapter):
         return jsonify(
             ErrorEnvelope(error="ayah must be a positive integer").model_dump(exclude_none=True)
         ), 400
+    refused = access.admit(reciter, chapter)
+    if refused is not None:
+        return refused
     user = auth_service.current_user()
     body = ts_serve.verse_bytes(
         reciter,
