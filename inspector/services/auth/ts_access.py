@@ -20,6 +20,10 @@ qud.dev demo, which is same-site). Two checks keep scripts out:
   Cloudflare zone in front of the public hostname adds. That closes the direct
   ``*.hf.space`` origin, so the edge's bot rules and rate limits cannot be
   skipped by switching hostname.
+* **Challenge** (optional) — with ``INSPECTOR_TS_TURNSTILE_SECRET`` set, the
+  token is issued only for a passed Cloudflare Turnstile challenge
+  (``services/auth/turnstile.py``), solved on this site or a ``*.qud.dev``
+  page. Forged headers alone then get no token.
 
 Limits and bans per client are ``services/auth/ts_rate_limit.py``.
 
@@ -77,7 +81,8 @@ def _host_of(url: str | None) -> str | None:
     return host.lower() if host else None
 
 
-def _trusted_host(host: str | None, request_host: str) -> bool:
+def trusted_host(host: str | None, request_host: str) -> bool:
+    """True for the request's own host or a ``*.qud.dev`` sibling."""
     if not host:
         return False
     if host == request_host.split(":")[0].lower():
@@ -92,7 +97,7 @@ def is_browser_request(
     if sec_fetch_site:
         return sec_fetch_site.lower() in _ALLOWED_FETCH_SITES
     # No Fetch Metadata (old browser): require our own page as Origin/Referer.
-    return _trusted_host(_host_of(origin), request_host) or _trusted_host(
+    return trusted_host(_host_of(origin), request_host) or trusted_host(
         _host_of(referer), request_host
     )
 

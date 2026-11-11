@@ -6,7 +6,8 @@ import pytest
 from routes.timestamps import access
 from routes.timestamps import timestamps as ts_routes
 
-from services.auth import ts_access, ts_rate_limit
+from services.auth import ts_access, ts_rate_limit, turnstile
+from services.db import repo_ts_bans
 
 SHARD = "/api/ts/shard/reciter_a/2"
 VERSE = "/api/ts/verse/reciter_a/2"
@@ -14,6 +15,7 @@ CONFIG = "/api/ts/config"
 CLIENT = "127.0.0.1"
 OTHER_CLIENT = "203.0.113.7"
 EDGE_SECRET = "edge-secret-value"
+SAME_ORIGIN = {"Origin": "http://localhost"}
 
 
 @pytest.fixture
@@ -136,9 +138,9 @@ def test_token_expires_and_rejects_tampering():
 
 @pytest.fixture
 def tight_limits(monkeypatch):
-    """Enforced limits small enough to break: three chapters a minute, two tokens an hour."""
+    """Enforced limits small enough to break: three chapters an hour, two tokens an hour."""
     limits = ts_rate_limit.Limits(
-        chapters_per_minute=3, chapters_per_hour=100, requests_per_minute=100, tokens_per_hour=2
+        chapters_per_hour=3, chapters_per_day=100, requests_per_minute=100, tokens_per_hour=2
     )
     monkeypatch.setattr(access, "limiter", ts_rate_limit.TsRateLimiter(limits))
     monkeypatch.setattr(access.config, "TS_RATE_LIMIT_MODE", "enforce")
@@ -164,6 +166,40 @@ def test_a_chapter_sweep_gets_the_client_banned(flask_client, shard_body, tight_
     assert res.status_code == 429
     assert res.get_json()["reason"] == "too_many_requests"
     assert int(res.headers["Retry-After"]) > 0
+
+
+def test_a_ban_is_persisted_and_survives_a_restart(flask_client, shard_body, tight_limits):
+    _sweep(flask_client, 4)
+
+    rows = repo_ts_bans.remembered(struck_after=0)
+    assert [(r["client"], r["strikes"], r["reason"]) for r in rows] == [
+        (CLIENT, 1, "chapters_per_hour")
+    ]
+
+    access.limiter.reset()  # what a restart does to the in-memory state
+    access._bans_restored = False
+
+    assert flask_client.get(CONFIG).status_code == 429
+
+
+def test_holder_of_the_capability_can_list_and_lift_a_ban(
+    flask_client, shard_body, tight_limits, signed_in_client
+):
+    owner, _ = signed_in_client(role="owner")
+    _sweep(flask_client, 4)
+
+    assert [b["client"] for b in owner.get("/api/ts/bans").get_json()["bans"]] == [CLIENT]
+    lifted = owner.post("/api/ts/bans/lift", json={"client": CLIENT}, headers=SAME_ORIGIN)
+
+    assert lifted.status_code == 200
+    assert repo_ts_bans.remembered(struck_after=0) == []
+    assert flask_client.get(CONFIG).status_code == 200
+
+
+def test_anonymous_cannot_read_or_lift_bans(flask_client):
+    assert flask_client.get("/api/ts/bans").status_code == 401
+    lifted = flask_client.post("/api/ts/bans/lift", json={"client": CLIENT}, headers=SAME_ORIGIN)
+    assert lifted.status_code == 401
 
 
 def test_rereading_one_chapter_is_not_a_sweep(flask_client, shard_body, tight_limits):
@@ -194,6 +230,73 @@ def test_log_mode_counts_but_never_refuses(flask_client, shard_body, tight_limit
 
 def test_unlimited_capability_is_not_counted(flask_client, shard_body, tight_limits, unlimited):
     assert _sweep(flask_client, 6) == [200] * 6
+
+
+# ── Turnstile challenge ───────────────────────────────────────────────────────
+
+TOKEN_URL = "/api/ts/access-token"
+SITE_KEY = "site-key"
+
+
+@pytest.fixture
+def challenge(monkeypatch):
+    """Turnstile is configured; siteverify passes only the response ``"good"``, solved on qud.dev."""
+    monkeypatch.setattr(access.config, "TS_TURNSTILE_SECRET", "turnstile-secret")
+    monkeypatch.setattr(access.config, "TS_TURNSTILE_SITE_KEY", SITE_KEY)
+    seen = {"hostname": "qud.dev"}
+
+    class _Reply:
+        def __init__(self, response: str):
+            self._response = response
+
+        def json(self) -> dict:
+            return {"success": self._response == "good", "hostname": seen["hostname"]}
+
+    def _post(url, data, timeout):
+        return _Reply(data["response"])
+
+    monkeypatch.setattr(turnstile.requests, "post", _post)
+    return seen
+
+
+def test_token_request_without_a_pass_is_told_the_site_key(flask_client, challenge):
+    res = flask_client.post(TOKEN_URL, json={})
+
+    assert res.status_code == 403
+    assert res.get_json()["reason"] == "challenge_required"
+    assert res.get_json()["turnstile_site_key"] == SITE_KEY
+
+
+def test_get_cannot_skip_the_challenge(flask_client, challenge):
+    assert flask_client.get(TOKEN_URL).get_json()["reason"] == "challenge_required"
+
+
+def test_token_is_issued_for_a_passed_challenge(flask_client, challenge):
+    res = flask_client.post(TOKEN_URL, json={"turnstile": "good"})
+
+    assert res.status_code == 200
+    assert ts_access.token_valid(
+        str(flask_client.application.secret_key), res.get_json()["token"], CLIENT
+    )
+
+
+def test_failed_challenge_gets_no_token(flask_client, challenge):
+    res = flask_client.post(TOKEN_URL, json={"turnstile": "bad"})
+
+    assert res.status_code == 403
+    assert res.get_json()["reason"] == "challenge_failed"
+
+
+def test_pass_solved_on_a_foreign_site_gets_no_token(flask_client, challenge):
+    challenge["hostname"] = "evil.example"
+
+    res = flask_client.post(TOKEN_URL, json={"turnstile": "good"})
+
+    assert res.get_json()["reason"] == "challenge_failed"
+
+
+def test_post_without_challenge_configured_issues_a_token(flask_client):
+    assert flask_client.post(TOKEN_URL, json={}).status_code == 200
 
 
 # ── Edge secret ───────────────────────────────────────────────────────────────

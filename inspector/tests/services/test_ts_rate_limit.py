@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from services.auth import ts_rate_limit
-from services.auth.ts_rate_limit import BAN_STEPS_S, HOUR_S, MINUTE_S, STRIKE_MEMORY_S
+from services.auth.ts_rate_limit import BAN_STEPS_S, DAY_S, HOUR_S, STRIKE_MEMORY_S, BanState
 
 CLIENT = "198.51.100.4"
 OTHER_CLIENT = "198.51.100.5"
@@ -27,7 +27,7 @@ def clock():
 @pytest.fixture
 def limiter(clock):
     limits = ts_rate_limit.Limits(
-        chapters_per_minute=3, chapters_per_hour=5, requests_per_minute=10, tokens_per_hour=2
+        chapters_per_hour=3, chapters_per_day=5, requests_per_minute=10, tokens_per_hour=2
     )
     return ts_rate_limit.TsRateLimiter(limits, clock=clock)
 
@@ -36,25 +36,25 @@ def _open(limiter, count: int, *, start: int = 1) -> list[str | None]:
     return [limiter.record_chapter(CLIENT, f"r/{ch}") for ch in range(start, start + count)]
 
 
-def test_distinct_chapters_in_a_minute_break_the_limit(limiter):
-    assert _open(limiter, 4) == [None, None, None, "chapters_per_minute"]
+def test_distinct_chapters_in_an_hour_break_the_limit(limiter):
+    assert _open(limiter, 4) == [None, None, None, "chapters_per_hour"]
     assert limiter.ban_remaining(CLIENT) == BAN_STEPS_S[0]
 
 
-def test_a_slow_sweep_breaks_the_hourly_limit(limiter, clock):
+def test_a_slow_sweep_breaks_the_daily_limit(limiter, clock):
     broken = []
     for ch in range(1, 7):
         broken.append(limiter.record_chapter(CLIENT, f"r/{ch}"))
-        clock.now += MINUTE_S
+        clock.now += HOUR_S
 
-    assert broken == [None] * 5 + ["chapters_per_hour"]
+    assert broken == [None] * 5 + ["chapters_per_day"]
 
 
-def test_chapters_older_than_an_hour_no_longer_count(limiter, clock):
+def test_chapters_older_than_a_day_no_longer_count(limiter, clock):
     for ch in range(1, 6):
         limiter.record_chapter(CLIENT, f"r/{ch}")
-        clock.now += MINUTE_S
-    clock.now += HOUR_S
+        clock.now += HOUR_S
+    clock.now += DAY_S
 
     assert limiter.record_chapter(CLIENT, "r/6") is None
 
@@ -93,6 +93,23 @@ def test_a_banned_client_is_not_counted_again(limiter):
 
     assert _open(limiter, 4, start=10) == [None] * 4
     assert limiter.ban_remaining(CLIENT) == BAN_STEPS_S[0]
+
+
+def test_a_restored_ban_holds_and_lengthens_the_next_one(limiter, clock):
+    limiter.restore(CLIENT, BanState(banned_until=clock.now + 50, strikes=1, last_strike=clock.now))
+
+    assert limiter.ban_remaining(CLIENT) == 50
+    clock.now += 51
+    _open(limiter, 4)
+
+    assert limiter.ban_remaining(CLIENT) == BAN_STEPS_S[1]
+    assert limiter.ban_state(CLIENT) == BanState(clock.now + BAN_STEPS_S[1], 2, clock.now)
+
+
+def test_a_client_that_never_broke_a_limit_has_no_ban_state(limiter):
+    _open(limiter, 2)
+
+    assert limiter.ban_state(CLIENT) is None
 
 
 def test_clients_are_counted_apart(limiter):

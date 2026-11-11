@@ -22,7 +22,7 @@ from config import (
     ANIM_WORD_TRANSITION_DURATION,
     UNIFIED_DISPLAY_MAX_HEIGHT,
 )
-from qua_shared.schemas import ErrorEnvelope, TsConfigResponse, TsVbrResponse
+from qua_shared.schemas import ErrorEnvelope, OkAck, TsConfigResponse, TsVbrResponse
 from services import auth as auth_service
 from services import permissions
 from services import state as state_service
@@ -31,7 +31,7 @@ from services.audio_meta import vbr_chapters_for_reciter
 from services.auth import capabilities as _capabilities
 from services.reference import readings as readings_service
 from services.reference import recitation_profile as profile_service
-from utils.decorators import require_capability
+from utils.decorators import require_capability, require_same_origin
 from utils.json_response import orjson_response
 
 from . import access
@@ -40,10 +40,33 @@ ts_bp = Blueprint("ts", __name__, url_prefix="/api/ts")
 access.guard(ts_bp)
 
 
-@ts_bp.route("/access-token")
+@ts_bp.route("/access-token", methods=["GET", "POST"])
 def ts_access_token():
     """Short-lived token the page sends as ``X-QUA-Access`` on chapter and verse reads."""
     return access.issue_token_response()
+
+
+@ts_bp.route("/bans")
+@require_capability(access.UNLIMITED_CAPABILITY)
+def ts_bans_list(user):
+    """Clients currently banned (or with strikes) for pulling timestamps in bulk."""
+    return orjson_response({"bans": access.bans_listing()}, headers=_NO_STORE_HEADERS)
+
+
+@ts_bp.route("/bans/lift", methods=["POST"])
+@require_same_origin
+@require_capability(access.UNLIMITED_CAPABILITY)
+def ts_bans_lift(user):
+    """Unban one client (``{"client": "<ip or ipv6 /64>"}``) and forget its strikes."""
+    body = request.get_json(silent=True)
+    client = body.get("client") if isinstance(body, dict) else None
+    if not isinstance(client, str) or not client:
+        return jsonify(ErrorEnvelope(error="client is required").model_dump(exclude_none=True)), 400
+    if not access.lift_ban(client):
+        return jsonify(
+            ErrorEnvelope(error="No ban for that client").model_dump(exclude_none=True)
+        ), 404
+    return jsonify(OkAck().model_dump(exclude_none=True))
 
 
 @ts_bp.route("/config")

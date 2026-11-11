@@ -120,6 +120,7 @@ def _page_client(app):
     from services.auth import ts_access, ts_rate_limit
 
     access.limiter.reset()
+    access._bans_restored = False
     client = app.test_client()
     client.environ_base["HTTP_SEC_FETCH_SITE"] = "same-origin"
     token, _ = ts_access.issue_token(
