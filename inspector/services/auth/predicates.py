@@ -132,6 +132,30 @@ def can_release(row, user) -> bool:
     )
 
 
+def quality_settable(row) -> bool:
+    """A quality status can be set or changed only once the recitation is
+    finished: published, or marked ready for publishing. Clearing it is
+    allowed in any state."""
+    return row.state == ReciterState.RELEASED or (
+        row.state == ReciterState.UNDER_REVIEW and row.marked_ready
+    )
+
+
+def can_set_quality_status(row, user) -> bool:
+    """Caller may set or change the quality status now (capability + the row
+    is published or marked ready)."""
+    if user is None or row is None:
+        return False
+    return quality_settable(row) and _can(user, "reciter.set_quality_status")
+
+
+def can_clear_quality_status(row, user) -> bool:
+    """Caller may clear an existing quality status (any state)."""
+    if user is None or row is None or row.quality_status is None:
+        return False
+    return _can(user, "reciter.set_quality_status")
+
+
 def build_predicates(row, user, *, has_other_active_claim: bool) -> dict:
     """Return a JSON-serialisable map of every predicate for the response.
 
@@ -146,4 +170,6 @@ def build_predicates(row, user, *, has_other_active_claim: bool) -> dict:
         "can_skip_mark_ready_gates": can_skip_mark_ready_gates(row, user),
         "can_unmark_ready": can_unmark_ready(row, user),
         "can_release": can_release(row, user),
+        "can_set_quality_status": can_set_quality_status(row, user),
+        "can_clear_quality_status": can_clear_quality_status(row, user),
     }

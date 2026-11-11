@@ -697,6 +697,8 @@ def test_reciter_task_predicates_anonymous(flask_client):
         "can_skip_mark_ready_gates": False,
         "can_unmark_ready": False,
         "can_release": False,
+        "can_set_quality_status": False,
+        "can_clear_quality_status": False,
     }
 
 

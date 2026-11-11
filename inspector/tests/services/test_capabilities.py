@@ -165,4 +165,5 @@ def test_event_capability_map_is_complete_and_valid():
         "claim.force_released",
         "claim.reassigned",
         "admin.unlocked_for_revision",
+        "reciter.quality_set",
     }

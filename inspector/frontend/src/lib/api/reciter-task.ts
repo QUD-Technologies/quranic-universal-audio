@@ -14,6 +14,7 @@
 
 import { type Readable,readable } from 'svelte/store';
 
+import type { QualityStatus } from '../types/generated/schemas';
 import { fetchJsonOrNull } from './index';
 
 export type ReciterTaskState =
@@ -41,6 +42,8 @@ export interface ReciterRow {
     assignee_since: string | null;
     marked_ready: boolean;
     visibility: Visibility;
+    /** Maintainer's manual recitation quality rating; null = not rated. */
+    quality_status?: QualityStatus | null;
     // Other fields exist on the backend row but the frontend doesn't need them.
     [k: string]: unknown;
 }
@@ -60,6 +63,10 @@ export interface Predicates {
     can_skip_mark_ready_gates: boolean;
     can_unmark_ready: boolean;
     can_release: boolean;
+    /** Holds `reciter.set_quality_status` and the row is published or marked ready. */
+    can_set_quality_status: boolean;
+    /** Holds `reciter.set_quality_status` and a rating exists (any state). */
+    can_clear_quality_status: boolean;
 }
 
 export interface ReciterTask {

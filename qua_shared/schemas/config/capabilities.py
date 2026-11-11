@@ -385,6 +385,15 @@ CAPABILITIES: tuple[Capability, ...] = (
         maintainer=True,
     ),
     _c(
+        "reciter.set_quality_status",
+        G_CLAIMS,
+        "Set recitation quality",
+        "Rate a published or marked-ready recitation Clean, Almost clean or "
+        "Needs work from the Segments footer, or clear the rating.",
+        contributor=False,
+        maintainer=True,
+    ),
+    _c(
         "claim.force_release",
         G_CLAIMS,
         "Force-release a claim",

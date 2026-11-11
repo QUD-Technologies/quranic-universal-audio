@@ -35,6 +35,7 @@
   "errors_mark_ready_blocking_counts": "عالِج مشكلات التحقق المانعة المتبقية قبل التعليم كجاهز.",
   "errors_mark_ready_payload": "طلب التعليم كجاهز غير مكتمل. راجِعه وأعِد الإرسال.",
   "errors_mark_ready_no_segments": "تعذّر التعليم كجاهز — لا مقاطع محفوظة لهذا القارئ بعد.",
+  "errors_quality_status_payload": "اختر حالة جودة صالحة.",
   "errors_last_owner": "لا يمكنك إزالة آخر مالك — رقِّ مالكًا آخر أولًا.",
   "errors_unknown_reciter": "تعذّر العثور على هذا القارئ.",
   "errors_read_only": "هذه النسخة للقراءة فقط؛ لا تُحفظ التغييرات.",

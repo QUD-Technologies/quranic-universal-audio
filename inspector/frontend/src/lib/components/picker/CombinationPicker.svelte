@@ -36,8 +36,10 @@
     import { tagLabel } from '../../utils/axis-labels';
     import { compactCoverageLabel, compactHoursLabel } from '../../utils/delivery-label';
     import { type FacetSpec, recomputeFacets } from '../../utils/facets';
+    import { QUALITY_ORDER, QUALITY_UNRATED, qualityTag } from '../../utils/quality-status';
     import { filterByFields } from '../../utils/fuzzy-match';
     import Modal from '../Modal.svelte';
+    import QualityPill from '../QualityPill.svelte';
     import ReciterChip from '../ReciterChip.svelte';
     import SearchInput from '../SearchInput.svelte';
     import StatePill from '../StatePill.svelte';
@@ -135,6 +137,7 @@
             for (const axis of descriptor.axes) {
                 activeFilters[axis.key] = new Set();
             }
+            activeFilters[QUALITY_AXIS.key] = new Set();
             activeFilters = activeFilters;
             await tick();
             searchInputEl?.focus();
@@ -168,11 +171,23 @@
         }
     }
 
+    // Picker-only axis: the maintainer's manual recitation quality rating.
+    // Kept out of the shared schema descriptor so the Dashboard rail doesn't
+    // grow it. Pill labels resolve in PickerFilterRail on render.
+    const QUALITY_AXIS: Axis = {
+        key: 'quality',
+        label: m.common_quality_label(),
+        tagsOf: (d) => [qualityTag(d.quality_status)],
+        options: [...QUALITY_ORDER, QUALITY_UNRATED].map((key) => ({ key, label: key })),
+    };
+
     // Rail axes for combinations, in this order: full/partial coverage, then
-    // riwayah, style, channel (no status — the state tabs cover bucket; no
-    // recording context).
-    const RAIL_ORDER = ['coverage', 'riwayah', 'style', 'channel'];
-    $: railAxes = RAIL_ORDER.flatMap((key) => (descriptor?.axes ?? []).filter((a) => a.key === key));
+    // quality, riwayah, style, channel (no status — the state tabs cover
+    // bucket; no recording context).
+    const RAIL_ORDER = ['coverage', 'quality', 'riwayah', 'style', 'channel'];
+    $: railAxes = RAIL_ORDER.flatMap((key) =>
+        [...(descriptor?.axes ?? []), ...(descriptor ? [QUALITY_AXIS] : [])].filter((a) => a.key === key),
+    );
 
     // Flatten reciters into combos, keeping only deliveries whose own
     // bucket is in allowedBuckets — a reciter can show up twice if its
@@ -409,6 +424,7 @@
                                 {#if st}
                                     <PickerReviewStatus login={st.login} markedReady={st.markedReady} />
                                 {/if}
+                                <QualityPill status={c.delivery.quality_status} />
                                 <div class="row-figures">
                                     <span class="coverage">{compactCoverageLabel(c.delivery)}</span>
                                     <span class="dur">{compactHoursLabel(c.delivery)}</span>
@@ -450,6 +466,7 @@
                                 {#if st}
                                     <PickerReviewStatus login={st.login} markedReady={st.markedReady} />
                                 {/if}
+                                <QualityPill status={c.delivery.quality_status} />
                                 <div class="row-figures">
                                     <span class="coverage">{compactCoverageLabel(c.delivery)}</span>
                                     <span class="dur">{compactHoursLabel(c.delivery)}</span>

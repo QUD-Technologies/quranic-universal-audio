@@ -83,6 +83,7 @@
         hideSavePreview,
         onSegSaveClick,
     } from '../../utils/save/actions';
+    import QualityStatusControl from './QualityStatusControl.svelte';
     import MarkReadyModal from './MarkReadyModal.svelte';
     import ShortcutsGuide from './ShortcutsGuide.svelte';
 
@@ -110,6 +111,7 @@
         unclaim: void;
         markReady: void;
         claimed: void;
+        qualityChanged: void;
         backToSamples: void;
     }>();
 
@@ -644,6 +646,11 @@
                             >
                         {/if}
                     {/if}
+                    <QualityStatusControl
+                        slug={$selectedReciter || ''}
+                        task={reciterTask}
+                        onChanged={() => dispatch('qualityChanged')}
+                    />
                 </div>
             {/if}
 

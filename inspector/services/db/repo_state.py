@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from qua_shared.schemas import ReciterRow, ReciterState, Visibility
+from qua_shared.schemas import QualityStatus, ReciterRow, ReciterState, Visibility
 from qua_shared.schemas.config.state import RevisionContext
 
 from . import _serde
@@ -37,6 +37,7 @@ _WRITABLE: dict[str, Any] = {
         if v is None
         else _serde.json_dumps(v.model_dump(mode="json") if hasattr(v, "model_dump") else v)
     ),
+    "quality_status": lambda v: v.value if hasattr(v, "value") else v,
 }
 
 
@@ -52,6 +53,7 @@ def _assemble(ds, claim) -> ReciterRow:
         "last_save_at": _serde.from_iso(ds["last_save_at"]),
         "timestamps_job_ids": _serde.json_loads(ds["timestamps_job_ids"]) or [],
         "revision_in_progress": (RevisionContext.model_validate(rip_raw) if rip_raw else None),
+        "quality_status": (QualityStatus(ds["quality_status"]) if ds["quality_status"] else None),
     }
     # assignee/marked_ready come from the open claim, and only exist on
     # under_review rows (ReciterRow's own invariant).

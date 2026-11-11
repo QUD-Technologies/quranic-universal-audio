@@ -37,6 +37,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
+from ..config.state import QualityStatus
+
 # Public lifecycle taxonomy. Five buckets — the closed set the FE renders and
 # switches on. The route filter allowlist (``_VALID_BUCKETS``) also accepts a
 # phantom ``"publishing"`` that is never produced; it is excluded here on
@@ -95,6 +97,8 @@ class PublicDelivery(BaseModel):
     #: When alignment last finished (ISO) — the pipeline's completion event or an
     #: owner force-move out of awaiting_alignment. None when never aligned.
     aligned_at: str | None = None
+    #: Maintainer's manual recitation quality rating. None = not rated.
+    quality_status: QualityStatus | None = None
 
     # Modal-only (detail / admin-view) — absent on the list payload.
     bucket_dates: dict[str, list[str]] | None = None

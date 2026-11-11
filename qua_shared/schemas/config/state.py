@@ -39,6 +39,18 @@ class ReciterState(str, Enum):
     # ``services.admin.timestamps_jobs.complete_timestamps_job``.
 
 
+class QualityStatus(str, Enum):
+    """Maintainer's manual verdict on how clean a delivery's recitation is.
+
+    A human judgement made after looking at the flags and validation results,
+    not a computed score. Orthogonal to coverage (full/partial).
+    """
+
+    CLEAN = "clean"  # nothing wrong
+    ALMOST_CLEAN = "almost_clean"  # reciter slips / small fixes; nothing missing
+    NEEDS_WORK = "needs_work"  # missing content or issues everywhere; not app-ready
+
+
 class RevisionContext(BaseModel):
     """Set by ``admin.unlocked_for_revision``; cleared on re-publish.
 
@@ -72,6 +84,7 @@ class ReciterRow(BaseModel):
     last_save_at: datetime | None = None
     timestamps_job_ids: list[str] = Field(default_factory=list)
     revision_in_progress: RevisionContext | None = None
+    quality_status: QualityStatus | None = None
 
     @field_validator("slug")
     @classmethod
