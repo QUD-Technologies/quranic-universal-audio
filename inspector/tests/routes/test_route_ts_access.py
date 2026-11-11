@@ -138,7 +138,7 @@ def test_token_expires_and_rejects_tampering():
 
 @pytest.fixture
 def tight_limits(monkeypatch):
-    """Enforced limits small enough to break: three chapters a minute, two tokens an hour."""
+    """Limits small enough to break: three chapters a minute, two tokens an hour."""
     limits = ts_rate_limit.Limits(
         chapters_per_minute=3,
         chapters_per_hour=100,
@@ -147,7 +147,6 @@ def tight_limits(monkeypatch):
         tokens_per_hour=2,
     )
     monkeypatch.setattr(access, "limiter", ts_rate_limit.TsRateLimiter(limits))
-    monkeypatch.setattr(access.config, "TS_RATE_LIMIT_MODE", "enforce")
 
 
 @pytest.fixture
@@ -224,12 +223,6 @@ def test_minting_tokens_in_bulk_gets_the_client_banned(flask_client, tight_limit
     statuses = [flask_client.get("/api/ts/access-token").status_code for _ in range(3)]
 
     assert statuses == [200, 200, 429]
-
-
-def test_log_mode_counts_but_never_refuses(flask_client, shard_body, tight_limits, monkeypatch):
-    monkeypatch.setattr(access.config, "TS_RATE_LIMIT_MODE", "log")
-
-    assert _sweep(flask_client, 6) == [200] * 6
 
 
 def test_unlimited_capability_is_not_counted(flask_client, shard_body, tight_limits, unlimited):
