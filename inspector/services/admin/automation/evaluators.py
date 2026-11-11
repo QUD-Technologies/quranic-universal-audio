@@ -2,7 +2,8 @@
 
 Every evaluator: (1) returns early if disabled; (2) derives candidates from live
 release state; (3) skips in-flight + failed-bucket rows (the timestamps evaluators retry
-infra failures only, see ``timestamps_jobs.auto_retryable_slugs``); (4)
+infra failures only, see ``timestamps_jobs.auto_retryable_slugs``, and skip a
+slug whose align run is still active); (4)
 launches via the existing job entrypoints; (5) records the run. The two
 timestamps evaluators launch nothing while any timestamps run is in flight and
 otherwise only the longest-waiting candidate, so the aligner times one run at
@@ -27,7 +28,14 @@ from services.admin.jobs import cut_release as cut_release_jobs
 from services.admin.jobs import hf_publish_batch as hf_publish_batch_jobs
 from services.admin.jobs import refresh_catalog as refresh_catalog_jobs
 from services.admin.release_preview import current_auto_version
-from services.db import _serde, get_conn, repo_automation, repo_claims, repo_releases
+from services.db import (
+    _serde,
+    get_conn,
+    repo_align_runs,
+    repo_automation,
+    repo_claims,
+    repo_releases,
+)
 from services.db.sync import durable_transaction
 from services.segments import ts_staleness
 from services.segments.flags import count_flagged
@@ -166,11 +174,14 @@ def eval_auto_gen_ts(cfg: AutomationConfig, now: datetime) -> None:
     failed = timestamps_jobs.latest_terminal_failed_slugs()
     retry = timestamps_jobs.auto_retryable_slugs(failed, now)
     watermarks = timestamps_jobs.latest_job_started_by_slug()
+    aligning = repo_align_runs.active_slugs()
     candidates: list[tuple[str, str, list[int] | None]] = []
     for r in rows:
         slug = r[0]
         if repo_releases.current_release("ts", slug) is not None:
             continue  # already timestamped
+        if slug in aligning:
+            continue  # its align run is still storing the times this run would read
         if slug in failed and slug not in retry:
             continue  # last gen failed on the data — manual retry
         claim = repo_claims.get_open_claim(slug)
@@ -180,9 +191,7 @@ def eval_auto_gen_ts(cfg: AutomationConfig, now: datetime) -> None:
         # (which stops this loop) lands only when completion settles, lagging the
         # tick. Without this, a succeeded-but-not-completed job re-fires every tick.
         marked = _claim_val(claim, "marked_ready_at")
-        if slug not in retry and _already_launched_since(
-            watermarks, slug, _serde.from_iso(marked)
-        ):
+        if slug not in retry and _already_launched_since(watermarks, slug, _serde.from_iso(marked)):
             continue
         candidates.append((str(marked or ""), slug, None))
     _launch_first_ts(AUTO_GEN_TS, candidates, now, "generated")
@@ -349,9 +358,12 @@ def eval_stale_ts_regen(cfg: AutomationConfig, now: datetime) -> None:
     failed = timestamps_jobs.latest_terminal_failed_slugs()
     retry = timestamps_jobs.auto_retryable_slugs(failed, now)
     watermarks = timestamps_jobs.latest_job_started_by_slug()
+    aligning = repo_align_runs.active_slugs()
     candidates: list[tuple[str, str, list[int] | None]] = []
     for slug in _delivery_slugs():
         if slug in failed and slug not in retry:
+            continue
+        if slug in aligning:
             continue
         ts = repo_releases.current_release("ts", slug)
         if ts is None or not ts.get("produced_at"):

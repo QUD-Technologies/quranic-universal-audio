@@ -9,6 +9,8 @@ from __future__ import annotations
 import datetime
 from datetime import UTC
 
+import pytest
+
 from services.admin import timestamps_jobs
 
 
@@ -74,17 +76,35 @@ def test_close_interrupted_runs_stamps_only_running_records_failed(monkeypatch):
             self.slug, self.timestamps_job_ids = slug, [job]
 
     records = {
-        "run-a": {"job_id": "run-a", "slug": "a", "status": "running", "started_at": "2026-10-12T17:17:28Z", "settings": {}},
-        "run-b": {"job_id": "run-b", "slug": "b", "status": "succeeded", "started_at": "2026-10-12T10:00:00Z", "settings": {}},
+        "run-a": {
+            "job_id": "run-a",
+            "slug": "a",
+            "status": "running",
+            "started_at": "2026-10-12T17:17:28Z",
+            "settings": {},
+        },
+        "run-b": {
+            "job_id": "run-b",
+            "slug": "b",
+            "status": "succeeded",
+            "started_at": "2026-10-12T10:00:00Z",
+            "settings": {},
+        },
     }
     written = []
-    monkeypatch.setattr(timestamps_jobs.state_service, "all_rows", lambda: [Row("a", "run-a"), Row("b", "run-b")])
+    monkeypatch.setattr(
+        timestamps_jobs.state_service, "all_rows", lambda: [Row("a", "run-a"), Row("b", "run-b")]
+    )
     monkeypatch.setattr(timestamps_jobs, "read_job_record", lambda slug, jid: dict(records[jid]))
     monkeypatch.setattr(timestamps_jobs, "_write_job_record", written.append)
 
     assert timestamps_jobs.close_interrupted_runs() == ["a"]
     (rec,) = written
-    assert (rec.job_id, rec.status, rec.error) == ("run-a", "failed", timestamps_jobs.INTERRUPTED_ERROR)
+    assert (rec.job_id, rec.status, rec.error) == (
+        "run-a",
+        "failed",
+        timestamps_jobs.INTERRUPTED_ERROR,
+    )
     assert rec.ended_at is not None
 
 
@@ -413,6 +433,28 @@ def test_running_job_for_ignores_a_stale_run(monkeypatch):
     assert timestamps_jobs.running_job_for("r") is None
 
 
+def test_running_job_for_reports_a_live_run_past_the_ceiling(monkeypatch):
+    """A run this process is still working is never stale, however long it takes —
+    otherwise automation launches a second run beside it."""
+    import datetime
+
+    old = (datetime.datetime.now(UTC) - datetime.timedelta(hours=48)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    _stub_newest(monkeypatch, _running_record(old))
+    from services.admin import ts_aligner_runner
+
+    monkeypatch.setattr(ts_aligner_runner, "is_live", lambda run_id: run_id == "j9")
+    assert timestamps_jobs.running_job_for("r") == "j9"
+
+
+def test_stale_ceiling_default_is_six_hours(monkeypatch):
+    import datetime
+
+    monkeypatch.delenv("INSPECTOR_TS_STALE_RUN_HOURS", raising=False)
+    five = (datetime.datetime.now(UTC) - datetime.timedelta(hours=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    _stub_newest(monkeypatch, _running_record(five))
+    assert timestamps_jobs.running_job_for("r") == "j9"
+
+
 def test_stale_ceiling_is_env_overridable(monkeypatch):
     import datetime
 
@@ -465,13 +507,45 @@ def test_auto_retry_leaves_data_failures_for_a_manual_retry(monkeypatch):
     assert timestamps_jobs.auto_retryable_slugs({"r"}, _RETRY_NOW) == set()
 
 
-def test_auto_retry_stops_after_the_cap(monkeypatch):
-    streak = [_failed("aligner 503: down")] * timestamps_jobs.AUTO_RETRY_MAX
-    _stub_history(monkeypatch, streak)
+def test_auto_retry_never_stops_but_backs_off(monkeypatch):
+    """No cap: an outage must never strand a reciter. Each aligner failure in a row
+    doubles the wait — five in a row wait 4 h (15 min x 2^4), so 1 h after is too soon."""
+    _stub_history(monkeypatch, [_failed("aligner 503: down")] * 5)
     assert timestamps_jobs.auto_retryable_slugs({"r"}, _RETRY_NOW) == set()
+    later = _RETRY_NOW + datetime.timedelta(hours=3, minutes=1)
+    assert timestamps_jobs.auto_retryable_slugs({"r"}, later) == {"r"}
+
+
+def test_auto_retry_backoff_is_capped(monkeypatch):
+    _stub_history(monkeypatch, [_failed("aligner 503: down")] * 30)
+    later = _RETRY_NOW + timestamps_jobs.AUTO_RETRY_BACKOFF_MAX
+    assert timestamps_jobs.auto_retryable_slugs({"r"}, later) == {"r"}
+
+
+def test_auto_retry_does_not_count_restart_interruptions(monkeypatch):
+    """Prod restarts (deploys, admin pause windows) killed four runs in a row: still
+    retried after the base backoff — a restart says nothing about the reciter."""
+    _stub_history(monkeypatch, [_failed(timestamps_jobs.INTERRUPTED_ERROR)] * 4)
+    assert timestamps_jobs.auto_retryable_slugs({"r"}, _RETRY_NOW) == {"r"}
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        "ch4: aligner unreachable: ReadTimeout: read timed out",
+        "HTTPSConnectionPool(host='aligner.hf.space', port=443): Read timed out. "
+        "(read timeout=3600)",
+        "HTTPSConnectionPool(host='aligner.hf.space', port=443): Max retries exceeded",
+    ],
+)
+def test_auto_retry_takes_an_unanswered_aligner_call(monkeypatch, error):
+    _stub_history(monkeypatch, [_failed(error)])
+    assert timestamps_jobs.auto_retryable_slugs({"r"}, _RETRY_NOW) == {"r"}
 
 
 def test_auto_retry_counts_only_the_trailing_streak(monkeypatch):
-    history = [_failed("aligner 503: down")] * 2 + [{"status": "succeeded"}] + [_failed("aligner 500: x")]
+    history = (
+        [_failed("aligner 503: down")] * 2 + [{"status": "succeeded"}] + [_failed("aligner 500: x")]
+    )
     _stub_history(monkeypatch, history)
     assert timestamps_jobs.auto_retryable_slugs({"r"}, _RETRY_NOW) == {"r"}

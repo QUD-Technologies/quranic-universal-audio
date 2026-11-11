@@ -89,6 +89,45 @@ def test_shard_generation_uses_cpu(delivery, monkeypatch, full):
     assert sent[0]["full"] is full
 
 
+def test_an_unanswered_call_is_reported_as_unreachable(delivery, monkeypatch):
+    """A timeout reads as infrastructure (automation retries it), not as a data failure."""
+    import requests
+
+    def post(url, json, headers, timeout):
+        raise requests.ReadTimeout("read timed out")
+
+    monkeypatch.setattr(requests, "post", post)
+    with pytest.raises(aligner_timing.TimingCallError, match="ch112: aligner unreachable"):
+        aligner_timing.time_chapter("r", 112, riwayah="hafs")
+
+
+def test_calls_past_the_slots_wait_in_process(delivery, monkeypatch):
+    """No more than the slot count of calls are open on the aligner at once."""
+    import requests
+
+    monkeypatch.setattr(aligner_timing, "_call_slots_sem", threading.BoundedSemaphore(1))
+    open_calls, peak, guard = [0], [0], threading.Lock()
+    release = threading.Event()
+
+    def post(url, json, headers, timeout):
+        with guard:
+            open_calls[0] += 1
+            peak[0] = max(peak[0], open_calls[0])
+        release.wait(1)
+        with guard:
+            open_calls[0] -= 1
+        return _Reply({"times": base64.b64encode(b"t").decode(), "timed": 0})
+
+    monkeypatch.setattr(requests, "post", post)
+    threads = [threading.Thread(target=aligner_timing._post, args=({}, f"c{i}")) for i in range(3)]
+    for t in threads:
+        t.start()
+    release.set()
+    for t in threads:
+        t.join(5)
+    assert peak[0] == 1
+
+
 def test_word_times_show_only_segments_still_timed_as_stored():
     words = [["112:1:1", 0, 700, [], []], ["112:1:2", 700, None, [], []]]
     doc = json.loads(brotli.decompress(_doc({

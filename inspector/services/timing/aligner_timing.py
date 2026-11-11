@@ -20,6 +20,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import os
 import threading
 from collections import defaultdict
 
@@ -35,6 +36,28 @@ _PROFILE_ROUTE = "/api/v1/extraction/recitation-profile"
 #: A long chapter decodes and times in about a minute on the GPU; the CPU fallback takes
 #: several times that.
 _READ_TIMEOUT_S = 3600
+
+#: How many aligner calls this process keeps open at once. The aligner's CPU pool has two
+#: workers; every call past that waits in the aligner's own queue, and that wait counts
+#: against ``_READ_TIMEOUT_S``. With the align pipeline's assemble stage timing every chapter
+#: of every resumed run at once, a timestamps run's chapter could wait over an hour there and
+#: fail on the read timeout. Waiting here instead makes the timeout measure only the work.
+_CALL_SLOTS_DEFAULT = 2
+
+
+def _call_slots() -> int:
+    raw = (os.environ.get("INSPECTOR_ALIGNER_CALL_SLOTS") or "").strip()
+    try:
+        return max(1, int(raw)) if raw else _CALL_SLOTS_DEFAULT
+    except ValueError:
+        return _CALL_SLOTS_DEFAULT
+
+
+_call_slots_sem = threading.BoundedSemaphore(_call_slots())
+
+#: The prefix of a call that never got an answer (timeout, refused or dropped connection).
+#: The automations read it as an infrastructure failure and retry the run.
+UNREACHABLE = "aligner unreachable"
 
 _locks: dict[tuple[str, int], threading.Lock] = defaultdict(threading.Lock)
 _locks_guard = threading.Lock()
@@ -220,12 +243,16 @@ def _post(body: dict, label: str, *, route: str = _ROUTE) -> dict:
         "Authorization": f"Bearer {aligner_params.hf_token()}",
         "X-Extraction-Secret": aligner_params.extraction_secret(),
     }
-    resp = requests.post(
-        aligner_params.aligner_url() + route,
-        json=body,
-        headers=headers,
-        timeout=(60, _READ_TIMEOUT_S),
-    )
+    with _call_slots_sem:
+        try:
+            resp = requests.post(
+                aligner_params.aligner_url() + route,
+                json=body,
+                headers=headers,
+                timeout=(60, _READ_TIMEOUT_S),
+            )
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            raise TimingCallError(f"{label}: {UNREACHABLE}: {type(exc).__name__}: {exc}") from exc
     if resp.status_code // 100 != 2:
         raise TimingCallError(f"{label}: aligner {resp.status_code}: {resp.text[:300]}")
     return resp.json()

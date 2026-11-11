@@ -62,12 +62,14 @@ _TERMINAL = (
 # sends the literal "succeeded").
 _TERMINAL_SUCCESS = ("succeeded", "completed")
 
-#: How long a ``running`` record may sit before it is treated as dead.
-#: A run that never stamps its record terminal leaves ``running`` behind
-#: forever — and the single-flight guard then refuses every relaunch with "a
-#: timestamps job is already running". A full 114-chapter run lands in ~1-2 h,
-#: so anything past this ceiling is a corpse, not a run. Env-overridable.
-_STALE_RUN_HOURS_DEFAULT = 2.0
+#: How long a ``running`` record this process is NOT running may sit before it is
+#: treated as dead. A run that never stamps its record terminal leaves ``running``
+#: behind forever — and the single-flight guard then refuses every relaunch with "a
+#: timestamps job is already running". A run whose thread is alive in this process
+#: is never stale, however long it takes (a Katana-seeded delivery waiting on a busy
+#: aligner can run for hours); the ceiling only covers records nothing here will
+#: finish. Env-overridable.
+_STALE_RUN_HOURS_DEFAULT = 6.0
 
 
 def _stale_run_hours() -> float:
@@ -82,6 +84,10 @@ def _is_stale_running(rec: dict | None) -> bool:
     """True when ``rec`` claims ``running`` but started long enough ago that the
     run cannot still be going. Unparseable ``started_at`` is never stale."""
     if not rec or rec.get("status") != "running":
+        return False
+    from services.admin import ts_aligner_runner
+
+    if ts_aligner_runner.is_live(str(rec.get("job_id") or "")):
         return False
     started = _parse_iso(rec.get("started_at"))
     if started is None:
@@ -197,13 +203,18 @@ def latest_terminal_failed_slugs() -> set[str]:
 
 
 #: Failures the aligner infrastructure caused, not the reciter's data: the
-#: Inspector restarted mid-run, or the aligner Space answered 5xx. Automation
-#: retries these on its own; any other failure waits for a manual retry.
-_INFRA_FAILURE = re.compile(r"^interrupted: the Inspector restarted|\baligner 5\d\d\b")
-#: Wait this long after an infra failure before automation retries it.
+#: Inspector restarted mid-run, the aligner Space answered 5xx, or a call never got
+#: an answer (``aligner_timing.UNREACHABLE``; older records carry the raw
+#: ``requests`` message). Automation retries these on its own; any other failure
+#: waits for a manual retry.
+_INFRA_FAILURE = re.compile(
+    r"^interrupted: the Inspector restarted|\baligner 5\d\d\b|\baligner unreachable\b"
+    r"|Read timed out|Max retries exceeded|Connection aborted|RemoteDisconnected"
+)
+#: Wait this long after the first aligner failure in a row before automation retries;
+#: each further one in a row doubles the wait, up to ``AUTO_RETRY_BACKOFF_MAX``.
 AUTO_RETRY_BACKOFF = datetime.timedelta(minutes=15)
-#: Consecutive infra failures after which automation stops retrying a slug.
-AUTO_RETRY_MAX = 3
+AUTO_RETRY_BACKOFF_MAX = datetime.timedelta(hours=6)
 
 
 def _is_infra_failure(rec: dict | None) -> bool:
@@ -212,34 +223,49 @@ def _is_infra_failure(rec: dict | None) -> bool:
     return bool(_INFRA_FAILURE.search(str(rec.get("error") or "")))
 
 
-def _infra_failure_streak(slug: str) -> tuple[int, datetime.datetime | None]:
-    """Trailing run of infra failures (newest first) and the newest one's end."""
+def _is_interrupted(rec: dict) -> bool:
+    return str(rec.get("error") or "").startswith("interrupted: the Inspector restarted")
+
+
+def _infra_failure_streak(slug: str) -> tuple[int, datetime.datetime] | None:
+    """``(aligner failures in a row, newest end)`` when the newest run failed on
+    infrastructure, else None. Restart interruptions in the trailing run are skipped,
+    not counted: a restart says nothing about the reciter or the aligner, and the times
+    an interrupted run stored are kept by the next one."""
     row = state_service.get_row(slug)
     ids = list(getattr(row, "timestamps_job_ids", []) or []) if row else []
-    streak, newest_end = 0, None
+    streak, newest_end, seen = 0, None, False
     for job_id in reversed(ids):
         rec = read_job_record(slug, job_id)
         if rec is None or not _is_infra_failure(rec):
             break
-        if streak == 0:
+        if not seen:
+            seen = True
             newest_end = _parse_iso(rec.get("ended_at") or rec.get("started_at"))
-        streak += 1
-        if streak >= AUTO_RETRY_MAX:
-            break
-    return streak, newest_end
+        if not _is_interrupted(rec):
+            streak += 1
+    return None if newest_end is None else (streak, newest_end)
+
+
+def _retry_backoff(streak: int) -> datetime.timedelta:
+    if streak <= 1:
+        return AUTO_RETRY_BACKOFF
+    return min(AUTO_RETRY_BACKOFF * (2 ** (streak - 1)), AUTO_RETRY_BACKOFF_MAX)
 
 
 def auto_retryable_slugs(slugs: set[str], now: datetime.datetime) -> set[str]:
     """The subset of ``slugs`` (latest run failed) that automation may relaunch:
-    the newest run failed on infrastructure, ended at least
-    ``AUTO_RETRY_BACKOFF`` ago, and fewer than ``AUTO_RETRY_MAX`` infra
-    failures have come in a row."""
+    the newest run failed on infrastructure and its backoff has passed. The backoff
+    is ``AUTO_RETRY_BACKOFF``, doubled for every further aligner failure in a row up
+    to ``AUTO_RETRY_BACKOFF_MAX``; there is no cap, so an infrastructure outage
+    never strands a reciter. Data failures are never retried here."""
     out: set[str] = set()
     for slug in slugs:
-        streak, ended = _infra_failure_streak(slug)
-        if streak == 0 or streak >= AUTO_RETRY_MAX or ended is None:
+        found = _infra_failure_streak(slug)
+        if found is None:
             continue
-        if now - ended >= AUTO_RETRY_BACKOFF:
+        streak, ended = found
+        if now - ended >= _retry_backoff(streak):
             out.add(slug)
     return out
 

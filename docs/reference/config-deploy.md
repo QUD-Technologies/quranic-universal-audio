@@ -86,7 +86,8 @@ The image bakes the **dev** bucket as default (`INSPECTOR_BUCKET_REPO=QUD-Techno
 | `INSPECTOR_GOOGLE_API_KEY` | unset | Optional Google API key tried first for Drive folder listing (`services/admin/intake_plan/drive.py`); by default the key embedded in the public folder page is scraped. |
 | `ACQUIRE_WORKERS` (job env) | one per vCPU, max 8 | Chapters the acquire job fetches + encodes at once. |
 | `INSPECTOR_PUBLIC_BASE_URL` | empty | Public https root the daemon threads into job completion webhooks (no `request.url_root` in a thread). Required for automated GH cuts — the cut job is webhook-only. Set as a Space variable per environment. |
-| `INSPECTOR_TS_STALE_RUN_HOURS` | `6` | How long a `running` timestamps run-log record may sit before the single-flight guard treats it as dead (a run that dies mid-flight never stamps it terminal). |
+| `INSPECTOR_TS_STALE_RUN_HOURS` | `6` | How long a `running` timestamps run-log record that this process is not working may sit before the single-flight guard treats it as dead (a run whose thread is alive is never stale). |
+| `INSPECTOR_ALIGNER_CALL_SLOTS` | `2` | How many aligner timing calls the Inspector keeps open at once; the rest wait in-process so the aligner queue never eats the 1 h read timeout. |
 
 ### Auth / identity / secrets
 

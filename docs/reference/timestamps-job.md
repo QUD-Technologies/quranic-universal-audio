@@ -112,12 +112,22 @@ a run the process died under is stamped `failed` at the next deployed boot
 (`close_interrupted_runs`). A record still left `running` with nothing to
 finish it would block the slug from ever being relaunched.
 
-`timestamps_jobs.running_job_for` therefore applies a staleness ceiling: a
+`timestamps_jobs.running_job_for` therefore applies a staleness ceiling — but only
+to a record this process is not working: a run whose thread is alive here
+(`ts_aligner_runner.is_live`) is in flight however long it takes. Otherwise a
 `running` record whose `started_at` is older than `INSPECTOR_TS_STALE_RUN_HOURS`
-(default **6 h**; a full 114-chapter run lands in ~1-2 h) reads as dead, and both
-the launch guard and the in-flight jobs registry ignore it. The record itself is
-left alone — **Cancel** in the run drawer is still what rewrites it to
-`canceled` and keeps the history honest.
+(default **6 h**) reads as dead, and both the launch guard and the in-flight jobs
+registry ignore it. (The ceiling used to be 2 h and apply to live runs too: a
+Katana-seeded delivery waiting on a busy aligner ran past it, and automation
+launched a second run beside it.) The record itself is left alone — **Cancel** in
+the run drawer is still what rewrites it to `canceled` and keeps the history honest.
+
+Each aligner call holds one of `INSPECTOR_ALIGNER_CALL_SLOTS` (default 2) process-wide
+slots while it is open, so calls beyond the aligner's CPU-pool size wait in the
+Inspector rather than in the aligner's queue, where the wait counted against the 1 h
+read timeout. A call that times out or cannot connect fails as
+`chN: aligner unreachable: …`, which the automations retry
+([automation.md](automation.md) § Invariants).
 
 ## Failure policy
 
