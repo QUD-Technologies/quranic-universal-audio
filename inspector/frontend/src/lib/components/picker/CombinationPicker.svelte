@@ -207,9 +207,10 @@
         options: [...QUALITY_ORDER, QUALITY_UNRATED].map((key) => ({ key, label: key })),
     };
 
-    // Picker-only axis: deliveries with open Low Confidence / Low Confidence
-    // v2 items. Reactive on `reviewSignals` (it fills in after open), so the
-    // facets recompute as counts arrive. Labels resolve in PickerFilterRail.
+    // Picker-only axis: deliveries with open Low Confidence items (one
+    // combined signal: under the default threshold or Low Confidence v2).
+    // Reactive on `reviewSignals` (it fills in after open), so the facets
+    // recompute as counts arrive. Labels resolve in PickerFilterRail.
     const REVIEW_AXIS_KEY = 'review';
     $: REVIEW_AXIS = {
         key: REVIEW_AXIS_KEY,
