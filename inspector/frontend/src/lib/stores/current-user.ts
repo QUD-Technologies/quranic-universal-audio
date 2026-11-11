@@ -8,9 +8,7 @@
  * the same schema regardless of auth state.
  */
 
-import { derived, writable } from 'svelte/store';
-
-import { fetchJson } from '../api';
+import { derived, get, writable } from 'svelte/store';
 
 export type Role = 'contributor' | 'maintainer' | 'owner' | null;
 
@@ -91,20 +89,63 @@ export const isAdmin = derived(
 
 export const isOwner = derived(currentUser, (u) => u.role === 'owner');
 
-/** Fetch /api/me and replace the store. Returns the loaded value. */
-export async function loadCurrentUser(): Promise<CurrentUser> {
+/** Backoff before each retry after a transient `/api/me` failure. After the
+ *  last one we stop; the next tab-focus re-check tries again. */
+export const ME_RETRY_DELAYS_MS = [2_000, 8_000, 30_000] as const;
+
+let _retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** The `/api/me` body when the server answered authoritatively, else `null`.
+ *  Authoritative = 2xx + JSON + an object carrying `hf_user_id` (anonymous is a
+ *  200 with `hf_user_id: null`, never a 401). A paused/booting Space's HTML
+ *  page, a Cloudflare error page, a 5xx, a network error or a bad body are all
+ *  transient — they say nothing about the session. */
+async function _fetchMe(): Promise<CurrentUser | null> {
     try {
-        const me = await fetchJson<CurrentUser>('/api/me');
-        currentUser.set(me ?? _ANON);
-        return me ?? _ANON;
+        const res = await fetch('/api/me', { credentials: 'same-origin' });
+        if (!res.ok || !(res.headers.get('content-type') ?? '').includes('application/json')) {
+            return null;
+        }
+        const body: unknown = await res.json();
+        if (body === null || typeof body !== 'object' || !('hf_user_id' in body)) return null;
+        return body as CurrentUser;
     } catch {
-        currentUser.set(_ANON);
-        return _ANON;
+        return null;
     }
+}
+
+function _clearRetry(): void {
+    if (_retryTimer !== null) {
+        clearTimeout(_retryTimer);
+        _retryTimer = null;
+    }
+}
+
+async function _load(attempt: number): Promise<CurrentUser> {
+    _clearRetry();
+    const me = await _fetchMe();
+    if (me !== null) {
+        currentUser.set(me);
+        return me;
+    }
+    // Transient failure: keep whoever we had (a woken laptop's first focus
+    // fetch, or one landing during a Space restart, must not sign the UI out).
+    if (attempt < ME_RETRY_DELAYS_MS.length) {
+        _retryTimer = setTimeout(() => void _load(attempt + 1), ME_RETRY_DELAYS_MS[attempt]);
+    }
+    return get(currentUser);
+}
+
+/** Fetch /api/me and replace the store — but only on an authoritative answer.
+ *  On a transient failure the current value is kept and a bounded retry is
+ *  scheduled (a newer call supersedes it). Returns the store's value. */
+export function loadCurrentUser(): Promise<CurrentUser> {
+    return _load(0);
 }
 
 /** Force the store back to anonymous. Use after explicit logout. */
 export function resetCurrentUser(): void {
+    _clearRetry();
     currentUser.set(_ANON);
 }
 

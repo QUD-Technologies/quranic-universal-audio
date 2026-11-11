@@ -152,7 +152,7 @@ Stop-sign detection is one shared util — `lib/utils/waqf.ts` (`splitWaqf`/`has
 
 | File | Role |
 |---|---|
-| `current-user.ts` | `currentUser` writable (loaded from `/api/me`); `isSignedIn()`; derived `isAdmin` (maintainer\|owner), `isOwner`; `loadCurrentUser()` / `resetCurrentUser()`. Dashboard-level gating. |
+| `current-user.ts` | `currentUser` writable (loaded from `/api/me`); `isSignedIn()`; derived `isAdmin` (maintainer\|owner), `isOwner`; `loadCurrentUser()` / `resetCurrentUser()`. Dashboard-level gating. `loadCurrentUser()` (boot + every tab-visible re-check) replaces the store **only on an authoritative answer** — 2xx + JSON + an object with `hf_user_id` (anonymous = 200 null-filled). A 5xx / paused-Space HTML / network error keeps the current user and retries on `ME_RETRY_DELAYS_MS` (2 s, 8 s, 30 s; a newer call or `resetCurrentUser()` cancels it) — a transient failure must never read as a sign-out. |
 | `editing-mode.ts` | `editingMode` writable (`view`/`editor`/`maintainer`/`owner` + `viewReason`); pure `syncEditingMode(user,task)`; derived `editingDisabled`, `isAdmin`. Reciter-scoped gating — see `editGate`. |
 | `edit-popover.ts` | State for the `editGate`-surfaced popover (`showEditPopover`) |
 | `sign-in-modal.ts` | `openSignInModal` state |
