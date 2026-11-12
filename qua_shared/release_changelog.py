@@ -86,14 +86,14 @@ def _member_table(members: list[dict], *, with_issues: bool) -> list[str]:
         rule += "---|"
     rows = [head, rule]
     ordered = sorted(
-        members, key=lambda m: _CHANGE_ORDER.get(m.get("change_kind"), len(_CHANGE_ORDER))
+        members, key=lambda m: _CHANGE_ORDER.get(m.get("change_kind") or "", len(_CHANGE_ORDER))
     )
     for m in ordered:
         row = (
             f"| {_reciter_cell(m)} | {_escape_cell(m.get('riwayah'))} "
             f"| {_escape_cell(m.get('style'))} | {_escape_cell(m.get('channel'))} "
             f"| {_coverage_cell(m)} | {_missing_cell(m)} "
-            f"| {_CHANGE_LABEL.get(m.get('change_kind'), '—')} |"
+            f"| {_CHANGE_LABEL.get(m.get('change_kind') or '', '—')} |"
         )
         if with_issues:
             row += f" {_issues_cell(m)} |"
