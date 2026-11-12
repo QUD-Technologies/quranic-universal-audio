@@ -17,7 +17,7 @@
 | `DigitalKhattV2.otf` | Matching DigitalKhatt V2 font (SIL Open Font License 1.1 in the font metadata). |
 | `<riwayah>_words.json.gz` | Exact word text of a non-Hafs riwayah in this release (Warsh, Qalun, Shubah), keyed by its own `surah:ayah:word` coordinates; `manifest.json` `editions` names it. |
 | `<riwayah>.ttf` | Matching KFGQPC font for that riwayah's script. |
-| `LICENSE` | QUA Dataset License 1.0 (`qua-dataset-1.0`) full text, also inside every reciter zip. Covers the timing data, catalog and manifest only; recitation audio, Qur'an text files (`digital_khatt_v2_script.json`, `<riwayah>_words.json.gz`), fonts and helper scripts (Apache-2.0) are under their own terms (see NOTICE). |
+| `LICENSE` | QUA Dataset License 1.0 (`qua-dataset-1.0`) full text. Covers the timing data, catalog and manifest only; recitation audio, Qur'an text files (`digital_khatt_v2_script.json`, `<riwayah>_words.json.gz`), fonts and helper scripts (Apache-2.0) are under their own terms (see NOTICE). |
 
 The release-level `manifest.json` and `catalog.json` index the whole release; each zip also carries its own `catalog.json` describing just that recitation.
 
