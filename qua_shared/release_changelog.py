@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from urllib.parse import quote
 
 from qua_shared.config_loader import load_template
 from qua_shared.dataset_license import DATA_LICENSE_ID, DATA_LICENSE_NAME, DATA_LICENSE_URL
+from qua_shared.release_quality import VERIFIED
 
 _PLACEHOLDER_RE = re.compile(r"{{\s*([a-z_]+)\s*}}")
 _REQUIRED_BLOCKS = {
@@ -65,25 +67,38 @@ def _missing_cell(m: dict) -> str:
     return _escape_cell("; ".join(parts)) if parts else "—"
 
 
-def _member_table(members: list[dict]) -> list[str]:
-    rows = [
-        "| Reciter | Riwayah | Style | Channel | Coverage | Missing |",
-        "|---|---|---|---|---|---|",
-    ]
-    for m in members:
-        rows.append(
+#: The public site; ``?segments=<slug>`` opens that recitation in its Segments tab.
+SITE_URL = "https://audio.qud.dev"
+_CHANGE_ORDER = {"added": 0, "refresh": 1, "unchanged": 2}
+_CHANGE_LABEL = {"added": "New", "refresh": "Updated"}
+
+
+def _issues_cell(m: dict) -> str:
+    slug = (m.get("slug") or "").strip()
+    return f"[Segments]({SITE_URL}/?segments={quote(slug)})" if slug else "—"
+
+
+def _member_table(members: list[dict], *, with_issues: bool) -> list[str]:
+    head = "| Reciter | Riwayah | Style | Channel | Coverage | Missing | Change |"
+    rule = "|---|---|---|---|---|---|---|"
+    if with_issues:
+        head += " Issues |"
+        rule += "---|"
+    rows = [head, rule]
+    ordered = sorted(
+        members, key=lambda m: _CHANGE_ORDER.get(m.get("change_kind"), len(_CHANGE_ORDER))
+    )
+    for m in ordered:
+        row = (
             f"| {_reciter_cell(m)} | {_escape_cell(m.get('riwayah'))} "
             f"| {_escape_cell(m.get('style'))} | {_escape_cell(m.get('channel'))} "
-            f"| {_coverage_cell(m)} | {_missing_cell(m)} |"
+            f"| {_coverage_cell(m)} | {_missing_cell(m)} "
+            f"| {_CHANGE_LABEL.get(m.get('change_kind'), '—')} |"
         )
+        if with_issues:
+            row += f" {_issues_cell(m)} |"
+        rows.append(row)
     return rows
-
-
-def _has_missing(members: list[dict]) -> bool:
-    return any((m.get("missing_surahs") or m.get("missing_verses")) for m in members)
-
-
-# Removed _MISSING_CALLOUT and its use
 
 
 def _accordion(summary: str, body_lines: list[str]) -> list[str]:
@@ -126,38 +141,31 @@ def _render_template(blocks: Mapping[str, str]) -> str:
     return out.rstrip() + "\n"
 
 
-def _recitation_changes(
-    *, previous_version: str | None, added: list[dict], refreshed: list[dict], carried: list[dict]
-) -> str:
-    n_carried = len(carried)
+def _recitation_changes(*, previous_version: str | None, members: list[dict]) -> str:
+    kinds = [m.get("change_kind") for m in members]
     out: list[str] = [
         "## Recitations",
         "",
-        _summary_sentence(previous_version, len(added), len(refreshed), n_carried),
+        _summary_sentence(
+            previous_version, kinds.count("added"), kinds.count("refresh"), kinds.count("unchanged")
+        ),
         "",
     ]
-    # Removed the missing callout extension here
-    if added:
+    verified = [m for m in members if m.get("quality") == VERIFIED]
+    known = [m for m in members if m.get("quality") != VERIFIED]
+    if verified:
         out.extend(
             _accordion(
-                f"Added recitations - {len(added)}",
-                _member_table(added),
+                f"Verified recitations - {len(verified)}",
+                _member_table(verified, with_issues=False),
             )
         )
         out.append("")
-    if refreshed:
+    if known:
         out.extend(
             _accordion(
-                f"Refreshed recitations - {len(refreshed)}",
-                _member_table(refreshed),
-            )
-        )
-        out.append("")
-    if carried:
-        out.extend(
-            _accordion(
-                f"Unchanged recitations - {n_carried}",
-                _member_table(carried),
+                f"Recitations with known issues - {len(known)}",
+                _member_table(known, with_issues=True),
             )
         )
     return "\n".join(out).rstrip()
@@ -181,17 +189,11 @@ def render_changelog(
     license_id: str = DATA_LICENSE_ID,
 ) -> str:
     """Return the full release body markdown."""
-    added = [m for m in members if m.get("change_kind") == "added"]
-    refreshed = [m for m in members if m.get("change_kind") == "refresh"]
-    carried = [m for m in members if m.get("change_kind") == "unchanged"]
     return _render_template(
         {
             "release_title": f"# {release_date}",
             "recitation_changes": _recitation_changes(
-                previous_version=previous_version,
-                added=added,
-                refreshed=refreshed,
-                carried=carried,
+                previous_version=previous_version, members=members
             ),
             "release_footer": _release_footer(
                 license_id=license_id,

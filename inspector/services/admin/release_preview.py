@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from qua_shared.config_loader import repo_config
 from qua_shared.dataset_license import DATA_LICENSE_ID
 from qua_shared.release_changelog import render_changelog
+from qua_shared.release_quality import release_quality
 from qua_shared.schemas import AdminReleasePreviewResponse
 from services.db import get_conn, repo_releases
 
@@ -35,13 +36,15 @@ def build_release_preview() -> AdminReleasePreviewResponse:
                d.riwayah AS riwayah_slug,
                st.name AS style,
                c.name AS channel,
-               d.chapter_count AS coverage_surahs
+               d.chapter_count AS coverage_surahs,
+               ds.quality_status AS quality_status
         FROM per_recitation_releases prr
         JOIN deliveries d ON d.slug = prr.slug
         JOIN channels c   ON c.slug = d.channel
         JOIN riwayahs rw  ON rw.slug = d.riwayah
         JOIN styles st    ON st.slug = d.style
         JOIN reciters r   ON r.reciter_id = d.reciter_id
+        LEFT JOIN delivery_states ds ON ds.slug = d.slug
         WHERE prr.track = 'ts'
           AND prr.superseded_at IS NULL
           AND d.channel <> 'everyayah'
@@ -96,7 +99,11 @@ def build_release_preview() -> AdminReleasePreviewResponse:
         cfg.get("hf_dataset", ""),
     )
     release_date = datetime.now(UTC).strftime("%d-%m-%Y")
-    preview_members = [{**m, "coverage_ayahs": None} for m in (added + refreshed + unchanged)]
+    quality = {row["slug"]: release_quality(row["quality_status"]) for row in candidates}
+    preview_members = [
+        {**m, "coverage_ayahs": None, "quality": quality[m["slug"]]}
+        for m in (added + refreshed + unchanged)
+    ]
 
     return AdminReleasePreviewResponse.model_validate(
         {

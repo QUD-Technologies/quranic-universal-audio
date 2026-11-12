@@ -2,12 +2,20 @@
 
 > **License.** This release is distributed under the [QUA Dataset License 1.0](https://github.com/QUD-Technologies/quranic-universal-audio/blob/main/LICENSE). By downloading it you agree to its terms: any feature built on this data, directly or through a model trained, fine-tuned, distilled, evaluated or benchmarked on it, must be available in full to every user at no extra charge (no paywall, paid tier or rationing), in an app that is itself free to get; other, unrelated features may be paid, and ads may not interrupt or block the recitation. Obtain the data only from QUA's release channels, and don't sell or republish it, raw or converted. Models may be published under the same license. Published models and datasets must declare they used QUA. Credit QUD Technologies - Qur'anic Universal Audio.
 
+> **Recitation quality.** Every recitation is marked **Verified** or **Known issues** (`quality` in `manifest.json` and `catalog.json`).
+>
+> **Verified** recitations passed QUA's rigorous automated checks, with a maintainer reviewing what they flagged: gaps in the recitation, missing words or verses, misrecited words, and stutters or audio defects. This is to the best of our knowledge. No full human review is done, and no recitation can be claimed 100% correct.
+>
+> **Known issues** recitations have problems in the upstream audio itself. Our release gates leave out the timings of the affected verses, but your app plays the **source audio, which still contains the errors**. Use them at your own discretion, and keep the faulty parts from playing: fix that part of the audio, skip those verses, or show a note at playback. You can also contribute fixes on the website. Each recitation's exact issues (missing words, flagged segments and reviewer comments) are listed in its Segments tab, linked from the table below.
+>
+> Neither counts as an issue: a missing 1:1 (Al-Fatiha's Basmala is often recorded apart or left out), or a whole surah the source never recorded. Both are listed under Missing.
+
 ## What to download
 
 | Asset | What it gives you |
 |---|---|
-| `manifest.json` | Release-level index: reciter zips, download URLs, checksums, sizes, coverage, and change type. |
-| `catalog.json` | Release-level catalog: reciter names, riwayah, style, coverage, audio metadata, and the audio URLs paired with the timestamp data. |
+| `manifest.json` | Release-level index: reciter zips, download URLs, checksums, sizes, coverage, change type, and quality label. |
+| `catalog.json` | Release-level catalog: reciter names, riwayah, style, coverage, quality label, audio metadata, and the audio URLs paired with the timestamp data. |
 | `<recitation>.zip` | One recitation's verse and word timestamp files, its own `catalog.json` and `LICENSE`, and `specials.json` (its Isti'adha / Basmala) when it has any. |
 | `shard.py` | Optional helper that splits a large timestamp file into one JSON file per surah. |
 | `check_updates.py` | Optional helper that checks the latest release for updates to the reciters you use; add `--sync` to re-download them. |
@@ -22,8 +30,6 @@
 The release-level `manifest.json` and `catalog.json` index the whole release; each zip also carries its own `catalog.json` describing just that recitation.
 
 {{ recitation_changes }}
-
-> ⚠️ Missing verses are almost always upstream (the source omits it, audio issue, missing words, or reciter mistake). As such, we deliberately do not release their timings. This is usually discovered during alignment and review, and get manually flagged by a reviewer. The segments tab in the website should pinpoint the root cause of the issue/removal.
 
 ## How audio and timestamps pair
 

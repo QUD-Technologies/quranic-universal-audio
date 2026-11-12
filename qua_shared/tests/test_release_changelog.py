@@ -23,8 +23,12 @@ def _member(
     name_ar="فلان",
     missing_surahs="",
     missing_verses="",
+    quality="verified",
+    slug=None,
 ):
     return {
+        "slug": slug or name_en.lower().replace(" ", "_"),
+        "quality": quality,
         "name_en": name_en,
         "name_ar": name_ar,
         "riwayah": riwayah,
@@ -56,18 +60,24 @@ def test_first_release_added_only():
     assert "This release publishes" not in md
     assert (
         "| `catalog.json` | Release-level catalog: reciter names, riwayah, style, coverage, "
-        "audio metadata, and the audio URLs paired with the timestamp data. |"
+        "quality label, audio metadata, and the audio URLs paired with the timestamp data. |"
     ) in md
     # The release-level files index the whole release; each zip carries its own catalog.
     assert "`specials.json` (its Isti'adha / Basmala)" in md
     assert "each zip also carries its own `catalog.json`" in md
     assert "release_schemas.json" not in md
     assert "First release: **2** recitations." in md
-    assert "<details><summary>Added recitations - 2</summary>" in md
+    assert "<details><summary>Verified recitations - 2</summary>" in md
     assert "Abdulbasit Abdulsamad" in md
-    # No refreshed / carried sections on a clean first cut.
-    assert "Refreshed" not in md
+    # Nothing has known issues, so that table is left out.
+    assert "Recitations with known issues" not in md
     assert "carried" not in md
+    # The quality note sits right under the license paragraph.
+    assert (
+        md.index("> **License.**")
+        < md.index("> **Recitation quality.**")
+        < md.index("## What to download")
+    )
 
 
 def test_display_names_no_slugs():
@@ -83,12 +93,13 @@ def test_display_names_no_slugs():
         assert slug not in md
 
 
-def test_added_refreshed_and_carried():
+def test_tables_split_by_quality_new_first():
     members = [
-        _member("New One", change_kind="added"),
-        _member("Updated One", change_kind="refresh"),
-        _member("Stable One", change_kind="unchanged"),
-        _member("Stable Two", change_kind="unchanged"),
+        _member("Stable Clean", change_kind="unchanged"),
+        _member("New Clean", change_kind="added"),
+        _member("Stable Flawed", change_kind="unchanged", quality="known_issues"),
+        _member("Updated Flawed", change_kind="refresh", quality="known_issues"),
+        _member("New Flawed", change_kind="added", quality="known_issues", slug="new_flawed_yt"),
     ]
     md = render_changelog(
         version="v0.2.0",
@@ -96,12 +107,16 @@ def test_added_refreshed_and_carried():
         release_date="2026-07-01",
         members=members,
     )
-    assert "<details><summary>Added recitations - 1</summary>" in md
-    assert "<details><summary>Refreshed recitations - 1</summary>" in md
-    assert "<details><summary>Unchanged recitations - 2</summary>" in md
-    assert "| Stable One - " in md
-    assert "| Stable Two - " in md
-    assert "Adds 1, refreshes 1 (2 carried) over v0.1.0." in md
+    assert "Adds 2, refreshes 1 (2 carried) over v0.1.0." in md
+    verified, known = md.split("<details><summary>Recitations with known issues - 3</summary>")
+    assert "<details><summary>Verified recitations - 2</summary>" in verified
+    assert "Issues |" not in verified.split("## Recitations")[1]
+    # New first, then updated, then unchanged, within each table.
+    assert verified.index("| New Clean - ") < verified.index("| Stable Clean - ")
+    assert known.index("| New Flawed - ") < known.index("| Updated Flawed - ")
+    assert known.index("| Updated Flawed - ") < known.index("| Stable Flawed - ")
+    assert "| Coverage | Missing | Change | Issues |" in known
+    assert "| New | [Segments](https://audio.qud.dev/?segments=new_flawed_yt) |" in known
 
 
 def test_coverage_cell_ayahs_then_surahs():
