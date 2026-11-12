@@ -10,7 +10,6 @@ extra_gated_prompt: |
   - **Get it only from QUA; don't sell or republish it**, raw or converted. Models may be published, under this license only.
   - **Declare and credit.** Published models and datasets state they used QUA. Credit QUD Technologies - Qur'anic Universal Audio (https://qud.dev).
 
-  Requests are reviewed manually. Audio, Qur'an text and fonts are not covered. The full license governs.
 extra_gated_fields:
   What will you use it for?:
     type: select
