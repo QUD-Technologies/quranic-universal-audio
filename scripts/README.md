@@ -75,6 +75,7 @@ no-op-or-error by design. Idempotent `backfill_*`/`purge_*`/`convert_*` stay in
 ### `diagnostics/`
 - `bench_storage.py` — benchmark backend read/write hot paths
 - `check_eligibility_parity.py` — assert DB-backed eligibility == legacy git-tracked set
+- `mp3quran_catalog_diff.py` — diff mp3quran's live API catalog against our mp3quran deliveries by CDN folder: unregistered sets, surah-list changes, gone folders
 - `quran_data_integrity.py` — `capture` / `compare` every output the Hafs reference data feeds (surah info, word counts, quran-refs, TS resources, cut_release refs, stop signs, fixture validation) across the bundled-JSON → `talqeen-quran-data` swap
 - `mushaf_look_parity.mjs` — `capture` the Timestamps Mushaf view (pages 1, 2, 50, 187, 582, 604 × 1405/1421/1441 × one and two pages, plus an active word + verse band) from a running stack, then `diff` two captures pixel by pixel; run FROM `inspector/frontend`
 

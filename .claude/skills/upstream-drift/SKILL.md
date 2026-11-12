@@ -55,4 +55,25 @@ with every eligible recitation held fails. Owners are notified with the recitati
 chapters left out, carried in `validation_summary.dropped_upstream_chapters` (Inspector
 also accepts `held_upstream_changes` from jobs launched before deployment).
 
+## mp3quran catalog diff (new sets / coverage changes)
+
+mp3quran publishes its whole catalog as one JSON (`/api/v3/reciters`, ~165 KB), so checking it
+for new reciters needs no crawling:
+
+```bash
+python scripts/diagnostics/mp3quran_catalog_diff.py --bucket prod --json mq_diff.json
+```
+
+It matches each live set (moshaf) to our delivery by CDN folder URL, so their spellings never
+matter, and reports:
+- `NEW`: a set we never registered, newest first by mp3quran's `recent_date`;
+- `COV`: a registered set whose surah list changed upstream (surahs added or removed);
+- `GONE`: a delivery whose folder left the API.
+
+Before you suggest registering a set, compare a few chapter durations (ffprobe) with that
+reciter's deliveries on other channels: it may be the same recording. A set the user declined
+keeps showing as `NEW`; say which ones were declined earlier (2026-11-13: Minshawi 1967 `r4`,
+Mustafa Gharbi Warsh). Register through the catalog service (`add_delivery`), one prod window,
+with each manifest uploaded first.
+
 Related: `inspector-audio` skill (`references/bugs.md`, the CDN-swap row) for the playback side.
