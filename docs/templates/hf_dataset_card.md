@@ -8,7 +8,7 @@ extra_gated_prompt: |
 
   - **Free feature, free app.** Anything built on this data, directly or through a model trained, tuned or benchmarked on it, must be fully available to every user at no charge: no paywall, paid tier or rationing, in an app that is free to get. Other features may be paid. Ads may not interrupt or block the recitation.
   - **Get it only from QUA; don't sell or republish it**, raw or converted. Models may be published, under this license only.
-  - **Declare and credit.** Published models and datasets state they used QUA. Credit QUD Technologies - Qur'anic Universal Audio (https://qud.dev).
+  - **Declare and credit.** Published models and datasets state they used QUA. Credit QUD Technologies - Quranic Universal Audio.
 
 extra_gated_fields:
   What will you use it for?:
