@@ -1,202 +1,399 @@
+QUA Dataset License
+Version 1.0 (identifier: qua-dataset-1.0)
 
-                                 Apache License
-                           Version 2.0, January 2004
-                        http://www.apache.org/licenses/
+Copyright (c) 2026 QUD Technologies (https://qud.dev)
 
-   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+The timing data of Qur'anic Universal Audio ("QUA") is made available so that
+every listener can follow a recitation word by word and letter by letter, free
+of charge. This License keeps it that way. A product may be commercial and may
+sell other features, but it must be free to obtain, and the part of it that
+this data touches may not be sold, gated or interrupted. The data itself is
+obtained only from QUA and is not republished.
 
-   1. Definitions.
+By downloading, accessing, copying, using, training on, evaluating against, or
+distributing the Work or any Derivative, You agree to be bound by this License
+as a contract with the Licensor, as well as a license of any copyright,
+database rights and other rights the Licensor holds in the Work. If You do not
+agree, You may not do any of those things.
 
-      "License" shall mean the terms and conditions for use, reproduction,
-      and distribution as defined by Sections 1 through 9 of this document.
 
-      "Licensor" shall mean the copyright owner or entity authorized by
-      the copyright owner that is granting the License.
+1. DEFINITIONS
 
-      "Legal Entity" shall mean the union of the acting entity and all
-      other entities that control, are controlled by, or are under common
-      control with that entity. For the purposes of this definition,
-      "control" means (i) the power, direct or indirect, to cause the
-      direction or management of such entity, whether by contract or
-      otherwise, or (ii) ownership of fifty percent (50%) or more of the
-      outstanding shares, or (iii) beneficial ownership of such entity.
+   "Licensor" means QUD Technologies (https://qud.dev), the owner of the QUA
+   product, and any successor to the QUA product.
 
-      "You" (or "Your") shall mean an individual or Legal Entity
-      exercising permissions granted by this License.
+   "Work" means all timing data distributed by or on behalf of the Licensor as
+   part of QUA, including timing data produced by the Licensor's alignment
+   services, such as the Qur'anic Universal Aligner and its API, for any
+   recording submitted to them, in any format and through any channel, now or
+   in the future, including GitHub releases, the Hugging Face dataset, and any
+   API. It includes verse, word, letter and animation timestamps; segment,
+   pause and silence data; alignment and segmentation data; and the catalogs,
+   manifests and metadata distributed with them. It does not include the
+   material listed in Section 12.
 
-      "Source" form shall mean the preferred form for making modifications,
-      including but not limited to software source code, documentation
-      source, and configuration files.
+   "Derivative" means any of the following, however many steps, tools,
+   formats or parties lie between it and the Work:
+     (a) any copy, subset, modification, correction, re-cut, re-segmentation,
+         re-timing, format conversion or re-export of the Work;
+     (b) any dataset, corpus, index, label set or other artifact that contains
+         or is produced from any part of the Work, or that is checked,
+         corrected, filtered, ranked or validated against any part of the
+         Work;
+     (c) any Model;
+     (d) any timing, alignment or segmentation data, and any other output,
+         produced by a Model; and
+     (e) any artifact produced from another Derivative.
+   "Derivative data" means any Derivative other than a Model.
+   The following are not Derivatives, and Section 6 does not apply to them,
+   although Sections 3, 4 and 8 continue to apply to any Covered Feature they
+   provide: (i) the software code of an Application, other than any Work,
+   Derivative data or Model it contains; and (ii) papers, articles, reports,
+   figures, and aggregate statistics or findings that do not reproduce timing
+   data at the level of individual recitations, verses or words. An
+   Application that contains Derivative data or a Model may be distributed
+   under its own terms, provided those terms do not restrict any recipient's
+   rights in that Derivative data or Model under this License, and the
+   Application includes the credit required by Section 8(a) and a link to this
+   License.
 
-      "Object" form shall mean any form resulting from mechanical
-      transformation or translation of a Source form, including but
-      not limited to compiled object code, generated documentation,
-      and conversions to other media types.
+   "Model" means any machine-learning or statistical model, of any type and
+   for any task:
+     (a) that is trained, pre-trained, fine-tuned, adapted, distilled or
+         calibrated using the Work or any Derivative, in whole or in part,
+         directly or through another Model; or
+     (b) that is evaluated, validated or benchmarked using the Work or any
+         Derivative by or for a person who develops, owns, controls or
+         deploys it, where the results are used in developing, selecting,
+         configuring, tuning or deploying it.
+   A model that You neither develop, own nor control, evaluated only to report
+   comparative results and not selected, configured or deployed by You on the
+   basis of those results, is not a Model.
 
-      "Work" shall mean the work of authorship, whether in Source or
-      Object form, made available under the License, as indicated by a
-      copyright notice that is included in or attached to the work
-      (an example is provided in the Appendix below).
+   "Application" means any software, website, service, device or product,
+   together with every edition, tier, platform and companion surface of the
+   same product, that makes the Work or any Derivative available to an end
+   user, or that uses the Work or any Derivative to provide any feature to an
+   end user. It includes any other product that embeds, launches, links into
+   or presents a Covered Feature as part of its own experience, or that is
+   marketed, bundled or branded together with it. A general-purpose device
+   whose price is not attributable to the Covered Feature is not part of the
+   Application, provided the Covered Feature on it otherwise complies with this
+   License. Media is not an Application.
 
-      "Derivative Works" shall mean any work, whether in Source or Object
-      form, that is based on (or derived from) the Work and for which the
-      editorial revisions, annotations, elaborations, or other modifications
-      represent, as a whole, an original work of authorship. For the purposes
-      of this License, Derivative Works shall not include works that remain
-      separable from, or merely link (or bind by name) to the interfaces of,
-      the Work and Derivative Works thereof.
+   "Media" means any video, animation, image or audio-visual recording that
+   displays, is timed by, or is produced from the Work or any Derivative, and
+   that does not itself distribute the Work or any Derivative as data. Media
+   is not subject to Sections 3, 4(b) or 6.
 
-      "Contribution" shall mean any work of authorship, including
-      the original version of the Work and any modifications or additions
-      to that Work or Derivative Works thereof, that is intentionally
-      submitted to Licensor for inclusion in the Work by the copyright owner
-      or by an individual or Legal Entity authorized to submit on behalf of
-      the copyright owner. For the purposes of this definition, "submitted"
-      means any form of electronic, verbal, or written communication sent
-      to the Licensor or its representatives, including but not limited to
-      communication on electronic mailing lists, source code control systems,
-      and issue tracking systems that are managed by, or on behalf of, the
-      Licensor for the purpose of discussing and improving the Work, but
-      excluding communication that is conspicuously marked or otherwise
-      designated in writing by the copyright owner as "Not a Contribution."
+   "Covered Feature" means any feature, function, capability or output of an
+   Application that uses, displays, is derived from, or is powered by the Work
+   or any Derivative, including any feature powered by a Model or by a
+   Model's output.
 
-      "Contributor" shall mean Licensor and any individual or Legal Entity
-      on behalf of whom a Contribution has been received by Licensor and
-      subsequently incorporated within the Work.
+   "Charge" means requiring or accepting, from an end user or any other
+   recipient, any payment, subscription, credits, purchase or other
+   consideration in exchange for obtaining, accessing, unlocking, extending,
+   prioritising or improving the Application, a Covered Feature, the Work or a
+   Derivative, whether once or recurring, including through a trial that later
+   requires payment, and whether paid to You or to a third party. The
+   following are not a Charge, provided none of them unlocks, extends,
+   prioritises or improves any Covered Feature: voluntary donations;
+   sponsorship or grant funding; affiliate commissions; and requiring a free
+   user account.
 
-   2. Grant of Copyright License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      copyright license to reproduce, prepare Derivative Works of,
-      publicly display, publicly perform, sublicense, and distribute the
-      Work and such Derivative Works in Source or Object form.
+   "You" means the individual or organisation exercising any right under this
+   License, together with every person acting on Your behalf as set out in
+   Section 9.
 
-   3. Grant of Patent License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      (except as stated in this section) patent license to make, have made,
-      use, offer to sell, sell, import, and otherwise transfer the Work,
-      where such license applies only to those patent claims licensable
-      by such Contributor that are necessarily infringed by their
-      Contribution(s) alone or by combination of their Contribution(s)
-      with the Work to which such Contribution(s) was submitted. If You
-      institute patent litigation against any entity (including a
-      cross-claim or counterclaim in a lawsuit) alleging that the Work
-      or a Contribution incorporated within the Work constitutes direct
-      or contributory patent infringement, then any patent licenses
-      granted to You under this License for that Work shall terminate
-      as of the date such litigation is filed.
 
-   4. Redistribution. You may reproduce and distribute copies of the
-      Work or Derivative Works thereof in any medium, with or without
-      modifications, and in Source or Object form, provided that You
-      meet the following conditions:
+2. GRANT
 
-      (a) You must give any other recipients of the Work or
-          Derivative Works a copy of this License; and
+   Subject to Your continued compliance with this License, the Licensor grants
+   You a worldwide, royalty-free, non-exclusive, non-transferable license to
+   use, copy, study, modify, create Derivatives of, train Models on, and
+   evaluate and benchmark against the Work, and to share and distribute the
+   Work, Derivative data and Models as permitted by Section 6. Every right not
+   expressly granted is reserved. Each recipient of the Work or a Derivative
+   receives a license directly from the Licensor under this License. A person
+   who obtains a Derivative from anyone acting in breach of this License
+   acquires no rights in it.
 
-      (b) You must cause any modified files to carry prominent notices
-          stating that You changed the files; and
 
-      (c) You must retain, in the Source form of any Derivative Works
-          that You distribute, all copyright, patent, trademark, and
-          attribution notices from the Source form of the Work,
-          excluding those notices that do not pertain to any part of
-          the Derivative Works; and
+2A. AUTHORISED CHANNELS
 
-      (d) If the Work includes a "NOTICE" text file as part of its
-          distribution, then any Derivative Works that You distribute must
-          include a readable copy of the attribution notices contained
-          within such NOTICE file, excluding those notices that do not
-          pertain to any part of the Derivative Works, in at least one
-          of the following places: within a NOTICE text file distributed
-          as part of the Derivative Works; within the Source form or
-          documentation, if provided along with the Derivative Works; or,
-          within a display generated by the Derivative Works, if and
-          wherever such third-party notices normally appear. The contents
-          of the NOTICE file are for informational purposes only and
-          do not modify the License. You may add Your own attribution
-          notices within Derivative Works that You distribute, alongside
-          or as an addendum to the NOTICE text from the Work, provided
-          that such additional attribution notices cannot be construed
-          as modifying the License.
+   The Work may be obtained only through the Licensor's published channels:
+   the GitHub releases, the Hugging Face dataset, the Licensor's alignment
+   services, and any public API the Licensor expressly designates as a
+   distribution channel for the Work in its published license notices.
+   Documentation of the Licensor's websites or internal interfaces, including
+   in source code or repositories, does not make them a published channel.
+   Obtaining timing data from the Licensor's websites or their internal
+   interfaces by automated means, or by circumventing any access control, rate
+   limit or challenge, is not permitted and grants no rights. Data obtained in
+   that way is nonetheless subject to every obligation of this License as if
+   it were the Work.
 
-      You may add Your own copyright statement to Your modifications and
-      may provide additional or different license terms and conditions
-      for use, reproduction, or distribution of Your modifications, or
-      for any such Derivative Works as a whole, provided Your use,
-      reproduction, and distribution of the Work otherwise complies with
-      the conditions stated in this License.
 
-   5. Submission of Contributions. Unless You explicitly state otherwise,
-      any Contribution intentionally submitted for inclusion in the Work
-      by You to the Licensor shall be under the terms and conditions of
-      this License, without any additional terms or conditions.
-      Notwithstanding the above, nothing herein shall supersede or modify
-      the terms of any separate license agreement you may have executed
-      with Licensor regarding such Contributions.
+3. FREE ACCESS CONDITIONS
 
-   6. Trademarks. This License does not grant permission to use the trade
-      names, trademarks, service marks, or product names of the Licensor,
-      except as required for reasonable and customary use in describing the
-      origin of the Work and reproducing the content of the NOTICE file.
+   If You make available, operate or distribute an Application, You must
+   ensure all of the following. An end user who merely uses an Application is
+   not responsible for the Application's compliance, and the termination of a
+   distributor's rights does not terminate the rights of end users who
+   themselves comply with this License.
 
-   7. Disclaimer of Warranty. Unless required by applicable law or
-      agreed to in writing, Licensor provides the Work (and each
-      Contributor provides its Contributions) on an "AS IS" BASIS,
-      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-      implied, including, without limitation, any warranties or conditions
-      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
-      PARTICULAR PURPOSE. You are solely responsible for determining the
-      appropriateness of using or redistributing the Work and assume any
-      risks associated with Your exercise of permissions under this License.
+   (a) Free Application. The Application must be obtainable, installable and
+       usable by end users without Charge. Additional, separate features that
+       are not Covered Features may be offered for a Charge.
 
-   8. Limitation of Liability. In no event and under no legal theory,
-      whether in tort (including negligence), contract, or otherwise,
-      unless required by applicable law (such as deliberate and grossly
-      negligent acts) or agreed to in writing, shall any Contributor be
-      liable to You for damages, including any direct, indirect, special,
-      incidental, or consequential damages of any character arising as a
-      result of this License or out of the use or inability to use the
-      Work (including but not limited to damages for loss of goodwill,
-      work stoppage, computer failure or malfunction, or any and all
-      other commercial damages or losses), even if such Contributor
-      has been advised of the possibility of such damages.
+   (b) Free feature. No Charge may be required for any Covered Feature. A
+       Covered Feature may not be reserved for, restricted to, enhanced in, or
+       made available earlier in any paid edition, tier, plan or add-on. It
+       may be included in a paid tier only if it is identical to, and no
+       earlier than, the version available without Charge. No edition,
+       version, build or store listing of the Application that requires a
+       Charge to obtain, install or unlock may contain a Covered Feature.
 
-   9. Accepting Warranty or Additional Liability. While redistributing
-      the Work or Derivative Works thereof, You may choose to offer,
-      and charge a fee for, acceptance of support, warranty, indemnity,
-      or other liability obligations and/or rights consistent with this
-      License. However, in accepting such obligations, You may act only
-      on Your own behalf and on Your sole responsibility, not on behalf
-      of any other Contributor, and only if You agree to indemnify,
-      defend, and hold each Contributor harmless for any liability
-      incurred by, or claims asserted against, such Contributor by reason
-      of your accepting any such warranty or additional liability.
+   (c) Complete, ungated access. Every Covered Feature must be available in
+       full to every end user of the Application. It may not be limited,
+       reduced or rationed by reciter, surah, verse, timing level, precision,
+       quantity, period of use or any other measure, and it may not be
+       conditioned on any Charge.
 
-   END OF TERMS AND CONDITIONS
+   (d) No interruption. No advertising or other promotional content may
+       interrupt, pause, cover or block playback of a recitation, or the
+       display of a Covered Feature, while it is in use.
 
-   APPENDIX: How to apply the Apache License to your work.
+   (e) No sale of the data. You may not Charge for the Work or any
+       Derivative, for access to either, or for any service whose output is
+       the Work or a Derivative. This includes selling, renting or licensing
+       it for a fee, providing it through a paid API, and supplying it to
+       another business for a fee or other consideration. White-label, OEM or
+       reseller licensing of an Application containing the Work or a
+       Derivative for a fee is a Charge. Being paid for Your own development
+       or hosting services in building or operating a compliant Application is
+       not a Charge for a Derivative, provided the fee is not priced on, and
+       does not purchase rights in, the Work or a Derivative, and the client
+       is bound by this License.
 
-      To apply the Apache License to your work, attach the following
-      boilerplate notice, with the fields enclosed by brackets "[]"
-      replaced with your own identifying information. (Don't include
-      the brackets!)  The text should be enclosed in the appropriate
-      comment syntax for the file format. We also recommend that a
-      file or class name and description of purpose be included on the
-      same "printed page" as the copyright notice for easier
-      identification within third-party archives.
 
-   Copyright [yyyy] [name of copyright owner]
+4. MODELS
 
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
+   (a) A Model is a Derivative. Every Covered Feature powered by a Model, or
+       by any output of a Model, is subject to Section 3. This applies whether
+       or not the Work is redistributed, whether or not the Model or its
+       weights are published, whether or not the Model is given away, and
+       whether the Model was trained on the Work directly or on the output of
+       another Model.
 
-       http://www.apache.org/licenses/LICENSE-2.0
+   (b) For the avoidance of doubt, the following is a breach of this License:
+       training, fine-tuning, distilling, evaluating or benchmarking a Model
+       on the Work or any Derivative, and using that Model, or any timing data
+       or other output it produces, to provide a feature that is subject to
+       Charge, that is reserved for, restricted to or enhanced in a paid
+       edition or tier, or that is offered in an Application that requires a
+       Charge to obtain, whether or not the output is presented as the
+       distributor's own data, and whether or not it covers recitations that
+       are absent from the Work.
 
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
+
+5. RESEARCH AND DEVELOPMENT
+
+   Academic, non-profit and commercial research and development using the
+   Work are permitted, including publishing papers, results and Models. Any
+   Model or dataset that results remains a Derivative subject to this
+   License, and any feature it later powers is subject to Sections 3 and 4.
+
+
+6. DISTRIBUTION AND SHARE-ALIKE
+
+   (a) No public redistribution. You may not make the Work or any Derivative
+       data available to the public, whether in its original form or
+       converted into any other format, as a dataset, file, archive, mirror,
+       feed or API. An Application may use the Work and Derivative data to
+       provide its Covered Features, provided it does not offer them for
+       download or bulk retrieval.
+
+   (b) Permitted sharing. You may share the Work and Derivative data within
+       Your organisation, and privately with named collaborators who are
+       bound by this License.
+
+   (c) Models. You may publish and distribute Models, but only under this
+       License.
+
+   (d) Share-alike. Anything You share or distribute under this Section must
+       be under this License, either this version or a later version
+       published by the Licensor, with no additional or different terms. You
+       may not sublicense the Work or a Derivative under any other license, or
+       relicense a Derivative so as to remove or weaken any term of this
+       License, and You must include a copy of, or a link to, this License
+       with every copy.
+
+
+7. DECLARATION AND DISCLOSURE
+
+   (a) Any Model, model card, dataset card, paper or dataset that is a
+       Derivative, and that You publish or distribute, must state that it was
+       made using the Work and that it is subject to this License.
+
+   (b) On reasonable written request from the Licensor, You must state
+       truthfully, within thirty days, whether a named Model, dataset or
+       Application feature was trained, fine-tuned, distilled, evaluated or
+       benchmarked on, or otherwise produced from, the Work or any
+       Derivative. A failure or refusal to answer is a breach of this License.
+       The Licensor will not make such requests to the same party more than
+       once in any three-month period, unless it has reasonable grounds to
+       suspect a breach.
+
+
+8. ATTRIBUTION
+
+   (a) Every Application must credit "QUD Technologies - Qur'anic Universal
+       Audio (https://qud.dev)" in its about, credits or licenses screen, or
+       in an equivalent place that is reasonably discoverable by end users.
+
+   (b) Every publication, model card or dataset card that is a Derivative, or
+       that reports results obtained with the Work, must cite:
+       "Qur'anic Universal Audio, QUD Technologies, https://qud.dev".
+
+   (c) You may not state or imply that the Licensor endorses You, Your
+       Application or Your Derivative. This License grants no rights in the
+       Licensor's names, logos or trademarks beyond the credit required by
+       this Section.
+
+
+9. PERSONS ACTING FOR YOU
+
+   A person or organisation acting on Your behalf, under contract to You, at
+   Your direction, or for Your benefit at Your request or with Your
+   knowledge, including any affiliate, subsidiary, parent, contractor, agent
+   or service provider, is treated as You. You may not obtain through another
+   person anything this License does not permit You to do yourself, and You
+   are responsible for their compliance.
+
+
+10. WAIVERS
+
+   The Licensor may waive a condition of this License only in writing, signed
+   by the Licensor, naming the party and the specific use permitted. No waiver
+   may be inferred from silence, delay, public statement, continued
+   availability of the Work, or conduct. A waiver extends only to the party and
+   use it names, and ends upon any breach of this License.
+
+
+11. NO SALE OF EXCEPTIONS
+
+   The right to Charge for a Covered Feature, to reserve, restrict or enhance
+   it in a paid edition or tier, or to sell or republish the Work or a
+   Derivative, is not available for any fee, revenue share or other
+   consideration, and will not be granted. Waivers under Section 10 are given
+   free of charge or not at all.
+
+
+12. MATERIAL NOT COVERED
+
+   This License does not apply to, and grants no rights in:
+     (a) recitation audio, which remains the property of its reciters,
+         producers and original sources;
+     (b) the text of the Qur'an and third-party text editions, which are
+         distributed under their own terms;
+     (c) fonts and other third-party components, which remain under their own
+         licenses;
+     (d) generic Qur'anic reference data, such as surah names and ayah or
+         word counts; and
+     (e) software and helper scripts distributed with the Work.
+   The project's NOTICE file lists these sources and their terms. Where such
+   material is distributed together with the Work, You must comply with its
+   own terms separately.
+
+
+13. CONTRIBUTIONS
+
+   Each person who submits a contribution to QUA that becomes part of the
+   Work, including edits, corrections, reviews and segment changes, grants the
+   Licensor a perpetual, worldwide, irrevocable, royalty-free, sublicensable
+   license to use, modify and distribute it as part of the Work under this and
+   any later version of this License, and to grant waivers under Section 10,
+   and confirms that they have the right to do so. The Licensor will not
+   distribute contributions on terms that permit a Charge for a Covered
+   Feature.
+
+
+14. TERMINATION
+
+   Any breach of this License automatically terminates all rights granted to
+   You under it. If this is Your first breach and You cure it within fourteen
+   days after the earlier of becoming aware of it or receiving notice of it
+   from the Licensor, Your rights are reinstated, unless within that period
+   the Licensor has notified You in writing that they are not. Reinstatement
+   is not available for a second or subsequent breach, or for a breach of
+   Section 2A, 3(e), 4(b), 6(a) or 7(b). Cure does not relieve You of
+   liability for revenue obtained during the breach. On termination You must
+   stop using the Work and every Derivative, stop providing every Covered
+   Feature, and delete every copy of the Work and every Derivative, including
+   Models, in Your possession or control.
+
+
+15. NO WARRANTY
+
+   The Work is provided "as is", without warranty of any kind, express or
+   implied, including warranties of accuracy, merchantability, fitness for a
+   particular purpose and non-infringement. Timing data is produced by forced
+   alignment and human review and may contain errors. The entire risk of using
+   the Work is Yours.
+
+
+16. LIMITATION OF LIABILITY
+
+   To the fullest extent permitted by law, the Licensor is not liable for any
+   damages arising from the Work, any Derivative, or this License, however
+   caused.
+
+
+17. VERSIONS
+
+   The Licensor may publish revised versions of this License. A Derivative may
+   be distributed under the version under which the Work was received or, at
+   the distributor's option, under any later version. Any later version will
+   preserve the free-access, no-sale, no-redistribution and
+   no-sale-of-exceptions principles of this version.
+
+
+18. INTERPRETATION
+
+   Headings are for convenience only. Where a term is ambiguous, it is to be
+   read in the way that best keeps Covered Features free of Charge for end
+   users. If any provision is held unenforceable, the remainder stays in
+   force, and that provision is to be applied to the fullest extent permitted
+   by law.
+
+
+19. NOTICES
+
+   Notices to the Licensor must be sent through the contact details published
+   at https://qud.dev, or by opening an issue in the QUA GitHub repository,
+   and are effective on receipt. The Licensor may give notice to You at any
+   contact address You have provided, or that You publish on Your
+   Application, model card or repository.
+
+
+20. REMEDIES
+
+   You acknowledge that a breach of Section 2A, 3, 4 or 6 causes harm that
+   damages alone cannot remedy, and that the Licensor is entitled to seek
+   injunctive relief in any competent court, in addition to damages and an
+   account of all revenue attributable to the breach.
+
+
+21. GENERAL
+
+   The Licensor may assign this License and its rights under it to any
+   successor to the QUA product. You may not assign this License. Sections 7,
+   14 (as to obligations on termination), 15, 16, 18, 20 and this Section
+   survive termination. This License is the entire agreement between You and
+   the Licensor concerning the Work, except for any waiver granted under
+   Section 10.
+
+
+QUD Technologies - https://qud.dev

@@ -178,7 +178,7 @@ gh:releases/v{X.Y.Z}/
 ├── surah_info.json       # static reference (built from the talqeen-quran-data pack at job staging)
 ├── digital_khatt_v2_script.json # exact Hafs presentation text (same; reading-order keys)
 ├── DigitalKhattV2.otf    # matching OFL-1.1 font
-└── LICENSE               # QUA Dataset License 1.0 (repo LICENSE-DATA, uploaded as LICENSE)
+└── LICENSE               # QUA Dataset License 1.0 (the repo's LICENSE)
 ```
 
 Each `<slug>.zip` contains:
@@ -307,7 +307,7 @@ Format (display names only — never slugs):
 - `<details>` **Reciter zip schemas**: verse/word/letter timestamp shapes plus a small example.
 - `<details>` **Catalog and manifest schemas**: release-level `manifest.json` and `catalog.json`.
 - A licence callout under the title (QUA Dataset License 1.0 terms-by-download) and a footer
-  `**License:** [QUA Dataset License 1.0](…/LICENSE-DATA) (`qua-dataset-1.0`)`.
+  `**License:** [QUA Dataset License 1.0](…/LICENSE) (`qua-dataset-1.0`)`.
 
 Coverage shows exact **ayahs** at cut time; the DB-only preview shows **surahs** (chapter_count)
 because exact ayah coverage is only computed during the cut. A **Missing** column reports
@@ -446,17 +446,17 @@ kept runs stitched gaplessly (the no-match audio excised) — see
 ## Licensing
 
 Two licences, never mixed: the **timing data** (GH release assets, the HF dataset, any future API)
-ships under the custom **QUA Dataset License 1.0** (`LICENSE-DATA`, id `qua-dataset-1.0`, © QUD
-Technologies); the **code** is Apache-2.0 (`LICENSE`). Recitation audio is under neither (see
+ships under the custom **QUA Dataset License 1.0** (the repo's `LICENSE`, id `qua-dataset-1.0`,
+© QUD Technologies). There is no separate code licence. Recitation audio is not covered (see
 `NOTICE.md`). The licence also binds data taken from the site's own `/api/ts/*` routes
-(LICENSE-DATA §2A, authorised channels) and bans public redistribution of the data (§6).
+(LICENSE §2A, authorised channels) and bans public redistribution of the data (§6).
 
 - **Single source:** [`qua_shared/dataset_license.py`](../../qua_shared/dataset_license.py) owns the id,
   display name, repo filename and URL. The manifest `license` field (`ReleaseManifest.license`), the
   changelog footer (`render_changelog`), and the cut-modal preview (`release_preview`) all read it.
-- **GH release:** `cut_release` reads `LICENSE-DATA` and uploads it as the `LICENSE` asset, and also packs it
+- **GH release:** `cut_release` uploads `LICENSE` as a release asset, and also packs it
   as `LICENSE` inside every reciter zip (outside `content_hash`, so it never flips `change_kind`);
-  `LICENSE-DATA` is a required staged file (`jobs/base.REQUIRED_STATIC_FILES`, cut-job preflight,
+  `LICENSE` is a required staged file (`jobs/base.REQUIRED_STATIC_FILES`, cut-job preflight,
   `inspector/Dockerfile` COPY). GitHub has no download gate — acceptance is by download (release-body callout).
 - **HF dataset:** the card template frontmatter is `license: other` / `license_name: qua-dataset-1.0` /
   `license_link` plus `extra_gated_*` fields (intended use, app/project/organisation, agreement

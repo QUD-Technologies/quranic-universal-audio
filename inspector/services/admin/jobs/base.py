@@ -440,7 +440,6 @@ REQUIRED_STATIC_FILES = (
     "docs/templates/release_body.md",
     "docs/templates/hf_dataset_card.md",
     "LICENSE",
-    "LICENSE-DATA",
 )
 
 

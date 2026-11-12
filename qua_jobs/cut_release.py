@@ -1592,7 +1592,6 @@ def main() -> int:
     # licence — the zip content is version-independent, so a single pass
     # suffices). The licence rides in every zip so a lone reciter zip still
     # carries its terms; content_hash excludes it (tier + catalog only).
-    # Releases carry the DATA licence (repo LICENSE is the Apache-2.0 code licence).
     license_path = _code_root() / DATA_LICENSE_FILE
     license_bytes = license_path.read_bytes() if license_path.exists() else b""
     zip_extras = {"LICENSE": license_bytes} if license_bytes else {}

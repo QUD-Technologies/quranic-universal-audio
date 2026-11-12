@@ -241,14 +241,13 @@ COPY inspector/utils/ ./inspector/utils/
 # entrypoints (publish_hf / publish_hf_batch / cut_release / shard) that
 # ``services/admin/jobs/base.stage_job_code`` uploads to the aligner-bucket on
 # launch. ``.github/config/repo.yml``, ``docs/templates/`` (release-body +
-# dataset-card render-templates) + ``LICENSE`` / ``LICENSE-DATA`` are read by config_loader (the
+# dataset-card render-templates) + ``LICENSE`` are read by config_loader (the
 # inspector release preview + the job-side cut_release/publish_hf renderers).
 COPY qua_shared/ ./qua_shared/
 COPY qua_jobs/ ./qua_jobs/
 COPY .github/config/ ./.github/config/
 COPY docs/templates/ ./docs/templates/
 COPY LICENSE ./LICENSE
-COPY LICENSE-DATA ./LICENSE-DATA
 # The on-disk data surface in deployed mode: phoneme_sub_costs.json (read via
 # config.py's _QUA_DATA; INSPECTOR_QUA_DATA_PATH=/app/data) and the Quran data
 # pack from stage 0, which qua_shared.quran_text opens at /app/data. Everything
