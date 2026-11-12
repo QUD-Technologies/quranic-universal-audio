@@ -54,15 +54,15 @@ size_categories:
 
 <h1 align="center">Qur'anic Universal Ayahs</h1>
 
-Qur'anic Universal Audio (QUA) is a project that unifies recitations on the internet and generates timing data using forced alignment — community-verified results and constantly expanding dataset.
+Qur'anic Universal Audio (QUA) is a project that unifies recitations on the internet and generates timing data — community-verified results and constantly expanding dataset.
 
-This dataset pairs ayah by ayah audio with word-level timestamps, DigitalKhatt letter-animation timestamps, and waqf-aware segment data. Repeated words are preserved in `text_uthmani` and `word_timestamps`, so the row reflects what the reciter actually recited rather than a plain copy of canonical ayah text.
+This dataset pairs ayah by ayah audio with word-level timestamps and waqf-aware segment data. Repeated words are preserved in `text_uthmani` and `word_timestamps`, so the row reflects what the reciter actually recited rather than a plain copy of canonical ayah text.
 
 > **Tip:** Click the three dots (···) at the top right and toggle **Notifications** to get updates whenever recitations are added or refreshed.
 
 ## Dataset
 
-Mushaf configs contain one row per ayah. Each row includes embedded ayah audio, recited Uthmani text, word timestamps, letter timestamps, waqf-aware segments, and source-audio mappings.
+Mushaf configs contain one row per ayah. Each row includes embedded ayah audio, recited Uthmani text, word timestamps, waqf-aware segments, and source-audio mappings.
 
 The `mushafs` subset is the dataset catalog index. It has one row per published mushaf, joined with reciter names, riwayah/style/channel labels, audio metadata, and coverage.
 
