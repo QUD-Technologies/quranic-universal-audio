@@ -19,6 +19,7 @@ from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, model_serializer, model_validator
 
+from qua_shared.dataset_license import DATA_LICENSE_ID
 from qua_shared.schemas.bucket.release_settings import ReleaseSettings
 
 SCHEMA_VERSION = 3
@@ -107,7 +108,7 @@ class ReleaseManifest(BaseModel):
     #: Keyed by SDK riwayah slug; empty for a Hafs-only release.
     editions: dict[str, ReleaseEdition] = Field(default_factory=dict)
     recitations: dict[str, ReleaseManifestRecitation] = Field(default_factory=dict)
-    license: str = "CC-BY-4.0"
+    license: str = DATA_LICENSE_ID
 
 
 class ReleaseCatalogAudio(BaseModel):

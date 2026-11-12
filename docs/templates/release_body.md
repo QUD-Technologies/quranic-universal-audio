@@ -1,12 +1,14 @@
 {{ release_title }}
 
+> **License.** This release is distributed under the [QUA Dataset License 1.0](https://github.com/QUD-Technologies/quranic-universal-audio/blob/main/LICENSE). By downloading it you agree to its terms: any feature built on this data, directly or through a model trained, fine-tuned, distilled, evaluated or benchmarked on it, must be available in full to every user at no extra charge (no paywall, paid tier or rationing), in an app that is itself free to get; other, unrelated features may be paid, and ads may not interrupt or block the recitation. Obtain the data only from QUA's release channels, and don't sell or republish it, raw or converted. Models may be published under the same license. Published models and datasets must declare they used QUA. Credit QUD Technologies - Qur'anic Universal Audio.
+
 ## What to download
 
 | Asset | What it gives you |
 |---|---|
 | `manifest.json` | Release-level index: reciter zips, download URLs, checksums, sizes, coverage, and change type. |
 | `catalog.json` | Release-level catalog: reciter names, riwayah, style, coverage, audio metadata, and the audio URLs paired with the timestamp data. |
-| `<recitation>.zip` | One recitation's verse and word timestamp files, its own `catalog.json`, and `specials.json` (its Isti'adha / Basmala) when it has any. |
+| `<recitation>.zip` | One recitation's verse and word timestamp files, its own `catalog.json` and `LICENSE`, and `specials.json` (its Isti'adha / Basmala) when it has any. |
 | `shard.py` | Optional helper that splits a large timestamp file into one JSON file per surah. |
 | `check_updates.py` | Optional helper that checks the latest release for updates to the reciters you use; add `--sync` to re-download them. |
 | `download_audio.py` | Optional helper that fetches a reciter's source audio (YouTube/Drive/CDN) re-encoded so the timestamps line up. |
@@ -15,7 +17,7 @@
 | `DigitalKhattV2.otf` | Matching DigitalKhatt V2 font (SIL Open Font License 1.1 in the font metadata). |
 | `<riwayah>_words.json.gz` | Exact word text of a non-Hafs riwayah in this release (Warsh, Qalun, Shubah), keyed by its own `surah:ayah:word` coordinates; `manifest.json` `editions` names it. |
 | `<riwayah>.ttf` | Matching KFGQPC font for that riwayah's script. |
-| `LICENSE` | CC-BY-4.0 license text. |
+| `LICENSE` | QUA Dataset License 1.0 (`qua-dataset-1.0`) full text. Covers the timing data, catalog and manifest only; recitation audio, Qur'an text files (`digital_khatt_v2_script.json`, `<riwayah>_words.json.gz`), fonts and helper scripts are not covered (see NOTICE). |
 
 The release-level `manifest.json` and `catalog.json` index the whole release; each zip also carries its own `catalog.json` describing just that recitation.
 
@@ -172,7 +174,7 @@ type ReleaseManifest = {
     coverage_ayahs: number;
     change_kind: "added" | "refresh" | "unchanged";
   }>;
-  license: "CC-BY-4.0";
+  license: "qua-dataset-1.0";
 };
 ```
 

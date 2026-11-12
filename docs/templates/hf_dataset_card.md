@@ -1,5 +1,27 @@
 ---
-license: cc-by-4.0
+license: other
+license_name: qua-dataset-1.0
+license_link: https://github.com/QUD-Technologies/quranic-universal-audio/blob/main/LICENSE
+extra_gated_heading: Request access under the QUA Dataset License 1.0
+extra_gated_prompt: |
+  Access requires agreeing to the **QUA Dataset License 1.0** (QUD Technologies). In short:
+
+  - **Free feature, free app.** Anything built on this data, directly or through a model trained, tuned or benchmarked on it, must be fully available to every user at no charge: no paywall, paid tier or rationing, in an app that is free to get. Other features may be paid. Ads may not interrupt or block the recitation.
+  - **Get it only from QUA; don't sell or republish it**, raw or converted. Models may be published, under this license only.
+  - **Declare and credit.** Published models and datasets state they used QUA. Credit QUD Technologies - Quranic Universal Audio.
+
+extra_gated_fields:
+  What will you use it for?:
+    type: select
+    options:
+      - Recitation app or website (highlighting, playback, memorisation)
+      - Training or evaluating a model
+      - Research or study
+      - label: Other
+        value: other
+  App, project or organisation (name or link): text
+  I agree to the QUA Dataset License 1.0: checkbox
+extra_gated_button_content: Request access
 task_categories:
 - automatic-speech-recognition
 language:
@@ -27,7 +49,7 @@ size_categories:
   <br>
   <a href="https://github.com/QUD-Technologies/quranic-universal-audio/releases/latest"><img src="https://img.shields.io/github/v/release/QUD-Technologies/quranic-universal-audio?label=Release&color=4a5568" alt="Latest Release"></a>
   <a href="https://github.com/QUD-Technologies/quranic-universal-audio"><img src="https://img.shields.io/github/stars/QUD-Technologies/quranic-universal-audio?style=social" alt="GitHub stars"></a>
-  <a href="https://github.com/QUD-Technologies/quranic-universal-audio/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-CC%20BY%204.0-4a5568" alt="License"></a>
+  <a href="https://github.com/QUD-Technologies/quranic-universal-audio/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-QUA%20Dataset%201.0-4a5568" alt="License"></a>
 </p>
 
 <h1 align="center">Qur'anic Universal Ayahs</h1>
@@ -91,6 +113,8 @@ One row per published mushaf.
 
 ## Usage
 
+The dataset is gated: accept the license on this page, then authenticate (`hf auth login`, or pass `token=`).
+
 ```python
 from datasets import load_dataset
 
@@ -120,8 +144,10 @@ print(catalog[0]["name_en"], catalog[0]["riwayah"])
 
 - Best for quick access to verse audio and timestamps together, ayah-by-ayah playback, and ML research.
 - Also see [GitHub Releases](https://github.com/QUD-Technologies/quranic-universal-audio/releases/latest), a parallel format using JSON files with versioning and checksums, suitable for offline usage.
-- Recitation audio is not relicensed, and remains the property of upstream sources/reciters.
+- Recitation audio, Qur'an text editions and fonts are not relicensed, and remain under their own terms (see NOTICE).
 
 ## License
 
-CC BY 4.0.
+[QUA Dataset License 1.0](https://github.com/QUD-Technologies/quranic-universal-audio/blob/main/LICENSE) (`qua-dataset-1.0`), by [QUD Technologies](https://qud.dev).
+
+In short: use it freely, including in commercial products, but any feature built on this data, directly or through a model trained, fine-tuned, distilled, evaluated or benchmarked on it, must be available in full to every user at no extra charge (no paywall, paid tier or rationing), in an app that is itself free to get; other, unrelated features may be paid, and ads may not interrupt or block the recitation. Obtain the data only from QUA's release channels, and don't sell or republish it, raw or converted. Models may be published under the same license. Published models and datasets must declare they used QUA. Credit QUD Technologies - Qur'anic Universal Audio. The full license text governs.

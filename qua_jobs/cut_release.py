@@ -57,6 +57,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from qua_shared.dataset_license import DATA_LICENSE_FILE, DATA_LICENSE_ID  # noqa: E402
 from qua_shared.audio import upstream  # noqa: E402
 from qua_shared.audio.sources import (  # noqa: E402
     chapters_without_public_source,
@@ -696,7 +697,7 @@ def _build_dataset_manifest(
         static_refs={k: FileDigest.model_validate(v) for k, v in static_refs.items()},
         editions={k: ReleaseEdition.model_validate(v) for k, v in editions.items()},
         recitations=recitations,
-        license="CC-BY-4.0",
+        license=DATA_LICENSE_ID,
     )
     return _json_model_bytes(manifest)
 
@@ -1100,7 +1101,7 @@ def _preflight() -> int:
         DIGITAL_KHATT_FONT_PATH,
         ".github/config/repo.yml",
         "docs/templates/release_body.md",
-        "LICENSE",
+        DATA_LICENSE_FILE,
         "qua_jobs/shard.py",
         "qua_jobs/check_updates.py",
         "qua_jobs/download_audio.py",
@@ -1587,10 +1588,15 @@ def main() -> int:
         return 6
     log.info("computed version: %s", version)
 
-    # 5. Pack each recitation's zip (tier files + catalog.json — the zip
-    # content is version-independent, so a single pass suffices).
+    # 5. Pack each recitation's zip (tier files + catalog.json + the DATA
+    # licence — the zip content is version-independent, so a single pass
+    # suffices). The licence rides in every zip so a lone reciter zip still
+    # carries its terms; content_hash excludes it (tier + catalog only).
+    license_path = _code_root() / DATA_LICENSE_FILE
+    license_bytes = license_path.read_bytes() if license_path.exists() else b""
+    zip_extras = {"LICENSE": license_bytes} if license_bytes else {}
     for m in members:
-        zip_data = _pack_recitation_zip(m["slug"], m["_files"])
+        zip_data = _pack_recitation_zip(m["slug"], {**m["_files"], **zip_extras})
         m["_zip_bytes"] = zip_data
         m["zip_sha256"] = _sha256_hex(zip_data)
         m["zip_bytes"] = len(zip_data)
@@ -1618,10 +1624,9 @@ def main() -> int:
         hf_dataset,
     )
 
-    # 7. Read license + helpers for upload. DigitalKhatt assets were validated
-    # before reciter projection and are uploaded byte-for-byte.
-    license_path = _code_root() / "LICENSE"
-    license_bytes = license_path.read_bytes() if license_path.exists() else b""
+    # 7. Read helpers for upload (licence bytes were read in step 5).
+    # DigitalKhatt assets were validated before reciter projection and are
+    # uploaded byte-for-byte.
     shard_py = (_code_root() / "qua_jobs" / "shard.py").read_bytes()
     check_updates_py = (_code_root() / "qua_jobs" / "check_updates.py").read_bytes()
     download_audio_py = (_code_root() / "qua_jobs" / "download_audio.py").read_bytes()

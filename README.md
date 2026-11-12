@@ -84,4 +84,9 @@ Issues and pull requests are welcome. If you've found a bug or have a feature id
 
 ## License
 
-The project's own work — timestamps, segmentation, alignment, catalog metadata, and code — is licensed under [CC BY 4.0](LICENSE). Recitation recordings remain the property of their reciters and original upstream sources.
+Qur'anic Universal Audio is a product of [QUD Technologies](https://qud.dev).
+
+- **Timing data** (timestamps, segmentation, alignment, catalog metadata — GitHub releases, Hugging Face dataset, any API, and Qur'anic Universal Aligner outputs): [QUA Dataset License 1.0](LICENSE). Free to use, including in commercial products, but any feature built on this data, directly or through a model trained, fine-tuned, distilled, evaluated or benchmarked on it, must be available in full to every user at no extra charge (no paywall, paid tier or rationing), in an app that is itself free to get; other, unrelated features may be paid, and ads may not interrupt or block the recitation. Obtain the data only from QUA's release channels, and don't sell or republish it, raw or converted. Models may be published under the same license. Published models and datasets must declare they used QUA. Credit QUD Technologies - Qur'anic Universal Audio.
+- **Recitation audio**: remains the property of its reciters and original upstream sources; not relicensed.
+
+See [NOTICE](NOTICE.md) for sources and details.
