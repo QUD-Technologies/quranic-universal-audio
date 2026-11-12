@@ -51,6 +51,7 @@
     import PickerFooter from './PickerFooter.svelte';
     import PickerReviewStatus from './PickerReviewStatus.svelte';
     import PickerStateTabs from './PickerStateTabs.svelte';
+    import { recallPickerState, rememberPickerState } from './picker-memory';
     import { alignedDateLabel, type PickerSort, sortByAligned } from './picker-sort';
 
     interface Combo {
@@ -109,9 +110,11 @@
     };
 
     let search = initialFilter.search ?? '';
-    let activeBucket: PublicBucket | null = initialFilter.bucket ?? null;
+    const recalled = recallPickerState();
+    let activeBucket: PublicBucket | null =
+        initialFilter.bucket ?? (recalled?.bucket && allowedBuckets.includes(recalled.bucket) ? recalled.bucket : null);
     let activeFilters: Record<string, Set<string>> = {};
-    let sort: PickerSort = 'default';
+    let sort: PickerSort = recalled?.sort ?? 'default';
     let focusedIdx = -1;
 
     let searchInputEl: SearchInput | null = null;
@@ -141,11 +144,14 @@
             // above; we only need to (re)build the descriptor here.
             const allDeliveries = snap.reciters.flatMap((r) => r.deliveries);
             descriptor = buildSchemaDescriptor(allDeliveries);
-            for (const axis of descriptor.axes) {
-                activeFilters[axis.key] = new Set();
+            // Restore remembered tags, dropping any no longer offered by the rail
+            // (a stale tag would filter rows with no pill left to untoggle it).
+            for (const axis of [...descriptor.axes, QUALITY_AXIS, REVIEW_AXIS]) {
+                const valid = new Set(axis.options.map((o) => o.key));
+                activeFilters[axis.key] = new Set(
+                    (recalled?.filters[axis.key] ?? []).filter((t) => valid.has(t)),
+                );
             }
-            activeFilters[QUALITY_AXIS.key] = new Set();
-            activeFilters[REVIEW_AXIS_KEY] = new Set();
             activeFilters = activeFilters;
             await tick();
             searchInputEl?.focus();
@@ -297,16 +303,19 @@
         else set.add(detail.tag);
         activeFilters = { ...activeFilters, [detail.axis]: set };
         focusedIdx = -1;
+        rememberPickerState(activeBucket, activeFilters, sort);
     }
 
     function onSortChange(e: Event): void {
         sort = (e.currentTarget as HTMLSelectElement).value as PickerSort;
         focusedIdx = -1;
+        rememberPickerState(activeBucket, activeFilters, sort);
     }
 
     function selectBucket(b: PublicBucket | null): void {
         activeBucket = b;
         focusedIdx = -1;
+        rememberPickerState(activeBucket, activeFilters, sort);
     }
 
     function commit(combo: Combo): void {
