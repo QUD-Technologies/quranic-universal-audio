@@ -19,7 +19,7 @@ What it does:
 1. Builds the frontend (``inspector/frontend`` → ``dist/``) unless
    ``--skip-build``.
 2. Stages the Space-shaped tree (Dockerfile, ``inspector/`` code + built
-   ``dist/``, ``qua_shared/``, ``data/phoneme_sub_costs.json``, the
+   ``dist/``, ``qua_shared/``, the
    talqeen-quran-data installer the image build runs, a ``README.md`` with the HF
    Space frontmatter).
 3. ``create_repo`` (idempotent) → ``upload_folder`` → factory ``restart_space``.
@@ -127,11 +127,7 @@ def _stage(repo: Path, stage_root: Path, *, title: str) -> None:
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
         )
 
-    # phoneme_sub_costs.json is the only bundled data file; the Quran data pack is
-    # fetched by the image build with the installer staged here.
-    data_dst = stage_root / "data"
-    data_dst.mkdir()
-    shutil.copy2(repo / "data" / "phoneme_sub_costs.json", data_dst / "phoneme_sub_costs.json")
+    # The Quran data pack is fetched by the image build with the installer staged here.
     installer = Path("scripts") / "devenv" / "install_quran_data.py"
     (stage_root / installer).parent.mkdir(parents=True)
     shutil.copy2(repo / installer, stage_root / installer)

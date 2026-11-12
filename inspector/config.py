@@ -14,8 +14,7 @@ from qua_shared.riwayat import SUPPORTED_RIWAYAT as _INSPECTOR_RIWAYAT  # noqa: 
 #: SDK slugs, in product order. Defined once, in qua_shared.riwayat.
 _SDK_RIWAYAT = tuple(_INSPECTOR_RIWAYAT.values())
 
-# Data root — holds only bundled reference data (phoneme_sub_costs,
-# .audio_meta) in deployed mode. Hafs text and surah metadata come from the
+# Data root — holds only bundled reference data (.audio_meta) in deployed mode. Hafs text and surah metadata come from the
 # talqeen-quran-data pack (``qua_shared.quran_text``); all per-reciter content
 # lives in the bucket at INSPECTOR_BUCKET_MOUNT.
 DATA_DIR = Path(os.environ.get("INSPECTOR_DATA_DIR", str(_REPO / "data"))).resolve()
@@ -38,13 +37,6 @@ GUIDE_FLAGS_PATH = Path(
         str(_REPO / ".local" / "guide_flags" / "flags.jsonl"),
     )
 ).resolve()
-
-# Bundled linguistic data (phoneme_sub_costs) lives in the repo's ``data/`` dir.
-# Override the base dir via INSPECTOR_QUA_DATA_PATH for standalone / Docker
-# deployments.
-_QUA_DATA_OVERRIDE = os.getenv("INSPECTOR_QUA_DATA_PATH")
-_QUA_DATA = Path(_QUA_DATA_OVERRIDE) if _QUA_DATA_OVERRIDE else DATA_DIR
-PHONEME_SUB_COSTS_PATH = _QUA_DATA / "phoneme_sub_costs.json"
 
 # Display settings
 UNIFIED_DISPLAY_MAX_HEIGHT = 800  # px

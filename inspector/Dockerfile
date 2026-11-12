@@ -181,7 +181,6 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     INSPECTOR_DATA_DIR=/app/data \
-    INSPECTOR_QUA_DATA_PATH=/app/data \
     INSPECTOR_BUCKET_MOUNT=/data/inspector-bucket \
     INSPECTOR_BUCKET_REPO=QUD-Technologies/quranic-inspector-bucket-dev \
     INSPECTOR_PARSED_CACHE_BYTES=134217728 \
@@ -248,13 +247,11 @@ COPY qua_jobs/ ./qua_jobs/
 COPY .github/config/ ./.github/config/
 COPY docs/templates/ ./docs/templates/
 COPY LICENSE ./LICENSE
-# The on-disk data surface in deployed mode: phoneme_sub_costs.json (read via
-# config.py's _QUA_DATA; INSPECTOR_QUA_DATA_PATH=/app/data) and the Quran data
+# The on-disk data surface in deployed mode: the Quran data
 # pack from stage 0, which qua_shared.quran_text opens at /app/data. Everything
 # else (state, catalog, audit, per-reciter reciters/) lives in the bucket mounted
 # at /data/inspector-bucket. The pack comes from the build stage, not the build
 # context, so no binary has to survive the Space's LFS handling.
-COPY data/phoneme_sub_costs.json ./data/
 COPY --from=quran-data-build /pack/quran-core.qref ./data/quran-core.qref
 # The pack's fonts (stage 0): served to the browser by /api/static/quran-data/;
 # DigitalKhattV2.otf is also the font the release jobs publish (stage_job_code

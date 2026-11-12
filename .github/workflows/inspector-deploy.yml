@@ -9,7 +9,6 @@ on:
       - "qua_jobs/**"
       - "scripts/deploy/upload_inspector.py"
       - "scripts/devenv/install_quran_data.py"
-      - "data/phoneme_sub_costs.json"
       - ".dockerignore"
       - "docs/templates/**"
       - ".github/workflows/inspector-deploy.yml"
