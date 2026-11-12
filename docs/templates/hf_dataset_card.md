@@ -20,7 +20,7 @@ extra_gated_fields:
       - label: Other
         value: other
   App, project or organisation (name or link): text
-  I agree to the QUA Dataset License 1.0: checkbox
+  I agree to the QUA Dataset License: checkbox
 extra_gated_button_content: Request access
 task_categories:
 - automatic-speech-recognition
