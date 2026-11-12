@@ -2,7 +2,7 @@
 license: other
 license_name: qua-dataset-1.0
 license_link: https://github.com/QUD-Technologies/quranic-universal-audio/blob/main/LICENSE-DATA
-extra_gated_heading: Agree to the QUA Dataset License 1.0 to access this dataset
+extra_gated_heading: Request access under the QUA Dataset License 1.0
 extra_gated_prompt: |
   Access requires agreeing to the **QUA Dataset License 1.0** (QUD Technologies). In short:
 
@@ -10,21 +10,19 @@ extra_gated_prompt: |
   - **Get it only from QUA; don't sell or republish it**, raw or converted. Models may be published, under this license only.
   - **Declare and credit.** Published models and datasets state they used QUA. Credit QUD Technologies - Qur'anic Universal Audio (https://qud.dev).
 
-  Audio, Qur'an text and fonts are not covered. The full license governs.
+  Requests are reviewed manually. Audio, Qur'an text and fonts are not covered. The full license governs.
 extra_gated_fields:
-  Name: text
-  Organisation (or "individual"): text
-  Intended use:
+  What will you use it for?:
     type: select
     options:
-      - Academic or non-profit research
-      - App or product feature
-      - Model training or evaluation
-      - Personal study
+      - Recitation app or website (highlighting, playback, memorisation)
+      - Training or evaluating a model
+      - Research or study
       - label: Other
         value: other
+  App, project or organisation (name or link): text
   I agree to the QUA Dataset License 1.0: checkbox
-extra_gated_button_content: Accept and access
+extra_gated_button_content: Request access
 task_categories:
 - automatic-speech-recognition
 language:

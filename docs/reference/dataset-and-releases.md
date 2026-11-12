@@ -459,8 +459,10 @@ Technologies); the **code** is Apache-2.0 (`LICENSE`). Recitation audio is under
   `LICENSE-DATA` is a required staged file (`jobs/base.REQUIRED_STATIC_FILES`, cut-job preflight,
   `inspector/Dockerfile` COPY). GitHub has no download gate — acceptance is by download (release-body callout).
 - **HF dataset:** the card template frontmatter is `license: other` / `license_name: qua-dataset-1.0` /
-  `license_link` plus `extra_gated_*` fields — HF shows the terms and records a per-user acceptance
-  before access. The gate only takes effect once gating is also enabled in the dataset repo settings.
+  `license_link` plus `extra_gated_*` fields (intended use, app/project/organisation, agreement
+  checkbox) — HF shows the terms and records each request. Access is **manually approved**: the
+  gating mode is a repo setting, not card frontmatter, so it must be set to *manual* in the dataset
+  settings (or `HfApi.update_repo_settings(..., gated="manual")`); until then the fields do nothing.
 - **Templates** (`release_body.md`, `hf_dataset_card.md`) carry the licence text literally; update
   them together with `dataset_license.py` on a licence version bump.
 
