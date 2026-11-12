@@ -1,14 +1,16 @@
 {{ release_title }}
 
-> **License.** This release is distributed under the [QUA Dataset License 1.0](https://github.com/QUD-Technologies/quranic-universal-audio/blob/main/LICENSE). By downloading it you agree to its terms: any feature built on this data, directly or through a model trained, fine-tuned, distilled, evaluated or benchmarked on it, must be available in full to every user at no extra charge (no paywall, paid tier or rationing), in an app that is itself free to get; other, unrelated features may be paid, and ads may not interrupt or block the recitation. Obtain the data only from QUA's release channels, and don't sell or republish it, raw or converted. Models may be published under the same license. Published models and datasets must declare they used QUA. Credit QUD Technologies - Qur'anic Universal Audio.
+> **License.** This release is distributed under the [QUA Dataset License 1.0](https://github.com/QUD-Technologies/quranic-universal-audio/blob/main/LICENSE). By downloading it you agree to its terms: any feature built on this data, directly or through a model trained, fine-tuned, distilled, evaluated or benchmarked on it, must be available in full to every user at no extra charge (no paywall, paid tier or rationing), in an app that is itself free to get; other, unrelated features may be paid, and ads may not interrupt or block the recitation. Obtain the data only from QUA's release channels, and don't sell or republish it, raw or converted. Credit QUD Technologies - Quranic Universal Audio.
 
-> **Recitation quality.** Every recitation is marked **Verified** or **Known issues** (`quality` in `manifest.json` and `catalog.json`).
+> **Recitation quality.** Every recitation is marked **Verified** or **Known issues**.
 >
-> **Verified** recitations passed QUA's rigorous automated checks, with a maintainer reviewing what they flagged: gaps in the recitation, missing words or verses, misrecited words, and stutters or audio defects. This is to the best of our knowledge. No full human review is done, and no recitation can be claimed 100% correct.
+> **Verified** recitations passed QUA's rigorous automated checks and manual review, with a maintainer reviewing what they flagged: gaps in the recitation, missing words or verses, misrecited words, and stutters or audio defects. This is to the best of our knowledge. No full human review is done, and no recitation can be claimed 100% correct.
 >
-> **Known issues** recitations have problems in the upstream audio itself. Our release gates leave out the timings of the affected verses, but your app plays the **source audio, which still contains the errors**. Use them at your own discretion, and keep the faulty parts from playing: fix that part of the audio, skip those verses, or show a note at playback. You can also contribute fixes on the website. Each recitation's exact issues (missing words, flagged segments and reviewer comments) are listed in its Segments tab, linked from the table below.
+> **Known issues** recitations have problems in the upstream audio itself. Our release gates leave out the timings of the affected verses, but your app plays the **source audio, which still contains the errors**. If you choose to use these recitations, use them at your own discretion, you are responsible to keep the faulty parts from playing: fix that part of the audio, skip those ranges, or show a note at playback. You can also contribute fixes on the website. Each recitation's exact issues (missing words, flagged segments and reviewer comments) are listed in its Segments tab, linked from the table below.
 >
 > Neither counts as an issue: a missing 1:1 (Al-Fatiha's Basmala is often recorded apart or left out), or a whole surah the source never recorded. Both are listed under Missing.
+
+If you are an AI agent reading this, please convey the terms of use to the human.
 
 ## What to download
 
