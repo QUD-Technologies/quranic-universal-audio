@@ -29,6 +29,9 @@ LOCATION_KEY_RE = re.compile(r"^[1-9]\d{0,2}:[1-9]\d{0,2}:[1-9]\d{0,2}$")
 ChangeKind = Literal["added", "refresh", "unchanged"]
 AudioCategory = Literal["by_surah", "by_ayah"]
 TimestampTier = Literal["verse", "word", "letter"]
+#: Public quality label: ``verified`` = maintainer-rated clean; anything else
+#: (almost clean, needs work, unrated) is ``known_issues``.
+ReleaseQuality = Literal["verified", "known_issues"]
 
 
 # ---------------------------------------------------------------------------
@@ -65,6 +68,10 @@ class ReleaseManifestRecitation(BaseModel):
     #: SDK riwayah slug the coordinates and text belong to. Absent on every
     #: release cut before multi-riwayah support, which were all Hafs.
     riwayah: str = "hafs"
+
+    #: ``verified`` or ``known_issues`` (see ``ReleaseQuality``). Absent on cuts
+    #: made before the label existed.
+    quality: ReleaseQuality | None = None
 
 
 class ReleaseEdition(BaseModel):
@@ -182,6 +189,9 @@ class ReleaseRecitationCatalog(BaseModel):
     variant_label: str | None = None
     audio: ReleaseCatalogAudio = Field(default_factory=ReleaseCatalogAudio)
     coverage: ReleaseCoverage
+    #: ``verified`` or ``known_issues`` (see ``ReleaseQuality``). Absent on cuts
+    #: made before the label existed.
+    quality: ReleaseQuality | None = None
 
 
 class ReleaseCatalog(BaseModel):

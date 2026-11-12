@@ -25,6 +25,8 @@ class ReviewSignalCounts(BaseModel):
 
     low_confidence: int = Field(0, ge=0)
     low_confidence_v2: int = Field(0, ge=0)
+    #: Segments carrying an open flag (a resolved flag is deleted).
+    flagged: int = Field(0, ge=0)
 
 
 class ReviewSignalsDoc(BaseModel):

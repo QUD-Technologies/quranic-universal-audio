@@ -1896,11 +1896,12 @@ export interface SegReciter {
  *
  * ``low_confidence`` counts segments under the delivery's riwayah threshold (the
  * accordion's default slider position); ``low_confidence_v2`` the open neural sidecar
- * items.
+ * items; ``flagged`` the segments carrying an open flag.
  */
 export interface SegReviewSignal {
   low_confidence?: number;
   low_confidence_v2?: number;
+  flagged?: number;
 }
 /**
  * ``GET /api/seg/review-signals`` — counts by slug for the deliveries with open items

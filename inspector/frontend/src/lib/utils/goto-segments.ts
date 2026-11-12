@@ -52,3 +52,30 @@ export function gotoSegments(slug: string, deepLink?: SegmentsDeepLink): void {
     selectedReciter.set(slug);
     setActiveTab(TAB_NAMES.SEGMENTS);
 }
+
+/** URL param a shared link uses to open a recitation in Segments
+ *  (`https://audio.qud.dev/?segments=<slug>`, e.g. from a release's
+ *  known-issues table). */
+export const SEGMENTS_URL_PARAM = 'segments';
+
+/** Open the Segments tab on the recitation named by `?segments=<slug>`, then
+ *  strip the param so a refresh lands on the remembered state instead. Returns
+ *  whether the link was applied. Best-effort: a malformed URL is ignored. */
+export function consumeSegmentsUrlParam(): boolean {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const slug = params.get(SEGMENTS_URL_PARAM)?.trim();
+        if (!slug) return false;
+        params.delete(SEGMENTS_URL_PARAM);
+        const qs = params.toString();
+        window.history.replaceState(
+            {},
+            '',
+            window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash,
+        );
+        gotoSegments(slug);
+        return true;
+    } catch {
+        return false;
+    }
+}

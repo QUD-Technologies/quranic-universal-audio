@@ -415,8 +415,8 @@ def test_release_preview_uses_display_names(signed_in_client, monkeypatch):
     assert "`catalog.json`" in md and "audio URLs paired with the timestamp data" in md
     assert "`release_schemas.json`" not in md
     assert "Hafs" in md and "114 surahs" in md
-    # The delivery slug must not leak into the human-facing body.
-    assert "ar_preview" not in md
+    # The delivery slug never shows as text; it appears only in the Segments link URL.
+    assert "ar_preview" not in md.replace("?segments=ar_preview", "")
 
 
 # ---------------------------------------------------------------------------

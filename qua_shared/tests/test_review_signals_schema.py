@@ -14,8 +14,8 @@ CANONICAL = {
     "schema_version": 1,
     "updated_at": "2026-11-11T12:40:52Z",
     "signals": {
-        "adel_al_kalbani_qdc": {"low_confidence": 37, "low_confidence_v2": 4},
-        "walid_atef_way2quran": {"low_confidence": 19, "low_confidence_v2": 14},
+        "adel_al_kalbani_qdc": {"low_confidence": 37, "low_confidence_v2": 4, "flagged": 2},
+        "walid_atef_way2quran": {"low_confidence": 19, "low_confidence_v2": 14, "flagged": 0},
     },
 }
 

@@ -23,6 +23,7 @@
     import { playerContext } from './lib/stores/player-context';
     import type { PublicDelivery } from './lib/types/generated/schemas';
     import { activeTab as activeTabStore, getActiveTab, setActiveTab } from './lib/utils/active-tab';
+    import { consumeSegmentsUrlParam } from './lib/utils/goto-segments';
     import { LS_KEYS, TAB_NAMES } from './lib/utils/constants';
     import DashboardTab from './tabs/dashboard/DashboardTab.svelte';
     import SegmentsTab from './tabs/segments/SegmentsTab.svelte';
@@ -103,6 +104,8 @@
             // users land on Dashboard.
             setActiveTab(TAB_NAMES.DASHBOARD);
         }
+        // A shared `?segments=<slug>` link wins over the remembered tab.
+        consumeSegmentsUrlParam();
         void loadCurrentUser();
 
         // Re-resolve identity + capabilities when the tab regains focus, so an

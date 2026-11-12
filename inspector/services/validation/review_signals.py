@@ -2,7 +2,8 @@
 
 How many open **Low Confidence** items (confidence under the delivery's riwayah threshold —
 the accordion's default slider position and the mark-ready gate) and **Low Confidence v2**
-items (neural sidecar failures) each delivery has, so the picker can badge and filter rows.
+items (neural sidecar failures) each delivery has, plus its open **flags** (segments carrying
+a flag), so the picker can badge, filter and sort rows.
 
 The counts live in one small bucket file, ``catalog/review_signals.json``
 (``ReviewSignalsDoc``). The Space never scans reciters for them:
@@ -31,29 +32,33 @@ from qua_shared.riwayat import resolve_sdk_slug
 from qua_shared.schemas.bucket.review_signals import ReviewSignalsDoc
 from services.activity.history_query import build_resolved_by_edit_index
 from services.reference.delivery_edition import inspector_riwayah_for
+from services.segments.flags import count_flagged
 from services.storage import cache, data_dir
+from services.storage.data_loader import load_detailed
 from services.validation.classifier import is_ignored_for, is_suppressed_for
 
 log = logging.getLogger(__name__)
 
 #: Longest a loaded copy of the file is served before it is read again.
 REFRESH_S = 600.0
-_ZERO = {"low_confidence": 0, "low_confidence_v2": 0}
+_ZERO = {"low_confidence": 0, "low_confidence_v2": 0, "flagged": 0}
 
 _lock = threading.Lock()
 
 
-def counts_from_validate(payload: dict, threshold: float) -> dict[str, int]:
-    """The two counts from a validate payload (``/api/seg/validate`` shape)."""
+def counts_from_validate(payload: dict, threshold: float, flagged: int) -> dict[str, int]:
+    """The counts from a validate payload (``/api/seg/validate`` shape); flags are not in the
+    payload, so the caller counts them from the entries."""
     low = payload.get("low_confidence") or []
     return {
         "low_confidence": sum(1 for it in low if (it.get("confidence") or 0.0) < threshold),
         "low_confidence_v2": len(payload.get("low_confidence_v2") or []),
+        "flagged": flagged,
     }
 
 
 def scan_counts(entries: list[dict], threshold: float, probe_failed: set[str]) -> dict[str, int]:
-    """The two counts over ``entries`` (mirrors ``classifier.classify_flags``)."""
+    """The counts over ``entries`` (low confidence mirrors ``classifier.classify_flags``)."""
     low = low_v2 = 0
     for entry in entries:
         for seg in entry.get("segments") or []:
@@ -71,7 +76,7 @@ def scan_counts(entries: list[dict], threshold: float, probe_failed: set[str]) -
             uid = seg.get("segment_uid")
             if uid and uid in probe_failed and not is_suppressed_for(seg, "low_confidence_v2"):
                 low_v2 += 1
-    return {"low_confidence": low, "low_confidence_v2": low_v2}
+    return {"low_confidence": low, "low_confidence_v2": low_v2, "flagged": count_flagged(entries)}
 
 
 def _threshold(slug: str) -> float | None:
@@ -111,7 +116,7 @@ def compute(slug: str, *, offline: bool = False) -> dict[str, int] | None:
             return None
         cached = cache.get_seg_validate_cache(slug)
         if cached is not None:
-            return counts_from_validate(cached, threshold)
+            return counts_from_validate(cached, threshold, count_flagged(load_detailed(slug)))
     raw = data_dir.read_detailed_bytes(slug)
     if raw is None:
         return None
@@ -184,7 +189,8 @@ def record(slug: str, payload: dict) -> None:
         threshold = _threshold(slug)
         if threshold is None:
             return
-        counts = counts_from_validate(payload, threshold)
+        # The validator just loaded the entries, so this is a cache hit.
+        counts = counts_from_validate(payload, threshold, count_flagged(load_detailed(slug)))
         if current().get(slug, _ZERO) == counts:
             return
         write_counts({slug: counts})

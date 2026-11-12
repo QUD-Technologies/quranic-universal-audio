@@ -283,7 +283,7 @@ the other helpers (`base.REQUIRED_ENTRYPOINTS`) and uploaded by the cut.
   "recitations": {
     "<slug>": { "zip": "<slug>.zip", "zip_url": "...", "sha256": "...", "bytes": 123,
                  "coverage_ayahs": 6236, "content_hash": "...", "change_kind": "added",
-                 "ts_version": "..." }
+                 "ts_version": "...", "quality": "verified" }
   },
   "license": "qua-dataset-1.0"
 }
@@ -308,6 +308,22 @@ Format (display names only — never slugs):
 - `<details>` **Catalog and manifest schemas**: release-level `manifest.json` and `catalog.json`.
 - A licence callout under the title (QUA Dataset License 1.0 terms-by-download) and a footer
   `**License:** [QUA Dataset License 1.0](…/LICENSE) (`qua-dataset-1.0`)`.
+- A **Recitation quality** callout right under the licence: what Verified means (automated checks
+  plus maintainer review, no full human listen, no 100% guarantee), that Known-issues recitations'
+  source audio still carries the errors their gated verses left out, and that a missing `1:1` or a
+  whole unrecorded surah is not an issue.
+- Two recitation tables, **Verified** and **Recitations with known issues**, each sorted New →
+  Updated → unchanged with a **Change** column. The known-issues table adds an **Issues** column
+  linking `https://audio.qud.dev/?segments=<slug>` (the SPA's `consumeSegmentsUrlParam` opens that
+  recitation in Segments, then strips the param) — the one place a slug appears, inside a URL.
+
+**Quality label.** `quality` on each `manifest.json` recitation and `catalog.json` entry is the
+binary public view of the maintainer rating `delivery_states.quality_status`
+([`qua_shared/release_quality.py`](../../qua_shared/release_quality.py)): `clean` → `verified`;
+`almost_clean`, `needs_work` and unrated → `known_issues`. It is part of `catalog.json`, which
+`content_hash` covers, so a relabel alone makes the recitation `refresh` (Updated) and
+`check_updates.py` reports it; the first cut carrying the field marks every recitation Updated.
+Rate every delivery before a cut — an unrated one ships as known issues.
 
 Coverage shows exact **ayahs** at cut time; the DB-only preview shows **surahs** (chapter_count)
 because exact ayah coverage is only computed during the cut. A **Missing** column reports
@@ -317,9 +333,7 @@ surahs (`surahs 1-84`) and within-surah verse gaps (`75:18-40`, `7:116, 41:15`) 
 concise run-collapsed strings so even a partial recitation (a Juzʾ ʿAmma reciter) stays short; a
 complete reciter shows `—`. The same two strings (`coverage.missing_surahs` / `coverage.missing_verses`,
 omitted when empty) are written to each `catalog.json`, so the human table and the JSON can't drift.
-A data-gated callout above the recitation tables explains that a missing verse is almost always
-upstream (source omits it — commonly the Basmala `1:1` — or recites it incompletely) and is excluded
-rather than shipped misaligned. The DB-only preview can't compute exact gaps, so its Missing column is
+The DB-only preview can't compute exact gaps, so its Missing column is
 all `—`. Riwayah/style/channel display names
 come from the `riwayahs` / `styles` / `channels` vocab tables — `catalog.json` keeps the slug forms
 (stable consumer identifiers), the human-facing changelog never shows them.

@@ -57,12 +57,12 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from qua_shared.dataset_license import DATA_LICENSE_FILE, DATA_LICENSE_ID  # noqa: E402
 from qua_shared.audio import upstream  # noqa: E402
 from qua_shared.audio.sources import (  # noqa: E402
     chapters_without_public_source,
     public_source_url,
 )
+from qua_shared.dataset_license import DATA_LICENSE_FILE, DATA_LICENSE_ID  # noqa: E402
 from qua_shared.digital_khatt import (  # noqa: E402
     DIGITAL_KHATT_FONT_FILENAME,
     DIGITAL_KHATT_FONT_PATH,
@@ -71,6 +71,7 @@ from qua_shared.digital_khatt import (  # noqa: E402
     UNICODE_INDEXING,
 )
 from qua_shared.inspector_notify import WEBHOOK_USER_AGENT  # noqa: E402
+from qua_shared.release_quality import release_quality  # noqa: E402
 from qua_shared.riwayat import (  # noqa: E402
     DEFAULT_SDK_RIWAYAH,
     UnsupportedRiwayah,
@@ -174,7 +175,8 @@ def _eligible_recitations(conn: sqlite3.Connection) -> list[dict]:
           d.channels AS channels,
           r.name_en AS name_en,
           r.name_ar AS name_ar,
-          r.country AS country
+          r.country AS country,
+          ds.quality_status AS quality_status
         FROM per_recitation_releases prr
         JOIN deliveries d ON d.slug = prr.slug
         JOIN riwayahs rw  ON rw.slug = d.riwayah
@@ -577,6 +579,7 @@ def _build_catalog_json(
             missing_surahs=missing_surahs,
             missing_verses=missing_verses,
         ),
+        quality=release_quality(rec.get("quality_status")),
     )
     return _json_model_bytes(catalog)
 
@@ -687,6 +690,7 @@ def _build_dataset_manifest(
             ts_version=m["ts_version"],
             tiers=m["tiers"],
             riwayah=m["shard_riwayah"],
+            quality=m["quality"],
         )
     manifest = ReleaseManifest(
         schema_version=SCHEMA_VERSION,
@@ -724,6 +728,8 @@ def _build_changelog(
 
     render_members = [
         {
+            "slug": m.get("slug"),
+            "quality": m.get("quality"),
             "name_en": m.get("name_en"),
             "name_ar": m.get("name_ar"),
             "riwayah": m.get("riwayah_name") or m.get("riwayah"),
@@ -1402,6 +1408,7 @@ def _build_member(rec: dict, ctx: _BuildContext) -> dict | None:
         "missing_verses": missing_verses,
         "content_hash": content_hash,
         "change_kind": change_kind,
+        "quality": release_quality(rec.get("quality_status")),
         # Frozen at cut time — what the ledger row stores.
         "catalog_snapshot": json.loads(catalog_bytes.decode("utf-8")),
         "_files": files,

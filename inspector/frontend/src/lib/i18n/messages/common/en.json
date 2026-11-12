@@ -233,6 +233,8 @@
   "common_picker_sort_default": "Default",
   "common_picker_sort_aligned_newest": "Newest aligned",
   "common_picker_sort_aligned_oldest": "Oldest aligned",
+  "common_picker_sort_low_conf": "Most low confidence",
+  "common_picker_sort_flags": "Most flags",
   "common_picker_aligned_title": "Aligned {date}",
   "common_picker_switch_reciter_title": "Switch reciter",
   "common_nav_tab_dashboard": "Dashboard",
@@ -390,5 +392,7 @@
   "common_review_low_confidence": "Low Confidence",
   "common_review_none": "Nothing to check",
   "common_review_pill_low": "Low conf {count}",
-  "common_review_pill_low_hint": "{under} under the default confidence threshold · {v2} Low Confidence v2"
+  "common_review_pill_low_hint": "{under} under the default confidence threshold · {v2} Low Confidence v2",
+  "common_review_pill_flagged": "Flagged {count}",
+  "common_review_pill_flagged_hint": "Segments with an open flag"
 }

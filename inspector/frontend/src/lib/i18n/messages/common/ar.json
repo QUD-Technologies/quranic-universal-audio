@@ -249,6 +249,8 @@
   "common_picker_sort_default": "افتراضي",
   "common_picker_sort_aligned_newest": "الأحدث محاذاة",
   "common_picker_sort_aligned_oldest": "الأقدم محاذاة",
+  "common_picker_sort_low_conf": "الأكثر ثقة منخفضة",
+  "common_picker_sort_flags": "الأكثر علامات",
   "common_picker_aligned_title": "تمت المحاذاة في {date}",
   "common_picker_switch_reciter_title": "تغيير القارئ",
   "common_nav_tab_dashboard": "لوحة التحكم",
@@ -438,5 +440,7 @@
   "common_review_low_confidence": "ثقة منخفضة",
   "common_review_none": "لا شيء للمراجعة",
   "common_review_pill_low": "ثقة منخفضة {count}",
-  "common_review_pill_low_hint": "{under} تحت حد الثقة الافتراضي · {v2} ثقة منخفضة v2"
+  "common_review_pill_low_hint": "{under} تحت حد الثقة الافتراضي · {v2} ثقة منخفضة v2",
+  "common_review_pill_flagged": "معلَّم {count}",
+  "common_review_pill_flagged_hint": "مقاطع عليها علامة مفتوحة"
 }

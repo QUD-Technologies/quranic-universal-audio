@@ -52,7 +52,7 @@
     import PickerReviewStatus from './PickerReviewStatus.svelte';
     import PickerStateTabs from './PickerStateTabs.svelte';
     import { recallPickerState, rememberPickerState } from './picker-memory';
-    import { alignedDateLabel, type PickerSort, sortByAligned } from './picker-sort';
+    import { alignedDateLabel, type PickerSort, sortPickerRows } from './picker-sort';
 
     interface Combo {
         reciter: PublicReciter;
@@ -96,7 +96,7 @@
     }
     let reviewStatus = new Map<string, ReviewStatus>();
 
-    // Open Low Confidence / Low Confidence v2 counts per slug, from one small
+    // Open Low Confidence / Low Confidence v2 / flag counts per slug, from one small
     // file the server keeps (/api/seg/review-signals; only slugs with items).
     let reviewSignals = new Map<string, SegReviewSignal>();
 
@@ -248,9 +248,10 @@
 
     $: facetResult = recomputeFacets(bucketScoped, activeFilters, facetSpecs);
     $: facetVisible = bucketScoped.filter((_, i) => facetResult.rowVisibility[i]);
-    $: visible = sortByAligned(
+    $: visible = sortPickerRows(
         filterByFields(facetVisible, search, (c) => [c.reciter.name, c.reciter.name_ar]),
         sort,
+        (slug) => reviewSignals.get(slug),
     );
 
     // Split into pinned (active claims) + groups by bucket.
@@ -292,6 +293,8 @@
         { value: 'default', label: tr($localeStore, m.common_picker_sort_default()) },
         { value: 'aligned_desc', label: tr($localeStore, m.common_picker_sort_aligned_newest()) },
         { value: 'aligned_asc', label: tr($localeStore, m.common_picker_sort_aligned_oldest()) },
+        { value: 'low_conf_desc', label: tr($localeStore, m.common_picker_sort_low_conf()) },
+        { value: 'flags_desc', label: tr($localeStore, m.common_picker_sort_flags()) },
     ];
     $: alignedTitle = (iso: string | null | undefined): string =>
         iso ? tr($localeStore, m.common_picker_aligned_title({ date: alignedDateLabel(iso, $localeStore) })) : '';
