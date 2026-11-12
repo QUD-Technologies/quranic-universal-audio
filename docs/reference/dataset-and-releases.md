@@ -320,9 +320,10 @@ Format (display names only — never slugs):
 **Quality label.** `quality` on each `manifest.json` recitation and `catalog.json` entry is the
 binary public view of the maintainer rating `delivery_states.quality_status`
 ([`qua_shared/release_quality.py`](../../qua_shared/release_quality.py)): `clean` → `verified`;
-`almost_clean`, `needs_work` and unrated → `known_issues`. It sits outside `content_hash`, so a
-rating change alone never flips `change_kind`. Rate every delivery before a cut — an unrated one
-ships as known issues.
+`almost_clean`, `needs_work` and unrated → `known_issues`. It is part of `catalog.json`, which
+`content_hash` covers, so a relabel alone makes the recitation `refresh` (Updated) and
+`check_updates.py` reports it; the first cut carrying the field marks every recitation Updated.
+Rate every delivery before a cut — an unrated one ships as known issues.
 
 Coverage shows exact **ayahs** at cut time; the DB-only preview shows **surahs** (chapter_count)
 because exact ayah coverage is only computed during the cut. A **Missing** column reports
