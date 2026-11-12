@@ -21,6 +21,13 @@ def _uids(slug: str) -> list[str]:
     return [s["segment_uid"] for e in doc["entries"] for s in e["segments"] if s.get("segment_uid")]
 
 
+def _flags(slug: str) -> int:
+    from services.segments.flags import count_flagged
+    from services.storage.data_loader import load_detailed
+
+    return count_flagged(load_detailed(slug))
+
+
 def _install_with_sidecar(tmp_reciter_dir, slug: str, fixture: str) -> None:
     """The fixture plus a Low Confidence v2 sidecar failing every other segment."""
     tmp_reciter_dir.install(slug, fixture)
@@ -40,7 +47,7 @@ def test_scan_matches_the_validator(tmp_reciter_dir, fixture):
     assert cache.get_seg_validate_cache(slug) is None  # the scan path, not the cached payload
     result = validate_reciter_segments(slug)
     assert result is not None
-    assert scanned == review_signals.counts_from_validate(result, THRESHOLD)
+    assert scanned == review_signals.counts_from_validate(result, THRESHOLD, _flags(slug))
 
 
 def test_cached_validate_payload_is_used(tmp_reciter_dir):
@@ -50,7 +57,11 @@ def test_cached_validate_payload_is_used(tmp_reciter_dir):
         slug,
         {"low_confidence": [{"confidence": 0.5}, {"confidence": 0.9}], "low_confidence_v2": [{}]},
     )
-    assert review_signals.compute(slug) == {"low_confidence": 1, "low_confidence_v2": 1}
+    assert review_signals.compute(slug) == {
+        "low_confidence": 1,
+        "low_confidence_v2": 1,
+        "flagged": 0,
+    }
 
 
 def test_ignored_segments_do_not_count():
@@ -60,10 +71,12 @@ def test_ignored_segments_do_not_count():
         "segment_uid": "u2",
         "ignored_categories": ["low_confidence", "low_confidence_v2"],
     }
-    entries = [{"segments": [seg, ignored, {"matched_ref": "", "confidence": 0.1}]}]
+    flagged = {"matched_ref": "", "confidence": 0.1, "flag": {"comment": "cut short"}}
+    entries = [{"segments": [seg, ignored, flagged]}]
     assert review_signals.scan_counts(entries, THRESHOLD, {"u1", "u2"}) == {
         "low_confidence": 1,
         "low_confidence_v2": 1,
+        "flagged": 1,
     }
 
 
@@ -89,7 +102,11 @@ def test_record_writes_only_when_counts_change(tmp_reciter_dir, monkeypatch):
     assert len(writes) == 1
     doc = _signals_file()
     assert doc is not None
-    assert doc["signals"]["fixture_reciter"] == {"low_confidence": 1, "low_confidence_v2": 2}
+    assert doc["signals"]["fixture_reciter"] == {
+        "low_confidence": 1,
+        "low_confidence_v2": 2,
+        "flagged": 0,
+    }
 
 
 def test_record_drops_a_reciter_with_nothing_open(tmp_reciter_dir):
@@ -106,14 +123,14 @@ def test_write_keeps_entries_written_offline_since_the_last_read(tmp_reciter_dir
     assert review_signals.current() == {}  # loaded: empty, fresh for REFRESH_S
     # An offline backfill writes another reciter behind the Space's back.
     data_dir.write_review_signals_doc(
-        {"signals": {"other": {"low_confidence": 4, "low_confidence_v2": 0}}}
+        {"signals": {"other": {"low_confidence": 4, "low_confidence_v2": 0, "flagged": 0}}}
     )
     review_signals.record("fixture_reciter", {"low_confidence_v2": [{}]})
     doc = _signals_file()
     assert doc is not None
     assert doc["signals"] == {
-        "other": {"low_confidence": 4, "low_confidence_v2": 0},
-        "fixture_reciter": {"low_confidence": 0, "low_confidence_v2": 1},
+        "other": {"low_confidence": 4, "low_confidence_v2": 0, "flagged": 0},
+        "fixture_reciter": {"low_confidence": 0, "low_confidence_v2": 1, "flagged": 0},
     }
 
 
@@ -121,11 +138,13 @@ def test_current_rereads_the_file_after_the_refresh_window(tmp_reciter_dir, monk
     tmp_reciter_dir.install("fixture_reciter", "synthetic-classifier")
     assert review_signals.current() == {}
     data_dir.write_review_signals_doc(
-        {"signals": {"other": {"low_confidence": 2, "low_confidence_v2": 0}}}
+        {"signals": {"other": {"low_confidence": 2, "low_confidence_v2": 0, "flagged": 0}}}
     )
     assert review_signals.current() == {}  # still inside the window
     monkeypatch.setattr(review_signals, "REFRESH_S", 0.0)
-    assert review_signals.current() == {"other": {"low_confidence": 2, "low_confidence_v2": 0}}
+    assert review_signals.current() == {
+        "other": {"low_confidence": 2, "low_confidence_v2": 0, "flagged": 0}
+    }
 
 
 def test_validate_route_records_the_counts(flask_client, tmp_reciter_dir):
@@ -133,7 +152,7 @@ def test_validate_route_records_the_counts(flask_client, tmp_reciter_dir):
     _install_with_sidecar(tmp_reciter_dir, slug, "synthetic-classifier")
     res = flask_client.get(f"/api/seg/validate/{slug}")
     assert res.status_code == 200
-    expected = review_signals.counts_from_validate(res.get_json(), THRESHOLD)
+    expected = review_signals.counts_from_validate(res.get_json(), THRESHOLD, _flags(slug))
     assert any(expected.values()), "fixture should have something open"
     doc = _signals_file()
     assert doc is not None
@@ -146,7 +165,7 @@ def test_route_serves_the_file_without_scanning(flask_client, tmp_reciter_dir, m
     data_dir.write_review_signals_doc(
         {
             "signals": {
-                slug: {"low_confidence": 3, "low_confidence_v2": 1},
+                slug: {"low_confidence": 3, "low_confidence_v2": 1, "flagged": 0},
                 "not_listed": {"low_confidence": 9},
             }
         }
@@ -155,7 +174,7 @@ def test_route_serves_the_file_without_scanning(flask_client, tmp_reciter_dir, m
         review_signals, "compute", lambda *a, **k: pytest.fail("route must not scan")
     )
     body = flask_client.get("/api/seg/review-signals").get_json()
-    assert body == {"signals": {slug: {"low_confidence": 3, "low_confidence_v2": 1}}}
+    assert body == {"signals": {slug: {"low_confidence": 3, "low_confidence_v2": 1, "flagged": 0}}}
 
 
 def test_resolved_by_edit_hides_a_low_confidence_v2_item(tmp_reciter_dir, monkeypatch):
@@ -190,4 +209,4 @@ def test_offline_compute_matches_the_validator(tmp_reciter_dir, fixture):
     offline = review_signals.compute(slug, offline=True)
     result = validate_reciter_segments(slug)
     assert result is not None
-    assert offline == review_signals.counts_from_validate(result, THRESHOLD)
+    assert offline == review_signals.counts_from_validate(result, THRESHOLD, _flags(slug))

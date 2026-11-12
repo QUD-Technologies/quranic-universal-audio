@@ -233,6 +233,8 @@
   "common_picker_sort_default": "بنەڕەت",
   "common_picker_sort_aligned_newest": "نوێترین هاوتاکراو",
   "common_picker_sort_aligned_oldest": "کۆنترین هاوتاکراو",
+  "common_picker_sort_low_conf": "زۆرترین دڵنیایی نزم",
+  "common_picker_sort_flags": "زۆرترین نیشانە",
   "common_picker_aligned_title": "هاوتاکرا لە {date}",
   "common_picker_switch_reciter_title": "گۆڕینی قاری",
   "common_nav_tab_dashboard": "تابلۆی سەرەکی",
@@ -390,5 +392,7 @@
   "common_review_low_confidence": "دڵنیایی نزم",
   "common_review_none": "هیچ بۆ پشکنین نییە",
   "common_review_pill_low": "دڵنیایی نزم {count}",
-  "common_review_pill_low_hint": "{under} لە خوار سنووری دڵنیایی بنەڕەت · {v2} دڵنیایی نزم v2"
+  "common_review_pill_low_hint": "{under} لە خوار سنووری دڵنیایی بنەڕەت · {v2} دڵنیایی نزم v2",
+  "common_review_pill_flagged": "نیشانەکراو {count}",
+  "common_review_pill_flagged_hint": "بەشەکان بە نیشانەیەکی کراوە"
 }

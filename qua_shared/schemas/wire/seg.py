@@ -135,12 +135,13 @@ class SegReviewSignal(BaseModel):
 
     ``low_confidence`` counts segments under the delivery's riwayah threshold (the
     accordion's default slider position); ``low_confidence_v2`` the open neural sidecar
-    items."""
+    items; ``flagged`` the segments carrying an open flag."""
 
     model_config = ConfigDict(extra="forbid")
 
     low_confidence: int = 0
     low_confidence_v2: int = 0
+    flagged: int = 0
 
 
 class SegReviewSignalsResponse(BaseModel):
