@@ -266,7 +266,7 @@ def test_status_surfaces_ts_segments_edited_staleness(signed_in_client, monkeypa
     monkeypatch.setattr(
         ts_staleness,
         "ts_stale_info",
-        lambda slug, *, produced_at: (
+        lambda slug, *, produced_at, block=True: (
             {"stale_since": "2026-03-02T00:00:00Z", "edits_since": 3, "affected_chapters": [5, 12]}
             if slug == "ar.edited"
             else None

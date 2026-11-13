@@ -62,7 +62,12 @@ separate from publish status. Publish status lives in three tables, all written 
     update immediately from SQLite after the durable edit.
 
   A third reason — **`segments_edited`** — lives on the **`ts`** track and is **computed, never
-  stamped** (`services/segments/ts_staleness.py::ts_stale_info`, called from the status route). An undo batch carries no ops of its own; it counts when the ops it reverted were timestamp-affecting. The
+  stamped** (`services/segments/ts_staleness.py::ts_stale_info`, called from the status route with
+  `block=False`: an edit history not yet in the process cache is parsed on a background thread and
+  the chip fills in on the grid's next 30 s poll, so the first load after a boot never parses every
+  history — 100+ MB of JSONL on prod). The status route's "Failed to publish" banner reads only the
+  newest few batch records (`hf_publish_batch.latest_batch_outcome`; job ids open with their
+  creation time). An undo batch carries no ops of its own; it counts when the ops it reverted were timestamp-affecting. The
   generated timestamps go stale the moment a timestamp-affecting segment edit
   (`qua_shared/segment_edit_ops.py::TS_AFFECTING_OP_TYPES` = trim/split/merge/delete + edit_reference
   + auto_fix_missing_word — annotations like confirm_reference/ignore_issue/flag_segment/set_is_wasl
