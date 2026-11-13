@@ -34,6 +34,7 @@ HEAD_BYTES = 16384
 DURATION_TOL_S = 2.0
 TAG_EDIT_BYTES = 65536
 WORKERS = 16
+MIN_HEAD_FRAMES = 8
 BLOCKING = frozenset({"recording"})
 
 
@@ -65,6 +66,25 @@ def checkable(entry: dict) -> bool:
     )
 
 
+def _mean_frame_bytes(buf: bytes, foff: int, h: dict) -> float:
+    """Mean frame size over the consecutive frames in the head.
+
+    The nominal bitrate assumes the encoder pads frames to average exactly
+    ``kbps``; some encoders never pad (every 128 kbps / 44.1 kHz frame 417 bytes,
+    not 417.96), which skews a ``bytes / kbps`` estimate by ~0.23 % — seconds on a
+    long chapter. Walking the head's frames measures the real average."""
+    sizes, pos = [], foff
+    while pos + 4 <= len(buf):
+        f = mp3_probe._frame(buf[pos : pos + 4])
+        if f is None or f["sr"] != h["sr"]:
+            break
+        sizes.append(f["fsize"])
+        pos += f["fsize"]
+    if len(sizes) < MIN_HEAD_FRAMES:
+        return h["kbps"] * 1000 * h["spf"] / 8 / h["sr"]
+    return sum(sizes) / len(sizes)
+
+
 def probe(url: str) -> dict:
     """Upstream ``size`` / ``duration_s`` / ``kbps`` / ``sr`` from a head read, or
     ``{"gone": code}`` / ``{"error": message}`` after one retry."""
@@ -87,7 +107,7 @@ def probe(url: str) -> dict:
     if frames:
         duration = frames * h["spf"] / h["sr"]
     elif total:
-        duration = (total - tag) * 8 / (h["kbps"] * 1000)
+        duration = (total - tag) / _mean_frame_bytes(buf, foff, h) * h["spf"] / h["sr"]
     else:
         duration = None
     return {"size": total, "duration_s": duration, "kbps": h["kbps"], "sr": h["sr"]}
