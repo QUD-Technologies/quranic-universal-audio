@@ -1,0 +1,32 @@
+name: qud-cdn notify
+
+# Tells QUD-Technologies/qud-cdn that a release was published, so its qua-release workflow
+# reports at once what the release changes for cdn.qud.dev (one issue per release). Re-sendable
+# for any tag from the Actions tab.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to report (e.g. v5.0.0)
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send repository_dispatch to qud-cdn
+        env:
+          # A token that may dispatch to qud-cdn: QUD_CDN_DISPATCH_TOKEN when set, else PAT_TOKEN.
+          GH_TOKEN: ${{ secrets.QUD_CDN_DISPATCH_TOKEN || secrets.PAT_TOKEN }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          gh api repos/QUD-Technologies/qud-cdn/dispatches \
+            -f event_type=qua-release \
+            -F "client_payload[tag]=$TAG"
+          echo "dispatched qua-release for $TAG"
