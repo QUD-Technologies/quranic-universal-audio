@@ -186,13 +186,20 @@ def complete(
     return {"ok": True, "published": published, "failed": failed}
 
 
+#: Batch records read to find the newest — job ids open with their creation time
+#: (HF ObjectIds) and batches are single-flight, so the newest few hold the answer.
+_RECENT_BATCHES = 3
+
+
 def latest_batch_outcome() -> dict | None:
     """Return the most-recent batch record ``{job_id, completed_at, members}``
     from ``jobs/_global/hf_publish_batch/``, or None when there's never been a
     batch. Drives the Releases-tab "Failed to publish" bucket + summary banner.
 
-    Newest is chosen by ``completed_at`` (ISO-8601, lexicographically sortable),
-    falling back to the filename (job id) when absent."""
+    Only the :data:`_RECENT_BATCHES` newest-created records are read (every one
+    is a bucket read, and the status grid polls this); among them the newest is
+    chosen by ``completed_at`` (ISO-8601, lexicographically sortable), falling
+    back to the job id when absent."""
     from services.storage.hf_bucket import get_backend
 
     backend = get_backend()
@@ -200,11 +207,9 @@ def latest_batch_outcome() -> dict | None:
         names = backend.list_dir("jobs/_global/hf_publish_batch")
     except Exception:
         return None
+    job_ids = sorted(name[: -len(".json")] for name in names if name.endswith(".json"))
     records: list[dict] = []
-    for name in names:
-        if not name.endswith(".json"):
-            continue
-        job_id = name[: -len(".json")]
+    for job_id in job_ids[-_RECENT_BATCHES:]:
         raw = base.read_record_bytes(KIND, None, job_id)
         if raw is None:
             continue

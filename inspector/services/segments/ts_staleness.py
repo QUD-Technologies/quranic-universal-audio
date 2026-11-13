@@ -15,14 +15,49 @@ matching per-reciter history "tier" view lives in ``history_tiers.py``.
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import UTC, datetime
 
 from qua_shared.segment_edit_ops import batch_affects_timestamps
 from services.activity import history_query
-from services.storage import data_dir
+from services.storage import cache, data_dir
 from services.storage.hf_bucket import get_backend
 
 logger = logging.getLogger(__name__)
+
+_warm_lock = threading.Lock()
+_warm_pending: list[str] = []
+_warm_running = False
+
+
+def _warm_later(slug: str) -> None:
+    """Parse ``slug``'s edit history on one background thread, so a later
+    non-blocking call answers from the in-process history cache."""
+    global _warm_running
+    with _warm_lock:
+        if slug in _warm_pending:
+            return
+        _warm_pending.append(slug)
+        if _warm_running:
+            return
+        _warm_running = True
+    threading.Thread(target=_warm_worker, name="ts-stale-warm", daemon=True).start()
+
+
+def _warm_worker() -> None:
+    global _warm_running
+    while True:
+        with _warm_lock:
+            if not _warm_pending:
+                _warm_running = False
+                return
+            slug = _warm_pending[0]
+        try:
+            history_query.parse_history_for_reciter(slug)
+        except Exception:  # noqa: BLE001 — the next status poll retries
+            logger.warning("ts-stale warm-up of %s failed", slug)
+        with _warm_lock:
+            _warm_pending.remove(slug)
 
 
 def _provably_not_stale_by_mtime(slug: str, produced_at: str) -> bool:
@@ -57,7 +92,7 @@ def _affects_timestamps(batch: dict, by_id: dict[str, dict]) -> bool:
     return batch_affects_timestamps({"operations": ops})
 
 
-def ts_stale_info(slug: str, *, produced_at: str) -> dict | None:
+def ts_stale_info(slug: str, *, produced_at: str, block: bool = True) -> dict | None:
     """Return staleness for ``slug``'s generated timestamps, or ``None``.
 
     ``produced_at`` is the current ``per_recitation_releases(track='ts')`` row's
@@ -82,8 +117,16 @@ def ts_stale_info(slug: str, *, produced_at: str) -> dict | None:
     skips the JSONL read entirely for the (common) not-edited-since case — the
     releases-status grid calls this per reciter, so the avoided cold reads are
     the bulk of that endpoint's latency.
+
+    ``block=False`` (the releases-status grid) never parses on the request: an
+    edit history not yet in the process cache is parsed on a background thread
+    and the call returns ``None`` until then — after a boot the chips fill in on
+    the grid's next poll instead of the first load reading every history.
     """
     if _provably_not_stale_by_mtime(slug, produced_at):
+        return None
+    if not block and cache.get_seg_history_batches(slug) is None:
+        _warm_later(slug)
         return None
     try:
         batches = history_query.parse_history_for_reciter(slug)

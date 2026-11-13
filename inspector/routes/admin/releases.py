@@ -564,7 +564,7 @@ def releases_status(user):
         # it carries the same stale_reason/suggested_action shape as hf/gh.
         ts_slim = _slim_release_row(ts, fields=("version", "produced_at"))
         if ts_slim and ts is not None and ts.get("produced_at"):
-            info = ts_staleness.ts_stale_info(slug, produced_at=ts["produced_at"])
+            info = ts_staleness.ts_stale_info(slug, produced_at=ts["produced_at"], block=False)
             if info:
                 ts_slim["stale_since"] = info["stale_since"]
                 ts_slim["stale_reason"] = "segments_edited"
