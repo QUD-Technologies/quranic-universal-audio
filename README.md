@@ -29,9 +29,7 @@
   <a href="#key-highlights">Highlights</a> ·
   <a href="#use-cases">Use Cases</a> ·
   <a href="#data-access">Data Access</a> ·
-  <a href="#technical-overview">How it works</a> ·
   <a href="#contributing">Contribute</a> ·
-  <a href="#roadmap">Roadmap</a> ·
   <a href="#acknowledgements">Acknowledgments</a> ·
   <a href="#license">License</a>
 </p>
