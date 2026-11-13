@@ -62,3 +62,14 @@ def test_blocking_changes_describe_the_change(monkeypatch):
     monkeypatch.setattr(upstream, "probe", lambda url: {"size": 6_424_236, "duration_s": 321.13})
     (change,) = upstream.blocking_changes({"62": ENTRY})
     assert change.describe() == "ch62 recording (465s → 321s)"
+
+
+def test_unpadded_cbr_duration_is_measured_not_nominal(monkeypatch):
+    # 128 kbps / 44.1 kHz frames that never set the padding bit: 417 bytes each,
+    # not the nominal 417.96 — a 1200 s file must not read as ~1197 s.
+    frame = b"\xff\xfb\x90\x00" + bytes(413)
+    n = 45_944
+    monkeypatch.setattr(
+        upstream.mp3_probe, "_fetch", lambda url, n_bytes: (frame * 40, n * 417, 0)
+    )
+    assert abs(upstream.probe("https://x/1.mp3")["duration_s"] - n * 1152 / 44100) < 0.01
