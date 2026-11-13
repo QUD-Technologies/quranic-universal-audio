@@ -139,6 +139,43 @@ def test_occurrence_projection_splits_a_leading_false_start_into_its_own_row():
     assert [word["index"] for word in rows[1]["words"]] == [1, 2, 3]
 
 
+def test_canonical_takes_follow_mushaf_order_across_a_slip():
+    """A reciter says 1:3 before 1:2, goes back, then repeats 1:3: the early
+    complete 1:3 must not win, or the canonical takes play out of order. When a
+    verse's only complete take is out of place (1:2 in the second shard), its
+    in-place partial take stays canonical and the completeness gate drops it."""
+    slip = _shard(
+        [
+            _reading("a", [("1:1", (0, 100), [1])]),
+            _reading("b", [("1:3", (100, 200), [1])]),
+            _reading("c", [("1:2", (200, 300), [1])]),
+            _reading("d", [("1:3", (300, 400), [1])]),
+        ]
+    )
+    rows = project_shard_occurrences(slip)
+    assert [(row["ref"], row["canonical"]) for row in rows] == [
+        ("1:1", True),
+        ("1:3", False),
+        ("1:2", True),
+        ("1:3", True),
+    ]
+
+    late = _shard(
+        [
+            _reading("a", [("1:1", (0, 100), [1])]),
+            _reading("b", [("1:2", (100, 200), [1])]),
+            _reading("c", [("1:3", (200, 300), [1])]),
+            _reading("d", [("1:4", (300, 400), [1])]),
+            _reading("e", [("1:2", (400, 600), [1, 2])]),
+        ]
+    )
+    projected = project_shard(late)
+    assert [projected[f"1:{n}"]["verse_start_ms"] for n in range(1, 5)] == [0, 100, 200, 300]
+    counts = {(1, 1): 1, (1, 2): 2, (1, 3): 1, (1, 4): 1}
+    kept, dropped = select_complete_verses(projected, counts)
+    assert dropped == ["1:2"]
+
+
 @pytest.mark.parametrize("following_ref", ["1:1", "1:2"])
 def test_decoder_preserves_inter_reading_word_gap(
     following_ref: str,

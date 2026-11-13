@@ -8,6 +8,10 @@
  * is dropped by restarting at the last word-1 occurrence that still completes
  * the verse. Within-take lookbacks stay inside the take.
  *
+ * Unlike the export, each verse is chosen on its own (no chapter-wide
+ * mushaf-order pass): a Repeat loop wants the verse's clean take even when the
+ * reciter said it out of order.
+ *
  * Used by Repeat so a looped verse plays one clean take — never the reciter's
  * re-dos. Normal listening plays the audio as recorded.
  */

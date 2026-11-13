@@ -3,7 +3,8 @@
 Two projections over the same segments:
 
 - **canonical** (``project_shard``): one occasion per verse — the earliest
-  complete continuous take — keyed by ref. What the HF dataset, coverage and
+  complete continuous take, unless that breaks mushaf order (see ``_choose``)
+  — keyed by ref. What the HF dataset, coverage and
   the FE read.
 - **all occurrences** (``project_shard_occurrences``): every contiguous recited
   span as its own row in audio order, the canonical one flagged. What the GH
@@ -128,17 +129,23 @@ def _completion(segments: list[dict], target: set[int]) -> int | None:
     return None
 
 
-def _canonical(occasions: list[list[dict]], target: set[int]) -> list[dict]:
-    completing = [one for one in occasions if _completion(one, target) is not None]
-    chosen = completing[0] if completing else max(occasions, key=lambda one: len(_coverage(one)))
-    end = _completion(chosen, target)
-    kept = chosen if end is None else chosen[: end + 1]
+def _trim(occasion: list[dict], target: set[int]) -> list[dict]:
+    """Cut an occasion where it completes and drop a leading false start."""
+    end = _completion(occasion, target)
+    kept = occasion if end is None else occasion[: end + 1]
     restart = 0
     for index in range(1, len(kept)):
         words = kept[index]["words"]
         if words and words[0]["index"] == 1 and target <= _coverage(kept[index:]):
             restart = index
     return kept[restart:]
+
+
+def _canonical(occasions: list[list[dict]], target: set[int]) -> list[dict]:
+    """One verse on its own: the earliest complete take, else the widest one."""
+    completing = [one for one in occasions if _completion(one, target) is not None]
+    chosen = completing[0] if completing else max(occasions, key=lambda one: len(_coverage(one)))
+    return _trim(chosen, target)
 
 
 def _project(segments: list[dict]) -> dict:
@@ -208,27 +215,103 @@ def _target(rows: list[dict]) -> set[int]:
     return set(range(1, max(_coverage(rows), default=0) + 1))
 
 
-def _select_occasions(segments: list[dict]) -> dict[str, dict]:
-    """One canonical occasion per verse, from every segment in audio order."""
+def _verse_key(ref: str) -> tuple[int, int]:
+    surah, ayah = ref.split(":")[:2]
+    return int(surah), int(ayah)
+
+
+def _start(take: list[dict]) -> int:
+    return _project(take)["verse_start_ms"]
+
+
+def _ordered(refs: list[str], chosen: dict[str, list[dict]]) -> bool:
+    starts = [_start(chosen[ref]) for ref in refs]
+    return all(a < b for a, b in zip(starts, starts[1:], strict=False))
+
+
+def _longest_in_order(refs: list[str], verses: dict) -> dict[str, list[dict]]:
+    """Complete takes, at most one per verse, rising in both verse and time.
+
+    Keeps the most verses; among equal counts, the most per-verse defaults.
+    """
+    items = []  # (verse key, start, ref, take, is default)
+    for ref in refs:
+        occasions, target, default = verses[ref]
+        for occasion in occasions:
+            if _completion(occasion, target) is not None:
+                take = _trim(occasion, target)
+                items.append((_verse_key(ref), _start(take), ref, take, take[0] is default[0]))
+    best: list[tuple[tuple[int, int], int | None]] = []
+    for i, (key, start, _ref, _take, is_default) in enumerate(items):
+        score, prev = (1, int(is_default)), None
+        for j in range(i):
+            if items[j][0] < key and items[j][1] < start:
+                candidate = (best[j][0][0] + 1, best[j][0][1] + int(is_default))
+                if candidate > score:
+                    score, prev = candidate, j
+        best.append((score, prev))
+    chosen: dict[str, list[dict]] = {}
+    at = max(range(len(items)), key=lambda i: best[i][0], default=None)
+    while at is not None:
+        chosen[items[at][2]] = items[at][3]
+        at = best[at][1]
+    return chosen
+
+
+def _fill_in_order(refs: list[str], verses: dict, chosen: dict[str, list[dict]]) -> None:
+    """Give each verse left out the widest take that sits between its neighbours."""
+    for index, ref in enumerate(refs):
+        if ref in chosen:
+            continue
+        before = [_start(chosen[r]) for r in refs[:index] if r in chosen]
+        after = [_start(chosen[r]) for r in refs[index + 1 :] if r in chosen]
+        low = before[-1] if before else float("-inf")
+        high = after[0] if after else float("inf")
+        occasions, target, default = verses[ref]
+        takes = [_trim(occasion, target) for occasion in occasions]
+        fitting = [take for take in takes if low < _start(take) < high]
+        chosen[ref] = max(fitting, key=lambda take: len(_coverage(take))) if fitting else default
+
+
+def _choose(segments: list[dict]) -> dict[str, tuple[list[list[dict]], list[dict]]]:
+    """Every verse's occasions and its canonical take.
+
+    Each verse alone takes its earliest complete take. When those takes do not
+    play in mushaf order (a reciter said verse N+1, went back to N, then said
+    N+1 again), the canonical takes are chosen chapter-wide instead: the largest
+    set of complete takes that rise in both verse and time, and every other
+    verse gets its widest take that fits between them, so a verse whose only
+    complete take is out of place is gated as incomplete.
+    """
     by_ref, starts = _group_by_ref(segments)
-    out = {}
+    verses = {}
     for ref, rows in by_ref.items():
         occasions = _split_occasions(rows, _foreign_starts(ref, starts))
-        out[ref] = _project(_canonical(occasions, _target(rows)))
-    return out
+        target = _target(rows)
+        verses[ref] = (occasions, target, _canonical(occasions, target))
+    refs = sorted(verses, key=_verse_key)
+    chosen = {ref: verses[ref][2] for ref in refs}
+    if not _ordered(refs, chosen):
+        chosen = _longest_in_order(refs, verses)
+        _fill_in_order(refs, verses, chosen)
+    return {ref: (verses[ref][0], chosen[ref]) for ref in verses}
 
 
-def _occurrences(occasions: list[list[dict]], target: set[int]) -> list[tuple[bool, list[dict]]]:
+def _select_occasions(segments: list[dict]) -> dict[str, dict]:
+    """One canonical occasion per verse, from every segment in audio order."""
+    return {ref: _project(take) for ref, (_occasions, take) in _choose(segments).items()}
+
+
+def _occurrences(occasions: list[list[dict]], canonical: list[dict]) -> list[tuple[bool, list[dict]]]:
     """Every contiguous recited span of one verse, the canonical one flagged.
 
-    ``_canonical`` returns a contiguous sub-slice of exactly one occasion (a
+    The canonical take is a contiguous sub-slice of exactly one occasion (a
     leading false-start and trailing post-completion segments trimmed off).
     Those trimmed ends become their own unflagged spans — they are audio the
     reciter produced, just not part of the clean take — and every other
     occasion is emitted whole and unflagged. Within-take lookbacks stay
     embedded in their span.
     """
-    canonical = _canonical(occasions, target)
     out: list[tuple[bool, list[dict]]] = []
     for occasion in occasions:
         first = next((i for i, seg in enumerate(occasion) if seg is canonical[0]), None)
@@ -246,11 +329,9 @@ def _occurrences(occasions: list[list[dict]], target: set[int]) -> list[tuple[bo
 
 def _all_occasions(segments: list[dict]) -> list[dict]:
     """Every occurrence of every verse, in audio order, canonical flagged."""
-    by_ref, starts = _group_by_ref(segments)
     out: list[dict] = []
-    for ref, rows in by_ref.items():
-        occasions = _split_occasions(rows, _foreign_starts(ref, starts))
-        for canonical, span in _occurrences(occasions, _target(rows)):
+    for ref, (occasions, take) in _choose(segments).items():
+        for canonical, span in _occurrences(occasions, take):
             if not any(segment["words"] for segment in span):
                 continue
             out.append({"ref": ref, "canonical": canonical, **_project(span)})

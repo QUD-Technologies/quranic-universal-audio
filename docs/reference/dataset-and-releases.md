@@ -199,7 +199,11 @@ Each tier self-contains the level below; all times are relative to the matching 
 `catalog.json`. Rows are a playback timeline (schema 3, release v4+): **every** contiguous recited
 span is a row, in audio order — whole-verse repeats, leading false-starts and trailing partials
 included — and exactly one row per verse ref is `canonical` (the earliest complete continuous take,
-the same one the HF dataset and the FE show). Every tier row is the exact prefix of the next tier's
+the same one the HF dataset and the FE show). When those takes would play out of mushaf order (the
+reciter said verse N+1, went back to N, then repeated N+1), the canonical takes are picked
+chapter-wide instead: the largest set of complete takes rising in both verse and time, and a verse
+whose only complete take is out of place keeps its in-place partial take, so the completeness gate
+drops it (`qua_shared/timestamps_native.py::_choose`). Every tier row is the exact prefix of the next tier's
 (`silence_after` sits at slot 4 on all three); `_meta` carries `units: "ms"`, `riwayah` (always,
 since schema 3), `verse_count` (distinct refs) and `occurrence_count` (rows). The three `.json.gz`
 layers keep storage, startup speed, and network transfer cheap: download verse, word, or letter
