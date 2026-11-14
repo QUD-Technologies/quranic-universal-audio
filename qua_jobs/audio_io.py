@@ -31,6 +31,11 @@ from qua_shared.audio.sources import drive_file_id, needs_ytdlp
 
 CANONICAL_BITRATE = "192k"
 CANONICAL_SAMPLE_RATE = "44100"
+#: Every encode holds peaks this far below full scale: an MP3 of a hot source
+#: otherwise reconstructs peaks above 0 dBFS that clip on playback. The limiter
+#: is delay-compensated (``latency=1``), so the timeline does not move.
+CEILING_DBFS = -1.5
+LIMITER = f"alimiter=limit={10 ** (CEILING_DBFS / 20):.4f}:attack=5:release=80:level=0:latency=1"
 USER_AGENT = "Mozilla/5.0 (quranic-universal-audio acquire)"
 HTTP_TIMEOUT_S = 120
 HTTP_ATTEMPTS = 4
@@ -281,8 +286,8 @@ def encode(
     if end_ms is not None:
         cmd += ["-t", f"{(end_ms - (start_ms or 0)) / _MS:.3f}"]
     cmd += ["-vn"]
-    if invert_right:
-        cmd += ["-af", "pan=stereo|c0=c0|c1=-1*c1"]
+    filters = ["pan=stereo|c0=c0|c1=-1*c1"] if invert_right else []
+    cmd += ["-af", ",".join([*filters, LIMITER])]
     cmd += ["-c:a", "libmp3lame", "-b:a", CANONICAL_BITRATE]
     cmd += ["-ar", CANONICAL_SAMPLE_RATE, "-ac", str(channels), "-f", "mp3", str(dest)]
     subprocess.run(cmd, check=True, timeout=FFMPEG_TIMEOUT_S)
@@ -305,7 +310,7 @@ def encode_pieces(pieces: list[tuple[Path, int, int]], dest: Path, channels: int
         labels.append(f"[a{i}]")
     fmt = f"aformat=sample_fmts=fltp:sample_rates={CANONICAL_SAMPLE_RATE}:channel_layouts={layout}"
     graph = ";".join(f"[{i}:a]{fmt}[a{i}]" for i in range(len(pieces)))
-    graph += f";{''.join(labels)}concat=n={len(pieces)}:v=0:a=1[out]"
+    graph += f";{''.join(labels)}concat=n={len(pieces)}:v=0:a=1,{LIMITER}[out]"
     cmd += ["-filter_complex", graph, "-map", "[out]", "-c:a", "libmp3lame"]
     cmd += ["-b:a", CANONICAL_BITRATE, "-ar", CANONICAL_SAMPLE_RATE, "-ac", str(channels)]
     cmd += ["-f", "mp3", str(dest)]

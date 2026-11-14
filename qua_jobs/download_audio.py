@@ -188,10 +188,15 @@ def _pick_reciter(catalog: dict | list, slug: str | None) -> dict:
 # ---------------------------------------------------------------------------
 
 
+# Same peak limiter as ``qua_jobs/audio_io.LIMITER`` (this file ships alone, so
+# it cannot import it): -1.5 dBFS, delay-compensated, keep the two in step.
+_LIMITER = "alimiter=limit=0.8414:attack=5:release=80:level=0:latency=1"
+
+
 def _encode_cbr(src: Path, dest: Path, *, bitrate: str, sample_rate: str, channels: str) -> None:
-    """Encode ``src`` to a controlled CBR MP3. ``-vn`` drops any embedded
-    thumbnail (a cover-art stream otherwise yields a 0-byte mp3 on ffmpeg builds
-    without a PNG encoder)."""
+    """Encode ``src`` to a controlled CBR MP3, peaks limited like the alignment
+    encode. ``-vn`` drops any embedded thumbnail (a cover-art stream otherwise
+    yields a 0-byte mp3 on ffmpeg builds without a PNG encoder)."""
     ffmpeg = _require("ffmpeg", "https://ffmpeg.org/download.html (or `apt install ffmpeg`)")
     subprocess.run(
         [
@@ -200,6 +205,8 @@ def _encode_cbr(src: Path, dest: Path, *, bitrate: str, sample_rate: str, channe
             "-i",
             str(src),
             "-vn",
+            "-af",
+            _LIMITER,
             "-c:a",
             "libmp3lame",
             "-b:a",
