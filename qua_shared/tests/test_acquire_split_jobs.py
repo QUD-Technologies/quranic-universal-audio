@@ -296,3 +296,11 @@ def test_acquire_flips_an_antiphase_source_so_its_mono_fold_keeps_the_voice(
     persisted = _reciter(root) / "audio" / "3.mp3"
     assert audio_io.probe_channels(persisted) == 2
     assert not audio_io.is_antiphase(persisted)
+
+
+def test_release_download_helper_limits_peaks_like_the_alignment_encode():
+    """download_audio.py ships alone and copies the limiter: a drift would leave
+    users' re-downloaded audio louder at the peaks than what was aligned."""
+    from qua_jobs import download_audio
+
+    assert download_audio._LIMITER == audio_io.LIMITER
