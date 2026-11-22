@@ -24,17 +24,17 @@ prints a diff). ``--apply`` writes back to the bucket (``--yes-prod`` for prod).
 
   # one slug, dry-run
   python3.11 scripts/backfills/backfill_audio_manifest_meta.py \
-      --slug ayman_swed_muallim_tvquran --bucket prod --mount /home/hetchy/qua-prod-mount
+      --slug ayman_swed_muallim_tvquran --bucket prod --mount <mount>
 
   # all null-metadata reciters from a sweep, dry-run
   python3.11 scripts/backfills/backfill_audio_manifest_meta.py \
       --all-null .local/audio_audit/null_metadata_sweep_prod.json \
-      --bucket prod --mount /home/hetchy/qua-prod-mount
+      --bucket prod --mount <mount>
 
   # fix phantom-tail durations from peaks
   python3.11 scripts/backfills/backfill_audio_manifest_meta.py \
       --slug maher_al_muaiqly_mp3quran --fix-drift --drift-pct 8 \
-      --bucket prod --mount /home/hetchy/qua-prod-mount
+      --bucket prod --mount <mount>
 """
 
 from __future__ import annotations

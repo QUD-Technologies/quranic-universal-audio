@@ -41,7 +41,7 @@ list. Use `to_sdk_slug` / `from_sdk_slug` at a boundary (strict, raises) and
 ## 2. The dependency: `qua-domain`
 
 The Inspector takes a real pip dependency on `qua-domain`, installed from a
-pinned `Hetchy/qua` commit — the same package and the same mechanism the aligner
+pinned commit — the same package and the same mechanism the aligner
 app uses, so the two cannot disagree about what a Warsh word is.
 
 | Where | How |

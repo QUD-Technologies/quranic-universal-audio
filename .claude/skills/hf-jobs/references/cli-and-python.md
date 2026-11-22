@@ -46,8 +46,8 @@ run_job(
     timeout="4h",
     env={"WANDB_PROJECT": "quran-asr"},
     secrets={"HF_TOKEN": get_token()},  # NOT the literal "$HF_TOKEN"
-    volumes=[Volume(type="bucket", source="hetchyy/asr-checkpoints", mount_path="/out")],
-    namespace="hetchyy",
+    volumes=[Volume(type="bucket", source="<user>/asr-checkpoints", mount_path="/out")],
+    namespace="<user>",
     labels={"task": "asr-train", "reciter": "ahmad_al_nufais"},
 )
 
@@ -130,8 +130,8 @@ Use `JOB_ID` to namespace outputs (`f"checkpoints/{os.environ['JOB_ID']}/"`) so 
 | Model            | `hf://openai/gpt-oss-120b:/model`                    | ro |
 | Dataset          | `hf://datasets/HuggingFaceFW/fineweb:/data`          | ro |
 | Dataset subdir   | `hf://datasets/org/ds/train:/data`                   | ro |
-| Bucket           | `hf://buckets/hetchyy/asr-checkpoints:/out`          | rw |
-| Bucket read-only | `hf://buckets/hetchyy/audio-cache:/audio:ro`         | ro |
+| Bucket           | `hf://buckets/<user>/asr-checkpoints:/out`          | rw |
+| Bucket read-only | `hf://buckets/<user>/audio-cache:/audio:ro`         | ro |
 
 Multiple `-v` flags allowed. Python: `volumes=[Volume(type=..., source=..., mount_path=..., read_only=...)]`. Requires `huggingface_hub >= 1.8.0`.
 
@@ -194,7 +194,7 @@ MCP form: `hf_jobs("scheduled uv", {...})`, `hf_jobs("scheduled run", {...})`, `
 from huggingface_hub import create_webhook
 create_webhook(
     job_id=job.id,
-    watched=[{"type": "user", "name": "hetchyy"}],
+    watched=[{"type": "user", "name": "<user>"}],
     domains=["repo"],
     secret="...",
 )

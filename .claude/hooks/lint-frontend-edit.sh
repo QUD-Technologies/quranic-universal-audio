@@ -16,7 +16,7 @@ case "$file" in
     *) exit 0 ;;
 esac
 
-FRONTEND="${CLAUDE_PROJECT_DIR:-/home/hetchy/projects/quranic-universal-audio}/inspector/frontend"
+FRONTEND="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}/inspector/frontend"
 cd "$FRONTEND" || exit 0
 
 "./node_modules/.bin/prettier" --write --log-level=warn "$file" >/dev/null 2>&1

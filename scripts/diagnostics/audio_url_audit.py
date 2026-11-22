@@ -16,9 +16,9 @@ Modest concurrency + a retry on timeout/refused: archive.org throttles bursts,
 and a throttled timeout must not be miscounted as a dead url.
 
   python3.11 scripts/diagnostics/audio_url_audit.py --bucket prod \
-      --mount /home/hetchy/qua-prod-mount --archive-only --json > /tmp/url_audit.json
+      --mount <mount> --archive-only --json > /tmp/url_audit.json
   python3.11 scripts/diagnostics/audio_url_audit.py --bucket prod \
-      --mount /home/hetchy/qua-prod-mount --quick        # ch1-only health sweep, all reciters
+      --mount <mount> --quick        # ch1-only health sweep, all reciters
 """
 
 from __future__ import annotations

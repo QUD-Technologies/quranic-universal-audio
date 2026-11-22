@@ -1,8 +1,8 @@
 # Hafs reference data (`talqeen-quran-data`)
 
 The Hafs words, ayah-end markers and surah metadata come from the Talqeen Quran data pack
-(`quran-core.qref`) through its Python SDK, `talqeen-quran-data`, both from the private
-`QUD-Technologies/talqeen-ai-data` repo. Nothing of it is committed here. Non-Hafs editions
+(`quran-core.qref`) through its Python SDK, `talqeen-quran-data`, both from a private
+dependency. Nothing of it is committed here. Non-Hafs editions
 are separate: `qua-domain` via `services/reference/editions.py` ([editions.md](editions.md)).
 
 ## Pin and install
@@ -16,8 +16,7 @@ are separate: `qua-domain` via `services/reference/editions.py` ([editions.md](e
 | Pack location | `data/quran-core.qref` (gitignored), or `QUA_QURAN_PACK` |
 | Credential | `TALQEEN_DATA_READ_TOKEN`, else `GH_TOKEN`, else the `gh` login |
 
-The pin is a release tag (`sdk-v1.20.0`, same commit as `data-v1.12.3`), as
-`talqeen-ai-mizan` pins one. To bump: change the tag (and the pack sha256), rerun the
+The pin is a release tag (`sdk-v1.20.0`, same commit as `data-v1.12.3`). To bump: change the tag (and the pack sha256), rerun the
 installer, rerun the integrity gate below.
 
 Required, unlike `qua-domain`: without the pack the Inspector has no Hafs text. CI

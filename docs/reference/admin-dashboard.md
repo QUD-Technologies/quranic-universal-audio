@@ -139,7 +139,7 @@ Reviewer-management mutations reuse existing per-slug routes:
 - `POST /api/admin/claim/reassign/<slug>` — **owner-only**. Used by the popover's Change path; resolves `to_login` server-side via `hf_users.lookup` before persisting `claim.reassigned`.
 - `POST /api/admin/users/lookup` — maintainer+. Lookup-only (no mutation); the popover hits it on debounced input to render the resolved-user card.
 - `POST /api/admin/send-back/<slug>` — maintainer+ (quality gate, not a claim mutation). Rejects marked-ready work for more review. Surfaced on the Releases **Ready-to-generate** row (the new home of marked-ready work); sending back returns the reciter to `under_review`, where it reappears in the Reviews tab.
-- Publish / unpublish / unlock-for-revision are listed but **disabled** (see `docs/planning/reviews-tab-deferred.md`).
+- Publish / unpublish / unlock-for-revision are listed but **disabled**.
 
 The owner-only tightening on force-release + reassign was a deliberate split: **owners manage who reviews; maintainers gate what ships**. Maintainers retain Send-back-to-UR but cannot eject or transfer claims.
 

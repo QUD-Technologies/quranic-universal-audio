@@ -135,8 +135,7 @@ maintainers therefore share one budget, checked under the write lock in
   pending/running at once (a failed run holds no slot; its retry needs one).
 - **Override** — holders of `intake.align_unlimited` (owner only by default; the
   owner can grant it to maintainers in the Permissions tab) bypass both. Their
-  runs are stamped `quota_exempt` in `params_json` and never count. An owner
-  bearer is always exempt.
+  runs are stamped `quota_exempt` in `params_json` and never count.
 
 Counting reads `params_json.device` (the STARTING lane): a GPU run that fell back
 to CPU still counts as GPU, not as the CPU slot. The Requests payload carries
@@ -358,21 +357,18 @@ route, all removed. The plan lives on the request row as `payload.plan`.
 
 1. **Build** (`POST …/intake/<rid>/plan`). With a `listing` body
    (`IntakePlanBuild` → `IntakeListing`: host, source URL, uploader, entries),
-   the plan is built at once from it, with no enumeration; that's the owner's
-   fallback when a host (YouTube) refuses Hugging Face IPs, listed on their
-   own machine and posted with an owner bearer token. With an empty body,
+   the plan is built at once from it, with no enumeration (a fallback when a
+   host refuses to list from the Space). With an empty body,
    `plan.build` stamps
    `status="enumerating"` and a daemon thread enumerates the source
    (`enumerate.py`):
    - `links` submissions keep their chapters; links sharing one URL become one
      combined entry.
-   - Google Drive folders go through `drive.py`. It scrapes the browser API key
-     embedded in the folder page (`INSPECTOR_GOOGLE_API_KEY`, when set, is tried
-     first) and calls Drive v3 `files.list`, so there is no 50-file cap. It walks
+   - Google Drive folders go through `drive.py`, which calls Drive v3
+     `files.list`, so there is no 50-file cap. It walks
      one level of subfolders and skips non-audio files.
    - Everything else goes through yt-dlp flat extraction. A listing shorter than
-     yt-dlp's reported count is refused (truncation guard). YouTube oEmbed is the
-     title fallback for a single video the bot check refuses.
+     yt-dlp's reported count is refused (truncation guard).
 
    Entries are listed once per URL; unavailable videos start excluded. No title
    is read for chapters. `identity.py` proposes the reciter id (the request's
@@ -385,7 +381,7 @@ route, all removed. The plan lives on the request row as `payload.plan`.
    (`PlanEntryEdit.include` — leave out an intro, a du'a, a talk) and edits the
    identity. The view carries a live check. Errors: nothing included, identity
    problems (slug taken or malformed, unknown reciter, missing channel/source), a
-   YouTube source without `INSPECTOR_YTDLP_COOKIES`, and for `links` chapters
+   YouTube source without the yt-dlp credentials configured, and for `links` chapters
    outside 1–114 or given to two links. Warnings: excluded files, very long
    files, and for `links` missing chapters.
 3. **Align** (`POST …/intake/<rid>/align`). `mint.mint_and_align` builds the
@@ -411,24 +407,13 @@ and pip-installs the kind's deps at launch; there is no prebuilt image Space.
 
 Source fetching (`qua_jobs/audio_io.py`): Drive files download through
 `drive.usercontent.google.com` (`confirm=t`), direct media URLs by plain HTTP,
-everything else through yt-dlp. YouTube **listing** mostly works from Hugging
-Face but its connections get dropped (`SSL: UNEXPECTED_EOF_WHILE_READING`), so
-`enumerate._extract` retries network failures (4 attempts, linear back-off) and
-passes the cookies / proxy secrets below when set. **Downloads** are refused ("Sign in to confirm you're not a bot") without a
-signed-in session. A run with any yt-dlp source installs `yt-dlp[default] deno`
-in the job and passes the Space secrets `INSPECTOR_YTDLP_COOKIES` (a Netscape
-cookies.txt export) and `INSPECTOR_YTDLP_PROXY` (optional) as the job secrets
-`YTDLP_COOKIES` / `YTDLP_PROXY`. HF Jobs egress from AWS (AS14618): without a
-session YouTube refuses every player client (`tv`, `tv_simply`, `android_vr`,
-`ios`, `mweb`, `web_safari`, `web_embedded`, probed 2026-09). The job repairs a
-cookies file whose tabs became spaces (`audio_io.normalize_cookies`), keeps at
-most `YTDLP_WORKERS = 2` yt-dlp fetches in flight with `--sleep-requests 1`,
-and after the first bot-check refusal (`BotCheckError`) fails the remaining
-yt-dlp sources without a request. The error keeps yt-dlp's cookie warnings:
-"no longer valid" means YouTube rotated the session after export — export
-from a private window and close it without signing out. `INSPECTOR_GOOGLE_API_KEY` (optional) overrides
-the scraped Drive listing key. The app itself needs `yt-dlp` (in
-`inspector/requirements.txt`) for listing only.
+everything else through yt-dlp. Listing retries dropped connections (4
+attempts, linear back-off). A run with any yt-dlp source installs
+`yt-dlp[default] deno` in the job and hands it the operator-supplied yt-dlp
+credentials when configured; at most `YTDLP_WORKERS = 2` yt-dlp fetches run at
+once, and after a host refusal (`BotCheckError`) the remaining yt-dlp sources
+fail fast. The app itself needs `yt-dlp` (in `inspector/requirements.txt`) for
+listing only.
 
 ## Not built yet
 

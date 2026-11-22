@@ -21,7 +21,7 @@ QUD-Technologies/qud-mushaf`), replace the files here, update this table and `pa
 `npm install` to refresh the lock.
 
 Their peer `@qud-technologies/quran-data` (the Talqeen TS SDK) is **not** vendored: it is a
-release asset of `talqeen-ai-data`, fetched into `../.quran-data/` by
+release asset of the pinned data dependency, fetched into `../.quran-data/` by
 `scripts/devenv/install_quran_data.py` (pin and sha256 in `qua_shared/quran_data_pin.py`).
 Run that before `npm ci`.
 
