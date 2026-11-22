@@ -4,8 +4,9 @@
 Shipped as a release asset. The release ``catalog.json`` pairs each reciter's
 timestamps with the audio they were aligned against; for CDN reciters those are
 direct per-chapter MP3s, but for playlist sources (YouTube / Google Drive) the
-audio has to be fetched and re-encoded. This helper does that with the SAME
-encoding the alignment used — **192 kbps CBR MP3, 44.1 kHz, mono** by default —
+audio has to be fetched and re-encoded. This helper does that at the alignment's
+rate — **192 kbps CBR MP3, 44.1 kHz** — downmixed to mono by default (``--channels 2``
+keeps stereo, as the alignment encode does) —
 so a verse's ``[start_ms, end_ms]`` from the tier files lands on the right audio.
 
 It reads ``catalog.json`` (the release-level array OR a single reciter's in-zip

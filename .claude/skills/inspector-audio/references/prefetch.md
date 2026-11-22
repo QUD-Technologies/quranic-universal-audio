@@ -27,6 +27,6 @@ All resolve URL → chapter via `audio_meta.chapter_for_url` and return `None` w
 
 - The hourly **wip-audio sweeper** + the entire `audio_prefetch.py` module (`start_cleanup_daemon`, `_cleanup_loop`, `sweep_due`, `is_prefetched`), `audio_fetch.clear_prefetch`, the `INSPECTOR_WIP_SWEEPER` env, and the `delivery_states.prefetch_purge_at` column + its `admin.clear_prefetch_purge_at` transition/handler (migration `0011_drop_prefetch_purge_at`). Released reciters' audio + peaks are no longer GC'd.
 - The `_done.json` sentinel is no longer read by the Inspector (`is_prefetched` is gone); extraction may still write it, but nothing routes on it.
-- The original in-Space prefetch worker + FIFO queue + per-chapter fetch pipeline were removed earlier, when Katana became the sole writer. Xing injection happens in Katana's `audio_persist::_ensure_xing` (`-c:a copy -f mp3`, which ffmpeg's mp3 muxer auto-Xings).
+- The original in-Space prefetch worker + FIFO queue + per-chapter fetch pipeline were removed earlier, when offline writers took over: Katana extraction for older reciters (Xing/Info injection in `audio_persist::_ensure_xing`, `-c:a copy -f mp3`), the align pipeline's HF jobs now (a canonical CBR re-encode, so no Xing pass).
 
 > **Stale comments in live code:** `services/peaks.py` + `peaks_slim.py` docstrings still mention an `audio_fetch.fetch_and_persist_chapter` fallback writer that no longer exists. Ignore those — there is no runtime re-bake path.

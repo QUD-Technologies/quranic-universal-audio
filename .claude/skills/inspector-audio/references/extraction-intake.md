@@ -47,17 +47,17 @@ The inspector at runtime only **reads** `reciters/<slug>/` — it never fetches
 from a CDN to warm the bucket, and **nothing deletes it** (the hourly GC sweeper
 was removed; content persists indefinitely). See `prefetch.md`.
 
-### YouTube / yt-dlp sources *create* the encode (vs preserve it)
+### The align pipeline *creates* the encode (Katana preserved it)
 
-CDN sources keep the publisher's mp3 bytes verbatim and only get a Xing seek
-header injected (`-c:a copy`). Playlist sources (YouTube, Google Drive,
-SoundCloud, archive.org) are the exception. They arrive through the online
-intake, and the align pipeline's acquire job (`qua_jobs/audio_io.py::encode`)
+Katana-era CDN deliveries kept the publisher's mp3 bytes verbatim and only got a
+Xing seek header injected (`-c:a copy`). The align pipeline re-encodes every
+source it acquires — CDN files and playlist sources (YouTube, Google Drive,
+SoundCloud, archive.org) alike: its acquire job (`qua_jobs/audio_io.py::encode`)
 does ONE controlled encode → **192 kbps CBR / 44.1 kHz / source channel count**,
-`-vn` (cover-art stripped — an APIC stream 0-byte-muxes on the static ffmpeg).
+`-vn` (cover-art stripped — an APIC stream otherwise breaks the mux).
 192k: `bestaudio` is opus ~130–160 kbps and opus is ~1.4× more bit-efficient than
 mp3, so 192k CBR preserves it transparently. A file holding several chapters is
-encoded once into a source slot `audio/<901+>.mp3`, aligned whole, then cut per
+encoded once into a source slot `audio/<201+>.mp3` (`SLOT_BASE`), aligned whole, then cut per
 chapter by the `split_audio` job. The watch URL can't be HTTP-frame-probed, so
 the mint writes a URL-only manifest and
 `services/admin/align_pipeline/manifest.py` fills size / duration / bitrate /
