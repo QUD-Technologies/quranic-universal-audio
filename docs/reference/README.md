@@ -22,7 +22,6 @@ Where a reference doc here touches those domains (e.g. the route map in `archite
 | [segments-editor.md](segments-editor.md) | Segments tab editor — command grammar, normalized state, identity, save flow, edit_history, undo, history view. |
 | [timestamps-job.md](timestamps-job.md) | Timestamps subsystem — where shards are written (raw segments, byte pass-through read), consumer-side completion-based dedup, owner preview, the one-off reshape migration, the admin-triggered HF generation job (prebuilt public job image → in-container MFA, alignment-only → per-reciter `reciters/<slug>/jobs/ts/<id>.json` records), and the verse-level `ts_validation.json` accordion. |
 | [shards.md](shards.md) | **The timestamp shard reference.** Native v13 connected readings, schema-2 phonemizer documents, timing sidecars, identity ownership, generation, strict audit, and atomic cutover. |
-| [native-renderer-audit.md](native-renderer-audit.md) | Full-corpus evidence defining the producer/package/Inspector ownership boundary after the temporary v11 proof adapter was removed. |
 | [specials.md](specials.md) | Basmala / Isti'adha / Amin specials — the per-reciter `specials.json` (writers, provenance, clipping), the Fatiha Basmala voice verdict and its capability-gated confirm, timing openers into `0:1`/`0:2` shard readings, and the release `specials.json` projection. |
 | [ts-reports.md](ts-reports.md) | Timestamps reader reporting — the `ts_reports` table (categorized, cell-addressable, soft-delete, wrong-rule tags), word-grouped timing vs per-cell tajweed vs per-gap silence (pause boundary/waṣl/missed), batch create + group resolve + staleness + silence auto-resolve-on-regen, and the FE drop-up + in-grid report mode (cell + pause-gap flagging, tajweed spotlight, missed-pause slots, persisted public flags). |
 | [dataset-and-releases.md](dataset-and-releases.md) | Dataset releasing model — bucket-as-canonical + three adapter projections (HF dataset, GH release tiers, future API), publish state model (`releases` SQLite table, three independent artifact tracks per reciter), eligibility, schema, failed/delete handling, parity invariants. |
@@ -45,4 +44,4 @@ Where a reference doc here touches those domains (e.g. the route map in `archite
 
 Audio: see `.claude/skills/inspector-audio/` (peaks, audio proxy/source, bucket audio/peaks read-only, VBR/Xing, probes).
 
-Planning / rationale (the *why*) lives in `docs/planning/` and `docs/proposals/` (gitignored). This dir is the *what-is* contract.
+Planning / rationale (the *why*) lives in `docs/planning/` and `docs/proposals/` (gitignored, local only). This dir is the *what-is* contract.

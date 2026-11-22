@@ -276,7 +276,7 @@ Canvas waveform components expose the raw `<canvas>` so overlay code draws direc
 - `tabs/segments/utils/waveform/{split-draw,trim-draw}.ts` (edit overlays)
 - `TimestampsTab.svelte` / `TimestampsWaveform.svelte` (waveform animation)
 
-These components stay Svelte-4 legacy by design (`docs/planning/svelte-migration.md` exempt list). `lib/utils/animation.ts::createAnimationLoop()` wraps the rAF lifecycle.
+These components stay Svelte-4 legacy by design. `lib/utils/animation.ts::createAnimationLoop()` wraps the rAF lifecycle.
 
 ## Client caching
 

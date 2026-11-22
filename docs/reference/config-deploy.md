@@ -80,9 +80,8 @@ The image bakes the **dev** bucket as default (`INSPECTOR_BUCKET_REPO=QUD-Techno
 | `INSPECTOR_ALIGN_KEEP_STAGING` | off | `1` keeps `staging/<slug>/<run>/` after assemble (debugging). |
 | `INSPECTOR_ACQUIRE_JOB_FLAVOR` / `INSPECTOR_ACQUIRE_JOB_TIMEOUT` | `cpu-upgrade` / `6h` | The acquire HF Job's hardware + wall clock. |
 | `INSPECTOR_ALIGN_CONCURRENCY` | 16 (`params.ALIGN_WORKERS`, capped at the pending file count) | Overrides the align stage's rolling HTTP transport pool for debugging; aligner-side admission is independent. |
-| `INSPECTOR_YTDLP_COOKIES` | Space secret (optional; required for YouTube downloads) | Netscape `cookies.txt` export of a signed-in YouTube session. Passed to the acquire HF Job as the job secret `YTDLP_COOKIES` when a run has a yt-dlp source. YouTube refuses downloads from Hugging Face IPs without it ("Sign in to confirm you're not a bot"); listing works regardless. The intake plan check errors on a YouTube source while it is unset. |
-| `INSPECTOR_YTDLP_PROXY` | unset | Optional proxy URL handed to yt-dlp in the acquire job (job secret `YTDLP_PROXY`). |
-| `INSPECTOR_GOOGLE_API_KEY` | unset | Optional Google API key tried first for Drive folder listing (`services/admin/intake_plan/drive.py`); by default the key embedded in the public folder page is scraped. |
+| `INSPECTOR_YTDLP_COOKIES` / `INSPECTOR_YTDLP_PROXY` | Space secrets (optional) | Operator-supplied credentials handed to the acquire HF Job for yt-dlp sources. |
+| `INSPECTOR_GOOGLE_API_KEY` | unset | Optional Google API key for Drive folder listing (`services/admin/intake_plan/drive.py`). |
 | `ACQUIRE_WORKERS` (job env) | one per vCPU, max 8 | Chapters the acquire job fetches + encodes at once. |
 | `INSPECTOR_PUBLIC_BASE_URL` | empty | Public https root the daemon threads into job completion webhooks (no `request.url_root` in a thread). Required for automated GH cuts — the cut job is webhook-only. Set as a Space variable per environment. |
 | `INSPECTOR_TS_STALE_RUN_HOURS` | `6` | How long a `running` timestamps run-log record that this process is not working may sit before the single-flight guard treats it as dead (a run whose thread is alive is never stale). |
@@ -113,9 +112,8 @@ The image bakes the **dev** bucket as default (`INSPECTOR_BUCKET_REPO=QUD-Techno
 | Var | Default | Purpose |
 |---|---|---|
 | `INSPECTOR_QUA_DOMAIN_WHEEL_DIR` | `/opt/wheels` | Where the runtime image keeps the `qua_domain` wheel from stage 1b. `stage_job_code` uploads it to `aligner-bucket/code/wheels/` so HF Jobs (non-Hafs publish / cut) install the same edition projection the Space runs; absent = Hafs-only jobs, warned at launch. |
-| `INSPECTOR_TS_LIMIT_*` | see `config.py` | Per-client limits on the timestamps data routes (`services/auth/ts_rate_limit.py`): `CHAPTERS_PER_MINUTE`, `CHAPTERS_PER_HOUR`, `CHAPTERS_PER_DAY`, `REQUESTS_PER_MINUTE`, `TOKENS_PER_HOUR`. Always enforced. → `auth-permissions.md` |
-| `INSPECTOR_TS_TURNSTILE_SECRET` / `INSPECTOR_TS_TURNSTILE_SITE_KEY` | unset | Space **secret** + **variable**: the Cloudflare Turnstile widget "inspector access token". With the secret set, `/api/ts/access-token` requires a passed challenge; the site key is handed to the page. Unset → no challenge (dev). `INSPECTOR_TS_TURNSTILE_VERIFY_URL` (default `https://qud.dev/api/turnstile-verify`) is the siteverify relay: Spaces cannot reach `challenges.cloudflare.com`. |
-| `INSPECTOR_TS_EDGE_SECRET` | unset | Space **secret**. When set, anonymous `/api/ts/*` requests must carry it as `X-QUA-Edge` (added by a Cloudflare Transform Rule on the custom domain); the direct `*.hf.space` origin is refused. Set the Cloudflare rule first, then this. |
+| `INSPECTOR_TS_LIMIT_*` | see `config.py` | Per-client limits on the timestamps data routes (`services/auth/ts_rate_limit.py`). Always enforced. |
+| `INSPECTOR_TS_TURNSTILE_*`, `INSPECTOR_TS_EDGE_SECRET` | unset | Space secrets/variables for the timestamps access gate. Unset → no gate (dev). |
 | `INSPECTOR_MULTI_RIWAYAH` | `1` | Kill-switch for the non-Hafs editions (`config.MULTI_RIWAYAH_ENABLED`). `0` makes `services/reference/editions.py` behave as if `qua_domain` were absent — a 60-second rollback via a Space **variable** + restart, where a rebuild is ten minutes. It does NOT render non-Hafs as Hafs; those deliveries fail loudly. |
 
 ## Image build — `inspector/Dockerfile`
@@ -123,8 +121,8 @@ The image bakes the **dev** bucket as default (`INSPECTOR_BUCKET_REPO=QUD-Techno
 Three-stage build, context is the **repo root** (so `qua_shared/` ships alongside `inspector/`):
 
 1. **frontend-build** (`node:20-alpine`) — `npm ci` + `npm run build` → `dist/`.
-1b. **qua-domain-build** (`python:3.11-alpine`) — sparse blobless fetch of `packages/quran-domain` at the pin in `qua_shared/qua_domain_pin.py`, then `pip wheel` → `/wheels`. Needs `--secret id=QUA_DOMAIN_DEPLOY_KEY` (a read-only SSH deploy key on `Hetchy/qua`, the same arrangement as `CELLS_DEPLOY_KEY`). `required=false`: **without the secret the stage produces an empty `/wheels` and the image still builds**, Hafs-only. The stage's `ARG QUA_COMMIT` default IS the pin on an HF Space (Spaces build with no build args) — `qua_shared/tests/test_qua_domain_pin.py` asserts it matches the Python constant.
-1c. **quran-data-build** (`python:3.11-alpine`) — runs `scripts/devenv/install_quran_data.py --wheel-dir /wheels --pack-dir /pack` (pin read from `qua_shared/quran_data_pin.py`, no second copy) with the **required** build secret `TALQEEN_DATA_READ_TOKEN`: the `talqeen-quran-data` wheel and `quran-core.qref`. No secret, no image. See [quran-data.md](quran-data.md).
+1b. **qua-domain-build** (`python:3.11-alpine`) — sparse blobless fetch of `packages/quran-domain` at the pin in `qua_shared/qua_domain_pin.py`, then `pip wheel` → `/wheels`. Needs the build secret `QUA_DOMAIN_DEPLOY_KEY`. `required=false`: **without the secret the stage produces an empty `/wheels` and the image still builds**, Hafs-only. The stage's `ARG QUA_COMMIT` default IS the pin on an HF Space (Spaces build with no build args) — `qua_shared/tests/test_qua_domain_pin.py` asserts it matches the Python constant.
+1c. **quran-data-build** (`python:3.11-alpine`) — runs `scripts/devenv/install_quran_data.py --wheel-dir /wheels --pack-dir /pack` (pin read from `qua_shared/quran_data_pin.py`, no second copy) with a **required** build secret: the `talqeen-quran-data` wheel and `quran-core.qref`. No secret, no image. See [quran-data.md](quran-data.md).
 2. **ffmpeg-build** (`alpine:3.23`) — compiles a minimal *static* ffmpeg/ffprobe (mp3 decode + `pcm_s16le`/wav for peaks + `libmp3lame`/mp3 muxer for the `segment-clip` route). `libmp3lame 3.100` is built from source `--enable-static` because Alpine ships no static lame archive — without it `clip.py` returns 200/0-bytes and playback hangs. http/https protocols enabled so ffmpeg can decode remote chapters via HTTP Range.
 3. **runtime** (`python:3.11-alpine`) — installs `inspector/requirements.txt` **plus the optional `qua_domain` wheel from stage 1b** (11.7 MB of edition data: four scripts, four fonts, the Hafs→target projection; the install is glob-guarded so an absent wheel is a no-op; the wheel is kept at `/opt/wheels` for HF-Job staging), purges pip/setuptools/wheel, **selective COPY** (`app.py/config.py/constants.py`, `adapters/ domain/ routes/ services/ utils/`, `scripts/__init__.py + qua_shared/ + qua_jobs/`, `.github/config/`, `LICENSE`, the stage-1c pack at `data/quran-core.qref` (and its installed wheel), and `frontend/dist` from stage 1). `qua_jobs/` + `.github/config/` + `LICENSE` are read by the HF-Job entrypoints (`config_loader`, cut_release asset upload). Runs as non-root uid/gid 1000. `EXPOSE 7860`. **Adding a `COPY` here needs no staging edit** — the deploy stages the whole tracked tree (see Deploy).
 
@@ -166,9 +164,7 @@ codegen'd FE types and committing the result — see `schema-codegen-check` in
 - `INSPECTOR_HF_TOKEN` — new token → update Space secret → restart. Revoke the old after verifying.
 - `INSPECTOR_SESSION_SECRET` — replace the Space secret → restart. **All in-flight cookies invalidate** (everyone logged out).
 - `INSPECTOR_GITHUB_DISPATCH_TOKEN` — mint new PAT → update secret → restart.
-- `QUA_DOMAIN_DEPLOY_KEY` — read-only SSH deploy key on `Hetchy/qua` (**deploy key, not a PAT**: scoped to one repo, read-only, and unaffected by `gh auth refresh`). Lives as a GitHub Actions secret on this repo AND as a Space secret on both Spaces (`upload_inspector.py` pushes it on every deploy; it warns and leaves the Space secret alone when absent from the env, so a deploy from a machine without it can't blank a working Space). Rotate: add a new key on `Hetchy/qua` → update the three secrets → redeploy → delete the old key. Consumed **only at build time** — no key ever lands in the running container.
-
-- `TALQEEN_DATA_READ_TOKEN` — read access to `QUD-Technologies/talqeen-ai-data` (same name and use as `talqeen-ai-mizan`). A GitHub Actions secret here (CI installs, `boot-smoke` build secret) and a Space secret on both Spaces, set by `upload_inspector.py` on every deploy (which refuses to run without it). Build-time only.
+- Build-time dependency credentials — update the GitHub Actions secret and the Space secrets, redeploy. Consumed only at build time; nothing lands in the running container.
 
 ### Required dependency: `talqeen-quran-data`
 
@@ -176,7 +172,7 @@ The Hafs reference data. One pin (`qua_shared/quran_data_pin.py`), one installer
 
 ### Optional dependency: `qua-domain`
 
-Installed from a pinned commit of the private `Hetchy/qua` monorepo, not PyPI. One pin (`qua_shared/qua_domain_pin.py`), three consumers: `scripts/devenv/install_qua_domain.py` (local + CI), the Dockerfile stage, and the boot-time provenance in `/healthz`. Bump it like a lockfile entry — edit `QUA_COMMIT` **and** the Dockerfile `ARG`, run the installer, commit.
+Installed from a pinned commit, not PyPI. One pin (`qua_shared/qua_domain_pin.py`), three consumers: `scripts/devenv/install_qua_domain.py` (local + CI), the Dockerfile stage, and the boot-time provenance in `/healthz`. Bump it like a lockfile entry — edit `QUA_COMMIT` **and** the Dockerfile `ARG`, run the installer, commit.
 
 Absent (fork, no key, or `INSPECTOR_MULTI_RIWAYAH=0`) the Inspector runs Hafs-only: `services/reference/editions.available()` is `False` and every non-Hafs accessor raises `EditionsUnavailable`. There is deliberately **no Hafs fallback** — rendering one edition's coordinates under another's script would let a reviewer save wrong refs.
 

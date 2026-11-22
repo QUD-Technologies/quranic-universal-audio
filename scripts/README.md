@@ -40,8 +40,8 @@ no-op-or-error by design. Idempotent `backfill_*`/`purge_*`/`convert_*` stay in
 - `bootstrap_dev_env.py` — provision a contributor's personal bucket + Space
 - `seed_fixtures.py` — download the public fixtures → `.fixtures` (offline tier-0)
 - `make_fixtures_dataset.py` — maintainer: (re)build the PII-free public fixtures dataset
-- `install_quran_data.py` — install the pinned `talqeen-quran-data` SDK and fetch its `quran-core.qref` pack into `data/` (gitignored) from `QUD-Technologies/talqeen-ai-data` (`qua_shared/quran_data_pin.py`), via `TALQEEN_DATA_READ_TOKEN` / `GH_TOKEN` / `gh` login; required (the Hafs reference data); also the pack's fonts (`data/fonts/`) and the frontend's TS SDK tarball (`inspector/frontend/.quran-data/`, `--ts-only` before `npm ci`) from the data releases, sha256-pinned; `--wheel-dir` builds the wheel for the image
-- `install_qua_domain.py` — install the pinned `qua-domain` edition package from `QUD-Technologies/qua` via `PRIVATE_REPO_TOKEN` (with legacy SSH-key fallback); exits 0 having installed nothing when no credential exists (Hafs-only runtime)
+- `install_quran_data.py` — install the pinned `talqeen-quran-data` SDK and fetch its `quran-core.qref` pack into `data/` (gitignored) at the pin in `qua_shared/quran_data_pin.py`, via `TALQEEN_DATA_READ_TOKEN` / `GH_TOKEN` / `gh` login; required (the Hafs reference data); also the pack's fonts (`data/fonts/`) and the frontend's TS SDK tarball (`inspector/frontend/.quran-data/`, `--ts-only` before `npm ci`) from the data releases, sha256-pinned; `--wheel-dir` builds the wheel for the image
+- `install_qua_domain.py` — install the pinned `qua-domain` edition package via `PRIVATE_REPO_TOKEN` (with legacy SSH-key fallback); exits 0 having installed nothing when no credential exists (Hafs-only runtime)
 - `make_synthetic_delivery.py` — write a synthetic non-Hafs delivery (segs + optional word-profile shard, built from `qua_domain` itself) into a bucket, for multi-riwayah verification
 
 ### `codegen/`

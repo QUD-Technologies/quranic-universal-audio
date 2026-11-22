@@ -58,3 +58,9 @@ data/quran-core.qref
 data/fonts/
 data/justify/
 inspector/frontend/.quran-data/
+
+# Local-only: operational runbooks and planning docs (never public)
+.claude/skills/inspector-admin/
+docs/planning/
+docs/proposals/
+CLAUDE.local.md

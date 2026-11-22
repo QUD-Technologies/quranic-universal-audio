@@ -170,7 +170,7 @@ The `(lang, m.x())` comma-sequence is the load-bearing trick: it makes the react
 
 If a legacy file is too tangled to thread the store dependency through every message call, you have **exactly two** sanctioned options — **never** a third:
 
-1. **Migrate the file to runes first** (per `docs/planning/svelte-migration.md`), then use pattern (a); or
+1. **Migrate the file to runes first**, then use pattern (a); or
 2. **Keep it legacy and use the `$localeStore` / `tr()` idiom** above for every message read.
 
 **Never** introduce a single rune into a legacy file, and **never** leave message calls in a legacy file that don't transitively depend on `$localeStore` (they'll show stale copy after a switch). The exempt imperative/canvas components (`TimestampsWaveform.svelte` et al. — see the migration plan) render no localizable text nodes; if one ever needs a label, pass it in as a prop computed by a reactive parent rather than calling `m.*()` inside the canvas component.

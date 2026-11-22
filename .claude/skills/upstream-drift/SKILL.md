@@ -73,8 +73,7 @@ matter, and reports:
 
 Before you suggest registering a set, compare a few chapter durations (ffprobe) with that
 reciter's deliveries on other channels: it may be the same recording. A set the user declined
-keeps showing as `NEW`; say which ones were declined earlier (2026-11-13: Minshawi 1967 `r4`,
-Mustafa Gharbi Warsh). Register through the catalog service (`add_delivery`), one prod window,
+keeps showing as `NEW`. Register through the catalog service (`add_delivery`), one prod window,
 with each manifest uploaded first.
 
 Related: `inspector-audio` skill (`references/bugs.md`, the CDN-swap row) for the playback side.
