@@ -348,3 +348,13 @@ def test_release_download_helper_limits_peaks_like_the_alignment_encode():
     from qua_jobs import download_audio
 
     assert download_audio._LIMITER == audio_io.LIMITER
+
+
+def test_probe_channels_reads_first_csv_field(monkeypatch):
+    # Some mp3s make `ffprobe -of csv=p=0` print a trailing field ("2,").
+    monkeypatch.setattr(
+        audio_io.subprocess,
+        "run",
+        lambda *a, **kw: subprocess.CompletedProcess(a, 0, stdout="2,\n", stderr=""),
+    )
+    assert audio_io.probe_channels(Path("x.mp3")) == 2
