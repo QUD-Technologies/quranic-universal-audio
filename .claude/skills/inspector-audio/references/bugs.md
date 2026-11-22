@@ -43,9 +43,9 @@ Symptom → likely root → first probe. Ordered by area, not severity. VBR-only
 | VBR seek lands seconds off, all modes | Xing TOC missing — Katana's `audio_persist::_ensure_xing` didn't inject it (raw VBR shipped) | `ffmpeg -i reciters/<slug>/audio/<ch>.mp3 2>&1 \| grep -iE 'xing\|info'`. If absent, re-extract the chapter — there is no Space-side remux to retrigger. |
 | VBR seek lands off only in Adjust mode | `_window` not yet updated when split-click fires | Check `audio-port.ts:342-349` pending-promise reuse — should hand back the in-flight promise. |
 
-## Bucket audio + peaks (offline-written)
+## Bucket audio + peaks (pipeline-written)
 
-> There is **no prefetch worker and no GC sweeper** anymore — **Katana extraction is the sole writer** (there is no separate "timestamps job" peaks pass; that's a phantom in old docs); the Inspector only reads, and nothing is GC'd. See `prefetch.md`. "Audio missing on the bucket" is an extraction/upload problem, not a Space-side fetch problem.
+> There is **no prefetch worker and no GC sweeper** anymore. Bucket audio + peaks are written by the align pipeline's HF jobs (`qua_jobs/acquire_audio.py`, `split_audio.py`); older reciters came from Katana extraction. There is no separate "timestamps job" peaks pass. The Inspector runtime only reads, and nothing is GC'd. See `prefetch.md`. "Audio missing on the bucket" is an acquire/split (or legacy upload) problem, not a Space-side fetch problem.
 
 | Symptom | Likely root | First probe |
 |---|---|---|
@@ -61,7 +61,7 @@ Symptom → likely root → first probe. Ordered by area, not severity. VBR-only
 | Cross-origin CORS failure on segment-clip | `Access-Control-Allow-Origin: *` header dropped | `routes/audio/clip.py`. Check no middleware strips it. |
 | Segment-clip 403 | `_is_known_chapter_url` rejected — URL not in the **manifest sidecar** | Confirm `audio_meta.chapter_for_url(reciter, url)` resolves (NOT `detailed.json` — its `audio` field is `""`). |
 | Segment-clip 200 / 0 bytes | ffmpeg cmd missing `-vn` → stripped ffmpeg chokes on embedded APIC cover-art (no png encoder) | Confirm `routes/audio/clip.py` cmd has `-vn`. |
-| Segments footer progress bar blank for ONE reciter (audio still plays) | Chapter audio not on the bucket → `_stream_cdn` serves a headerless MP3 → browser reports `el.duration` Infinity/NaN. The footer hides the bar when duration isn't finite. (Footer now listens for late `durationchange` + falls back to `segAllData.chapter_duration_ms_by_chapter`; also fix the data: `populate_bucket_audio.py --slug <s> --bucket prod`.) | `scripts/bucket/bucket_reciters.py --bucket prod` → compare `audio_n` vs manifest chapters. FE: `SegmentsFooter.svelte` + `footer-duration.ts::resolveChapterDurationMs`. |
+| Segments footer progress bar blank for ONE reciter (audio still plays) | Chapter audio not on the bucket → `_stream_cdn` serves a headerless MP3 → browser reports `el.duration` Infinity/NaN. The footer hides the bar when duration isn't finite. (Footer now listens for late `durationchange` + falls back to `segAllData.chapter_duration_ms_by_chapter`; also fix the data: re-run the delivery's acquire.) | `scripts/bucket/bucket_reciters.py --bucket prod` → compare `audio_n` vs manifest chapters. FE: `SegmentsFooter.svelte` + `footer-duration.ts::resolveChapterDurationMs`. |
 | One chapter seconds-to-minutes out of sync in BOTH Segments and Timestamps; bucket file and segments agree (e.g. husary mujawwad tarteel ch 62) | The source CDN replaced the file under the same URL with a different recording; direct CDN play skipped the bucket copy the delivery was aligned on. `play-url.ts` now plays direct only when the live size equals the manifest `size_bytes` (`Content-Range` total, else a 1-byte read at `size-1`); unsized or mismatched chapters stay proxied. | `curl -sI <cdn url>` Content-Length vs `catalog/audio_manifest/<slug>.json` `size_bytes`; `ffprobe` both copies. In the browser the `<audio>` src is the raw CDN URL instead of `/api/seg/audio-proxy/...`. |
 
 ## Peaks
@@ -70,7 +70,7 @@ Symptom → likely root → first probe. Ordered by area, not severity. VBR-only
 |---|---|---|
 | Peaks render but stale | `?h=` hash didn't change after edit — frontend hash function missed boundary mutation | Inspect peaks request URL in network tab — hash must change when boundaries change. |
 | Peaks shifted on a Tier-2 segment | ffmpeg `-ss` seek imprecision on the segment decode (the old Python `_range_decode_segment` / `bytes_per_sec` arithmetic is **gone** — ffmpeg is frame-aware now) | `compute_segment_peaks` in `services/audio/peaks.py`. Re-run the ffmpeg `-ss/-t` cmd manually against the source. |
-| `/peaks` slow on first hit | Bucket short-circuit didn't fire — URL not in sidecar (`chapter_for_url` returned None) | Manifest sidecar missing or stale. Re-run `scripts/audio/probe_audio_meta.py`. |
+| `/peaks` slow on first hit | Bucket short-circuit didn't fire — URL not in sidecar (`chapter_for_url` returned None) | Manifest sidecar missing or stale. Re-run `scripts/backfills/backfill_audio_manifest_meta.py --slug <s>`. |
 | One URL returns null peaks | `read_prefetched_peaks` returned None (corrupt / pre-v3 / never extracted) — no runtime re-bake | Check `routes/segments/peaks.py` log. Backfill or re-extract; falls through to Tier-2 ffmpeg. |
 | Peaks recompute every request | in-memory cache cleared (process restart), or the per-URL `_PEAKS_CACHE` not populated | First readers fan out (`ThreadPoolExecutor`, `get_peaks_lock()` — NOT a phantom `is_peaks_computing`); subsequent hit `_PEAKS_RESPONSE_CACHE`. Check it's populated after the first request. |
 

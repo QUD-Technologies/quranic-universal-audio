@@ -118,7 +118,7 @@ Non-integer keys (by_ayah `"<s>:<a>"`) are skipped — only by_surah deliveries 
 | Reusing same clip plays wrong content | reuse-rule violation — `startMs` not equal | log `current.startMs`, `desired.startMs` from `_canReuseWindow` |
 | Cross-chapter accordion plays wrong transport | frontend `vbr_chapters_for_reciter` stale (sidecar updated, FE didn't refetch) | check the per-reciter VBR map exposed to the frontend |
 | Audible glitch at clip boundary in advance mode | `endMs` clip end didn't have post-roll pad — boundary flush has no audio to drain | bump `defaultPadMs` on the AudioPort instance |
-| Clip 403s in browser | `_is_known_chapter_url` rejected — URL not in `detailed.json` for that reciter | check `entry.audio` in `detailed.json` matches exactly |
+| Clip 403s in browser | `_is_known_chapter_url` rejected — URL not in the reciter's audio manifest (`chapter_for_url` → None) | check the manifest sidecar lists that exact URL |
 | Clip plays but stops short by ~0.5s | ffmpeg `-t` truncation at frame boundary; expected for VBR | acceptable, document if user reports |
 
 ## Dataset packaging — slicing chapter audio
@@ -135,7 +135,7 @@ The HF dataset (`scripts/release/build_reciter.py`) slices per-ayah audio out of
 
 VBR mitigations should live in either Xing-injection (extraction-time, on Katana) or segment-clip (request-time). Don't add a third path — adding a "fix in the AudioPort" is debt; adding a "let the frontend probe encoding mode" duplicates the sidecar.
 
-YouTube / yt-dlp sources sidestep this entirely: extraction re-encodes them to **forced CBR** (192k / 44.1k / mono — see `extraction-intake.md`), so they never carry the VBR-without-Xing drift the mitigations above exist for.
+YouTube / yt-dlp sources sidestep this entirely: the align pipeline re-encodes them to **CBR** (192k / 44.1k / source channel count — see `extraction-intake.md`), so they never carry the VBR-without-Xing drift the mitigations above exist for.
 
 If a new bug class shows up, prefer:
 

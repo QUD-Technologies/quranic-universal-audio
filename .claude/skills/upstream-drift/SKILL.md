@@ -47,8 +47,9 @@ chapters with their then → now size, duration and format. Do not edit manifest
 or delivery state from this audit: any fix (re-intake, manifest backfill) is a prod write that
 needs the user's go.
 
-The same classifier (`qua_shared.audio.upstream`) guards the pipeline: Align start refuses a
-`recording` change with 409, and the GitHub release cut leaves out only the drifted chapters.
+The same classifier (`qua_shared.audio.upstream`) guards the pipeline: Align start adopts a
+replaced source for a delivery not aligned yet (refreshes the manifest, deletes the stale bucket
+copies, lists the chapters in `detail.upstream_refreshed`), and the GitHub release cut leaves out only the drifted chapters.
 Those chapters have no audio links or timestamps and count as missing in coverage; the
 remaining chapters ship. A recitation with every chapter dropped is held out, and a cut
 with every eligible recitation held fails. Owners are notified with the recitations and

@@ -128,7 +128,7 @@ The old disk cache (`CACHE_DIR/<reciter>/peaks/<sha256>.json`) was removed (comm
 ## Common peaks issues
 
 - **Stale peaks**: `?h=` hash didn't change after edit — FE hash missed the boundary mutation. Inspect peaks request URL.
-- **`/peaks` slow on first hit**: bucket short-circuit didn't fire — URL not in sidecar (`chapter_for_url` → None). Manifest missing/stale; re-run `scripts/audio/probe_audio_meta.py`.
+- **`/peaks` slow on first hit**: bucket short-circuit didn't fire — URL not in sidecar (`chapter_for_url` → None). Manifest missing/stale; re-run `scripts/backfills/backfill_audio_manifest_meta.py --slug <s>`.
 - **One URL returns null**: `unpack_slim_envelope` → `None` (corrupt, pre-v3, or extraction never shipped it). No re-bake fires — backfill or re-extract. Check `peaks.py` route log.
 - **Per-seg POST fires on a prewarmed reciter**: chapter peaks not yet in `getWaveformPeaks(url)`, or slim 10 bps slice too coarse for a short zoomed seg (10 bps × 1 s = 10 buckets). Expected.
 - **Empty response + `no-store`**: no `.json.gz` for the requested chapters. Backfill not run or extraction skipped them — `scripts/backfill_peaks_slim.py --dry-run`.
@@ -154,4 +154,5 @@ The old disk cache (`CACHE_DIR/<reciter>/peaks/<sha256>.json`) was removed (comm
 | `frontend/src/tabs/segments/components/validation/ValidationPanel.svelte` | `_prefetchAccordionPeaks` (Tier 1 batch on accordion open) |
 | `scripts/{backfill,rollback}_peaks_slim.py` | One-shot bucket migration |
 | `scripts/audit_bucket_reciter.py::_audit_peaks_slim` | Per-reciter integrity check |
-| `.local/extraction/segments/audio_persist.py` | Katana-side sole writer (Tier 1 + history JSONL) |
+| `qua_jobs/acquire_audio.py`, `qua_jobs/split_audio.py` | Native align pipeline writers (chapter peaks for single and cut chapters) |
+| `.local/extraction/segments/audio_persist.py` | Katana-era writer (older reciters; Tier 1 + history JSONL) |

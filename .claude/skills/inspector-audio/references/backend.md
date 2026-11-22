@@ -12,7 +12,7 @@ Current file layout (the old flat paths `routes/audio_proxy.py` / `routes/segmen
 
 | Tier | Source | Served as |
 |---|---|---|
-| 1 | bucket file (`reciters/<slug>/audio/<chapter>.mp3`) at a real local Path | `send_file(path, conditional=True, etag=True, last_modified=…)` — Werkzeug handles Range + 304 + sendfile |
+| 1 | bucket file (`reciters/<slug>/audio/<chapter>.mp3`) at a real local Path | `range_file.send_range_file` — 1 MB reads, weak ETag, 200/206/304/416 (not `send_file`: its Range path reads the NFS mount in 8 KB pieces) |
 | 2 | local-dev bucket bytes (no mount) | `send_file(BytesIO(bytes), conditional=True, etag=…)` — still seekable |
 | 3 | CDN | **`_stream_cdn`: same-origin 200/206 byte-stream + `Access-Control-Allow-Origin: *`** (64 KB chunks). **NOT a 302** — a 302 to the CDN returns an opaque cross-origin response that silences `<audio crossorigin>` + the Web Audio kill-switch. |
 
@@ -55,7 +55,7 @@ class AudioSource:
 
 Priority inside `resolve()` — **three tiers, no disk cache**:
 
-1. Bucket **local Path** (`audio_fetch.read_prefetched_audio_local_path`) — preferred so callers stream via send_file/sendfile, not pull 4–5 MB into Flask memory.
+1. Bucket **local Path** (`audio_fetch.read_prefetched_audio_local_path`) — preferred so callers stream it in 1 MB reads (`send_range_file`), not pull 4–5 MB into Flask memory.
 2. Bucket **bytes** (`audio_fetch.read_prefetched_audio_bytes`) — only useful in local-dev with no mount.
 3. CDN URL only — `has_local_bytes` is False. ffmpeg can still decode this directly via its HTTPS-enabled build; local sources are preferred only for latency.
 

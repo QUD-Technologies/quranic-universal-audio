@@ -11,7 +11,7 @@ Layers, slug convention, schema, audio-metadata split, naming guide, and add/pro
 | vocab / reciters / deliveries / aliases / derived | SQLite tables (see §4 col map) | `repo_catalog.py` (via `services/state/catalog.py`) |
 | Read model (`ReciterCatalog`) | `repo_catalog.snapshot()` → cached on `db_seq` by `services/state/catalog.py::snapshot()` | — |
 | Pydantic shapes (runtime authority) | `qua_shared/schemas/bucket/catalog.py` | — |
-| Per-delivery audio sidecar | `catalog/audio_manifest/<slug>.json` (bucket JSON) | offline probe `scripts/audio/probe_audio_meta.py` |
+| Per-delivery audio sidecar | `catalog/audio_manifest/<slug>.json` (bucket JSON) | align pipeline write-back (`manifest.record_acquired`); `scripts/backfills/backfill_audio_manifest_meta.py` |
 | Reciter-picker review counts | `catalog/review_signals.json` (bucket JSON, `ReviewSignalsDoc`) | validate route on a count change + offline `scripts/backfills/review_signals.py` — see validation.md |
 | Public read endpoint | `/api/static/catalog.json` (`routes/public/static.py`) — serializes the viewer projection of `snapshot()` | — |
 
@@ -195,7 +195,7 @@ is never eligible for a public HF dataset split or GitHub release member.
   "schema_version": 1,
   "slug": "<delivery slug>",
   "_meta": {                                 // SidecarMeta (alias "_meta")
-    "checksum": "sha256:<hex>",              // sole storage; row carries no copy
+    "checksum": "<16 hex>",                  // sole storage; row carries no copy
     "source_meta_reciter": "<original>",     // migration/audit
     "source_manifest_path": "data/...",      // original ingestion path
     "chapter_count": 114,
@@ -209,7 +209,7 @@ is never eligible for a public HF dataset split or GitHub release member.
 
 Chapter keys: `"1"`–`"114"` (by_surah) or `"<surah>:<ayah>"` (by_ayah). Per-chapter metric fields nullable until probed. `ChapterEntry` fields: `url` (required), `size_bytes`, `duration_sec`, `bitrate_kbps`, `bitrate_mode` (`cbr`/`vbr` per chapter), and `max_linear_seek_err_ms` (probe verdict evidence).
 
-**Cross-channel chapter fill.** A chapter's `url` may point at another channel's copy of the *same recording* when the delivery's own file is defective (e.g. `salman_al_sadeiq_mp3quran` ch42 is silent on mp3quran, so it points at way2quran's). Fill every field of that entry from the new file (`size_bytes` is the pre-cut drift check's baseline), recompute `_meta.checksum`, and delete the old `audio/<ch>.mp3` + `peaks/<ch>.json.gz` before re-aligning — acquire skips a chapter whose file already exists. Releases then name that host for that chapter only; the delivery row's `source`/`channel` stay the main channel.
+**Cross-channel chapter fill.** A chapter's `url` may point at another channel's copy of the *same recording* when the delivery's own file is defective (e.g. `salman_al_sadeiq_mp3quran` ch42 is silent on mp3quran, so it points at way2quran's). Fill every field of that entry from the new file (`size_bytes` is the pre-cut drift check's baseline), recompute `_meta.checksum`, and delete the old `audio/<ch>.mp3`, `peaks/<ch>.json.gz` and `levels/<ch>.json.gz` before re-aligning — acquire skips a chapter whose file already exists. Releases then name that host for that chapter only; the delivery row's `source`/`channel` stay the main channel.
 
 **URL hygiene (#285).** `ChapterEntry.url` is a remote URL or a bucket-relative key (fixtures mode) — the
 schema rejects an absolute filesystem path / `file:` URI; `ChapterEntry.source_url` and `ManifestSource.url`
@@ -220,7 +220,7 @@ download path can no longer reach the bucket; `scripts/diagnostics/validate_buck
 
 `AudioManifestSidecar` (`qua_shared/schemas/bucket/catalog.py`) is a bucket artefact with pure `extra="forbid"`: any unknown/legacy sidecar field raises `ValidationError` on parse (writer-drift signal), never silently stripped — the same external-file strictness the bucket-validation harness surfaces.
 
-**Checksum** (`_meta.checksum`): `sha256(normalized_urls_sorted.joined_by_newline)` at build time. Normalization: lowercase hostname, strip trailing slashes, drop fragment; query order + path case preserved (CDN-sensitive). Lives only in the sidecar; re-probe jobs compute + compare.
+**Checksum** (`_meta.checksum`): `audio_meta.manifest_checksum` — the first 16 hex chars of `sha256` over the sorted `"<key>=<url>;"` pairs (no URL normalization), re-stamped on every manifest write. Lives only in the sidecar.
 
 `audio_meta.py` reads sidecars via `get_backend().read_json(audio_manifest_path(slug))` and caches each into LRU slots (`_audio_manifest` doc + `_audio_manifest_url_index` URL→chapter inverse). Powers VBR routing (`is_vbr`), audio-proxy short-circuit (`chapter_for_url`), the `/peaks` route's URL enumeration (`chapter_urls`), and FE warmup hints (`vbr_chapters_for_reciter`, `chapter_bitrate_kbps_for_reciter`).
 
@@ -257,7 +257,7 @@ Enum collapsed to four values by migration 0014 (legacy `mostly_cbr`/`mostly_vbr
 
 Per-chapter `ChapterEntry.bitrate_mode` (sidecar) is `cbr`/`vbr` only — the `mixed` collapse is a row-level rollup over chapters that individually are one or the other.
 
-Detection — **whole-file linear byte→time seek error** (`qua_shared/mp3_frames.py::classify_bitrate_mode`, mirrored inline in `probe_audio_meta.py`): walk every audio frame, measure how far a browser's linear `time→byte` seek would land from each frame's true time; `≤ 200 ms` ⇒ `cbr`, else `vbr`. This is the only reliable signal — it is exactly what the playback transport needs to know (can the browser seek this natively?). The two shortcuts this replaced both produced systematic mislabels: mutagen's header `bitrate_mode` calls every Xing-tagged file VBR (incl. CBR audio our pipeline tagged Xing) and `len(set(bitrates))==1` / head-only uniformity is fooled by a stray frame or by VBR whose variation starts past the head (whole tvquran/archive reciters slipped through as CBR and stalled on seek). Because the metric needs every frame, source probing (`probe_audio_meta.classify`, `mp3_probe.probe_source(allow_full=True)`) downloads the full file. Per-chapter results land in the sidecar, rolled up to the row at build.
+Detection — **whole-file linear byte→time seek error** (`qua_shared/mp3_frames.py::classify_bitrate_mode`): walk every audio frame, measure how far a browser's linear `time→byte` seek would land from each frame's true time; `≤ 200 ms` ⇒ `cbr`, else `vbr`. This is the only reliable signal — it is exactly what the playback transport needs to know (can the browser seek this natively?). The two shortcuts this replaced both produced systematic mislabels: mutagen's header `bitrate_mode` calls every Xing-tagged file VBR (incl. CBR audio our pipeline tagged Xing) and `len(set(bitrates))==1` / head-only uniformity is fooled by a stray frame or by VBR whose variation starts past the head (whole tvquran/archive reciters slipped through as CBR and stalled on seek). Because the metric needs every frame, source probing (`mp3_probe.probe_source(allow_full=True)`) downloads the full file. Per-chapter results land in the sidecar, rolled up to the row at build.
 
 **Download-only sources create their own encode.** Unlike CDN audio (publisher mp3 bytes preserved verbatim, with only a Xing seek header injected via `-c:a copy`), a YouTube/yt-dlp or Drive source is opus/m4a/arbitrary — so the acquire job produces the canonical mp3 once: **192 kbps CBR, 44.1 kHz, source channel count** (or the delivery's `channels` override), cover-art stripped (`qua_jobs/audio_io.py::encode`). Because the watch URL can't be HTTP-frame-probed, the manifest is minted with URLs only and the per-chapter size / duration / source offset are written back from the produced files by the align pipeline (`services/admin/align_pipeline/manifest.py`). Forced-CBR ⇒ these deliveries never hit the VBR playback path.
 
@@ -314,7 +314,7 @@ Audit `patch` shape `{field: {from, to}}` is computed in the service; the repo p
 2. **Add the reciter** via `catalog.add_reciter(actor=…, reciter_id=…, name_en=…, …)`. Pick `reciter_id` per `SLUG_RE` + §6.
 3. **Decide the delivery shape** — riwayah, style, recording_year (if known), source (must exist in `sources`; `add_audio_source` first if not), channel (must exist in `channels`; §10 to add).
 4. **Compute the slug** (§3); apply disambiguator rules on collision.
-5. **Probe** at least chapter 1 (`scripts/audio/probe_audio_meta.py`) → `bitrate_mode`, `bitrate_kbps_nominal`, `sample_rate_hz`, `channels`. `codec`/`container` = `mp3`.
+5. **Probe** at least chapter 1 (`scripts/backfills/backfill_audio_manifest_meta.py`) → `bitrate_mode`, `bitrate_kbps_nominal`, `sample_rate_hz`, `channels`. `codec`/`container` = `mp3`.
 6. **Add the delivery** via `catalog.add_delivery(actor=…, delivery=Delivery(...))` (constructs + validates the pydantic model; FK + duplicate enforced at insert; `derived` auto-refreshed; row + audit committed durably to the bucket DB).
 7. **Generate the sidecar** at `catalog/audio_manifest/<slug>.json` (URL map; per-chapter metrics may be null until a later probe). Checksum → `_meta.checksum`, never the row.
 
@@ -357,18 +357,17 @@ Maintainer-only, manual; mandatory audit. No automation / row-level archive flag
 
 | Job | Script | Scope |
 |---|---|---|
-| Single-reciter VBR/CBR + bitrate | `scripts/audio/probe_audio_meta.py --reciter <slug>` | one manifest |
-| Bulk row fields | `scripts/audio/probe_audio_meta.py --all` | all tracked reciters |
+| Fill / correct a manifest's metadata | `scripts/backfills/backfill_audio_manifest_meta.py --slug <slug>` (`--apply` to write) | one or more manifests |
+| Audit null metadata + duration drift | `scripts/diagnostics/audio_metadata_sweep.py [--peaks]` | all tracked reciters |
 | Per-ayah probing | not run — `by_ayah` deferred until a consumer needs per-ayah metrics | — |
 
-**How:** 256 KB HTTP Range fetch per URL (no full downloads). `mutagen` reads Xing/Info/VBRI/LAME (authoritative bitrate mode + duration); frame-by-frame scan as fallback. `Content-Range` response header gives total size free. URL-keyed probe cache short-circuits reruns. Concurrency capped (≤10 for `*.archive.org` politeness). Re-probe compares `_meta.checksum`; unchanged → skip.
+**How:** `mp3_probe.probe_source(allow_full=True)` — the whole-file frame walk of §5 (the linear-seek metric needs every frame, so the source is downloaded in full; mutagen is not used). Natively aligned deliveries get their metadata from the align pipeline's acquire write-back. Concurrency stays modest for `*.archive.org` politeness. See [`audio-metadata-pipeline.md`](audio-metadata-pipeline.md).
 
 **When:** new delivery (probe ≥chapter 1 for row fields); new source (bulk by_surah); URL-list change (= checksum change → re-probe that sidecar); periodic maintenance pass for silent format/URL drift.
 
 ## 13. Known limitations
 
 - **`by_ayah` deliveries are unprobed** — row audio fields `null`, URL-only sidecars. Bounded re-probe work, deferred until a consumer needs per-ayah metrics.
-- **Per-chapter `duration_sec` is null** when no Xing TOC is in the first 256 KB. Full-file probing deferred.
 - **`surah-quran` source slug carries a hyphen** — tolerated in `sources.slug` only; never in `reciter_id`, delivery `slug`, or channel slug.
 - **No aliases yet** — `catalog_aliases` empty; renames are manual.
 - **No `recording_year` in the seed** — field exists; populating it is per-reciter research, deferred.

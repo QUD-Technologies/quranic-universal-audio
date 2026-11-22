@@ -214,7 +214,8 @@ already listed, and a stale listing reads as `audio_fetch_failed` in sidecars.
 
 Every decision lands in `split_outcome.json`, the manifest, and
 `coverage_report.json`. Split is idempotent: an existing outcome skips it, and
-`split_audio.py` re-measures already-cut chapters instead of re-cutting them.
+`split_audio.py` re-cuts every chapter on each run (a stale or truncated cut is
+overwritten), deleting the slot files only once every cut succeeded.
 
 ## Concurrency
 
@@ -432,8 +433,7 @@ the scraped Drive listing key. The app itself needs `yt-dlp` (in
 
 ## Not built yet
 
-by_ayah deliveries, prod rollout
-(`INSPECTOR_ALIGN_PIPELINE` stays unset on prod).
+by_ayah deliveries.
 
 The pause-sidecar builder receives live detailed entries and skips joins with
 `join_verdicts` when the candidate time and reference geometry still matches.

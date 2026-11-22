@@ -271,7 +271,8 @@ same check fleet-wide.
 so CDN by-surah catalogs stay byte-stable and their `content_hash` doesn't churn.
 
 **`download_audio.py`** (release asset, `qua_jobs/download_audio.py`) fetches a reciter's source audio
-re-encoded to the alignment profile (192 kbps CBR / 44.1 kHz / mono by default; configurable). It reads
+re-encoded to 192 kbps CBR / 44.1 kHz, mono by default (configurable; the alignment encode itself keeps the
+source channel count). It reads
 `catalog.json` and offers `--format chapters` (one offset-0 file per surah — splits a combined file at
 the chapter offsets), `--format ayah` (one offset-0 clip per verse, `NNN_VVV.mp3`, cut at the
 `verse_timestamps.json.gz` spans auto-located next to `catalog.json` or passed via `--timestamps`), or
@@ -456,10 +457,11 @@ hub splits once via `hub_published_splits_by_config` (the just-pushed split is a
 frontmatter, badges, and catalog stats can't drift from the published set. The GitHub repo README
 badges are a separate, broader metric that `update-badges.yml` refreshes on each published GitHub release.
 
-### Audio: preserve, don't normalize
+### Audio: no re-encode at publish
 
-Embedded bytes are stream-copied from the bucket Xing-injected chapter master — source codec /
-bitrate / sample-rate / channels preserved; slice frame-snapped (≤26 ms earlier than first word,
+Embedded bytes are stream-copied from the bucket chapter master — the publisher's bytes for
+Katana-era deliveries, the align pipeline's 192 kbps CBR / 44.1 kHz encode (source channel count)
+for native ones; slice frame-snapped (≤26 ms earlier than first word,
 word timestamps re-based). Consumers resample at load; filter by codec/SR/channels via the
 `mushafs` config columns. For full-chapter app playback, prefer the GitHub release assets. A verse
 with an **interior no-match gap** is the one exception to "single contiguous slice": its clip is the

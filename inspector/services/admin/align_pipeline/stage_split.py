@@ -84,8 +84,7 @@ def _guard_singles(slug: str, run_id: str, groups: list[SourceGroup], outcome: d
         outcome["mismatched"][str(ch)] = other
         outcome["dropped"].append(ch)
     if outcome["dropped"]:
-        # Before any cut: another file may provide the surah, and the split job
-        # keeps an already-persisted chapter mp3 instead of re-cutting it.
+        # Before any cut: another file may provide the surah.
         _delete_dropped_audio(slug, outcome["dropped"])
         manifest.apply_split(slug, cuts={}, dropped=outcome["dropped"])
 
