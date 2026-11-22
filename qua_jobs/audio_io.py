@@ -227,26 +227,31 @@ def _cookies_path() -> str | None:
 
 def probe_channels(src: Path) -> int:
     out = _ffprobe(src, "stream=channels", stream="a:0")
-    channels = int(out.splitlines()[0]) if out else 1
+    channels = int(out) if out else 1
     return 2 if channels >= 2 else 1
 
 
 def probe_duration_ms(src: Path) -> int | None:
     out = _ffprobe(src, "format=duration")
     try:
-        return round(float(out.splitlines()[0]) * _MS)
-    except (ValueError, IndexError):
+        return round(float(out) * _MS)
+    except ValueError:
         return None
 
 
 def _ffprobe(src: Path, entries: str, *, stream: str | None = None) -> str:
+    """The first value ffprobe prints for ``entries`` ("" when none).
+
+    CSV output can carry trailing fields — some mp3s print ``2,`` for
+    ``stream=channels`` — so only the first field of the first line counts."""
     cmd = ["ffprobe", "-v", "error", *_format_hint(src)]
     if stream:
         cmd += ["-select_streams", stream]
     cmd += ["-show_entries", entries, "-of", "csv=p=0", str(src)]
-    return subprocess.run(
+    out = subprocess.run(
         cmd, capture_output=True, text=True, timeout=60, check=True
     ).stdout.strip()
+    return out.splitlines()[0].split(",", 1)[0].strip() if out else ""
 
 
 def _format_hint(src: Path) -> list[str]:
