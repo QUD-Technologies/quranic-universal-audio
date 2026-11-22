@@ -419,3 +419,31 @@ def test_coverage_report_lists_gaps_as_missing_and_repeats_as_unresolved(tmp_pat
     assert report["unresolved_files"] == [
         "https://src/247: repeats surah 47, already taken from https://src/246"
     ]
+
+
+def test_a_chapter_aligned_only_in_part_is_kept_but_not_clean(split_env, tmp_path):
+    """hassan_saleh_mp3quran 23: the file holds the surah, but a phase-cancelled
+    stretch left 26 of 118 ayahs matched and the report still read clean."""
+    from services.admin.align_pipeline import sources, stage_assemble, stage_split, staging
+    from services.audio import audio_meta
+
+    backend, launched = split_env
+    _write_manifest(
+        backend, {"113": {"url": "https://cdn/113.mp3"}, "114": {"url": "https://cdn/114.mp3"}}
+    )
+    audio_meta._clear_for_test()
+    run_id = "run-cov"
+    groups = sources.groups_for(SLUG)
+    whole = [_row(f"113:{a}:1", f"113:{a}:3", a, a + 1) for a in range(1, 6)]
+    staging.write_json(staging.chapter_path(SLUG, run_id, 113), {"segments": whole})
+    part = [_row("114:1:1", "114:1:4", 0, 2), _row("", "", 2, 9)]
+    staging.write_json(staging.chapter_path(SLUG, run_id, 114), {"segments": part})
+
+    outcome = stage_split.run(SLUG, run_id, groups)
+
+    assert outcome["dropped"] == [] and not launched
+    assert outcome["low_coverage"] == {"114": "only 1 of 6 ayahs aligned"}
+    stage_assemble._write_coverage(tmp_path, [113, 114], outcome)
+    report = json.loads((tmp_path / "coverage_report.json").read_text(encoding="utf-8"))
+    assert report["clean"] is False and report["missing"] == []
+    assert report["unresolved_files"] == ["chapter 114: only 1 of 6 ayahs aligned"]

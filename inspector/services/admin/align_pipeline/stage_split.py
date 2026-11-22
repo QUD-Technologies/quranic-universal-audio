@@ -34,6 +34,8 @@ log = logging.getLogger("inspector")
 
 KIND = "split_audio"
 _ENTRYPOINT = "python /aux/code/qua_jobs/split_audio.py"
+#: A kept chapter whose rows cover fewer of its ayahs than this aligned badly.
+MIN_ALIGNED_COVERAGE = 0.8
 
 
 def run(slug: str, run_id: str, groups: list[SourceGroup]) -> dict:
@@ -53,11 +55,13 @@ def run(slug: str, run_id: str, groups: list[SourceGroup]) -> dict:
         "repeats": {},
         "gaps": [],
         "stitched": {},
+        "low_coverage": {},
     }
     _guard_singles(slug, run_id, groups, outcome)
     slotted = [g for g in groups if g.combined]
     if slotted:
         _split_slots(slug, run_id, groups, slotted, outcome)
+    _check_coverage(slug, run_id, outcome)
     staging.write_json(staging.run_file(slug, run_id, staging.SPLIT_OUTCOME_FILE), outcome)
     return outcome
 
@@ -127,6 +131,26 @@ def _split_slots(
         first = res.chapters[int(key)][0]
         cuts[int(key)] = {**cut, "source_url": first.file.url, "offset_ms": first.cut.start_ms}
     manifest.apply_split(slug, cuts=cuts, dropped=outcome["dropped"], clear_sources=True)
+
+
+def _check_coverage(slug: str, run_id: str, outcome: dict) -> None:
+    """Report kept chapters whose rows cover too few of their ayahs.
+
+    The file holds the surah but most of it went unmatched — silence, a
+    phase-cancelled stretch, a truncated file. Kept (its matched rows are real),
+    but published in ``coverage_report.json`` so it is not read as clean."""
+    counts = _ayah_counts()
+    dropped = set(outcome["dropped"])
+    for ch in staging.staged_chapters(slug, run_id):
+        total = counts.get(ch)
+        if ch in dropped or not total:
+            continue
+        doc = staging.read_json(staging.chapter_path(slug, run_id, ch)) or {}
+        covered = len(partition.ayahs(doc.get("segments") or [], surah=ch))
+        if covered < MIN_ALIGNED_COVERAGE * total:
+            note = f"only {covered} of {total} ayahs aligned"
+            log.warning("align %s: chapter %d: %s", run_id, ch, note)
+            outcome["low_coverage"][str(ch)] = note
 
 
 def _ayah_counts() -> dict[int, int]:

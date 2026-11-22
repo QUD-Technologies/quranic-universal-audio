@@ -88,12 +88,13 @@ def matched_ms(rows: list[dict]) -> int:
     )
 
 
-def ayahs(rows: list[dict]) -> set[int]:
-    """Ayah numbers the rows cover (``ref_from``..``ref_to`` of their surah)."""
+def ayahs(rows: list[dict], surah: int | None = None) -> set[int]:
+    """Ayah numbers the rows cover (``ref_from``..``ref_to`` of their surah);
+    with ``surah``, only rows of that surah count."""
     out: set[int] = set()
     for r in rows:
         head = _ref(r.get("ref_from"))
-        if head is None:
+        if head is None or (surah is not None and head[0] != surah):
             continue
         tail = _ref(r.get("ref_to"))
         last = tail[1] if tail is not None and tail[0] == head[0] else head[1]
