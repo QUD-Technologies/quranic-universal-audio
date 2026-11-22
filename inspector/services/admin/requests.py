@@ -17,6 +17,7 @@ import logging
 from typing import cast
 
 from qua_shared.catalog_visibility import is_everyayah_channel
+from services.admin.request_context import Context
 from services.db import _serde, repo_requests
 from services.db.connection import current_db_seq
 from services.state import catalog as catalog_service
@@ -108,8 +109,12 @@ _INTAKE_KINDS = ("existing_reciter_new_combo", "new_reciter")
 
 
 def _build_base_rows(db_status: str) -> list[dict]:
+    rows = repo_requests.admin_list_rows(status=db_status)
+    if not rows:
+        return []
+    ctx = Context.build()
     out: list[dict] = []
-    for row in repo_requests.admin_list_rows(status=db_status):
+    for row in rows:
         payload = _serde.json_loads(row["payload"]) or {}
         slug = row["slug"]
         kind = row["kind"]
@@ -170,6 +175,13 @@ def _build_base_rows(db_status: str) -> list[dict]:
                 "conflict": conflict,
                 "source": payload.get("source") if is_intake else None,
                 "probe": payload.get("probe") if is_intake else None,
+                **ctx.source_of(
+                    slug=slug,
+                    channel=delivery.channel if delivery is not None else None,
+                    payload=payload,
+                    is_intake=is_intake,
+                ),
+                **ctx.reciter_counts(reciter_id),
                 "_requester": payload.get("requester") or {},
                 "_transitioned_by": payload.get("transitioned_by") or {},
                 "_everyayah": delivery is not None and is_everyayah_channel(delivery.channel),

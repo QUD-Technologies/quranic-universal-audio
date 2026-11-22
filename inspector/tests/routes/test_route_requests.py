@@ -536,6 +536,38 @@ def test_intake_submit_new_reciter_happy(signed_in_client):
     assert len(intake["source"]["links"]) == 114
 
 
+def test_list_requests_rows_carry_source_and_reciter_progress(signed_in_client):
+    client, _ = signed_in_client(role="contributor", hf_user_id="u-1")
+    playlist = "https://www.youtube.com/playlist?list=PLx"
+    body = _new_combo_body(
+        source={"method": "playlist", "playlist_url": playlist},
+        attestations={**_ATTEST, "playlist_public": True},
+    )
+    res = client.post("/api/requests/intake", headers=_HEADERS, data=json.dumps(body))
+    assert res.status_code == 200, res.data
+
+    o_client, _ = signed_in_client(role="owner", hf_user_id="u-O")
+    rows = json.loads(o_client.get("/api/admin/requests?status=open").data)["rows"]
+    edit = next(r for r in rows if r["slug"] == "rec_pending")
+    assert (edit["channel"], edit["channel_name"], edit["source_kind"]) == (
+        "ch1",
+        "Channel One",
+        "cdn",
+    )
+    assert (edit["reciter_published"], edit["reciter_requested"], edit["reciter_deliveries"]) == (
+        0,
+        1,
+        1,
+    )
+    combo = next(r for r in rows if r["kind"] == "existing_reciter_new_combo")
+    assert (combo["source_kind"], combo["source_url"], combo["link_count"]) == (
+        "playlist",
+        playlist,
+        None,
+    )
+    assert (combo["reciter_published"], combo["reciter_requested"]) == (0, 0)
+
+
 def test_intake_submit_missing_name_is_error(signed_in_client):
     client, _ = signed_in_client(role="contributor", hf_user_id="u-1")
     body = _new_reciter_body(proposed_edits={"riwayah": "hafs", "style": "murattal"})
