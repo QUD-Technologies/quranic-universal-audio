@@ -10,8 +10,8 @@
         pills: Record<RequestFacetKey, FacetPill[]>;
         search: string;
         hasFilters: boolean;
-        onSearch: (value: string) => void;
-        onToggle: (key: RequestFacetKey, tag: string) => void;
+        onSearch: (_value: string) => void;
+        onToggle: (_key: RequestFacetKey, _tag: string) => void;
         onClear: () => void;
     }
 

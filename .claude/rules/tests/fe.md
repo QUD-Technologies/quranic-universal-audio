@@ -8,7 +8,7 @@ paths:
 # Tests — FE vitest
 
 - `@testing-library/svelte` for components: `render`, `fireEvent`, `waitFor`. No raw DOM construction.
-- Vitest globals on. Don't `import { describe, it, expect } from 'vitest'`.
+- Import `describe` / `it` / `expect` from `'vitest'` explicitly — CI's svelte-check type-checks test files and fails on bare globals.
 - Import style: `import { describe, expect, it }` with spaces after commas (ESLint enforces).
 - Fake audio elements: use `audio._fireEvent('canplay')` — the stub method from `makeAudioStub`. Not `audio._fire`, not `audio.fire`.
 - Imperative scalars hidden behind setters (`_activeTab`, etc.) — reset via the setter (`setActiveTab(...)`), not the bare store `.set(...)`.
