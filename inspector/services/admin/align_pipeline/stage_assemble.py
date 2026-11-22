@@ -181,8 +181,10 @@ def _write_coverage(run_dir: Path, chapters: list[int], outcome: dict) -> None:
     file did not hold them (or held another surah), and surahs missing inside
     the delivery's span (``gaps``), are ``missing``; files repeating a surah
     taken from another file are reported; the
-    mislabelled single files, cuts that likely hold a missed chapter's audio and
-    files with no recitation are listed as ``unresolved_files``."""
+    mislabelled single files, cuts that likely hold a missed chapter's audio,
+    files with no recitation and chapters that aligned only in part
+    (``low_coverage``, which also clears ``clean``) are listed as
+    ``unresolved_files``."""
     missing = sorted(set(outcome.get("dropped") or []) | set(outcome.get("gaps") or []))
     unresolved = [
         f"chapter {ch}: audio is surah {surah}"
@@ -204,11 +206,13 @@ def _write_coverage(run_dir: Path, chapters: list[int], outcome: dict) -> None:
         f"surah {ch}: {note}"
         for ch, note in sorted((outcome.get("fragments") or {}).items(), key=lambda kv: int(kv[0]))
     ]
+    low = sorted((outcome.get("low_coverage") or {}).items(), key=lambda kv: int(kv[0]))
+    unresolved += [f"chapter {ch}: {note}" for ch, note in low]
     _dump(
         run_dir / "coverage_report.json",
         {
             "created_at": _now(),
-            "clean": bool(chapters) and not missing,
+            "clean": bool(chapters) and not missing and not low,
             "discovered_count": len(chapters),
             "discovered": list(chapters),
             "missing": missing,

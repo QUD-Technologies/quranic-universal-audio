@@ -57,11 +57,15 @@ acquire   CPU HF Job qua_jobs/acquire_audio.py (sources on a thread pool, one pe
           combined / detect → reciters/<slug>/audio/<slot>.mp3 (encoded once, no peaks)
           + staging/<slug>/<run>/acquire.json; the runner then writes the real
           size / duration back into the manifest (manifest.record_acquired).
-          A stereo source with one channel polarity-inverted (audio_io.is_antiphase,
-          mean aphasemeter phase < -0.3) is encoded with the right channel flipped:
-          L = -R folds to near-silence in mono, so VAD/ASR heard nothing and every
-          chapter failed to anchor (maher_al_muaiqly_muallim_mp3quran, 2026-11-01);
-          its acquire.json entry carries phase_inverted: true
+          Every stereo source's polarity is read over the WHOLE file
+          (audio_io.phase_layout: per-second median aphasemeter phase, silence
+          skipped): L = -R folds to near-silence in mono, so VAD/ASR hear nothing.
+          inverted throughout → encoded with the right channel flipped
+          (maher_al_muaiqly_muallim_mp3quran, 2026-11-01; acquire.json
+          phase_inverted: true); ≥ 10 s each of in-phase AND inverted → "mixed",
+          the left channel copied to both (hassan_saleh_mp3quran 023 flips at 3:08
+          — a probe of the first 120 s missed it and 92 ayahs went unmatched;
+          acquire.json phase_mixed: true)
 align     per-file loop, aligner Space POST /api/v1/batches (alignment-only) +
           items/<n>/audio/stream with audio_ref=hf://buckets/<repo>/reciters/<slug>/audio/<n>.mp3
           → staging/<slug>/<run>/chapters/<ch>.json (single) or sources/<slot>.json (slot)
@@ -99,8 +103,9 @@ assemble  in-process: adapt → promote_build.build_artifacts (peaks from the ac
           closers after the last ayah) plus the Fatiha 1:1 Basmala on hafs/shuba, which
           carries the aligner's basmala_voice verdict (see specials.md)
           chapter_sources carries each chapter's offset inside its source file;
-          coverage_report lists split drops as missing; mislabelled files, suspect cuts and
-          files with no recitation as unresolved
+          coverage_report lists split drops as missing; mislabelled files, suspect cuts,
+          files with no recitation and low-coverage chapters as unresolved (low
+          coverage also clears `clean`)
           low_confidence_v2 is required staged on Hafs, absent by contract off Hafs
           detailed.json written last, then staging/<run>/published.json; the
           verse_ends_v1 verdicts are applied to the published delivery
@@ -196,7 +201,12 @@ Coverage is tolerant, not fatal:
   cut. The neighbour is kept — its unmatched segment fails validation until a
   reviewer fixes it — and flagged **suspect** when it holds ≥
   `SUSPECT_MIN_MS` = 3 s of unmatched recitation next to a surah missing from
-  inside the delivery's span.
+  inside the delivery's span;
+- every kept chapter whose rows cover under `MIN_ALIGNED_COVERAGE = 0.8` of its
+  ayahs is **low coverage** (`low_coverage`): the file holds the surah but most
+  of it went unmatched — silence, a phase-cancelled stretch, truncation. It is
+  kept (its matched rows are real) and listed in `unresolved_files`, and the
+  report is no longer `clean`.
 
 The aligner Space's `bucket_fetch` drops its `HfFileSystem` listing cache before
 every fetch: split writes new chapter mp3s into an `audio/` folder the Space has

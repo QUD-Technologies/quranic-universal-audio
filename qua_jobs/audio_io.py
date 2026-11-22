@@ -45,13 +45,28 @@ YTDLP_FORMAT = "bestaudio/best"
 _DRIVE_DOWNLOAD = "https://drive.usercontent.google.com/download?id={id}&export=download&confirm=t"
 _MS = 1000
 
-#: A stereo source whose mean inter-channel phase sits below this has one
-#: channel inverted: L = -R folds to near-silence in mono, which every VAD and
-#: ASR pass does. Silent frames read 0 and dilute the mean, so a fully inverted
-#: recitation measures about -0.5, an ordinary one +0.5 or more.
-ANTIPHASE_MAX_PHASE = -0.3
-#: Seconds of the source the phase check reads.
-ANTIPHASE_PROBE_S = 120
+#: Stereo phase layouts (``phase_layout``). L = -R folds to near-silence in mono,
+#: which every VAD and ASR pass does, so an inverted stretch is unalignable.
+PHASE_IN = "in_phase"
+#: The whole file has one channel polarity-inverted — flip the right channel.
+PHASE_INVERTED = "inverted"
+#: The polarity flips partway (an edited master): in phase, then L = -R. No single
+#: flip fits, so the left channel is copied to both — for these mono-in-stereo
+#: masters (|L| = |R|) that keeps the recording whole.
+PHASE_MIXED = "mixed"
+#: Per-second median aphasemeter phase beyond ±this counts the second as in
+#: phase / inverted; seconds in between (true stereo, noise) count as neither.
+PHASE_DECISIVE = 0.5
+#: Frames with |phase| under this are silence and are left out of the medians.
+PHASE_SILENT = 0.1
+#: Seconds of BOTH signs before a file counts as mixed — a stray inverted breath
+#: or effect is not a flipped master. Otherwise the majority sign decides, so a
+#: short surah that is inverted throughout still reads as inverted.
+PHASE_MIN_RUN_S = 10
+_PHASE_FILTERS = {
+    PHASE_INVERTED: "pan=stereo|c0=c0|c1=-1*c1",
+    PHASE_MIXED: "pan=stereo|c0=c0|c1=c0",
+}
 
 #: Seconds between yt-dlp's HTTP requests — a burst from one account on a
 #: datacenter IP is what trips YouTube's bot check.
@@ -250,18 +265,39 @@ def _input(src: Path) -> list[str]:
     return [*_format_hint(src), "-i", str(src)]
 
 
-def is_antiphase(src: Path) -> bool:
-    """Whether ``src`` is stereo with one channel polarity-inverted."""
-    cmd = ["ffmpeg", "-v", "error", "-t", str(ANTIPHASE_PROBE_S), *_input(src), "-af"]
+def phase_layout(src: Path) -> str:
+    """``PHASE_IN`` / ``PHASE_INVERTED`` / ``PHASE_MIXED`` for a stereo ``src``.
+
+    Reads the whole file: a master can flip polarity minutes in (mp3quran
+    ``hassan-saleh/r1/023.mp3`` at 3:08), which a probe of the opening misses."""
+    cmd = ["ffmpeg", "-v", "error", *_input(src), "-af"]
     cmd += ["aphasemeter=video=0,ametadata=mode=print:key=lavfi.aphasemeter.phase:file=-"]
     cmd += ["-f", "null", "-"]
-    out = subprocess.run(cmd, capture_output=True, text=True, timeout=600, check=True).stdout
-    phases = [
-        float(line.partition("=")[2])
-        for line in out.splitlines()
-        if line.startswith("lavfi.aphasemeter.phase=")
-    ]
-    return bool(phases) and sum(phases) / len(phases) < ANTIPHASE_MAX_PHASE
+    out = subprocess.run(
+        cmd, capture_output=True, text=True, timeout=FFMPEG_TIMEOUT_S, check=True
+    ).stdout
+    in_phase, inverted = _phase_seconds(out)
+    if min(in_phase, inverted) >= PHASE_MIN_RUN_S:
+        return PHASE_MIXED
+    return PHASE_INVERTED if inverted > in_phase else PHASE_IN
+
+
+def _phase_seconds(meter: str) -> tuple[int, int]:
+    """Seconds whose median non-silent phase is decisively in phase / inverted."""
+    seconds: dict[int, list[float]] = {}
+    second = 0
+    for line in meter.splitlines():
+        if line.startswith("frame:"):
+            second = int(float(line.rpartition("pts_time:")[2]))
+        elif line.startswith("lavfi.aphasemeter.phase="):
+            phase = float(line.partition("=")[2])
+            if abs(phase) >= PHASE_SILENT:
+                seconds.setdefault(second, []).append(phase)
+    medians = [sorted(v)[len(v) // 2] for v in seconds.values()]
+    return (
+        sum(m > PHASE_DECISIVE for m in medians),
+        sum(m < -PHASE_DECISIVE for m in medians),
+    )
 
 
 def encode(
@@ -271,10 +307,10 @@ def encode(
     *,
     start_ms: int | None = None,
     end_ms: int | None = None,
-    invert_right: bool = False,
+    phase: str = PHASE_IN,
 ) -> None:
     """One canonical encode of ``src``, optionally only ``[start, end)``;
-    ``invert_right`` flips the right channel's polarity (see ``is_antiphase``).
+    ``phase`` (see ``phase_layout``) repairs a polarity-inverted stereo source.
 
     The window uses input seeking, which is sample-accurate when transcoding
     (``-accurate_seek``, ffmpeg's default) and linear on a CBR source — the only
@@ -286,7 +322,7 @@ def encode(
     if end_ms is not None:
         cmd += ["-t", f"{(end_ms - (start_ms or 0)) / _MS:.3f}"]
     cmd += ["-vn"]
-    filters = ["pan=stereo|c0=c0|c1=-1*c1"] if invert_right else []
+    filters = [_PHASE_FILTERS[phase]] if phase in _PHASE_FILTERS else []
     cmd += ["-af", ",".join([*filters, LIMITER])]
     cmd += ["-c:a", "libmp3lame", "-b:a", CANONICAL_BITRATE]
     cmd += ["-ar", CANONICAL_SAMPLE_RATE, "-ac", str(channels), "-f", "mp3", str(dest)]

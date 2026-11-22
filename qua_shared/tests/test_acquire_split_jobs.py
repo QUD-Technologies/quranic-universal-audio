@@ -254,8 +254,15 @@ def test_acquire_downloads_to_a_name_without_an_extension(mount, monkeypatch):
     assert names == ["src", "src"]
 
 
-def _stereo_tone(path: Path, right: str) -> Path:
-    """A stereo tone whose right channel is ``right`` times the left."""
+#: Right channel as an ``aeval`` expression of the left (``val(0)``) and time.
+IN_PHASE, INVERTED = "val(0)", "-val(0)"
+#: In phase, then inverted — long enough for both runs to count (commas escaped
+#: for the filtergraph).
+MIXED, MIXED_S = r"if(lt(t\,12)\,val(0)\,-val(0))", 24
+
+
+def _stereo_tone(path: Path, right: str, seconds: float = TONE_MS / 1000) -> Path:
+    """A stereo tone whose right channel is ``right``."""
     subprocess.run(
         [
             "ffmpeg",
@@ -264,9 +271,9 @@ def _stereo_tone(path: Path, right: str) -> Path:
             "-f",
             "lavfi",
             "-i",
-            f"sine=frequency=440:duration={TONE_MS / 1000}",
+            f"sine=frequency=440:duration={seconds}",
             "-af",
-            f"pan=stereo|c0=c0|c1={right}*c0",
+            f"aeval=exprs=val(0)|{right}:channel_layout=stereo",
             str(path),
         ],
         check=True,
@@ -274,28 +281,37 @@ def _stereo_tone(path: Path, right: str) -> Path:
     return path
 
 
-def test_is_antiphase_tells_inverted_channels_from_in_phase(tmp_path):
-    assert audio_io.is_antiphase(_stereo_tone(tmp_path / "inv.wav", "-1"))
-    assert not audio_io.is_antiphase(_stereo_tone(tmp_path / "ok.wav", "1"))
+@pytest.mark.parametrize(
+    ("right", "seconds", "layout"),
+    [
+        (IN_PHASE, TONE_MS / 1000, audio_io.PHASE_IN),
+        (INVERTED, TONE_MS / 1000, audio_io.PHASE_INVERTED),
+        (MIXED, MIXED_S, audio_io.PHASE_MIXED),
+    ],
+)
+def test_phase_layout_reads_the_whole_file(tmp_path, right, seconds, layout):
+    assert audio_io.phase_layout(_stereo_tone(tmp_path / "t.wav", right, seconds)) == layout
 
 
-def test_acquire_flips_an_antiphase_source_so_its_mono_fold_keeps_the_voice(
-    mount, monkeypatch, tmp_path
+@pytest.mark.parametrize(("right", "seconds"), [(INVERTED, TONE_MS / 1000), (MIXED, MIXED_S)])
+def test_acquire_repairs_polarity_so_the_mono_fold_keeps_the_voice(
+    mount, monkeypatch, tmp_path, right, seconds
 ):
-    """maher_al_muaiqly_muallim_mp3quran ships L = -R: every mono fold (VAD, ASR)
-    cancelled the voice and no chapter could be matched."""
+    """maher_al_muaiqly_muallim_mp3quran ships L = -R throughout; hassan-saleh
+    023 flips to L = -R at 3:08. Either way every mono fold (VAD, ASR) cancelled
+    the voice and the inverted stretch could not be matched."""
     root, _ = mount
-    inverted = _stereo_tone(tmp_path / "inv.wav", "-1")
+    source = _stereo_tone(tmp_path / "src.wav", right, seconds)
 
     def fetch(url, dest):
-        shutil.copyfile(inverted, dest)
+        shutil.copyfile(source, dest)
         return dest
 
     monkeypatch.setattr(audio_io, "fetch", fetch)
     assert acquire_audio.main() == 0
     persisted = _reciter(root) / "audio" / "3.mp3"
     assert audio_io.probe_channels(persisted) == 2
-    assert not audio_io.is_antiphase(persisted)
+    assert audio_io.phase_layout(persisted) == audio_io.PHASE_IN
 
 
 def test_release_download_helper_limits_peaks_like_the_alignment_encode():
