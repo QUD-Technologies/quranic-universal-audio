@@ -185,9 +185,13 @@ def acquire_group(slug: str, group: SourceGroup, channels_override: int | None) 
         # No extension: ffmpeg would pick a demuxer by one (``.bin`` = bintext)
         # over sniffing the bytes, and lose an mp3 behind a large ID3 tag.
         raw = _fetch(group.url, work / "src")
-        channels = channels_override or audio_io.probe_channels(raw)
+        source_channels = audio_io.probe_channels(raw)
+        channels = channels_override or source_channels
         encoded = work / f"{group.item}.mp3"
-        phase = audio_io.phase_layout(raw) if channels == 2 else audio_io.PHASE_IN
+        # Scan the SOURCE, not the output: a mono delivery still downmixes a
+        # stereo source, and an inverted channel cancels in that downmix too.
+        stereo = source_channels == 2
+        phase = audio_io.phase_layout(raw) if stereo else audio_io.PHASE_IN
         if phase == audio_io.PHASE_INVERTED:
             log.warning("%s: channels are polarity-inverted, flipping the right", _label(group))
         elif phase == audio_io.PHASE_MIXED:

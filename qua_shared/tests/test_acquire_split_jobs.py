@@ -314,6 +314,34 @@ def test_acquire_repairs_polarity_so_the_mono_fold_keeps_the_voice(
     assert audio_io.phase_layout(persisted) == audio_io.PHASE_IN
 
 
+def _mean_volume_db(path: Path) -> float:
+    out = subprocess.run(
+        ["ffmpeg", "-i", str(path), "-af", "volumedetect", "-f", "null", "-"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stderr
+    return float(out.rpartition("mean_volume:")[2].split("dB")[0])
+
+
+def test_a_mono_delivery_still_repairs_an_inverted_stereo_source(mount, monkeypatch, tmp_path):
+    """A delivery set to ``channels = 1`` downmixes its stereo source; with one
+    channel inverted that downmix is silence unless the phase is repaired first."""
+    root, _ = mount
+    source = _stereo_tone(tmp_path / "src.wav", INVERTED)
+
+    def fetch(url, dest):
+        shutil.copyfile(source, dest)
+        return dest
+
+    monkeypatch.setattr(audio_io, "fetch", fetch)
+    monkeypatch.setenv("CHANNELS", "1")
+    assert acquire_audio.main() == 0
+    persisted = _reciter(root) / "audio" / "3.mp3"
+    assert audio_io.probe_channels(persisted) == 1
+    assert _mean_volume_db(persisted) > -30
+
+
 def test_release_download_helper_limits_peaks_like_the_alignment_encode():
     """download_audio.py ships alone and copies the limiter: a drift would leave
     users' re-downloaded audio louder at the peaks than what was aligned."""
