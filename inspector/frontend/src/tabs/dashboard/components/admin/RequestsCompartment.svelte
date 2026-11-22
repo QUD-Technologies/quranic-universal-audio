@@ -22,6 +22,12 @@
     import { isOwner } from '../../../../lib/stores/current-user';
     import AlignProgress from './AlignProgress.svelte';
     import IntakePlanPanel from './intake/IntakePlanPanel.svelte';
+    import RequestsFilters from './requests/RequestsFilters.svelte';
+    import {
+        filterRequests,
+        toggleFilter,
+        type RequestFilters as RequestFilterMap,
+    } from './requests/requests-filters';
     import type {
         AdminRequestRow,
         AdminRequestsResponse,
@@ -49,6 +55,8 @@
     let loading = $state(true);
     let error = $state<string | null>(null);
     let expandedId = $state<string | null>(null);
+    let filters = $state<RequestFilterMap>({});
+    let search = $state('');
 
     // Per-expanded-row resolve state (owner only).
     let reason = $state('');
@@ -106,6 +114,9 @@
         loading = true;
         error = null;
         expandedId = null;
+        // Facet values differ per status tab, so a tab switch starts unfiltered.
+        filters = {};
+        search = '';
         const teardown = visiblePoll<AdminRequestsResponse>({
             intervalMs: 30_000,
             fetcher: (signal) => fetchRequests(s, signal),
@@ -210,22 +221,33 @@
         return cached?.results ?? [];
     }
 
-    function sourceSummary(row: AdminRequestRow): string {
-        const src = row.source as
-            | { method?: string; links?: unknown[]; playlist_url?: string }
-            | null
-            | undefined;
-        if (!src) return '';
-        if (src.method === 'playlist') {
-            let host = '';
-            try {
-                host = new URL(src.playlist_url ?? '').hostname.replace(/^www\./, '');
-            } catch {
-                host = '';
-            }
-            return host ? `Playlist · ${host}` : 'Playlist';
+    const SURAH_COUNT = 114;
+
+    function hostOf(url: string | null | undefined): string {
+        try {
+            return new URL(url ?? '').hostname.replace(/^www\./, '');
+        } catch {
+            return '';
         }
-        return `${src.links?.length ?? 0}/114 links`;
+    }
+
+    /** Channel (or playlist host) · Playlist|CDN · chapter coverage. */
+    function sourceLabel(row: AdminRequestRow): string {
+        const kind =
+            row.source_kind === 'playlist' ? 'Playlist' : row.source_kind === 'cdn' ? 'CDN' : '';
+        const where = row.channel_name ?? hostOf(row.source_url);
+        const parts = [where, kind];
+        if (row.link_count != null) parts.push(`${row.link_count}/${SURAH_COUNT}`);
+        return parts.filter(Boolean).join(' · ');
+    }
+
+    /** The reciter's deliveries so far; empty for a brand-new reciter. */
+    function progressLabel(row: AdminRequestRow): string {
+        const total = row.reciter_deliveries ?? 0;
+        if (row.kind === 'new_reciter' || total === 0) return '';
+        const released = row.reciter_published ?? 0;
+        const requested = row.reciter_requested ?? 0;
+        return `${released} released · ${requested}/${total} requested`;
     }
 
     function displayName(row: AdminRequestRow): string {
@@ -264,6 +286,8 @@
     ];
 
     const rows = $derived(resp?.rows ?? []);
+    const filtered = $derived(filterRequests(rows, filters, search));
+    const hasFilters = $derived(Object.keys(filters).length > 0 || search.trim() !== '');
     const counts = $derived(
         resp?.counts ?? { open: 0, accepted: 0, returned: 0, discarded: 0 },
     );
@@ -288,8 +312,24 @@
             {/each}
         </div>
         <span class="toolbar-spacer"></span>
-        <span class="toolbar-total">{rows.length} {status === 'open' ? 'open' : 'shown'}</span>
+        <span class="toolbar-total">
+            {#if hasFilters}{filtered.rows.length} of {/if}{rows.length} {status === 'open' ? 'open' : 'shown'}
+        </span>
     </div>
+
+    {#if !loading && !error && rows.length > 0}
+        <RequestsFilters
+            pills={filtered.pills}
+            {search}
+            {hasFilters}
+            onSearch={(v) => (search = v)}
+            onToggle={(key, tag) => (filters = toggleFilter(filters, key, tag))}
+            onClear={() => {
+                filters = {};
+                search = '';
+            }}
+        />
+    {/if}
 
     {#if loading}
         <div class="state">Loading…</div>
@@ -305,9 +345,11 @@
                     : 'No requests with this status yet.'}
             </p>
         </div>
+    {:else if filtered.rows.length === 0}
+        <div class="state">No requests match these filters.</div>
     {:else}
         <ol class="queue">
-            {#each rows as row (row.id)}
+            {#each filtered.rows as row (row.id)}
                 <li class="req" class:open={expandedId === row.id}>
                     <button
                         class="req-head"
@@ -328,16 +370,23 @@
                             </span>
                             <span class="id-meta">
                                 <span class="combo">{comboLabel(row)}</span>
-                                {#if isIntake(row)}
+                                {#if sourceLabel(row)}
                                     <span class="sep">·</span>
-                                    <span class="src-sum">{sourceSummary(row)}</span>
-                                {:else}
+                                    <span class="src-sum">{sourceLabel(row)}</span>
+                                {/if}
+                                {#if !isIntake(row)}
                                     <span class="sep">·</span>
                                     <span class="changes" class:none={(row.changes?.length ?? 0) === 0}>
                                         {changeSummary(row)}
                                     </span>
                                 {/if}
                             </span>
+                            {#if progressLabel(row) || row.slug}
+                                <span class="id-sub">
+                                    {#if row.slug}<span class="slug">{row.slug}</span>{/if}
+                                    {#if progressLabel(row)}<span class="progress">{progressLabel(row)}</span>{/if}
+                                </span>
+                            {/if}
                         </span>
 
                         <span class="req-meta">
@@ -425,6 +474,17 @@
                                                     {/each}
                                                 </ul>
                                             {/if}
+                                        </div>
+                                    {:else if row.source_url}
+                                        <div class="source">
+                                            <div class="source-head">
+                                                <h4>Audio source</h4>
+                                            </div>
+                                            <p class="src-line">{sourceLabel(row)}</p>
+                                            <a class="playlist-link" href={row.source_url} target="_blank" rel="noopener noreferrer">
+                                                {row.source_url}
+                                            </a>
+                                            <span class="src-hint">Chapter 1 shown; the manifest holds every chapter URL.</span>
                                         </div>
                                     {/if}
                                 </div>
@@ -660,7 +720,12 @@
     .id-meta .sep { color: var(--text-faint); }
     .id-meta .changes { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .id-meta .changes.none { color: var(--text-faint); font-style: italic; }
-    .id-meta .src-sum { color: var(--text-muted); white-space: nowrap; font-family: var(--font-mono); font-size: 11px; }
+    .id-meta .src-sum { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .id-sub { display: flex; align-items: baseline; gap: var(--s-3); font-size: 11px; color: var(--text-faint); min-width: 0; }
+    .id-sub .slug { font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .id-sub .progress { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .src-line { margin: 0 0 4px; font-size: var(--fs-meta); color: var(--text-secondary); }
+    .src-hint { display: block; margin-top: 4px; font-size: 10.5px; color: var(--text-faint); }
 
     .kind-badge {
         flex-shrink: 0;

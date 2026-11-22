@@ -142,6 +142,8 @@
             copy.sort((a, b) => collator.compare(a.reciter.name, b.reciter.name));
         } else if (sort === 'combinations') {
             copy.sort((a, b) => b.visibleDeliveries.length - a.visibleDeliveries.length);
+        } else if (sort === 'least_requested') {
+            copy.sort(compareLeastRequested);
         } else if (sort === 'status') {
             copy.sort((a, b) => {
                 const s = bucketRank(a.reciter.primary_bucket) - bucketRank(b.reciter.primary_bucket);
@@ -152,6 +154,18 @@
             copy.sort(compareRecency);
         }
         return copy;
+    }
+
+    // Reciters none of whose combinations was ever requested come first, then
+    // the fewest requested / in review / published; more open combinations, then
+    // the name, break ties.
+    function compareLeastRequested(a: RowEntry, b: RowEntry): number {
+        const taken = (r: RowEntry): number =>
+            r.visibleDeliveries.filter((d) => d.bucket !== 'available_for_request').length;
+        const open = (r: RowEntry): number => r.visibleDeliveries.length - taken(r);
+        return taken(a) - taken(b)
+            || open(b) - open(a)
+            || collator.compare(a.reciter.name, b.reciter.name);
     }
 
     function compareRecency(a: RowEntry, b: RowEntry): number {
@@ -209,6 +223,7 @@
     $: sortRecentLabel = tr($localeStore, m.dashboard_catalog_sort_recent());
     $: sortAlphabeticalLabel = tr($localeStore, m.dashboard_catalog_sort_alphabetical());
     $: sortCombinationsLabel = tr($localeStore, m.dashboard_catalog_sort_combinations());
+    $: sortLeastRequestedLabel = tr($localeStore, m.dashboard_catalog_sort_least_requested());
     $: loadingLabel = tr($localeStore, m.dashboard_catalog_loading());
     $: filtersLabel = tr($localeStore, m.dashboard_catalog_filters_label());
     $: clearFilterAriaLabel = tr($localeStore, m.dashboard_catalog_clear_filter_aria_label());
@@ -276,6 +291,7 @@
                         <option value="recent">{sortRecentLabel}</option>
                         <option value="alphabetical">{sortAlphabeticalLabel}</option>
                         <option value="combinations">{sortCombinationsLabel}</option>
+                        <option value="least_requested">{sortLeastRequestedLabel}</option>
                     </select>
                 </label>
             </div>

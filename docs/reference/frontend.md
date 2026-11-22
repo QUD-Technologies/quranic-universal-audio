@@ -204,7 +204,7 @@ Entry view: public catalog browse/search/filter/play + admin controls.
 | Path | Role |
 |---|---|
 | `DashboardTab.svelte` | Root — `CatalogList` + `ReciterDetail` modal + `BottomPlayer` |
-| `views/CatalogList.svelte` | List view; filters on combinations, grouped back by reciter |
+| `views/CatalogList.svelte` | List view; filters on combinations, grouped back by reciter. Sorts include **Least requested**: reciters with the fewest visible combinations past `available_for_request` first, ties broken by more open combinations, then name |
 | `views/ReciterDetail.svelte` | Reciter detail modal (flat combination table, status-priority sort) |
 | `components/CatalogTable.svelte` | Virtualized reciter list (own scroll container; windowing via `lib/utils/list-virtualization.ts`) |
 | `components/DetailHeader.svelte`, `FactsList.svelte`, `StateTimeline.svelte` | Detail/table pieces |

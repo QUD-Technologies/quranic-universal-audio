@@ -86,6 +86,7 @@
   "dashboard_catalog_sort_alphabetical": "A → Z",
   "dashboard_catalog_sort_combinations": "Most combinations",
   "dashboard_catalog_sort_label": "Sort",
+  "dashboard_catalog_sort_least_requested": "Least requested",
   "dashboard_catalog_sort_recent": "Recently updated",
   "dashboard_catalog_sort_status": "State",
   "dashboard_catalog_submit_recitation_button": "Submit recitation",

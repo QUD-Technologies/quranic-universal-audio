@@ -23,7 +23,7 @@ export type DashboardView =
           openRequest?: boolean;
       };
 
-export type DashboardSort = 'status' | 'recent' | 'alphabetical' | 'combinations';
+export type DashboardSort = 'status' | 'recent' | 'alphabetical' | 'combinations' | 'least_requested';
 
 export interface DashboardState {
     view: DashboardView;

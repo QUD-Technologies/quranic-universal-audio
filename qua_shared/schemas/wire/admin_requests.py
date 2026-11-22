@@ -12,6 +12,8 @@ FE-facing: re-exported from ``fe_types.py`` and code-generated into
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from .align_runs import AlignQuota, AlignRunStatus
@@ -63,6 +65,20 @@ class AdminRequestRow(BaseModel):
     # (None) for slug-based edit requests.
     source: dict | None = None
     probe: dict | None = None
+
+    # Where the audio comes from (delivery channel / intake source) — every row.
+    channel: str | None = None
+    channel_name: str | None = None
+    source_kind: Literal["playlist", "cdn"] | None = None
+    #: Playlist URL, first intake link, or the delivery's chapter-1 URL.
+    source_url: str | None = None
+    #: Links / manifest chapters; None for a playlist (unknown until listed).
+    link_count: int | None = None
+
+    # The reciter's other deliveries: released, requested-or-later, total.
+    reciter_published: int = 0
+    reciter_requested: int = 0
+    reciter_deliveries: int = 0
 
     # Native align pipeline: the slug's active/latest run, for open slug rows.
     align: AlignRunStatus | None = None

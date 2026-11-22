@@ -362,6 +362,14 @@ export interface AdminRequestRow {
   probe?: {
     [k: string]: unknown;
   } | null;
+  channel?: string | null;
+  channel_name?: string | null;
+  source_kind?: ("playlist" | "cdn") | null;
+  source_url?: string | null;
+  link_count?: number | null;
+  reciter_published?: number;
+  reciter_requested?: number;
+  reciter_deliveries?: number;
   align?: AlignRunStatus | null;
   requester_role?: string | null;
   requester_login?: string | null;
