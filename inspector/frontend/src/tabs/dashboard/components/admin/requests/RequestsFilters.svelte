@@ -57,14 +57,15 @@
 
 <style>
     .filters {
-        display: flex; flex-direction: column; gap: var(--s-2);
+        display: flex; flex-wrap: wrap; align-items: center;
+        column-gap: var(--s-6); row-gap: var(--s-2);
         padding: var(--s-3) var(--s-5);
         border-bottom: 1px solid var(--border-quiet);
         flex-shrink: 0;
     }
-    .search-row { display: flex; align-items: center; gap: var(--s-3); }
+    .search-row { display: flex; align-items: center; gap: var(--s-3); flex: 0 1 280px; min-width: 180px; }
     .search {
-        flex: 1; max-width: 360px; height: 28px; padding: 0 var(--s-3);
+        flex: 1; min-width: 0; height: 28px; padding: 0 var(--s-3);
         background: var(--canvas-inset); color: var(--text-primary);
         border: 1px solid var(--border-quiet); border-radius: 6px; font-size: var(--fs-meta);
     }
@@ -74,9 +75,9 @@
         color: var(--text-muted); font-size: var(--fs-meta); text-decoration: underline;
     }
     .clear:hover { color: var(--text-primary); }
-    .facet { display: flex; align-items: baseline; gap: var(--s-3); }
+    .facet { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
     .facet-label {
-        flex: 0 0 64px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
+        flex: none; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
         color: var(--text-faint);
     }
     .pills { display: flex; flex-wrap: wrap; gap: var(--s-2); }

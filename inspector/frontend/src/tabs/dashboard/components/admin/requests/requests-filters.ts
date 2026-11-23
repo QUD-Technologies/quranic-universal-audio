@@ -80,6 +80,11 @@ function matchesSearch(row: AdminRequestRow, needle: string): boolean {
     return hay.includes(needle);
 }
 
+/** A pending / running native align run — pinned above every filter. */
+export function isAligning(row: AdminRequestRow): boolean {
+    return row.align?.status === 'running' || row.align?.status === 'pending';
+}
+
 export function filterRequests(
     rows: AdminRequestRow[],
     filters: RequestFilters,
@@ -108,7 +113,8 @@ export function filterRequests(
             }))
             .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
     }
-    return { rows: searched.filter((_, i) => rowVisibility[i]), pills };
+    const shown = searched.filter((r, i) => rowVisibility[i] && !isAligning(r));
+    return { rows: [...rows.filter(isAligning), ...shown], pills };
 }
 
 /** Toggle one pill, returning a new filter map (empty sets dropped). */

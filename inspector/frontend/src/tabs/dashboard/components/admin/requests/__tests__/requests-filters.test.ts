@@ -30,6 +30,18 @@ describe('filterRequests', () => {
         expect(pills.reciter.map((p) => p.tag).sort()).toEqual(['published', 'unpublished']);
     });
 
+    it('pins a running align row first even when the filters exclude it', () => {
+        const running = row({
+            id: 'z',
+            source_kind: 'playlist',
+            align: { status: 'running' } as AdminRequestRow['align'],
+        });
+        const { rows } = filterRequests([...ROWS, running], toggleFilter({}, 'source', 'cdn'), 'nomatch-a');
+        expect(rows.map((r) => r.id)).toEqual(['z']);
+        const all = filterRequests([...ROWS, running], {}, '');
+        expect(all.rows.map((r) => r.id)).toEqual(['z', 'a', 'b', 'c']);
+    });
+
     it('drops a facet key once its last pill is toggled off', () => {
         const on = toggleFilter({}, 'riwayah', 'warsh_an_nafi');
         expect(toggleFilter(on, 'riwayah', 'warsh_an_nafi')).toEqual({});

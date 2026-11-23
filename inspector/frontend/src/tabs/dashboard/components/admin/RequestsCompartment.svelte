@@ -285,6 +285,22 @@
         { id: 'discarded', label: 'Discarded' },
     ];
 
+    /** Collapsed-row summary of the slug's align run: lane, stage progress, failures. */
+    function alignBadge(row: AdminRequestRow): { text: string; title: string; failed: boolean } | null {
+        const run = row.align;
+        if (!run || (run.status !== 'running' && run.status !== 'pending' && run.status !== 'failed')) return null;
+        const lane = String(run.detail?.device ?? run.device ?? 'GPU');
+        const failures = run.chapter_failures ?? [];
+        const failed = run.status === 'failed';
+        const parts = [failed ? `Failed at ${run.stage}` : `Aligning · ${run.stage}`, lane];
+        if (!failed && run.stage === 'align' && run.chapters_total) {
+            parts.push(`${run.chapters_done}/${run.chapters_total}`);
+        }
+        if (failures.length) parts.push(`${failures.length} ch failed`);
+        const title = [run.last_error, ...failures].filter(Boolean).join('\n');
+        return { text: parts.join(' · '), title, failed: failed || failures.length > 0 };
+    }
+
     const rows = $derived(resp?.rows ?? []);
     const filtered = $derived(filterRequests(rows, filters, search));
     const hasFilters = $derived(Object.keys(filters).length > 0 || search.trim() !== '');
@@ -390,6 +406,12 @@
                         </span>
 
                         <span class="req-meta">
+                            {#if alignBadge(row)}
+                                {@const badge = alignBadge(row)!}
+                                <span class="req-tag run" class:failed={badge.failed} title={badge.title || undefined}>
+                                    {badge.text}
+                                </span>
+                            {/if}
                             {#if row.auto_claim}
                                 <span class="req-tag self" title="Requester will be auto-assigned as reviewer when alignment completes">self-review</span>
                             {/if}
@@ -739,6 +761,8 @@
     .req-meta { flex-shrink: 0; display: inline-flex; align-items: center; gap: var(--s-3); justify-content: flex-end; white-space: nowrap; }
     .req-tag { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 999px; font-size: 10px; font-weight: 500; color: var(--text-secondary); background: oklch(0.62 0.02 268 / 0.16); }
     .req-tag.self { color: var(--accent); background: var(--accent-tint); }
+    .req-tag.run { color: var(--ok-fg); background: var(--ok-tint); font-family: var(--font-mono); }
+    .req-tag.run.failed { color: var(--bad-fg); background: var(--bad-tint); }
     .req-tag.self::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
     .requester { font-size: var(--fs-meta); color: var(--text-secondary); }
     .requester.redacted { color: var(--text-faint); font-style: italic; }
